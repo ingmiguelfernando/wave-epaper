@@ -24,7 +24,7 @@ const HOME_ENTRIES: [MenuEntry; HOME_ENTRY_COUNT] = [
     MenuEntry {
         label: "Photos",
         subtitle: "SD photo gallery and sleep screen set",
-        badge: SOON_BADGE,
+        badge: "",
         route: ScreenRoute::Photos,
     },
     MenuEntry {
@@ -147,7 +147,7 @@ const TOOLS_ENTRIES: [MenuEntry; 4] = [
     },
 ];
 
-const SETTINGS_ENTRIES: [MenuEntry; 9] = [
+const SETTINGS_ENTRIES: [MenuEntry; 10] = [
     MenuEntry {
         label: "Alarms",
         subtitle: "Alarm schedules, snooze and dismiss",
@@ -201,6 +201,12 @@ const SETTINGS_ENTRIES: [MenuEntry; 9] = [
         subtitle: "Auto-sleep, wake keys and battery log",
         badge: "",
         route: ScreenRoute::Power,
+    },
+    MenuEntry {
+        label: "Sleep screen",
+        subtitle: "Starred photos or the sleep folder",
+        badge: "",
+        route: ScreenRoute::SleepScreen,
     },
 ];
 
@@ -269,7 +275,7 @@ mod tests {
         assert_eq!(category_entries(ScreenRoute::Ai).len(), 2);
         assert_eq!(category_entries(ScreenRoute::Games).len(), 1);
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
-        assert_eq!(category_entries(ScreenRoute::Settings).len(), 9);
+        assert_eq!(category_entries(ScreenRoute::Settings).len(), 10);
         for route in CATEGORIES {
             assert!(category_entries(route)
                 .iter()

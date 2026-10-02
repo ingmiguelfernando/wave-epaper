@@ -41,10 +41,6 @@ pub fn render_placeholder(
 
 fn description(route: ScreenRoute) -> &'static str {
     match route {
-        ScreenRoute::Photos => {
-            "Browse the photos in the /PHOTOS folder of the SD card and star the ones \
-             to show on the sleep screen."
-        }
         ScreenRoute::Bible => {
             "Read the Bible from the SD card, with a verse of the day that can also \
              appear on the sleep screen."

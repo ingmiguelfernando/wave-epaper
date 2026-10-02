@@ -60,6 +60,11 @@ impl FrameBuffer {
         self.bytes.fill(0xFF);
     }
 
+    /// Replace the whole image with `source`.
+    pub fn copy_from(&mut self, source: &FrameBuffer) {
+        self.bytes.copy_from_slice(&source.bytes);
+    }
+
     /// Read a packed panel pixel. Out-of-range coordinates return `None`.
     #[must_use]
     pub fn is_black(&self, point: Point) -> Option<bool> {

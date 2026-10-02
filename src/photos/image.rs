@@ -260,22 +260,29 @@ fn stretch_levels(pixels: &[u8]) -> (u8, u8) {
         histogram[usize::from(*level)] += 1;
     }
     let tail = pixels.len() / 100;
-    let percentile = |levels: &mut dyn Iterator<Item = usize>| {
-        let mut seen = 0;
-        levels
-            .find(|level| {
-                seen += histogram[*level];
-                seen > tail
-            })
-            .unwrap_or(0)
-    };
-    let low = percentile(&mut (0..256));
-    let high = percentile(&mut (0..256).rev());
+    let low = first_beyond(&histogram, tail, 0..256);
+    let high = first_beyond(&histogram, tail, (0..256).rev());
     if high < low + 48 {
         (0, 255)
     } else {
         (low as u8, high as u8)
     }
+}
+
+/// First level along `levels` at which more than `tail` pixels were counted.
+fn first_beyond(
+    histogram: &[usize; 256],
+    tail: usize,
+    levels: impl Iterator<Item = usize>,
+) -> usize {
+    let mut seen = 0;
+    for level in levels {
+        seen += histogram[level];
+        if seen > tail {
+            return level;
+        }
+    }
+    0
 }
 
 #[cfg(test)]

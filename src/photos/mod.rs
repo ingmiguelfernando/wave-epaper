@@ -220,6 +220,10 @@ pub(crate) mod test_photos {
         encode(&pixels, (width, height), ColorType::Luma, None, true)
     }
 
+    pub fn jpeg_from_grey(pixels: &[u8], width: u16, height: u16) -> Vec<u8> {
+        encode(pixels, (width, height), ColorType::Luma, None, false)
+    }
+
     fn half_dark(width: u16, height: u16, channels: usize) -> Vec<u8> {
         let width = usize::from(width);
         let mut pixels = Vec::new();
