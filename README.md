@@ -8,11 +8,14 @@ reworked phase by phase as listed below.
 
 ## Roadmap
 
+Status and technical specs: [docs/ROADMAP.md](docs/ROADMAP.md). Small tasks done in
+parallel on another branch: [docs/DELEGATED_TASKS.md](docs/DELEGATED_TASKS.md).
+
 - [x] Baseline: upstream v1.2.0 (Wi-Fi) built by GitHub Actions
 - [x] Phase 0: long SD file names, project rename (code cleanup moved to the backlog)
 - [x] Phase 1: power (light sleep, auto-sleep, Wi-Fi bursts, idle power-down, Settings › Power)
 - [x] Phase 2: typography (Latin-1 fonts, large EPUBs, pixel-width wrapping, ES/EN hyphenation)
-- [ ] Phase 3: Photos and configurable sleep screens
+- [ ] Phase 3: Photos (3a, in progress) and configurable sleep screens (3b)
 - [ ] Phase 4: Weather app
 - [ ] Phase 5: Bible reader and Reading Stats
 - [ ] Phase 6: Games (Sudoku, Tetris)
@@ -21,7 +24,7 @@ reworked phase by phase as listed below.
 
 ### Backlog
 
-Unscheduled improvements:
+Unscheduled improvements (details in [docs/ROADMAP.md](docs/ROADMAP.md#backlog)):
 
 - Reading Preferences: pick a font size or font from a list instead of cycling through the values.
 - Remove inherited code Wave no longer uses (tilt games, BLE remote).
@@ -77,10 +80,14 @@ Host tests run on stable Rust: `./scripts/test-host.sh`
 - The device UI is in English; books in Spanish and other Latin-script languages must render correctly.
 - All code, comments, commit messages and documentation are written in English.
 
-## Upstream documentation
+## Documentation
 
-The original Rustmix Wave guides are kept in [docs/](docs/) for reference
-(architecture, board pins, SD card layout, user guide).
+- [docs/architecture.md](docs/architecture.md): how the firmware works (hardware, event loop, power, SD files, CI).
+- [docs/ROADMAP.md](docs/ROADMAP.md): status and specs of the remaining phases.
+- [docs/SD_CARD_SETUP.md](docs/SD_CARD_SETUP.md): SD card layout and settings files.
+
+The other guides in [docs/](docs/) come from upstream Rustmix Wave and are kept for reference
+until they are rewritten.
 
 ## License
 

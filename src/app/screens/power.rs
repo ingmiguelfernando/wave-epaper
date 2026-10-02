@@ -16,6 +16,7 @@ use crate::{
             footer::draw_footer,
             header::draw_header,
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
+            option_list::draw_option_list,
             status_row::{draw_status_row, StatusRow},
         },
     },
@@ -147,16 +148,7 @@ fn draw_picker(
     let (options, current) = state.power.options(setting);
     let heading = state.display.heading_style();
     Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
-    for (index, option) in options.into_iter().enumerate() {
-        let row = ListRow {
-            title: option,
-            subtitle: "",
-            value: if index == current { "IN USE" } else { "" },
-            selected: index == highlighted,
-        };
-        let top = 184 + index as i32 * LIST_ROW_HEIGHT;
-        draw_list_row(display, state.display, top, row)?;
-    }
+    draw_option_list(display, state.display, 184, &options, current, highlighted)?;
     draw_footer(
         display,
         state.display,
