@@ -1386,8 +1386,7 @@ mod firmware {
                                     RefreshRequest::Normal,
                                 )?;
                             }
-                        } else if manual_weather_refresh
-                            && radio.phase() == RadioPhase::Connecting
+                        } else if manual_weather_refresh && radio.phase() == RadioPhase::Connecting
                         {
                             manual_weather_pending = true;
                         } else if manual_weather_refresh {
