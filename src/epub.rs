@@ -132,7 +132,9 @@ impl EpubDocument {
             .map_err(|error| error.to_string())?;
         if text.len() as u64 != chapter.text_end_offset - chapter.text_offset {
             let number = chapter.number;
-            return Err(format!("EPUB chapter {number} changed since it was indexed"));
+            return Err(format!(
+                "EPUB chapter {number} changed since it was indexed"
+            ));
         }
         Ok(text)
     }
@@ -943,10 +945,7 @@ pub fn html_to_text(html: &str) -> String {
 
 /// `html_to_text`, also returning where each wanted element `id` starts in
 /// the text.
-fn flatten_xhtml(
-    html: &str,
-    wanted: Option<&BTreeSet<String>>,
-) -> (String, Vec<(String, usize)>) {
+fn flatten_xhtml(html: &str, wanted: Option<&BTreeSet<String>>) -> (String, Vec<(String, usize)>) {
     let mut output = String::new();
     let mut anchors = Vec::new();
     let mut cursor = 0;
@@ -1030,7 +1029,10 @@ fn element_end(html: &str, name: &str) -> Option<usize> {
     let mut cursor = 0;
     while let Some(found) = find_ignoring_case(&bytes[cursor..], closing.as_bytes()) {
         let after = cursor + found + closing.len();
-        if bytes.get(after).is_some_and(|byte| *byte == b'>' || byte.is_ascii_whitespace()) {
+        if bytes
+            .get(after)
+            .is_some_and(|byte| *byte == b'>' || byte.is_ascii_whitespace())
+        {
             return html[after..].find('>').map(|end| after + end + 1);
         }
         cursor = after;
@@ -1351,7 +1353,10 @@ mod tests {
         let chapter = "<html><body><h1 id='c1'>Uno</h1><p>Texto uno.</p>\
                        <h1 id='c2'>Dos</h1><p>Texto dos.</p></body></html>";
         let bytes = stored_zip(&[
-            ("META-INF/container.xml", "<container><rootfile full-path='book.opf'/></container>"),
+            (
+                "META-INF/container.xml",
+                "<container><rootfile full-path='book.opf'/></container>",
+            ),
             ("book.opf", package),
             ("nav.xhtml", nav),
             ("gen.xhtml", chapter),
