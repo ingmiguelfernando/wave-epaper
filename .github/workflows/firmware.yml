@@ -1,0 +1,120 @@
+name: firmware
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  APP_ELF: target/xtensa-esp32s3-espidf/release/waveshare-epd397-rust-app
+
+jobs:
+  build:
+    name: Build flashable image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # ESP-IDF, the Xtensa toolchain and an LTO release build need more disk than the runner leaves free.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install ESP-IDF host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git wget flex bison gperf python3 python3-pip python3-venv \
+            cmake ninja-build ccache libffi-dev libssl-dev libudev-dev
+
+      - name: Install Rust Xtensa toolchain
+        uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          default: true
+          buildtargets: esp32s3
+          ldproxy: true
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install espflash
+        run: cargo binstall --no-confirm --locked --version '^3' espflash
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            .embuild
+            target
+          key: firmware-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'sdkconfig.defaults', 'rust-toolchain.toml', '.cargo/config.toml') }}
+          restore-keys: |
+            firmware-${{ runner.os }}-
+
+      - name: Build firmware
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log
+
+      # The run summary is public, so build errors can be read without downloading logs.
+      - name: Show build failure in the run summary
+        if: failure()
+        run: |
+          {
+            echo '### Build failed: last 150 log lines'
+            echo '```text'
+            tail -n 150 build.log 2>/dev/null || echo 'build.log not found'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create flashable image
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="$(git rev-parse --short HEAD)"
+          fi
+          mkdir -p dist
+          # Bootloader, partition table and app in a single image that is flashed at offset 0x0.
+          espflash save-image --chip esp32s3 --merge --flash-size 16MB "$APP_ELF" "dist/wave-epaper-$VERSION.bin"
+          cp "$APP_ELF" "dist/wave-epaper-$VERSION.elf"
+          (cd dist && sha256sum ./* > SHA256SUMS.txt)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          {
+            echo "### Firmware $VERSION"
+            echo
+            echo "Flash \`wave-epaper-$VERSION.bin\` at address \`0x0\` (see README)."
+            echo
+            echo '```text'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-epaper-${{ env.VERSION }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
