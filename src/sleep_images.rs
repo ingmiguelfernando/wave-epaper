@@ -389,7 +389,11 @@ impl BmpLayout {
         match compression {
             BI_RGB => {}
             BI_BITFIELDS if bits_per_pixel == 32 => {
-                let masks = (read_u32(bytes, 54)?, read_u32(bytes, 58)?, read_u32(bytes, 62)?);
+                let masks = (
+                    read_u32(bytes, 54)?,
+                    read_u32(bytes, 58)?,
+                    read_u32(bytes, 62)?,
+                );
                 if masks != (0x00FF_0000, 0x0000_FF00, 0x0000_00FF) {
                     bail!("uses an unsupported 32-bit color layout");
                 }
@@ -437,7 +441,11 @@ impl BmpLayout {
 
     /// Stored bytes of picture row `y`, counted from the top.
     fn row<'a>(&self, bytes: &'a [u8], y: usize) -> &'a [u8] {
-        let stored = if self.top_down { y } else { self.height - 1 - y };
+        let stored = if self.top_down {
+            y
+        } else {
+            self.height - 1 - y
+        };
         let start = self.pixel_offset + stored * self.stride;
         &bytes[start..start + self.stride]
     }
