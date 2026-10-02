@@ -148,9 +148,10 @@ struct ReadingCard {
 fn reading_card(state: &AppState) -> Option<ReadingCard> {
     if let Some(session) = state.reader.session.as_ref() {
         let location = session.current_location();
+        let percent = percent_of(location.byte_offset, session.source_size_bytes());
         return Some(ReadingCard {
             title: session.book.title.clone(),
-            percent: Some(percent_of(location.byte_offset, session.source_size_bytes())),
+            percent: Some(percent),
             page: location.page_index,
         });
     }
