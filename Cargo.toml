@@ -1,6 +1,6 @@
 [package]
 name = "waveshare-epd397-rust-app"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Piyush Daiya"]
 edition = "2021"
 resolver = "2"
@@ -34,6 +34,8 @@ embedded-graphics = "0.8.1"
 embedded-hal = "1.0"
 log = "0.4"
 enumset = { version = "1", optional = true }
+# Hyphenation patterns, limited to the languages the Reader hyphenates.
+hypher = { version = "0.1.8", default-features = false, features = ["alloc", "english", "spanish"] }
 miniz_oxide = "0.8"
 
 [target.'cfg(target_os = "espidf")'.dependencies]

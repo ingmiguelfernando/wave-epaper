@@ -13,12 +13,15 @@ use std::{
 };
 
 use crate::{
+    app::{reader_typography::reader_body_style, typography::UiTextStyle},
     buttons::ButtonEvent,
     charset::glyph_index,
     epub::{
         open_epub_on_worker, read_epub_title_on_worker, EpubChapter, EpubDocument, EpubTocEntry,
         EPUB_SPINE_LIMIT, EPUB_TEXT_VERSION, EPUB_TOC_LIMIT,
     },
+    framebuffer::{HEIGHT, WIDTH},
+    hyphenation::{break_offsets, Language},
     watchdog::Pacer,
 };
 
@@ -62,10 +65,12 @@ pub const READER_CACHE_OFFSET_LIMIT: usize = 4096;
 pub const READER_CACHE_CHECKPOINT_PAGES: usize = 4;
 /// Maximum page anchors generated for one EPUB chapter.
 pub const READER_EPUB_PAGE_ANCHOR_LIMIT: usize = 8192;
+/// Horizontal inset of Reader body text from each screen edge.
+pub const READER_BODY_INSET: i32 = 24;
 
 const READER_PERSISTENCE_VERSION: &str = "1";
-const READER_CACHE_VERSION: &str = "3";
-const READER_EPUB_INDEX_VERSION: &str = "1";
+const READER_CACHE_VERSION: &str = "4";
+const READER_EPUB_INDEX_VERSION: &str = "2";
 const READER_PREFS_VERSION: &str = "1";
 const CACHE_FNV_OFFSET: u64 = 0xcbf29ce484222325;
 const CACHE_FNV_PRIME: u64 = 0x100000001b3;
@@ -329,6 +334,15 @@ impl ReaderOrientation {
         self.next()
     }
 
+    /// Logical screen width of Reader pages in this orientation.
+    #[must_use]
+    pub const fn screen_width(self) -> i32 {
+        match self {
+            Self::Portrait => HEIGHT as i32,
+            Self::Landscape => WIDTH as i32,
+        }
+    }
+
     fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "portrait" => Ok(Self::Portrait),
@@ -529,7 +543,8 @@ impl ParagraphAlignment {
     }
 }
 
-/// Layout dimensions affecting TXT pagination and cache fingerprints.
+/// Layout dimensions affecting pagination and cache fingerprints. Lines wrap
+/// by pixel width; `chars_per_line` only sizes the text window read per page.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReaderLayout {
     pub chars_per_line: usize,
@@ -538,6 +553,15 @@ pub struct ReaderLayout {
     pub font_size: BookFontSize,
     pub book_font: BookFont,
     pub paragraph_alignment: ParagraphAlignment,
+}
+
+impl ReaderLayout {
+    /// Width of one body line in pixels. The page renderer insets text by the
+    /// same amount, so lines wrap exactly where they are drawn.
+    #[must_use]
+    pub const fn line_width(self) -> i32 {
+        self.orientation.screen_width() - 2 * READER_BODY_INSET
+    }
 }
 
 /// Reader-owned preference file persisted as `/RUSTMIX/READER/PREFS.TXT`.
@@ -568,9 +592,8 @@ impl ReaderPreferences {
     #[must_use]
     pub const fn layout(self) -> ReaderLayout {
         // Reader pages share one bounded body viewport across Classic and
-        // High Contrast. Serif and Literata use proportional glyphs, so their
-        // conservative character budgets are slightly smaller than the UI-family strikes.
-        // A final pixel clip in the renderer guards unusually wide lines.
+        // High Contrast. Lines wrap by pixel width; the character budgets only
+        // bound how much text is read for one page.
         let (chars_per_line, lines_per_page) =
             match (self.orientation, self.font_size, self.book_font) {
                 (
@@ -684,22 +707,13 @@ impl ReaderPreferences {
     }
 }
 
-/// Coarse stages used by the e-paper loading screen. The runtime advances only
-/// at meaningful boundaries so progress remains visible without excessive
-/// refreshes.
+/// Stages shown by the e-paper loading screen. A book opens within a single
+/// tick: each loading-screen refresh costs about as much as the work itself,
+/// so the screen is drawn once and the next refresh shows the page.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReaderLoadingStage {
     OpeningFile,
-    InspectingEpubArchive,
-    ReadingEpubPackage,
-    LoadingEpubSpine,
-    DetectingEncoding,
-    LoadingSavedPosition,
     UpdatingLayout,
-    BuildingFirstPage,
-    IndexingNearbyPages,
-    Ready,
-    UnsupportedEpub,
     Failed,
 }
 
@@ -708,16 +722,7 @@ impl ReaderLoadingStage {
     pub const fn label(self) -> &'static str {
         match self {
             Self::OpeningFile => "Opening file",
-            Self::InspectingEpubArchive => "Inspecting EPUB archive",
-            Self::ReadingEpubPackage => "Reading EPUB package",
-            Self::LoadingEpubSpine => "Loading EPUB spine",
-            Self::DetectingEncoding => "Detecting text encoding",
-            Self::LoadingSavedPosition => "Loading saved position",
             Self::UpdatingLayout => "Updating layout cache",
-            Self::BuildingFirstPage => "Building first page",
-            Self::IndexingNearbyPages => "Caching nearby pages",
-            Self::Ready => "Ready",
-            Self::UnsupportedEpub => "Unsupported EPUB",
             Self::Failed => "Unable to open book",
         }
     }
@@ -726,16 +731,8 @@ impl ReaderLoadingStage {
     pub const fn progress(self) -> u8 {
         match self {
             Self::OpeningFile => 10,
-            Self::InspectingEpubArchive => 20,
-            Self::ReadingEpubPackage => 32,
-            Self::LoadingEpubSpine => 44,
-            Self::DetectingEncoding => 25,
-            Self::LoadingSavedPosition => 40,
             Self::UpdatingLayout => 45,
-            Self::BuildingFirstPage => 55,
-            Self::IndexingNearbyPages => 80,
-            Self::Ready => 100,
-            Self::UnsupportedEpub | Self::Failed => 100,
+            Self::Failed => 100,
         }
     }
 }
@@ -822,6 +819,8 @@ pub struct ReaderSession {
     pub encoding: TextEncoding,
     pub epub_document: Option<EpubDocument>,
     pub layout: ReaderLayout,
+    /// Hyphenation language; `None` breaks lines at spaces and hyphens only.
+    pub language: Option<Language>,
     /// Local index within page_offsets.
     pub current_page: usize,
     /// Absolute page index represented by page_offsets[0]. Normally zero. A
@@ -1053,10 +1052,11 @@ impl ReaderSession {
     }
 
     fn read_page(&self, offset: u64, index: usize) -> Result<ReaderCachedPage, String> {
+        let setter = Typesetter::new(self.layout, self.language);
         match (&self.epub_chapter, self.book.format) {
-            (Some(chapter), _) => read_epub_chapter_page(chapter, self.layout, offset, index),
+            (Some(chapter), _) => read_epub_chapter_page(chapter, &setter, offset, index),
             (None, BookFormat::Text) => {
-                read_txt_page(&self.book, self.encoding, self.layout, offset, index)
+                read_txt_page(&self.book, self.encoding, &setter, offset, index)
             }
             (None, BookFormat::Epub) => Err("EPUB chapter is not loaded".into()),
         }
@@ -1107,7 +1107,8 @@ impl ReaderSession {
             text_offset: chapter.text_offset,
             text: document.chapter_text(index)?,
         };
-        pages.page_offsets = paginate_epub_chapter(&loaded, self.layout)?;
+        let setter = Typesetter::new(self.layout, self.language);
+        pages.page_offsets = paginate_epub_chapter(&loaded, &setter)?;
         self.current_page = match target {
             EpubPageTarget::FirstPage => 0,
             EpubPageTarget::LastPage => pages.page_offsets.len() - 1,
@@ -1220,12 +1221,11 @@ impl ReadingPreference {
     }
 }
 
-/// Coarse background tick result used by main.rs to refresh only meaningful
-/// loading-screen transitions.
+/// Coarse background tick result used by main.rs to refresh the panel only
+/// when the visible Reader screen changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReaderTickOutcome {
     None,
-    LoadingStageChanged,
     FirstPageReady,
     BackgroundCacheAdvanced,
     Failed,
@@ -1582,122 +1582,25 @@ impl ReaderUiState {
 
     pub fn tick(&mut self) -> ReaderTickOutcome {
         if let Some(mut loading) = self.loading.take() {
-            let outcome = match loading.stage {
-                ReaderLoadingStage::OpeningFile => {
-                    loading.stage = match loading.book.format {
-                        BookFormat::Text => ReaderLoadingStage::DetectingEncoding,
-                        BookFormat::Epub => ReaderLoadingStage::InspectingEpubArchive,
-                    };
-                    loading.message = loading.stage.label().into();
-                    ReaderTickOutcome::LoadingStageChanged
+            if loading.stage == ReaderLoadingStage::Failed {
+                self.loading = Some(loading);
+                return ReaderTickOutcome::None;
+            }
+            return match self.open_pending_book(&mut loading) {
+                Ok(session) => {
+                    self.session = Some(session);
+                    self.last_message =
+                        Some("Saved position ready; caching continues lazily".into());
+                    self.persist_current_session_best_effort();
+                    ReaderTickOutcome::FirstPageReady
                 }
-                ReaderLoadingStage::InspectingEpubArchive => {
-                    match self.load_epub_document(&loading.book) {
-                        Ok(document) => {
-                            loading.message = format!(
-                                "{} spine items / {} TOC entries",
-                                document.spine_count,
-                                document.toc.len()
-                            );
-                            loading.epub_document = Some(document);
-                            loading.stage = ReaderLoadingStage::ReadingEpubPackage;
-                            ReaderTickOutcome::LoadingStageChanged
-                        }
-                        Err(error) => {
-                            loading.stage = ReaderLoadingStage::Failed;
-                            loading.message = error;
-                            ReaderTickOutcome::Failed
-                        }
-                    }
-                }
-                ReaderLoadingStage::ReadingEpubPackage => {
-                    loading.stage = ReaderLoadingStage::LoadingEpubSpine;
-                    loading.message = "EPUB package and navigation ready".into();
-                    ReaderTickOutcome::LoadingStageChanged
-                }
-                ReaderLoadingStage::LoadingEpubSpine => {
-                    loading.stage = if loading.resume.is_some() {
-                        ReaderLoadingStage::LoadingSavedPosition
-                    } else {
-                        ReaderLoadingStage::BuildingFirstPage
-                    };
-                    loading.message = "Reflowable EPUB text ready".into();
-                    ReaderTickOutcome::LoadingStageChanged
-                }
-                ReaderLoadingStage::DetectingEncoding => {
-                    match detect_txt_encoding(&loading.book.path) {
-                        Ok(encoding) => {
-                            loading.encoding = Some(encoding);
-                            loading.stage = if loading.resume.is_some() {
-                                ReaderLoadingStage::LoadingSavedPosition
-                            } else {
-                                ReaderLoadingStage::BuildingFirstPage
-                            };
-                            loading.message = format!("{} detected", encoding.label());
-                            ReaderTickOutcome::LoadingStageChanged
-                        }
-                        Err(error) => {
-                            loading.stage = ReaderLoadingStage::Failed;
-                            loading.message = error;
-                            ReaderTickOutcome::Failed
-                        }
-                    }
-                }
-                ReaderLoadingStage::LoadingSavedPosition => {
-                    loading.stage = ReaderLoadingStage::BuildingFirstPage;
-                    loading.message = "Resume anchor ready".into();
-                    ReaderTickOutcome::LoadingStageChanged
-                }
-                ReaderLoadingStage::UpdatingLayout => {
-                    loading.stage = ReaderLoadingStage::BuildingFirstPage;
-                    loading.message = "Layout cache update ready".into();
-                    ReaderTickOutcome::LoadingStageChanged
-                }
-                ReaderLoadingStage::BuildingFirstPage => {
-                    let encoding = loading.encoding.unwrap_or(TextEncoding::Utf8);
-                    let session = match loading.book.format {
-                        BookFormat::Text => {
-                            self.open_txt_session(&loading.book, encoding, loading.resume.as_ref())
-                        }
-                        BookFormat::Epub => loading
-                            .epub_document
-                            .take()
-                            .ok_or_else(|| "EPUB document is not staged".to_string())
-                            .and_then(|document| {
-                                self.open_epub_session(
-                                    &loading.book,
-                                    document,
-                                    loading.resume.as_ref(),
-                                )
-                            }),
-                    };
-                    match session {
-                        Ok(session) => {
-                            self.session = Some(session);
-                            self.last_message =
-                                Some("Saved position ready; caching continues lazily".into());
-                            self.persist_current_session_best_effort();
-                            ReaderTickOutcome::FirstPageReady
-                        }
-                        Err(error) => {
-                            loading.stage = ReaderLoadingStage::Failed;
-                            loading.message = error;
-                            ReaderTickOutcome::Failed
-                        }
-                    }
-                }
-                ReaderLoadingStage::UnsupportedEpub | ReaderLoadingStage::Failed => {
+                Err(error) => {
+                    loading.stage = ReaderLoadingStage::Failed;
+                    loading.message = error;
                     self.loading = Some(loading);
-                    return ReaderTickOutcome::None;
-                }
-                ReaderLoadingStage::IndexingNearbyPages | ReaderLoadingStage::Ready => {
-                    ReaderTickOutcome::None
+                    ReaderTickOutcome::Failed
                 }
             };
-            if !matches!(outcome, ReaderTickOutcome::FirstPageReady) {
-                self.loading = Some(loading);
-            }
-            return outcome;
         }
 
         let (outcome, checkpoint) = if let Some(session) = self.session.as_mut() {
@@ -2124,6 +2027,31 @@ impl ReaderUiState {
         self.cache_directory().join(name)
     }
 
+    /// Open the staged book through its first visible page, reusing the
+    /// encoding or EPUB index a layout rebuild already holds.
+    fn open_pending_book(
+        &mut self,
+        loading: &mut PendingReaderOpen,
+    ) -> Result<ReaderSession, String> {
+        match loading.book.format {
+            BookFormat::Text => {
+                let encoding = match loading.encoding {
+                    Some(encoding) => encoding,
+                    None => detect_txt_encoding(&loading.book.path)?,
+                };
+                loading.encoding = Some(encoding);
+                self.open_txt_session(&loading.book, encoding, loading.resume.as_ref())
+            }
+            BookFormat::Epub => {
+                let document = match loading.epub_document.take() {
+                    Some(document) => document,
+                    None => self.load_epub_document(&loading.book)?,
+                };
+                self.open_epub_session(&loading.book, document, loading.resume.as_ref())
+            }
+        }
+    }
+
     /// The book's saved chapter index when it is current; otherwise index the
     /// archive once and save the result for the next open.
     fn load_epub_document(&mut self, book: &ReaderBook) -> Result<EpubDocument, String> {
@@ -2193,7 +2121,9 @@ impl ReaderUiState {
         let offset = page_offsets.get(current_page).copied().unwrap_or(0);
         let absolute_page = page_number_base.saturating_add(current_page);
         let layout = self.preferences.layout();
-        let page = read_txt_page(book, encoding, layout, offset, absolute_page)?;
+        let language = detect_txt_language(&book.path, encoding);
+        let setter = Typesetter::new(layout, language);
+        let page = read_txt_page(book, encoding, &setter, offset, absolute_page)?;
         let indexed_through = indexed_through.max(page.next_byte_offset);
         let index_complete = index_complete || indexed_through >= book.size_bytes;
         Ok(ReaderSession {
@@ -2201,6 +2131,7 @@ impl ReaderUiState {
             encoding,
             epub_document: None,
             layout,
+            language,
             current_page,
             page_number_base,
             page_offsets,
@@ -2225,11 +2156,13 @@ impl ReaderUiState {
         if !document.title.trim().is_empty() {
             session_book.title = document.title.clone();
         }
+        let language = Language::from_tag(&document.language);
         let mut session = ReaderSession {
             book: session_book,
             encoding: TextEncoding::Utf8,
             epub_document: Some(document),
             layout: self.preferences.layout(),
+            language,
             current_page: 0,
             page_number_base: 0,
             page_offsets: Vec::new(),
@@ -2427,10 +2360,25 @@ pub fn detect_txt_encoding(path: impl AsRef<Path>) -> Result<TextEncoding, Strin
     }
 }
 
+/// Language of a TXT book, guessed from its first few kilobytes.
+fn detect_txt_language(path: &str, encoding: TextEncoding) -> Option<Language> {
+    let mut sample = Vec::new();
+    File::open(path)
+        .ok()?
+        .take(4096)
+        .read_to_end(&mut sample)
+        .ok()?;
+    let text: String = decode_with_offsets(&sample, encoding, 0)
+        .into_iter()
+        .map(|(character, _)| character)
+        .collect();
+    Language::detect(&text)
+}
+
 /// Page start offsets of one loaded EPUB chapter.
 fn paginate_epub_chapter(
     chapter: &LoadedEpubChapter,
-    layout: ReaderLayout,
+    setter: &Typesetter,
 ) -> Result<Vec<u64>, String> {
     let started = Instant::now();
     let mut pacer = Pacer::start();
@@ -2444,7 +2392,7 @@ fn paginate_epub_chapter(
             ));
         }
         offsets.push(offset);
-        let page = read_epub_chapter_page(chapter, layout, offset, 0)?;
+        let page = read_epub_chapter_page(chapter, setter, offset, 0)?;
         if page.next_byte_offset <= offset {
             return Err("EPUB chapter pagination did not advance".into());
         }
@@ -2472,7 +2420,7 @@ fn page_containing(offsets: &[u64], offset: u64) -> usize {
 
 fn read_epub_chapter_page(
     chapter: &LoadedEpubChapter,
-    layout: ReaderLayout,
+    setter: &Typesetter,
     byte_offset: u64,
     page_index: usize,
 ) -> Result<ReaderCachedPage, String> {
@@ -2483,23 +2431,31 @@ fn read_epub_chapter_page(
         .filter(|value| *value <= bytes.len())
         .ok_or_else(|| "page offset is outside the open EPUB chapter".to_string())?;
     let start = next_utf8_boundary(bytes, local);
-    let window_end = start.saturating_add(epub_page_window_bytes(layout));
-    let end = previous_utf8_boundary(bytes, window_end).max(start);
     let base = chapter.text_offset + start as u64;
-    let decoded = decode_with_offsets(&bytes[start..end], TextEncoding::Utf8, base);
-    let normalized = normalize_decoded(&decoded);
-    let (lines, consumed) = paginate_decoded(&normalized, layout);
-    Ok(ReaderCachedPage {
-        page_index,
-        byte_offset: base,
-        next_byte_offset: consumed.max(base).min(chapter.end_offset()),
-        lines,
-    })
+    let mut window = setter.window_bytes;
+    loop {
+        let window_end = start.saturating_add(window);
+        let end = previous_utf8_boundary(bytes, window_end).max(start);
+        let at_end = end == bytes.len();
+        let decoded = decode_with_offsets(&bytes[start..end], TextEncoding::Utf8, base);
+        let (lines, consumed) = compose_page(&normalize_decoded(&decoded), base, at_end, setter);
+        if lines.len() < setter.lines_per_page && !at_end && window < READER_PAGE_READ_BYTES {
+            window = READER_PAGE_READ_BYTES;
+            continue;
+        }
+        return Ok(ReaderCachedPage {
+            page_index,
+            byte_offset: base,
+            next_byte_offset: consumed.max(base).min(chapter.end_offset()),
+            lines,
+        });
+    }
 }
 
-/// A full page of 4-byte characters, so EPUB indexing cost follows the page
-/// size rather than `READER_PAGE_READ_BYTES`.
-fn epub_page_window_bytes(layout: ReaderLayout) -> usize {
+/// Bytes read for one page: a page of 4-byte characters at the layout's
+/// character budget, so indexing cost follows the page size. Text dense
+/// enough to need more is retried with `READER_PAGE_READ_BYTES`.
+fn page_window_bytes(layout: ReaderLayout) -> usize {
     let bytes = layout.lines_per_page * (layout.chars_per_line + 1) * 4;
     bytes.min(READER_PAGE_READ_BYTES)
 }
@@ -2522,30 +2478,40 @@ fn previous_utf8_boundary(bytes: &[u8], mut offset: usize) -> usize {
 fn read_txt_page(
     book: &ReaderBook,
     encoding: TextEncoding,
-    layout: ReaderLayout,
+    setter: &Typesetter,
     byte_offset: u64,
     page_index: usize,
 ) -> Result<ReaderCachedPage, String> {
     let mut file = File::open(&book.path).map_err(|error| format!("Open failed: {error}"))?;
-    file.seek(SeekFrom::Start(byte_offset))
-        .map_err(|error| format!("Seek failed: {error}"))?;
-    let mut bytes = vec![0_u8; READER_PAGE_READ_BYTES];
-    let read = file
-        .read(&mut bytes)
-        .map_err(|error| format!("Read failed: {error}"))?;
-    bytes.truncate(read);
-    let skip_bom = byte_offset == 0 && bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
-    let base = byte_offset + if skip_bom { 3 } else { 0 };
-    let decoded = decode_with_offsets(&bytes[if skip_bom { 3 } else { 0 }..], encoding, base);
-    let normalized = normalize_decoded(&decoded);
-    let (lines, consumed) = paginate_decoded(&normalized, layout);
-    let next_byte_offset = consumed.max(base).min(book.size_bytes);
-    Ok(ReaderCachedPage {
-        page_index,
-        byte_offset,
-        next_byte_offset,
-        lines,
-    })
+    let mut window = setter.window_bytes;
+    loop {
+        file.seek(SeekFrom::Start(byte_offset))
+            .map_err(|error| format!("Seek failed: {error}"))?;
+        let mut bytes = Vec::with_capacity(window);
+        (&mut file)
+            .take(window as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("Read failed: {error}"))?;
+        let at_end = byte_offset + bytes.len() as u64 >= book.size_bytes;
+        let skip = if byte_offset == 0 && bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            3
+        } else {
+            0
+        };
+        let base = byte_offset + skip as u64;
+        let decoded = decode_with_offsets(&bytes[skip..], encoding, base);
+        let (lines, consumed) = compose_page(&normalize_decoded(&decoded), base, at_end, setter);
+        if lines.len() < setter.lines_per_page && !at_end && window < READER_PAGE_READ_BYTES {
+            window = READER_PAGE_READ_BYTES;
+            continue;
+        }
+        return Ok(ReaderCachedPage {
+            page_index,
+            byte_offset,
+            next_byte_offset: consumed.max(base).min(book.size_bytes),
+            lines,
+        });
+    }
 }
 
 fn decode_with_offsets(bytes: &[u8], encoding: TextEncoding, base: u64) -> Vec<(char, u64)> {
@@ -2611,54 +2577,246 @@ fn is_word_character(character: char) -> bool {
     character.is_alphanumeric()
 }
 
-fn paginate_decoded(decoded: &[(char, u64)], layout: ReaderLayout) -> (Vec<ReaderPageLine>, u64) {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    let mut consumed = decoded
-        .first()
-        .map_or(0, |(_, offset)| offset.saturating_sub(1));
-    for (character, next_offset) in decoded.iter().copied() {
-        let character = match character {
-            '\r' => continue,
-            '\n' => {
-                lines.push(ReaderPageLine {
-                    text: core::mem::take(&mut line),
-                    paragraph_end: true,
-                });
-                consumed = next_offset;
-                if lines.len() >= layout.lines_per_page {
-                    break;
-                }
-                continue;
+/// Line-breaking inputs shared by every page of one open book: body font
+/// advances, line width, page size and the hyphenation language.
+#[derive(Clone, Copy, Debug)]
+struct Typesetter {
+    style: UiTextStyle,
+    line_width: i32,
+    lines_per_page: usize,
+    window_bytes: usize,
+    space: i32,
+    hyphen: i32,
+    language: Option<Language>,
+}
+
+impl Typesetter {
+    fn new(layout: ReaderLayout, language: Option<Language>) -> Self {
+        // Every theme draws with the same strike, so pagination ignores it.
+        let style = reader_body_style(layout.book_font, layout.font_size, ReadingTheme::Classic);
+        Self {
+            style,
+            line_width: layout.line_width(),
+            lines_per_page: layout.lines_per_page,
+            window_bytes: page_window_bytes(layout),
+            space: style.char_advance(' '),
+            hyphen: style.char_advance('-'),
+            language,
+        }
+    }
+
+    fn width(&self, text: &[(char, u64)]) -> i32 {
+        text.iter()
+            .map(|(character, _)| self.style.char_advance(*character))
+            .sum()
+    }
+}
+
+/// Spaces that separate words. A no-break space stays inside its word.
+fn is_word_space(character: char) -> bool {
+    matches!(character, ' ' | '\t' | '\r')
+}
+
+/// Lay out one page of `text`, whose first character starts at byte offset
+/// `base`. Lines break greedily by pixel width at collapsed spaces; a word
+/// that does not fit is hyphenated when the language allows it, and a word
+/// wider than a whole line is split where it overflows. Every `'\n'` ends a
+/// paragraph. Unless `at_end`, the last word of `text` may continue past it,
+/// so it is left for the next page. Returns the lines and the offset where the
+/// next page starts.
+fn compose_page(
+    text: &[(char, u64)],
+    base: u64,
+    at_end: bool,
+    setter: &Typesetter,
+) -> (Vec<ReaderPageLine>, u64) {
+    let mut page = PageComposer {
+        text,
+        base,
+        setter,
+        lines: Vec::new(),
+        line: String::new(),
+        width: 0,
+    };
+    let mut index = 0;
+    while index < text.len() {
+        let character = text[index].0;
+        if character == '\n' {
+            if page.end_line(true) {
+                return (page.lines, text[index].1);
             }
-            value if value.is_control() => ' ',
-            value => value,
-        };
-        if line.chars().count() >= layout.chars_per_line {
-            lines.push(ReaderPageLine {
-                text: core::mem::take(&mut line),
-                paragraph_end: false,
-            });
-            if lines.len() >= layout.lines_per_page {
+            index += 1;
+        } else if is_word_space(character) {
+            index += 1;
+        } else {
+            let end = text[index..]
+                .iter()
+                .position(|(character, _)| *character == '\n' || is_word_space(*character))
+                .map_or(text.len(), |length| index + length);
+            if end == text.len() && !at_end && !page.is_empty() {
+                page.end_partial_line();
+                let next_page = page.start_of(index);
+                return (page.lines, next_page);
+            }
+            if let Some(next_page) = page.place_word(index, end) {
+                return (page.lines, next_page);
+            }
+            index = end;
+        }
+    }
+    page.end_partial_line();
+    (page.lines, text.last().map_or(base, |(_, next)| *next))
+}
+
+/// Where a word breaks across lines: before `text[at]`, adding a hyphen or
+/// not (after an existing hyphen, or when splitting an over-long word).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct WordBreak {
+    at: usize,
+    hyphen: bool,
+}
+
+/// One page being laid out by [`compose_page`].
+struct PageComposer<'a> {
+    text: &'a [(char, u64)],
+    base: u64,
+    setter: &'a Typesetter,
+    lines: Vec<ReaderPageLine>,
+    line: String,
+    width: i32,
+}
+
+impl PageComposer<'_> {
+    /// Byte offset where `text[index]` starts.
+    fn start_of(&self, index: usize) -> u64 {
+        index
+            .checked_sub(1)
+            .map_or(self.base, |previous| self.text[previous].1)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty() && self.line.is_empty()
+    }
+
+    /// Close the current line; true when that fills the page.
+    fn end_line(&mut self, paragraph_end: bool) -> bool {
+        self.lines.push(ReaderPageLine {
+            text: core::mem::take(&mut self.line),
+            paragraph_end,
+        });
+        self.width = 0;
+        self.lines.len() >= self.setter.lines_per_page
+    }
+
+    /// Close the last line of the text, if it has any content.
+    fn end_partial_line(&mut self) {
+        if !self.line.is_empty() || self.lines.is_empty() {
+            self.end_line(true);
+        }
+    }
+
+    /// Add `text[start..end]`, `width` pixels wide, after a space.
+    fn append(&mut self, start: usize, end: usize, width: i32) {
+        if !self.line.is_empty() {
+            self.line.push(' ');
+            self.width += self.setter.space;
+        }
+        let word = self.text[start..end].iter().map(|(character, _)| *character);
+        self.line.extend(word);
+        self.width += width;
+    }
+
+    /// Lay out the word `text[start..end]`, moving or breaking it when it does
+    /// not fit. Returns where the next page starts once this page is full.
+    fn place_word(&mut self, mut start: usize, end: usize) -> Option<u64> {
+        loop {
+            let gap = if self.line.is_empty() {
+                0
+            } else {
+                self.setter.space
+            };
+            let room = self.setter.line_width - self.width - gap;
+            let width = self.setter.width(&self.text[start..end]);
+            if width <= room {
+                self.append(start, end, width);
+                return None;
+            }
+            let split = match self.hyphenation_break(start, end, room) {
+                Some(split) => split,
+                None if self.line.is_empty() => self.overflow_break(start, end),
+                None => {
+                    // Nothing fits after the words already on this line.
+                    if self.end_line(false) {
+                        return Some(self.start_of(start));
+                    }
+                    continue;
+                }
+            };
+            let width = self.setter.width(&self.text[start..split.at]);
+            self.append(start, split.at, width);
+            if split.hyphen {
+                self.line.push('-');
+            }
+            if self.end_line(false) {
+                return Some(self.start_of(split.at));
+            }
+            start = split.at;
+        }
+    }
+
+    /// The latest break inside `text[start..end]` whose first part fits in
+    /// `room` pixels: after an existing hyphen, or at a syllable boundary of
+    /// the book language.
+    fn hyphenation_break(&self, start: usize, end: usize, room: i32) -> Option<WordBreak> {
+        let word = &self.text[start..end];
+        let mut breaks = Vec::new();
+        for index in 1..word.len().saturating_sub(1) {
+            if word[index].0 == '-'
+                && word[index - 1].0.is_alphanumeric()
+                && word[index + 1].0.is_alphanumeric()
+            {
+                breaks.push(WordBreak {
+                    at: start + index + 1,
+                    hyphen: false,
+                });
+            }
+        }
+        if let Some(language) = self.setter.language {
+            let spelled: String = word.iter().map(|(character, _)| *character).collect();
+            let mut offsets = break_offsets(&spelled, language).into_iter().peekable();
+            let mut bytes = 0;
+            for (index, (character, _)) in word.iter().enumerate() {
+                if offsets.next_if_eq(&bytes).is_some() {
+                    breaks.push(WordBreak {
+                        at: start + index,
+                        hyphen: true,
+                    });
+                }
+                bytes += character.len_utf8();
+            }
+        }
+        breaks
+            .into_iter()
+            .filter(|split| {
+                let hyphen = if split.hyphen { self.setter.hyphen } else { 0 };
+                self.setter.width(&self.text[start..split.at]) + hyphen <= room
+            })
+            .max_by_key(|split| split.at)
+    }
+
+    /// Split a word wider than a whole line after its last fitting character.
+    fn overflow_break(&self, start: usize, end: usize) -> WordBreak {
+        let mut width = 0;
+        let mut at = start;
+        while at < end {
+            width += self.setter.style.char_advance(self.text[at].0);
+            if width > self.setter.line_width && at > start {
                 break;
             }
+            at += 1;
         }
-        if character.is_whitespace() {
-            if !line.is_empty() && !line.ends_with(' ') {
-                line.push(' ');
-            }
-        } else {
-            line.push(character);
-        }
-        consumed = next_offset;
+        WordBreak { at, hyphen: false }
     }
-    if lines.len() < layout.lines_per_page && (!line.is_empty() || lines.is_empty()) {
-        lines.push(ReaderPageLine {
-            text: line,
-            paragraph_end: true,
-        });
-    }
-    (lines, consumed)
 }
 
 fn decode_windows_1252(byte: u8) -> char {
@@ -3011,10 +3169,11 @@ fn epub_index_fingerprint(book: &ReaderBook) -> u64 {
 
 fn serialize_epub_index(document: &EpubDocument, book: &ReaderBook) -> String {
     let mut output = format!(
-        "version={}\nfingerprint={:016X}\ntitle={}\nspine_count={}\ntext_size={}\n",
+        "version={}\nfingerprint={:016X}\ntitle={}\nlanguage={}\nspine_count={}\ntext_size={}\n",
         READER_EPUB_INDEX_VERSION,
         epub_index_fingerprint(book),
         escape_field(&document.title),
+        escape_field(&document.language),
         document.spine_count,
         document.text_size
     );
@@ -3044,6 +3203,7 @@ fn parse_epub_index(text: &str, book: &ReaderBook) -> Result<EpubDocument, Strin
     let mut version = None;
     let mut fingerprint = None;
     let mut title = None;
+    let mut language = String::new();
     let mut spine_count = None;
     let mut text_size = None;
     let mut chapters = Vec::new();
@@ -3056,6 +3216,7 @@ fn parse_epub_index(text: &str, book: &ReaderBook) -> Result<EpubDocument, Strin
             "version" => version = Some(value),
             "fingerprint" => fingerprint = u64::from_str_radix(value, 16).ok(),
             "title" => title = Some(unescape_field(value)?),
+            "language" => language = unescape_field(value)?,
             "spine_count" => spine_count = value.parse().ok(),
             "text_size" => text_size = value.parse().ok(),
             "chapter" if chapters.len() < EPUB_SPINE_LIMIT => {
@@ -3081,6 +3242,7 @@ fn parse_epub_index(text: &str, book: &ReaderBook) -> Result<EpubDocument, Strin
     Ok(EpubDocument {
         path: book.path.clone(),
         title: title.ok_or_else(|| "missing EPUB title".to_string())?,
+        language,
         text_size,
         toc,
         chapters,
@@ -3309,7 +3471,7 @@ mod tests {
         READER_BOOKMARKS_FILE, READER_POSITIONS_FILE, READER_PREFS_FILE, READER_RECENT_FILE,
         READER_STATE_FILE,
     };
-    use crate::buttons::ButtonEvent;
+    use crate::{buttons::ButtonEvent, hyphenation::Language};
 
     fn temp_dir(name: &str) -> PathBuf {
         let root =
@@ -3370,8 +3532,6 @@ mod tests {
         reader.refresh_library();
         reader.library_selected = 1;
         assert!(reader.apply_library_button(ButtonEvent::Select));
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         let session = reader.session.as_ref().unwrap();
         assert_eq!(session.current_page, 0);
@@ -3391,8 +3551,6 @@ mod tests {
         reader.refresh_library();
         reader.library_selected = 1;
         assert!(reader.apply_library_button(ButtonEvent::Select));
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.next_page();
         reader.toggle_current_bookmark();
@@ -3411,9 +3569,6 @@ mod tests {
         assert_eq!(report.recent_count, 1);
         assert_eq!(report.bookmark_count, 1);
         assert!(restored.request_continue());
-        assert_eq!(restored.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(restored.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(restored.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(restored.tick(), ReaderTickOutcome::FirstPageReady);
         assert_eq!(
             restored.session.as_ref().unwrap().current_absolute_page(),
@@ -3433,8 +3588,6 @@ mod tests {
         reader.refresh_library();
         reader.library_selected = 1;
         assert!(reader.apply_library_button(ButtonEvent::Select));
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.next_page();
         let cache = state
@@ -3458,9 +3611,6 @@ mod tests {
         );
         restored.load_persistent_state();
         assert!(restored.request_continue());
-        assert_eq!(restored.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(restored.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(restored.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(restored.tick(), ReaderTickOutcome::FirstPageReady);
         assert!(restored
             .persistence_warning
@@ -3485,8 +3635,6 @@ mod tests {
         reader.refresh_library();
         reader.library_selected = 1;
         assert!(reader.apply_library_button(ButtonEvent::Select));
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.toggle_current_bookmark();
         assert_eq!(reader.bookmarks.len(), 1);
@@ -3616,8 +3764,6 @@ mod tests {
         reader.refresh_library();
         reader.library_selected = 1;
         assert!(reader.apply_library_button(ButtonEvent::Select));
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
-        assert_eq!(reader.tick(), ReaderTickOutcome::LoadingStageChanged);
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         assert!(reader.cycle_book_font_size());
         assert_eq!(
@@ -3625,6 +3771,11 @@ mod tests {
             Some(ReaderLoadingStage::UpdatingLayout)
         );
         assert!(state.join(READER_PREFS_FILE).exists());
+        assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
+        assert_eq!(
+            reader.session.as_ref().unwrap().layout,
+            reader.preferences.layout()
+        );
     }
 
     #[test]
@@ -3815,6 +3966,7 @@ mod tests {
             encoding: TextEncoding::Utf8,
             epub_document: None,
             layout: ReaderPreferences::default().layout(),
+            language: None,
             current_page: 0,
             page_number_base: 0,
             page_offsets: vec![0, 100, 200, 300],
@@ -3864,14 +4016,131 @@ mod tests {
 
     #[test]
     fn epub_page_window_fills_a_page_of_four_byte_characters() {
-        let layout = ReaderPreferences::default().layout();
+        let setter = typesetter(None);
         let chapter = super::LoadedEpubChapter {
             index: 0,
             text_offset: 0,
-            text: "\u{1F4D6}".repeat(1024),
+            text: "\u{1F4D6}".repeat(4096),
         };
-        let page = super::read_epub_chapter_page(&chapter, layout, 0, 0).unwrap();
-        assert_eq!(page.lines.len(), layout.lines_per_page);
+        let page = super::read_epub_chapter_page(&chapter, &setter, 0, 0).unwrap();
+        assert_eq!(page.lines.len(), setter.lines_per_page);
+    }
+
+    fn typesetter(language: Option<Language>) -> super::Typesetter {
+        super::Typesetter::new(ReaderPreferences::default().layout(), language)
+    }
+
+    fn characters(text: &str) -> Vec<(char, u64)> {
+        super::decode_with_offsets(text.as_bytes(), TextEncoding::Utf8, 0)
+    }
+
+    /// Lines joined back into text, removing the hyphens added at line ends.
+    fn rejoin(lines: &[super::ReaderPageLine]) -> String {
+        let mut text = String::new();
+        for line in lines {
+            if text.ends_with('-') {
+                text.pop();
+            } else if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str(&line.text);
+        }
+        text
+    }
+
+    #[test]
+    fn lines_wrap_by_pixel_width_between_whole_words() {
+        let setter = typesetter(None);
+        let text = "uno dos tres cuatro cinco seis siete ocho nueve diez ".repeat(6);
+        let (lines, next) = super::compose_page(&characters(&text), 0, true, &setter);
+        assert_eq!(next, text.len() as u64);
+        assert_eq!(rejoin(&lines), text.trim_end());
+        for line in &lines {
+            assert!(setter.style.text_width(&line.text) <= setter.line_width);
+        }
+        for pair in lines.windows(2) {
+            let next_word = pair[1].text.split(' ').next().unwrap();
+            let longer = format!("{} {next_word}", pair[0].text);
+            assert!(setter.style.text_width(&longer) > setter.line_width);
+            assert!(!pair[0].paragraph_end);
+        }
+        assert!(lines.last().unwrap().paragraph_end);
+    }
+
+    #[test]
+    fn only_a_known_language_hyphenates_a_word_that_does_not_fit() {
+        let long = "extraordinariamente";
+        let spanish = typesetter(Some(Language::Spanish));
+        let style = spanish.style;
+        let mut text = String::new();
+        while style.text_width(&text) < spanish.line_width - style.text_width(long) / 2 {
+            text.push_str("a ");
+        }
+        text.push_str(long);
+        let (lines, _) = super::compose_page(&characters(&text), 0, true, &spanish);
+        assert!(lines[0].text.ends_with('-'), "{lines:?}");
+        assert!(style.text_width(&lines[0].text) <= spanish.line_width);
+        assert_eq!(rejoin(&lines), text);
+
+        let (lines, _) = super::compose_page(&characters(&text), 0, true, &typesetter(None));
+        assert_eq!(lines[1].text, long);
+    }
+
+    #[test]
+    fn words_wider_than_a_line_split_where_they_overflow() {
+        let setter = typesetter(None);
+        let token = "x".repeat(200);
+        let (lines, _) = super::compose_page(&characters(&token), 0, true, &setter);
+        assert!(lines.len() > 1);
+        assert_eq!(
+            lines.iter().map(|line| line.text.as_str()).collect::<String>(),
+            token
+        );
+        for line in &lines {
+            assert!(setter.style.text_width(&line.text) <= setter.line_width);
+        }
+    }
+
+    #[test]
+    fn newlines_end_paragraphs_and_keep_blank_lines() {
+        let text = characters("uno\n\ndos");
+        let (lines, _) = super::compose_page(&text, 0, true, &typesetter(None));
+        let lines: Vec<_> = lines
+            .iter()
+            .map(|line| (line.text.as_str(), line.paragraph_end))
+            .collect();
+        assert_eq!(lines, [("uno", true), ("", true), ("dos", true)]);
+    }
+
+    #[test]
+    fn a_word_cut_by_the_read_window_waits_for_the_next_page() {
+        let text = characters("uno dos tres");
+        let (lines, next) = super::compose_page(&text[..10], 0, false, &typesetter(None));
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "uno dos");
+        assert_eq!(next, 8);
+    }
+
+    #[test]
+    fn consecutive_pages_resume_at_the_next_word() {
+        let setter = typesetter(Some(Language::Spanish));
+        let text = "Él dijo: «¿Señor, qué haré?» y respondió con muchísimo cuidado. ".repeat(80);
+        let all = characters(&text);
+        let mut offset = 0;
+        let mut pages = 0;
+        let mut lines = Vec::new();
+        while offset < text.len() as u64 {
+            let start = all.partition_point(|(_, next)| *next <= offset);
+            let (page, next) = super::compose_page(&all[start..], offset, true, &setter);
+            assert!(next > offset);
+            assert!(text.is_char_boundary(next as usize));
+            assert!(page.len() <= setter.lines_per_page);
+            lines.extend(page);
+            offset = next;
+            pages += 1;
+        }
+        assert!(pages > 1);
+        assert_eq!(rejoin(&lines), text.trim_end());
     }
 
     #[test]
@@ -3917,6 +4186,10 @@ mod tests {
         }
         let first_chapter_pages = reader.session.as_ref().unwrap().page_offsets.len();
         assert!(first_chapter_pages > 1);
+        assert_eq!(
+            reader.session.as_ref().unwrap().language,
+            Some(Language::Spanish)
+        );
         for _ in 0..first_chapter_pages {
             reader.next_page();
         }

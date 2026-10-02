@@ -86,6 +86,8 @@ pub struct EpubDocument {
     /// EPUB file the chapters are extracted from.
     pub path: String,
     pub title: String,
+    /// OPF `dc:language` tag, such as `es` or `en-US`; empty when missing.
+    pub language: String,
     pub text_size: u64,
     pub toc: Vec<EpubTocEntry>,
     pub chapters: Vec<EpubChapter>,
@@ -383,6 +385,9 @@ pub fn open_epub(path: impl AsRef<Path>) -> Result<EpubDocument, String> {
     let archive = ZipArchive::open(path)?;
     let (_, package, package_dir) = epub_package(&archive)?;
     let title = package_title(&package);
+    let language = first_element_text(&package, "language")
+        .map(|tag| tag.trim().to_string())
+        .unwrap_or_default();
 
     let manifest = parse_manifest(&package)?;
     let spine_ids = parse_spine_ids(&package)?;
@@ -450,6 +455,7 @@ pub fn open_epub(path: impl AsRef<Path>) -> Result<EpubDocument, String> {
     Ok(EpubDocument {
         path: path.to_string_lossy().into_owned(),
         title,
+        language,
         text_size,
         toc,
         chapters,
@@ -1191,7 +1197,8 @@ pub(crate) fn sample_epub(bodies: &[String]) -> Vec<u8> {
     }
     let manifest = format!("<manifest>{manifest}</manifest>");
     let spine = format!("<spine>{spine}</spine>");
-    let package = format!("<package>{manifest}{spine}</package>");
+    let metadata = "<metadata><dc:language>es</dc:language></metadata>";
+    let package = format!("<package>{metadata}{manifest}{spine}</package>");
     let container = "<container><rootfile full-path='OEBPS/book.opf'/></container>";
     let mut entries = vec![
         ("META-INF/container.xml", container),
@@ -1282,6 +1289,7 @@ mod tests {
         let worker_epub = open_epub_on_worker(&path).unwrap();
         assert_eq!(worker_epub, epub);
         assert_eq!(epub.title, "Sample EPUB");
+        assert_eq!(epub.language, "");
         assert_eq!(epub.spine_count, 2);
         assert_eq!(epub.chapters.len(), 2);
         assert_eq!(epub.chapters[0].number, 1);
@@ -1308,6 +1316,7 @@ mod tests {
         fs::write(&path, sample_epub(&bodies)).unwrap();
         let epub = open_epub(&path).unwrap();
         assert_eq!(epub.chapters.len(), 3);
+        assert_eq!(epub.language, "es");
         let mut expected_offset = 0;
         for (index, chapter) in epub.chapters.iter().enumerate() {
             let text = epub.chapter_text(index).unwrap();

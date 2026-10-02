@@ -18,6 +18,7 @@ pub mod epaper;
 pub mod epub;
 pub mod framebuffer;
 pub mod games;
+pub mod hyphenation;
 pub mod imu;
 pub mod imu_events;
 pub mod keyboard_navigation;

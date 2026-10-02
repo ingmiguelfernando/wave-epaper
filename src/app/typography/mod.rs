@@ -184,7 +184,10 @@ impl UiTextStyle {
         lines
     }
 
-    fn char_advance(self, character: char) -> i32 {
+    /// Horizontal advance of one character, with the same `?` fallback as
+    /// drawing.
+    #[must_use]
+    pub fn char_advance(self, character: char) -> i32 {
         i32::from(self.font.glyph(character).advance)
     }
 }

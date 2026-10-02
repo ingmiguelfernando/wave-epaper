@@ -14,16 +14,33 @@ use super::{
 };
 use crate::{
     board_services::BoardSnapshot,
+    buttons::ButtonEvent,
     framebuffer::FrameBuffer,
     network::WifiConnectionState,
     orientation::{DisplayOrientation, OrientedFrameBuffer},
     power::PowerSnapshot,
-    reader::{BookFont, BookFontSize, BookFormat, ReaderLocation, ReadingTheme},
+    reader::{
+        BookFont, BookFontSize, BookFormat, ReaderLocation, ReaderTickOutcome, ReaderUiState,
+        ReadingTheme,
+    },
     regional::TemperatureUnit,
     rtc::RtcDateTime,
     weather::{CurrentConditions, WeatherFetchState},
 };
 
+
+/// Opening of Don Quijote (1605, public domain) for the Reader page preview.
+const QUIJOTE: &str = "En un lugar de la Mancha, de cuyo nombre no quiero acordarme, no ha \
+    mucho tiempo que vivía un hidalgo de los de lanza en astillero, adarga antigua, rocín \
+    flaco y galgo corredor. Una olla de algo más vaca que carnero, salpicón las más noches, \
+    duelos y quebrantos los sábados, lantejas los viernes, algún palomino de añadidura los \
+    domingos, consumían las tres partes de su hacienda.\n\
+    El resto della concluían sayo de velarte, calzas de velludo para las fiestas, con sus \
+    pantuflos de lo mesmo, y los días de entresemana se honraba con su vellorí de lo más \
+    fino. Tenía en su casa una ama que pasaba de los cuarenta, y una sobrina que no llegaba \
+    a los veinte, y un mozo de campo y plaza, que así ensillaba el rocín como tomaba la \
+    podadera. Frisaba la edad de nuestro hidalgo con los cincuenta años; era de complexión \
+    recia, seco de carnes, enjuto de rostro, gran madrugador y amigo de la caza.\n";
 const SPANISH_SAMPLE: [&str; 2] = [
     "¿Dónde está el niño? ¡Ahí, señor!",
     "«Cien años» — “sí”, ‘no’… 18°C · Ñandú",
@@ -91,7 +108,33 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
 
     let routes = [
         ("library", ScreenRoute::Reader),
-        ("ai", ScreenRoute::Ai),
+
+    let mut page = sample_state();
+    open_sample_book(&mut page);
+    states.push(("reader-page", page));
+    states
+}
+
+/// Open a Spanish TXT sample on its first page, showing word wrapping,
+/// hyphenation and justification.
+fn open_sample_book(state: &mut AppState) {
+    let root = std::env::temp_dir().join(format!("wave-preview-{}", std::process::id()));
+    let books = root.join("BOOKS");
+    let reader_state = root.join("READER");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&books).unwrap();
+    fs::create_dir_all(&reader_state).unwrap();
+    fs::write(books.join("Quijote.txt"), QUIJOTE.repeat(3)).unwrap();
+    let mut reader = ReaderUiState::with_roots(
+        books.to_string_lossy().into_owned(),
+        reader_state.to_string_lossy().into_owned(),
+    );
+    reader.refresh_library();
+    reader.library_selected = 1;
+    assert!(reader.apply_library_button(ButtonEvent::Select));
+    assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
+    state.reader = reader;
+    state.router.navigate_to(ScreenRoute::ReaderPage);ai", ScreenRoute::Ai),
         ("games", ScreenRoute::Games),
         ("tools", ScreenRoute::Tools),
         ("settings", ScreenRoute::Settings),

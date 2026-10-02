@@ -849,6 +849,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hypher"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45f2b4f6b5da34d400d4c112eadcc14512cc5d04307a8eee182586d9bebd7ce6"
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1632,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "waveshare-epd397-rust-app"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "embedded-graphics",
@@ -1642,6 +1648,7 @@ dependencies = [
  "enumset",
  "es8311",
  "esp-idf-svc",
+ "hypher",
  "log",
  "miniz_oxide",
 ]

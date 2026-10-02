@@ -22,7 +22,7 @@ use crate::{
     orientation::OrientedFrameBuffer,
     reader::{
         BookFormat, ParagraphAlignment, ReaderLibraryTab, ReaderLoadingStage, ReaderOption,
-        ReadingPreference, ReadingTheme,
+        ReadingPreference, ReadingTheme, READER_BODY_INSET,
     },
 };
 
@@ -446,15 +446,16 @@ pub fn render_page(
             if baseline >= body.text.bottom {
                 break;
             }
-            let (rendered, left) = aligned_reader_line(
+            for (run, left) in reader_line_runs(
                 line.text.as_str(),
                 line.paragraph_end,
                 session.layout.paragraph_alignment,
                 body_style,
                 body.text,
-            );
-            Text::new(rendered.as_str(), Point::new(left, baseline), body_style)
-                .draw_clipped(display, body.text)?;
+            ) {
+                Text::new(run, Point::new(left, baseline), body_style)
+                    .draw_clipped(display, body.text)?;
+            }
         }
     } else {
         let baseline = body.text.top + i32::from(body_style.line_height());
@@ -514,13 +515,14 @@ impl ReaderFrameBounds {
 impl ReaderBodyGeometry {
     /// Shared Reader body rectangle used by Classic and High Contrast. The
     /// stronger High Contrast frame stays outside this viewport, so switching
-    /// themes never changes TXT pagination or cache fingerprints.
+    /// themes never changes TXT pagination or cache fingerprints. Pagination
+    /// wraps lines to the same width (`ReaderLayout::line_width`).
     #[must_use]
     const fn new(width: i32, status_top: i32, status_height: i32, footer_line: i32) -> Self {
         let text = TextBounds::new(
-            24,
+            READER_BODY_INSET,
             status_top + status_height + 18,
-            width - 24,
+            width - READER_BODY_INSET,
             footer_line - 12,
         );
         let frame = ReaderFrameBounds {
@@ -667,49 +669,52 @@ pub fn render_toc(
     draw_footer(display, state.display, "MOVE  SELECT OPEN  HOLD BOOT BACK")
 }
 
-fn aligned_reader_line(
+/// Runs of one Reader line with the x where each is drawn. A justified line
+/// is drawn word by word so its spare width is shared pixel-exactly between
+/// the gaps, the leftmost gaps taking the remainder.
+fn reader_line_runs(
     line: &str,
     paragraph_end: bool,
     alignment: ParagraphAlignment,
     style: crate::app::typography::UiTextStyle,
     bounds: TextBounds,
-) -> (String, i32) {
-    let width = style.text_width(line);
-    let available = bounds.width().max(0);
-    match alignment {
-        ParagraphAlignment::Left => (line.into(), bounds.left),
-        ParagraphAlignment::Center => (line.into(), bounds.left + (available - width).max(0) / 2),
-        ParagraphAlignment::Right => (line.into(), bounds.left + (available - width).max(0)),
+) -> Vec<(&str, i32)> {
+    let spare = (bounds.width() - style.text_width(line)).max(0);
+    let left = match alignment {
+        ParagraphAlignment::Left => bounds.left,
+        ParagraphAlignment::Center => bounds.left + spare / 2,
+        ParagraphAlignment::Right => bounds.left + spare,
         ParagraphAlignment::Justified if !paragraph_end => {
-            (justify_reader_line(line, style, available), bounds.left)
+            return justified_runs(line, style, bounds);
         }
-        ParagraphAlignment::Justified => (line.into(), bounds.left),
-    }
+        ParagraphAlignment::Justified => bounds.left,
+    };
+    vec![(line, left)]
 }
 
-fn justify_reader_line(
+fn justified_runs(
     line: &str,
     style: crate::app::typography::UiTextStyle,
-    available: i32,
-) -> String {
-    let words: Vec<&str> = line.split_whitespace().collect();
+    bounds: TextBounds,
+) -> Vec<(&str, i32)> {
+    // Pagination joins words with single ASCII spaces; a no-break space stays
+    // inside its word.
+    let words: Vec<&str> = line.split(' ').filter(|word| !word.is_empty()).collect();
     if words.len() < 2 {
-        return line.into();
+        return vec![(line, bounds.left)];
     }
-    let base = words.join(" ");
-    let space = style.text_width(" ").max(1);
-    let extra_spaces = ((available - style.text_width(base.as_str())).max(0) / space) as usize;
-    let gaps = words.len() - 1;
-    let mut output = String::new();
-    for (index, word) in words.iter().enumerate() {
-        output.push_str(word);
-        if index < gaps {
-            let remainder = if index < extra_spaces % gaps { 1 } else { 0 };
-            let count = 1 + extra_spaces / gaps + remainder;
-            output.extend(core::iter::repeat(' ').take(count));
-        }
+    let gaps = words.len() as i32 - 1;
+    let words_width: i32 = words.iter().map(|word| style.text_width(word)).sum();
+    let minimum = gaps * style.text_width(" ");
+    let spaces = (bounds.width() - words_width).max(minimum);
+    let mut x = bounds.left;
+    let mut runs = Vec::with_capacity(words.len());
+    for (index, word) in words.into_iter().enumerate() {
+        runs.push((word, x));
+        let wider = i32::from((index as i32) < spaces % gaps);
+        x += style.text_width(word) + spaces / gaps + wider;
     }
-    output
+    runs
 }
 
 fn draw_tabs(
@@ -800,7 +805,7 @@ fn truncate(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        aligned_reader_line, bookmark_entry_columns, library_entry_columns, library_status,
+        bookmark_entry_columns, library_entry_columns, library_status, reader_line_runs,
         render_bookmarks, render_continue_reading, render_library, render_loading, render_options,
         render_preferences, render_toc, ReaderBodyGeometry,
     };
@@ -939,28 +944,41 @@ mod tests {
     }
     #[test]
     fn paragraph_alignment_moves_or_justifies_reader_lines_inside_bounds() {
+        use ParagraphAlignment::{Center, Justified, Left, Right};
+
         let style = AppState::default().display.body_style();
         let bounds = crate::app::typography::TextBounds::new(20, 0, 220, 100);
-        let (_, left) =
-            aligned_reader_line("short line", true, ParagraphAlignment::Left, style, bounds);
-        let (_, center) = aligned_reader_line(
-            "short line",
-            true,
-            ParagraphAlignment::Center,
-            style,
-            bounds,
-        );
-        let (_, right) =
-            aligned_reader_line("short line", true, ParagraphAlignment::Right, style, bounds);
+        let line = "short line";
+        let left = reader_line_runs(line, true, Left, style, bounds)[0].1;
+        let center = reader_line_runs(line, true, Center, style, bounds)[0].1;
+        let right = reader_line_runs(line, true, Right, style, bounds)[0].1;
         assert!(left < center);
         assert!(center < right);
-        let (justified, _) = aligned_reader_line(
-            "one two three",
-            false,
-            ParagraphAlignment::Justified,
-            style,
-            bounds,
+        assert_eq!(
+            reader_line_runs("one two", true, Justified, style, bounds),
+            [("one two", 20)]
         );
-        assert!(justified.len() > "one two three".len());
+
+        let runs = reader_line_runs("one two three", false, Justified, style, bounds);
+        let words: Vec<_> = runs.iter().map(|(word, _)| *word).collect();
+        assert_eq!(words, ["one", "two", "three"]);
+        assert_eq!(runs[0].1, bounds.left);
+        let (last, x) = runs[2];
+        assert_eq!(x + style.text_width(last), bounds.right);
+        let first_gap = runs[1].1 - style.text_width("one") - runs[0].1;
+        let second_gap = runs[2].1 - style.text_width("two") - runs[1].1;
+        assert!((first_gap - second_gap).abs() <= 1);
+    }
+
+    #[test]
+    fn reader_line_width_matches_the_rendered_text_viewport() {
+        use crate::reader::{ReaderOrientation, ReaderPreferences};
+
+        let mut preferences = ReaderPreferences::default();
+        for orientation in [ReaderOrientation::Portrait, ReaderOrientation::Landscape] {
+            preferences.orientation = orientation;
+            let body = ReaderBodyGeometry::new(orientation.screen_width(), 80, 42, 700);
+            assert_eq!(body.text.width(), preferences.layout().line_width());
+        }
     }
 }

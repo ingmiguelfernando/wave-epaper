@@ -1317,16 +1317,6 @@ mod firmware {
                 let previous_route = state.active_route();
                 let outcome = state.tick_reader();
                 match outcome {
-                    ReaderTickOutcome::LoadingStageChanged => {
-                        info!(
-                            "rustmix-wave=reader-cache-stage route={} stage={}",
-                            state.active_route().marker(),
-                            state
-                                .reader
-                                .loading_stage()
-                                .map_or("none", |stage| stage.label())
-                        );
-                    }
                     ReaderTickOutcome::FirstPageReady => {
                         info!("rustmix-wave=reader-first-page-ready route={} cache-policy=lazy-nearby-pages", state.active_route().marker());
                     }
@@ -1353,8 +1343,7 @@ mod firmware {
                 );
                 log_reader_persistence_event(&mut state);
                 if state.panel_awake
-                    && (outcome == ReaderTickOutcome::LoadingStageChanged
-                        || outcome == ReaderTickOutcome::FirstPageReady
+                    && (outcome == ReaderTickOutcome::FirstPageReady
                         || outcome == ReaderTickOutcome::Failed
                         || state.active_route() != previous_route)
                 {
