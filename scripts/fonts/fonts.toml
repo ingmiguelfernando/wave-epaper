@@ -23,25 +23,29 @@ atkinson-next = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be27
 literata = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/literata/Literata%5Bopsz%2Cwght%5D.ttf"
 dejavu-serif = { url = "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip", member = "dejavu-fonts-ttf-2.37/ttf/DejaVuSerif.ttf" }
 
+# Gray 128 keeps small acute accents as slanted marks (mono shrinks them to
+# dots); 96 is too heavy for body text.
 [faces.inter-medium]
 source = "inter"
 axes = { wght = 500, opsz = 14 }
 render = "gray"
-threshold = 96
+threshold = 128
 
 [faces.inter-semibold]
 source = "inter"
 axes = { wght = 600, opsz = 14 }
 render = "gray"
-threshold = 96
+threshold = 128
 
 [faces.atkinson-regular]
 source = "atkinson-regular"
-render = "mono"
+render = "gray"
+threshold = 128
 
 [faces.atkinson-bold]
 source = "atkinson-bold"
-render = "mono"
+render = "gray"
+threshold = 128
 
 [faces.atkinson-next-medium]
 source = "atkinson-next"
@@ -52,8 +56,9 @@ render = "mono"
 source = "literata"
 axes = { wght = 500, opsz = "size" }
 render = "gray"
-threshold = 96
+threshold = 128
 
+# Native TrueType hinting already draws clean accents at every size.
 [faces.dejavu-serif]
 source = "dejavu-serif"
 render = "mono"
