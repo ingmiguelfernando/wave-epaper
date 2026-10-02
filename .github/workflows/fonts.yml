@@ -1,0 +1,46 @@
+name: fonts
+
+# Regenerates the bitmap font atlases from open-source fonts. Download the
+# `generated-fonts` artifact and commit the changed files.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/fonts/**
+      - .github/workflows/fonts.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate bitmap fonts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install font tools
+        run: python -m pip install pillow==12.3.0 fonttools==4.66.1
+
+      - name: Generate atlases
+        run: python scripts/fonts/generate.py | tee fonts.log
+
+      - name: Format generated Rust
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: rustfmt --edition 2021 src/app/typography/assets.rs src/app/reader_*_assets.rs
+
+      - name: Upload generated atlases
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-fonts
+          path: |
+            fonts.log
+            src/app/typography/assets.rs
+            src/app/reader_*_assets.rs

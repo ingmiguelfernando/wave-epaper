@@ -11,6 +11,7 @@ pub mod board_services;
 pub mod build_info;
 pub mod buttons;
 pub mod calendar;
+pub mod charset;
 pub mod dictionary;
 pub mod environment;
 pub mod epaper;

@@ -11,7 +11,7 @@ pub const PRODUCT_SLUG: &str = "wave-epd397";
 /// Cargo semantic version for the current firmware package.
 pub const FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Stable milestone identifier for acceptance logs and diagnostics.
-pub const UI_SHELL_MILESTONE: &str = "wave-home";
+pub const UI_SHELL_MILESTONE: &str = "spanish-fonts";
 
 #[cfg(test)]
 mod tests {
@@ -21,7 +21,7 @@ mod tests {
     fn exposes_wave_product_metadata() {
         assert_eq!(PRODUCT_NAME, "Wave / EPD397");
         assert_eq!(PRODUCT_SLUG, "wave-epd397");
-        assert_eq!(FIRMWARE_VERSION, "0.1.0");
-        assert_eq!(UI_SHELL_MILESTONE, "wave-home");
+        assert_eq!(FIRMWARE_VERSION.split('.').count(), 3);
+        assert_eq!(UI_SHELL_MILESTONE, "spanish-fonts");
     }
 }

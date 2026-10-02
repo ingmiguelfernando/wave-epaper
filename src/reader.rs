@@ -14,6 +14,7 @@ use std::{
 
 use crate::{
     buttons::ButtonEvent,
+    charset::glyph_index,
     epub::{open_epub_on_worker, read_epub_title_on_worker, EpubDocument, EpubTocEntry},
 };
 
@@ -2541,34 +2542,12 @@ fn normalize_decoded(decoded: &[(char, u64)]) -> Vec<(char, u64)> {
 }
 
 fn push_normalized_character(output: &mut Vec<(char, u64)>, character: char, next_offset: u64) {
-    let replacement: &str = match character {
-        '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{00AB}' | '\u{00BB}' => "\"",
-        '\u{2018}' | '\u{2019}' | '\u{201A}' => "'",
-        '\u{2014}' => "--",
-        '\u{2013}' => "-",
-        '\u{2026}' => "...",
-        '\u{00A0}' => " ",
-        'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => "e",
-        'à' | 'á' | 'â' | 'ä' | 'À' | 'Á' | 'Â' | 'Ä' => "a",
-        'ç' | 'Ç' => "c",
-        'ï' | 'î' | 'í' | 'ì' | 'Ï' | 'Î' | 'Í' | 'Ì' => "i",
-        'ô' | 'ö' | 'ó' | 'ò' | 'Ô' | 'Ö' | 'Ó' | 'Ò' => "o",
-        'ù' | 'û' | 'ü' | 'ú' | 'Ù' | 'Û' | 'Ü' | 'Ú' => "u",
-        'ñ' | 'Ñ' => "n",
-        value
-            if value == '\n'
-                || value == '\r'
-                || value == '\t'
-                || value.is_ascii_graphic()
-                || value == ' ' =>
-        {
-            output.push((value, next_offset));
-            return;
-        }
-        _ => "?",
-    };
-    for value in replacement.chars() {
-        output.push((value, next_offset));
+    match character {
+        // A kept soft hyphen would render as a visible '-' in mid-word.
+        '\u{00AD}' => {}
+        '\n' | '\r' | '\t' => output.push((character, next_offset)),
+        value if glyph_index(value).is_some() => output.push((value, next_offset)),
+        _ => output.push(('?', next_offset)),
     }
 }
 
@@ -3344,8 +3323,8 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_utf8_punctuation_accents_and_simple_emphasis() {
-        let decoded: Vec<(char, u64)> = "“En vérité!” _I_—once…"
+    fn keeps_spanish_text_and_punctuation_and_strips_simple_emphasis() {
+        let decoded: Vec<(char, u64)> = "“En vérité!” _I_—once… ¿Señor? ¡Ahí! ca\u{ad}sā"
             .chars()
             .enumerate()
             .map(|(index, value)| (value, index as u64 + 1))
@@ -3354,7 +3333,7 @@ mod tests {
             .into_iter()
             .map(|(value, _)| value)
             .collect();
-        assert_eq!(normalized, "\"En verite!\" I--once...");
+        assert_eq!(normalized, "“En vérité!” I—once… ¿Señor? ¡Ahí! cas?");
     }
 
     #[test]

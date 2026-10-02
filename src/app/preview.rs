@@ -8,18 +8,26 @@ use std::{fs, path::Path};
 
 use embedded_graphics::prelude::Point;
 
-use super::{display::UiFontSize, render_current_screen, AppState, ScreenRoute};
+use super::{
+    display::UiFontSize, reader_typography::reader_body_style, render_current_screen,
+    typography::Text, AppState, ScreenRoute,
+};
 use crate::{
     board_services::BoardSnapshot,
     framebuffer::FrameBuffer,
     network::WifiConnectionState,
-    orientation::DisplayOrientation,
+    orientation::{DisplayOrientation, OrientedFrameBuffer},
     power::PowerSnapshot,
-    reader::{BookFormat, ReaderLocation},
+    reader::{BookFont, BookFontSize, BookFormat, ReaderLocation, ReadingTheme},
     regional::TemperatureUnit,
     rtc::RtcDateTime,
     weather::{CurrentConditions, WeatherFetchState},
 };
+
+const SPANISH_SAMPLE: [&str; 2] = [
+    "¿Dónde está el niño? ¡Ahí, señor!",
+    "«Cien años» — “sí”, ‘no’… 18°C · Ñandú",
+];
 
 #[test]
 fn render_screen_previews() {
@@ -27,14 +35,44 @@ fn render_screen_previews() {
     if let Some(directory) = output.as_deref() {
         fs::create_dir_all(directory).unwrap();
     }
+    let mut images = vec![("reader-fonts", render_reader_font_sheet())];
     for (name, state) in preview_states() {
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
-        if let Some(directory) = output.as_deref() {
-            let png = encode_png(&frame, state.orientation);
+        images.push((name, frame));
+    }
+    if let Some(directory) = output.as_deref() {
+        for (name, frame) in images {
+            let png = encode_png(&frame, DisplayOrientation::Portrait);
             fs::write(Path::new(directory).join(format!("{name}.png")), png).unwrap();
         }
     }
+}
+
+/// Spanish sample text in every Reader family at the two smallest sizes.
+fn render_reader_font_sheet() -> FrameBuffer {
+    let mut frame = FrameBuffer::new_white();
+    let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
+    let mut baseline = 30;
+    for family in [
+        BookFont::Literata,
+        BookFont::Serif,
+        BookFont::AtkinsonHyperlegible,
+        BookFont::Inter,
+    ] {
+        for size in [BookFontSize::Small, BookFontSize::Medium] {
+            let style = reader_body_style(family, size, ReadingTheme::Classic);
+            for line in SPANISH_SAMPLE {
+                Text::new(line, Point::new(12, baseline), style)
+                    .draw(&mut display)
+                    .unwrap();
+                baseline += i32::from(style.line_height());
+            }
+            baseline += 10;
+        }
+    }
+    drop(display);
+    frame
 }
 
 fn preview_states() -> Vec<(&'static str, AppState)> {
@@ -100,8 +138,8 @@ fn sample_state() -> AppState {
         wind_speed_tenths_mph: 86,
     });
     state.reader.resume = Some(ReaderLocation {
-        path: "/sdcard/RUSTMIX/BOOKS/QUIJOTE.TXT".into(),
-        title: "Don Quijote de la Mancha".into(),
+        path: "/sdcard/RUSTMIX/BOOKS/Cien años de soledad.txt".into(),
+        title: "Cien años de soledad".into(),
         format: BookFormat::Text,
         size_bytes: 2_000_000,
         modified_seconds: 0,

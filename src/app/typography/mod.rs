@@ -1,9 +1,8 @@
 //! Global user-interface typography for Wave.
 //!
 //! UI text uses pre-rasterized 1-bpp glyph atlases derived from the Inter and
-//! Atkinson Hyperlegible families. v0.13.2 shifts all profiles upward for the
-//! physical e-paper panel and adds a bounded Detail role for dense diagnostic
-//! values. Every user-facing role is larger than its v0.13.1 counterpart.
+//! Atkinson Hyperlegible families, covering the shared `charset` (ASCII,
+//! Latin-1 and common typographic punctuation).
 
 use embedded_graphics::{
     pixelcolor::BinaryColor,
@@ -11,10 +10,14 @@ use embedded_graphics::{
 };
 
 use super::display::{DisplayPreferences, UiFontFamily, UiFontSize};
+use crate::charset::glyph_index;
 
 mod assets;
 
-/// One rasterized printable-ASCII glyph relative to its text baseline.
+/// Atlas index of `?`, drawn for characters the fonts do not contain.
+const FALLBACK_GLYPH: usize = '?' as usize - 0x20;
+
+/// One rasterized glyph relative to its text baseline.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Glyph {
     pub offset: u32,
@@ -25,10 +28,24 @@ pub struct Glyph {
     pub top: i8,
 }
 
-/// One complete printable-ASCII bitmap-font strike.
+impl Glyph {
+    #[must_use]
+    pub const fn new(offset: u32, width: u8, height: u8, advance: u8, left: i8, top: i8) -> Self {
+        Self {
+            offset,
+            width,
+            height,
+            advance,
+            left,
+            top,
+        }
+    }
+}
+
+/// One bitmap-font strike whose glyphs follow the shared `charset` order.
 #[derive(Clone, Copy, Debug)]
 pub struct BitmapFont {
-    pub glyphs: &'static [Glyph; 95],
+    pub glyphs: &'static [Glyph],
     pub bitmap: &'static [u8],
     pub line_height: u8,
 }
@@ -36,45 +53,10 @@ pub struct BitmapFont {
 impl BitmapFont {
     #[must_use]
     fn glyph(self, character: char) -> Glyph {
-        let code = character as u32;
-        let index = if (32..=126).contains(&code) {
-            (code - 32) as usize
-        } else {
-            ('?' as usize) - 32
-        };
-        self.glyphs[index]
-    }
-
-    fn degree_diameter(self) -> i32 {
-        (i32::from(self.line_height) / 4).max(5)
-    }
-
-    fn dot_size(self) -> i32 {
-        (i32::from(self.line_height) / 9).max(2)
-    }
-}
-
-/// Symbols drawn with primitives because the UI atlases only hold ASCII.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Synthetic {
-    Degree,
-    MiddleDot,
-}
-
-impl Synthetic {
-    const fn from_char(character: char) -> Option<Self> {
-        match character {
-            '°' => Some(Self::Degree),
-            '·' => Some(Self::MiddleDot),
-            _ => None,
-        }
-    }
-
-    fn advance(self, font: &BitmapFont) -> i32 {
-        match self {
-            Self::Degree => font.degree_diameter() + 2,
-            Self::MiddleDot => font.dot_size() + 2,
-        }
+        glyph_index(character)
+            .and_then(|index| self.glyphs.get(index))
+            .copied()
+            .unwrap_or(self.glyphs[FALLBACK_GLYPH])
     }
 }
 
@@ -143,8 +125,8 @@ impl UiTextStyle {
         self.font.line_height
     }
 
-    /// Measure one printable-ASCII Reader line using this bitmap strike.
-    /// Unsupported characters follow the same `?` fallback as drawing.
+    /// Measure one line of text with this bitmap strike. Unsupported
+    /// characters follow the same `?` fallback as drawing.
     #[must_use]
     pub fn text_width(self, text: &str) -> i32 {
         text.chars()
@@ -203,10 +185,7 @@ impl UiTextStyle {
     }
 
     fn char_advance(self, character: char) -> i32 {
-        Synthetic::from_char(character).map_or_else(
-            || i32::from(self.font.glyph(character).advance),
-            |symbol| symbol.advance(self.font),
-        )
+        i32::from(self.font.glyph(character).advance)
     }
 }
 
@@ -229,7 +208,7 @@ impl<'a> Text<'a> {
     }
 
     /// Draw transparent text and return the cursor position after the final
-    /// glyph. Printable ASCII is embedded; other characters use `?` safely.
+    /// glyph. Characters outside the shared charset are drawn as `?`.
     pub fn draw<D>(&self, display: &mut D) -> Result<Point, D::Error>
     where
         D: DrawTarget<Color = BinaryColor>,
@@ -264,11 +243,6 @@ impl<'a> Text<'a> {
                 cursor.y += i32::from(self.style.font.line_height);
                 continue;
             }
-            if let Some(symbol) = Synthetic::from_char(character) {
-                draw_synthetic(display, cursor, symbol, self.style, bounds)?;
-                cursor.x += symbol.advance(self.style.font);
-                continue;
-            }
             let glyph = self.style.font.glyph(character);
             draw_glyph(display, cursor, glyph, self.style, bounds)?;
             cursor.x += i32::from(glyph.advance);
@@ -299,49 +273,6 @@ where
                 baseline.x + i32::from(glyph.left) + column as i32,
                 baseline.y + i32::from(glyph.top) + row as i32,
             );
-            if bounds.map_or(true, |clip| clip.contains(point)) {
-                display.draw_iter(core::iter::once(Pixel(point, style.color)))?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn draw_synthetic<D>(
-    display: &mut D,
-    baseline: Point,
-    symbol: Synthetic,
-    style: UiTextStyle,
-    bounds: Option<TextBounds>,
-) -> Result<(), D::Error>
-where
-    D: DrawTarget<Color = BinaryColor>,
-{
-    let font = style.font;
-    let (size, top, ring) = match symbol {
-        Synthetic::Degree => {
-            let top = baseline.y + i32::from(font.glyph('0').top);
-            (font.degree_diameter(), top, true)
-        }
-        Synthetic::MiddleDot => {
-            let x_glyph = font.glyph('x');
-            let middle = i32::from(x_glyph.top) + i32::from(x_glyph.height) / 2;
-            let size = font.dot_size();
-            (size, baseline.y + middle - size / 2, false)
-        }
-    };
-    // Doubled coordinates keep the ring test in integers.
-    let outer = size * size;
-    let inner = (size - 2 * (size / 5).max(1)).pow(2);
-    for row in 0..size {
-        for column in 0..size {
-            let dx = 2 * column - (size - 1);
-            let dy = 2 * row - (size - 1);
-            let distance = dx * dx + dy * dy;
-            if ring && (distance > outer || distance < inner) {
-                continue;
-            }
-            let point = Point::new(baseline.x + 1 + column, top + row);
             if bounds.map_or(true, |clip| clip.contains(point)) {
                 display.draw_iter(core::iter::once(Pixel(point, style.color)))?;
             }
