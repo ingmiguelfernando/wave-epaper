@@ -44,6 +44,7 @@ pub enum ScreenRoute {
     Clock,
     ClockDetails,
     Display,
+    Power,
     PowerKeyMenu,
     DeviceInfo,
     DeviceInfoBoard,
@@ -104,6 +105,7 @@ impl ScreenRoute {
             Self::Clock => "Clock",
             Self::ClockDetails => "RTC details",
             Self::Display => "Display",
+            Self::Power => "Power",
             Self::PowerKeyMenu => "Power Key Menu",
             Self::DeviceInfo => "Device Info",
             Self::DeviceInfoBoard => "Board services",
@@ -164,6 +166,7 @@ impl ScreenRoute {
             Self::Clock => "clock",
             Self::ClockDetails => "rtc-details",
             Self::Display => "display",
+            Self::Power => "power",
             Self::PowerKeyMenu => "power-key-menu",
             Self::DeviceInfo => "device-info",
             Self::DeviceInfoBoard => "device-info-board",
@@ -235,7 +238,8 @@ impl ScreenRoute {
             | Self::DeviceInfo
             | Self::Environment
             | Self::Motion
-            | Self::Network => Some(Self::Settings),
+            | Self::Network
+            | Self::Power => Some(Self::Settings),
             Self::AudioDetails => Some(Self::Audio),
             Self::ClockDetails => Some(Self::Clock),
             Self::DeviceInfoBoard => Some(Self::DeviceInfo),
@@ -302,6 +306,7 @@ mod tests {
     fn router_exposes_static_parent_hierarchy() {
         assert_eq!(ScreenRoute::Files.parent(), Some(ScreenRoute::Tools));
         assert_eq!(ScreenRoute::Display.parent(), Some(ScreenRoute::Settings));
+        assert_eq!(ScreenRoute::Power.parent(), Some(ScreenRoute::Settings));
         assert_eq!(ScreenRoute::PowerKeyMenu.parent(), Some(ScreenRoute::Home));
         assert_eq!(ScreenRoute::Calendar.parent(), Some(ScreenRoute::Tools));
         assert_eq!(ScreenRoute::Weather.parent(), Some(ScreenRoute::Home));

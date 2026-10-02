@@ -3,6 +3,7 @@
 use crate::{
     alarm::AlarmSnapshot,
     audio::{AudioSnapshot, AudioUiRequest},
+    battery_log::BatteryLog,
     board_services::BoardSnapshot,
     buttons::ButtonEvent,
     calendar::{CalendarEditorOutcome, CalendarUiRequest, CalendarUiState},
@@ -13,6 +14,7 @@ use crate::{
     network::NetworkSnapshot,
     orientation::DisplayOrientation,
     power_key_menu::{PowerKeyMenuOutcome, PowerKeyMenuUiState},
+    power_settings::{PowerPreferences, PowerSetting},
     reader::{ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
     regional::RegionalPreferences,
     sleep_mode::{LightSleepShare, SleepReport},
@@ -37,6 +39,20 @@ pub const DISPLAY_ACTION_COUNT: usize = 2;
 pub const WEATHER_ACTION_COUNT: usize = 2;
 /// Start/stop portal and provisioning-details rows on the Network screen.
 pub const NETWORK_ACTION_COUNT: usize = 2;
+
+/// Settings › Power cursor and the highlighted choice of an open option list.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PowerUiState {
+    pub selected: usize,
+    pub picker: Option<usize>,
+}
+
+impl PowerUiState {
+    #[must_use]
+    pub fn setting(self) -> PowerSetting {
+        PowerSetting::ALL[self.selected % PowerSetting::ALL.len()]
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppState {
@@ -88,7 +104,12 @@ pub struct AppState {
     power_key_menu_return_route: ScreenRoute,
     power_key_manual_refresh_requested: bool,
     weather_refresh_requested: bool,
-    /// Battery use across the most recent sleep, for Device Info.
+    /// Auto-sleep delay and wake keys; main.rs saves changes to POWER.TXT.
+    pub power: PowerPreferences,
+    pub power_ui: PowerUiState,
+    /// Battery level history drawn on Settings › Power.
+    pub battery_log: BatteryLog,
+    /// Battery use across the most recent sleep, for Settings › Power.
     pub last_sleep: Option<SleepReport>,
     pub light_sleep: LightSleepShare,
 }
@@ -128,6 +149,9 @@ impl Default for AppState {
             power_key_menu_return_route: ScreenRoute::Home,
             power_key_manual_refresh_requested: false,
             weather_refresh_requested: false,
+            power: PowerPreferences::default(),
+            power_ui: PowerUiState::default(),
+            battery_log: BatteryLog::default(),
             last_sleep: None,
             light_sleep: LightSleepShare::default(),
         }
@@ -146,6 +170,8 @@ impl AppState {
             self.apply_category(route, event);
         } else if route == ScreenRoute::Display {
             self.apply_display(event);
+        } else if route == ScreenRoute::Power {
+            self.apply_power(event);
         } else if route == ScreenRoute::PowerKeyMenu {
             self.apply_power_key_menu(event);
         } else if route == ScreenRoute::Calendar {
@@ -330,6 +356,9 @@ impl AppState {
         }
         if target == ScreenRoute::Display {
             self.display_action_selected = 0;
+        }
+        if target == ScreenRoute::Power {
+            self.power_ui = PowerUiState::default();
         }
         if target == ScreenRoute::Calendar {
             self.initialize_calendar_if_needed();
@@ -783,6 +812,37 @@ impl AppState {
         }
     }
 
+    /// Move between the Power rows, or within the option list once Select
+    /// opened it. Select in the list applies the highlighted choice.
+    fn apply_power(&mut self, event: ButtonEvent) {
+        let setting = self.power_ui.setting();
+        let (options, current) = self.power.options(setting);
+        if let Some(highlighted) = self.power_ui.picker {
+            let count = options.len();
+            match event {
+                ButtonEvent::Up => self.power_ui.picker = Some((highlighted + count - 1) % count),
+                ButtonEvent::Down => self.power_ui.picker = Some((highlighted + 1) % count),
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    self.power.choose(setting, highlighted);
+                    self.power_ui.picker = None;
+                }
+            }
+            return;
+        }
+        let count = PowerSetting::ALL.len();
+        match event {
+            ButtonEvent::Up => {
+                self.power_ui.selected = (self.power_ui.selected + count - 1) % count;
+            }
+            ButtonEvent::Down => self.power_ui.selected = (self.power_ui.selected + 1) % count,
+            ButtonEvent::Select => {
+                self.note_select_press();
+                self.power_ui.picker = Some(current);
+            }
+        }
+    }
+
     /// Apply one Audio-overview event. Hardware requests are returned to
     /// main.rs so this product state remains independent of ESP-IDF handles.
     pub fn apply_audio_button(&mut self, event: ButtonEvent) -> Option<AudioUiRequest> {
@@ -836,6 +896,9 @@ impl AppState {
     pub fn back(&mut self) {
         if self.router.current() == ScreenRoute::PowerKeyMenu {
             self.close_power_key_menu();
+            return;
+        }
+        if self.router.current() == ScreenRoute::Power && self.power_ui.picker.take().is_some() {
             return;
         }
         if matches!(

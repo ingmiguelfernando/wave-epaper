@@ -6,7 +6,10 @@
 
 use core::convert::Infallible;
 
-use crate::{framebuffer::FrameBuffer, orientation::OrientedFrameBuffer};
+use crate::{
+    framebuffer::FrameBuffer,
+    orientation::{DisplayOrientation, OrientedFrameBuffer},
+};
 
 pub mod display;
 pub mod menu;
@@ -23,12 +26,11 @@ pub mod typography;
 pub mod widgets;
 
 pub use router::ScreenRoute;
+pub use screens::sleep_card::SleepCard;
 pub use state::AppState;
 
 /// Idle interval before the panel controller and ALDO3 rail enter sleep.
 pub const PANEL_IDLE_SLEEP_SECONDS: u64 = 60;
-/// Idle interval before the device shows the sleep image and light-sleeps.
-pub const AUTO_SLEEP_SECONDS: u64 = 10 * 60;
 /// Detail-screen status cadence inherited from the sample-app clock use case.
 pub const SAMPLE_LIVE_REFRESH_SECONDS: u64 = 30;
 /// Motion diagnostics refresh at a slower e-paper-safe cadence.
@@ -52,6 +54,17 @@ pub fn render_current_screen(frame: &mut FrameBuffer, state: &AppState) -> Resul
     frame.clear_white();
     let mut display = OrientedFrameBuffer::new(frame, state.orientation);
     screens::render_active_screen(&mut display, state)
+}
+
+/// Clear the native frame and draw the sleep card in portrait.
+pub fn render_sleep_card(
+    frame: &mut FrameBuffer,
+    preferences: display::DisplayPreferences,
+    card: &SleepCard<'_>,
+) -> Result<(), Infallible> {
+    frame.clear_white();
+    let mut display = OrientedFrameBuffer::new(frame, DisplayOrientation::Portrait);
+    screens::sleep_card::render_sleep_card(&mut display, preferences, card)
 }
 
 #[cfg(test)]

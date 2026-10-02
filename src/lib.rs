@@ -7,6 +7,7 @@
 pub mod alarm;
 pub mod app;
 pub mod audio;
+pub mod battery_log;
 pub mod board_services;
 pub mod build_info;
 pub mod buttons;
@@ -31,6 +32,7 @@ pub mod panel_refresh;
 pub mod power;
 pub mod power_key;
 pub mod power_key_menu;
+pub mod power_settings;
 pub mod radio_burst;
 pub mod reader;
 pub mod regional;

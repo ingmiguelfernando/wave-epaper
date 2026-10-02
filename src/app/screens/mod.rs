@@ -21,8 +21,10 @@ pub mod lua_game;
 pub mod motion;
 pub mod network;
 pub mod placeholder;
+pub mod power;
 pub mod power_key;
 pub mod reader;
+pub mod sleep_card;
 pub mod unit_converter;
 pub mod voice_notes;
 pub mod weather;
@@ -80,6 +82,7 @@ pub fn render_active_screen(
         ScreenRoute::AudioDetails => audio::render_audio_details(display, state),
         ScreenRoute::Files => files::render_files(display, state),
         ScreenRoute::Display => display::render_display(display, state),
+        ScreenRoute::Power => power::render_power(display, state),
         ScreenRoute::PowerKeyMenu => power_key::render_power_key_menu(display, state),
         ScreenRoute::DeviceInfo => device_info::render_device_info(display, state),
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),

@@ -147,7 +147,7 @@ const TOOLS_ENTRIES: [MenuEntry; 4] = [
     },
 ];
 
-const SETTINGS_ENTRIES: [MenuEntry; 8] = [
+const SETTINGS_ENTRIES: [MenuEntry; 9] = [
     MenuEntry {
         label: "Alarms",
         subtitle: "Alarm schedules, snooze and dismiss",
@@ -195,6 +195,12 @@ const SETTINGS_ENTRIES: [MenuEntry; 8] = [
         subtitle: "Wi-Fi, time sync and file transfer",
         badge: "",
         route: ScreenRoute::Network,
+    },
+    MenuEntry {
+        label: "Power",
+        subtitle: "Auto-sleep, wake keys and battery log",
+        badge: "",
+        route: ScreenRoute::Power,
     },
 ];
 
@@ -263,7 +269,7 @@ mod tests {
         assert_eq!(category_entries(ScreenRoute::Ai).len(), 2);
         assert_eq!(category_entries(ScreenRoute::Games).len(), 1);
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
-        assert_eq!(category_entries(ScreenRoute::Settings).len(), 8);
+        assert_eq!(category_entries(ScreenRoute::Settings).len(), 9);
         for route in CATEGORIES {
             assert!(category_entries(route)
                 .iter()

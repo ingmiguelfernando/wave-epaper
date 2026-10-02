@@ -10,7 +10,7 @@ use embedded_graphics::prelude::Point;
 
 use super::{
     display::UiFontSize, reader_typography::reader_body_style, render_current_screen,
-    typography::Text, AppState, ScreenRoute,
+    render_sleep_card, typography::Text, AppState, ScreenRoute, SleepCard,
 };
 use crate::{
     board_services::BoardSnapshot,
@@ -52,7 +52,10 @@ fn render_screen_previews() {
     if let Some(directory) = output.as_deref() {
         fs::create_dir_all(directory).unwrap();
     }
-    let mut images = vec![("reader-fonts", render_reader_font_sheet())];
+    let mut images = vec![
+        ("reader-fonts", render_reader_font_sheet()),
+        ("sleep-card", render_sample_sleep_card()),
+    ];
     for (name, state) in preview_states() {
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
@@ -92,6 +95,18 @@ fn render_reader_font_sheet() -> FrameBuffer {
     frame
 }
 
+/// The card shown asleep when the SD picture cannot be used.
+fn render_sample_sleep_card() -> FrameBuffer {
+    let mut frame = FrameBuffer::new_white();
+    let card = SleepCard {
+        note: "SLEEP.BMP is 1024 × 768; it must be 480 × 800 or 800 × 480",
+        battery_percent: Some(78),
+        wake_hint: "Press any key to wake",
+    };
+    render_sleep_card(&mut frame, sample_state().display, &card).unwrap();
+    frame
+}
+
 fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut states = vec![
         ("home", sample_state()),
@@ -125,7 +140,27 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut page = sample_state();
     open_sample_book(&mut page);
     states.push(("reader-page", page));
+
+    let mut power = sample_state();
+    power.router.navigate_to(ScreenRoute::Power);
+    record_sample_battery_day(&mut power);
+    states.push(("power", power.clone()));
+    power.power_ui.picker = Some(2);
+    states.push(("power-picker", power));
     states
+}
+
+/// A day of use with an afternoon charge, sampled every 15 minutes.
+fn record_sample_battery_day(state: &mut AppState) {
+    let now = state.board.rtc.unwrap().epoch_minutes();
+    for step in (0..96_u32).rev() {
+        let percent = match step {
+            32.. => 95 - (96 - step) * 25 / 64,
+            24..=31 => 70 + (32 - step) * 30 / 8,
+            _ => 78 + step * 22 / 24,
+        };
+        state.battery_log.record(now - step * 15, percent as u8);
+    }
 }
 
 /// Open a Spanish TXT sample on its first page, showing word wrapping,

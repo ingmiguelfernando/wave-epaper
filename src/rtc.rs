@@ -68,6 +68,14 @@ impl RtcDateTime {
             self.year, self.month, self.day, self.hour, self.minute, self.second
         )
     }
+
+    /// Minutes since 2000-01-01 00:00 in the same time basis as `self`.
+    #[must_use]
+    pub fn epoch_minutes(self) -> u32 {
+        let days = days_from_civil(self.year, self.month, self.day) - days_from_civil(2000, 1, 1);
+        let minutes = days * 1_440 + i64::from(self.hour) * 60 + i64::from(self.minute);
+        u32::try_from(minutes).unwrap_or(0)
+    }
 }
 
 /// Result of RTC startup normalization.
@@ -311,6 +319,17 @@ fn is_leap_year(year: u16) -> bool {
     year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
+/// Days since 1970-01-01 for a Gregorian date (Howard Hinnant's algorithm).
+fn days_from_civil(year: u16, month: u8, day: u8) -> i64 {
+    let month = i64::from(month);
+    let year = i64::from(year) - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + i64::from(day) - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
 fn decode_bcd(value: u8) -> Result<u8> {
     let high = value >> 4;
     let low = value & 0x0F;
@@ -338,6 +357,21 @@ mod tests {
         assert_eq!(ALARM_FIELD_DISABLED, 0x80);
         assert_eq!(ALARM_INTERRUPT_ENABLE, 0x80);
         assert_eq!(ALARM_FLAG, 0x40);
+    }
+
+    #[test]
+    fn counts_minutes_since_2000_across_leap_days() {
+        let at = |year, month, day, hour, minute| RtcDateTime {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            ..RtcDateTime::default()
+        };
+        assert_eq!(at(2000, 1, 1, 0, 0).epoch_minutes(), 0);
+        assert_eq!(at(2000, 3, 1, 0, 1).epoch_minutes(), 60 * 1_440 + 1);
+        assert_eq!(at(2001, 1, 1, 1, 0).epoch_minutes(), 366 * 1_440 + 60);
     }
 
     #[test]

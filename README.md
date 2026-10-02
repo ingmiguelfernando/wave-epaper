@@ -10,7 +10,7 @@ reworked phase by phase as listed below.
 
 - [x] Baseline: upstream v1.2.0 (Wi-Fi) built by GitHub Actions
 - [x] Phase 0: long SD file names, project rename (code cleanup moved to the backlog)
-- [ ] Phase 1: power (light sleep, auto-sleep, Wi-Fi bursts and idle power-down done; Settings › Power next)
+- [x] Phase 1: power (light sleep, auto-sleep, Wi-Fi bursts, idle power-down, Settings › Power)
 - [x] Phase 2: typography (Latin-1 fonts, large EPUBs, pixel-width wrapping, ES/EN hyphenation)
 - [ ] Phase 3: Photos and configurable sleep screens
 - [ ] Phase 4: Weather app

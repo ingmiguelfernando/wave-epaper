@@ -53,7 +53,7 @@ impl SleepReport {
     }
 }
 
-/// Time spent in light sleep since the last wake, shown on Device Info.
+/// Time spent in light sleep since the last wake, shown on Settings › Power.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LightSleepShare {
     pub asleep_seconds: u64,
@@ -80,6 +80,8 @@ pub enum SleepWakeCause {
     PowerKey,
     /// A validated PCF85063 alarm occurred while the sleep image was visible.
     RtcAlarm,
+    /// BOOT or the wheel, when the wake-keys setting allows any key.
+    Button,
 }
 
 impl SleepWakeCause {
@@ -88,6 +90,7 @@ impl SleepWakeCause {
         match self {
             Self::PowerKey => "power-key",
             Self::RtcAlarm => "rtc-alarm",
+            Self::Button => "button",
         }
     }
 }

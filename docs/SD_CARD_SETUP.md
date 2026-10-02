@@ -8,6 +8,8 @@ Use a FAT-formatted SD card. Rustmix Wave mounts it at `/sdcard` and expects the
   WEATHER.TXT
   ALARMS.TXT
   DISPLAY.TXT
+  POWER.TXT
+  BATTERY.TXT
   BOOKS/
   READER/
     CACHE/
@@ -92,14 +94,33 @@ font_family=inter|atkinson-hyperlegible
 font_size=compact|standard|large
 ```
 
-## Sleep images
+## Power
 
-Files below `/RUSTMIX/SLEEP` must be uncompressed monochrome Windows BMP files:
+Settings › Power writes `/RUSTMIX/POWER.TXT`:
 
 ```text
-800 × 480
-1-bpp
+auto_sleep=off|5m|10m|15m|30m|1h
+wake_keys=any|power
 ```
+
+`wake_keys=any` lets BOOT and the wheel wake the device; `power` keeps the
+Power key as the only wake key. The device also keeps a week of battery levels
+in `/RUSTMIX/BATTERY.TXT` for the Power screen chart.
+
+## Sleep images
+
+Put pictures in `/RUSTMIX/SLEEP` (the folder name must be exactly `SLEEP`,
+inside `RUSTMIX`). Each one must be an uncompressed Windows BMP:
+
+```text
+480 × 800 (portrait) or 800 × 480 (landscape)
+1, 4, 8, 24 or 32-bit color
+```
+
+Grey and color pictures are dithered to black and white. Files whose names
+start with `.` are skipped, such as the `._NAME` copies macOS leaves on FAT
+cards. When no picture can be used, the sleep screen shows the reason, for
+example `SLEEP.BMP is 1024 × 768; it must be 480 × 800 or 800 × 480`.
 
 Install bundled samples:
 

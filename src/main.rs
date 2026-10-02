@@ -46,8 +46,8 @@ mod firmware {
         alarm::{AlarmEngine, AlarmSnapshot, AlarmUiOutcome, ALARMS_CONFIG_PATH},
         app::{
             display::{DisplayPreferences, DISPLAY_CONFIG_PATH},
-            render_current_screen, AppState, ScreenRoute, ALARM_POLL_SECONDS, AUTO_SLEEP_SECONDS,
-            IMU_EVENT_SCREEN_REFRESH_SECONDS, MOTION_LIVE_REFRESH_SECONDS,
+            render_current_screen, render_sleep_card, AppState, ScreenRoute, SleepCard,
+            ALARM_POLL_SECONDS, IMU_EVENT_SCREEN_REFRESH_SECONDS, MOTION_LIVE_REFRESH_SECONDS,
             NETWORK_LIVE_REFRESH_SECONDS, NETWORK_LOG_HEARTBEAT_SECONDS, PANEL_IDLE_SLEEP_SECONDS,
             SAMPLE_LIVE_REFRESH_SECONDS, VOICE_RECORD_SCREEN_REFRESH_SECONDS,
         },
@@ -55,6 +55,7 @@ mod firmware {
             espidf::AudioRuntime, AudioSnapshot, AudioUiRequest, AUDIO_MCLK_HZ,
             AUDIO_SAMPLE_RATE_HZ, DEFAULT_AUDIO_VOLUME_PERCENT,
         },
+        battery_log::{BatteryLog, BATTERY_LOG_PATH, SAMPLE_MINUTES},
         board_services::{BoardServices, BoardSnapshot},
         build_info::{FIRMWARE_VERSION, PRODUCT_SLUG, UI_SHELL_MILESTONE},
         buttons::{
@@ -83,6 +84,7 @@ mod firmware {
             PowerKeyEvent, SleepWakeGuard, SleepWakeGuardDecision, POWER_KEY_POLL_MS,
             POWER_KEY_WAKE_GUARD_QUIET_MS,
         },
+        power_settings::{PowerPreferences, WakeKeys, POWER_CONFIG_PATH},
         radio_burst::{RadioBurst, RadioPhase},
         reader::ReaderTickOutcome,
         regional::RegionalPreferences,
@@ -190,6 +192,22 @@ mod firmware {
                     preferences.font_size.marker()
                 );
                 preferences
+            }
+        };
+        let power_preferences = match PowerPreferences::load_from_path(POWER_CONFIG_PATH) {
+            Ok(preferences) => {
+                info!(
+                    "rustmix-wave=power-config status=ready path={POWER_CONFIG_PATH} auto-sleep={} wake-keys={}",
+                    preferences.auto_sleep.marker(),
+                    preferences.wake_keys.marker()
+                );
+                preferences
+            }
+            Err(error) => {
+                warn!(
+                    "rustmix-wave=power-config status=default path={POWER_CONFIG_PATH} error={error:#}"
+                );
+                PowerPreferences::default()
             }
         };
 
@@ -366,6 +384,13 @@ mod firmware {
         let mut panel_refresh = PanelRefreshCoordinator::default();
         sync_panel_refresh_diagnostics(&mut state, &panel_refresh);
         state.display = display_preferences;
+        state.power = power_preferences;
+        if _mounted_sd.is_some() {
+            match BatteryLog::load_from_path(BATTERY_LOG_PATH) {
+                Ok(log) => state.battery_log = log,
+                Err(error) => info!("rustmix-wave=battery-log status=new error={error:#}"),
+            }
+        }
         let reader_persistence = state.reader.load_persistent_state();
         state.reader.refresh_library();
         if _mounted_sd.is_some() {
@@ -417,6 +442,9 @@ mod firmware {
         let mut imu_enabled = true;
         let mut on_usb_power = false;
         let mut last_usb_check: Option<Instant> = None;
+        // Set by a Power-key or button press that ends sleep mode.
+        let mut wake_cause: Option<SleepWakeCause> = None;
+        let mut last_battery_sample: Option<Instant> = None;
         state.update_audio_snapshot(initial_audio_snapshot);
         log_audio_snapshot(&state.audio);
         if let Some(config) = network_config.as_ref() {
@@ -1153,9 +1181,10 @@ mod firmware {
                 }
             }
 
+            let auto_sleep = state.power.auto_sleep.delay();
             let auto_sleep_due = power_key_available
                 && !sleep_mode.is_sleeping()
-                && last_activity.elapsed() >= Duration::from_secs(AUTO_SLEEP_SECONDS)
+                && auto_sleep.is_some_and(|delay| last_activity.elapsed() >= delay)
                 && state.alarms.active.is_none()
                 && voice_recording.is_none()
                 && voice_playback.is_none()
@@ -1165,7 +1194,10 @@ mod firmware {
             if auto_sleep_due || power_key_poll_due {
                 // Idle auto-sleep takes the same path as holding the Power key.
                 let event = if auto_sleep_due {
-                    info!("rustmix-wave=auto-sleep idle-seconds={AUTO_SLEEP_SECONDS}");
+                    info!(
+                        "rustmix-wave=auto-sleep idle={}",
+                        state.power.auto_sleep.marker()
+                    );
                     Ok(Some(PowerKeyEvent::LongPress))
                 } else {
                     board_services.take_power_key_event()
@@ -1189,26 +1221,7 @@ mod firmware {
                                 last_power_key_poll = Instant::now();
                                 continue;
                             }
-                            sleep_wake_guard.reset_after_wake();
-                            sleep_wake_guard_started_at = None;
-                            end_sleep(&mut board_services, &mut state, &mut sleep_started);
-                            light_sleep_clock = (Instant::now(), Duration::ZERO);
-                            let restore_route = sleep_mode.exit(SleepWakeCause::PowerKey);
-                            panel.initialize()?;
-                            state.panel_awake = true;
-                            state.router.navigate_to(restore_route);
-                            render_current_screen(&mut frame, &state)?;
-                            panel.show_base(frame.as_bytes())?;
-                            panel_refresh.reset_after_external_global(PanelGlobalReason::AfterWake);
-                            sync_panel_refresh_diagnostics(&mut state, &panel_refresh);
-                            info!("rustmix-wave=panel-refresh plan=global-base reason=after-wake transport=global-base");
-                            info!(
-                                "rustmix-wave=sleep-mode-exit cause=power-key restore-route={}",
-                                restore_route.marker()
-                            );
-                            info!("rustmix-wave=wake-global-refresh reason=power-key-sleep-image");
-                            last_activity = Instant::now();
-                            last_status_refresh = Instant::now();
+                            wake_cause = Some(SleepWakeCause::PowerKey);
                         } else if event == PowerKeyEvent::ShortPress {
                             if state.alarms.active.is_some() {
                                 warn!(
@@ -1294,7 +1307,20 @@ mod firmware {
                                 state.panel_awake = true;
                             }
                             let restore_route = state.power_key_sleep_restore_route();
-                            frame = selection.frame;
+                            let battery = board_services.read_power().ok();
+                            if let Some(note) = selection.note.as_deref() {
+                                // No usable SD picture: say why instead.
+                                let battery_percent =
+                                    battery.and_then(|power| power.battery_percent);
+                                let card = SleepCard {
+                                    note,
+                                    battery_percent,
+                                    wake_hint: state.power.wake_keys.wake_hint(),
+                                };
+                                render_sleep_card(&mut frame, state.display, &card)?;
+                            } else {
+                                frame = selection.frame;
+                            }
                             panel.show_base(frame.as_bytes())?;
                             panel_refresh
                                 .reset_after_external_global(PanelGlobalReason::SleepImage);
@@ -1308,7 +1334,9 @@ mod firmware {
                             );
                             panel.sleep()?;
                             state.panel_awake = false;
-                            let battery = board_services.read_power().ok();
+                            if _mounted_sd.is_some() && state.battery_log.has_unsaved() {
+                                save_battery_log(&mut state.battery_log);
+                            }
                             sleep_started = Some((Instant::now(), battery));
                             info!(
                                 "rustmix-wave=light-sleep-share asleep-seconds={} awake-seconds={}",
@@ -1328,6 +1356,29 @@ mod firmware {
                     }
                 }
                 last_power_key_poll = Instant::now();
+            }
+
+            if let Some(cause) = wake_cause.take() {
+                sleep_wake_guard.reset_after_wake();
+                sleep_wake_guard_started_at = None;
+                end_sleep(&mut board_services, &mut state, &mut sleep_started);
+                light_sleep_clock = (Instant::now(), Duration::ZERO);
+                let restore_route = sleep_mode.exit(cause);
+                panel.initialize()?;
+                state.panel_awake = true;
+                state.router.navigate_to(restore_route);
+                render_current_screen(&mut frame, &state)?;
+                panel.show_base(frame.as_bytes())?;
+                panel_refresh.reset_after_external_global(PanelGlobalReason::AfterWake);
+                sync_panel_refresh_diagnostics(&mut state, &panel_refresh);
+                info!("rustmix-wave=panel-refresh plan=global-base reason=after-wake transport=global-base");
+                info!(
+                    "rustmix-wave=sleep-mode-exit cause={} restore-route={}",
+                    cause.marker(),
+                    restore_route.marker()
+                );
+                last_activity = Instant::now();
+                last_status_refresh = Instant::now();
             }
 
             if !sleep_mode.is_sleeping() {
@@ -1570,9 +1621,7 @@ mod firmware {
                         "rustmix-wave=boot-button event=long-press action=back hold-ms={BOOT_BACK_LONG_PRESS_MS}"
                     );
                     if sleep_mode.is_sleeping() {
-                        info!(
-                            "rustmix-wave=sleep-mode-input-suppressed event=boot-long-press-back"
-                        );
+                        wake_cause = button_wake(state.power, "boot-long-press");
                         FreeRtos::delay_ms(20);
                         continue;
                     }
@@ -1638,7 +1687,7 @@ mod firmware {
                         "rustmix-wave=boot-button event=short-press action=contextual-navigation"
                     );
                     if sleep_mode.is_sleeping() {
-                        info!("rustmix-wave=sleep-mode-input-suppressed event=boot-short-press-contextual-navigation");
+                        wake_cause = button_wake(state.power, "boot-short-press");
                         FreeRtos::delay_ms(20);
                         continue;
                     }
@@ -1788,7 +1837,7 @@ mod firmware {
             if let Some(event) = buttons.poll(&mut button_delay)? {
                 info!("rustmix-wave=button-event event={event:?}");
                 if sleep_mode.is_sleeping() {
-                    info!("rustmix-wave=sleep-mode-input-suppressed event={event:?}");
+                    wake_cause = button_wake(state.power, "wheel");
                     FreeRtos::delay_ms(20);
                     continue;
                 }
@@ -1804,6 +1853,7 @@ mod firmware {
                 log_board_snapshot(state.board, state.regional);
                 let previous_route = state.active_route();
                 let previous_display = state.display;
+                let previous_power = state.power;
                 if previous_route == ScreenRoute::Files {
                     apply_storage_event(&mut storage_browser, &mut state, event);
                 } else if previous_route == ScreenRoute::Alarms {
@@ -1882,6 +1932,17 @@ mod firmware {
                         state.display.font_size.marker()
                     );
                 }
+                if state.power != previous_power {
+                    match state.power.save_to_path(POWER_CONFIG_PATH) {
+                        Ok(()) => info!("rustmix-wave=power-config-write status=saved"),
+                        Err(error) => warn!("rustmix-wave=power-config-write error={error:#}"),
+                    }
+                    info!(
+                        "rustmix-wave=power-settings-updated auto-sleep={} wake-keys={}",
+                        state.power.auto_sleep.marker(),
+                        state.power.wake_keys.marker()
+                    );
+                }
                 if state.active_route() != previous_route {
                     info!(
                         "rustmix-wave=screen-route route={}",
@@ -1908,6 +1969,11 @@ mod firmware {
                 last_status_refresh = Instant::now();
             }
 
+            if last_battery_sample.map_or(true, |at| at.elapsed() >= BATTERY_SAMPLE_INTERVAL) {
+                record_battery_sample(&mut board_services, &mut state, _mounted_sd.is_some());
+                last_battery_sample = Some(Instant::now());
+            }
+
             // While awake, light-sleep between presses until the next timed job.
             // On USB power stay awake so flashing and the serial console work.
             let reader_open = matches!(
@@ -1931,8 +1997,11 @@ mod firmware {
                 last_usb_check = Some(Instant::now());
             }
             let slept = if sleep_mode.is_sleeping() {
-                sleep_wake_guard.is_armed()
-                    && light_sleep_until_wake(&SLEEP_WAKE_GPIOS, LIGHT_SLEEP_MAX)
+                let lines = match state.power.wake_keys {
+                    WakeKeys::AnyKey => &AWAKE_WAKE_GPIOS[..],
+                    WakeKeys::PowerKey => &SLEEP_WAKE_GPIOS[..],
+                };
+                sleep_wake_guard.is_armed() && light_sleep_until_wake(lines, LIGHT_SLEEP_MAX)
             } else if idle && !on_usb_power {
                 let now = Instant::now();
                 let weather_due =
@@ -1946,7 +2015,9 @@ mod firmware {
                     state
                         .panel_awake
                         .then(|| time_left(last_activity, PANEL_IDLE_SLEEP_SECONDS)),
-                    power_key_available.then(|| time_left(last_activity, AUTO_SLEEP_SECONDS)),
+                    auto_sleep
+                        .filter(|_| power_key_available)
+                        .map(|delay| delay.saturating_sub(last_activity.elapsed())),
                     live_status.then(|| time_left(last_status_refresh, live_refresh_seconds)),
                     alarm_polling.then(|| time_left(last_alarm_poll, ALARM_POLL_SECONDS)),
                     network_runtime.has_radio().then_some(burst_due),
@@ -1989,9 +2060,51 @@ mod firmware {
     /// Grace after the last press before the idle loop light-sleeps.
     const IDLE_LIGHT_SLEEP_DELAY: Duration = Duration::from_millis(300);
     const USB_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+    const BATTERY_SAMPLE_INTERVAL: Duration = Duration::from_secs(SAMPLE_MINUTES as u64 * 60);
 
     fn time_left(since: Instant, period_seconds: u64) -> Duration {
         Duration::from_secs(period_seconds).saturating_sub(since.elapsed())
+    }
+
+    /// While asleep, BOOT and the wheel end sleep only when the wake-keys
+    /// setting allows any key.
+    fn button_wake(power: PowerPreferences, source: &str) -> Option<SleepWakeCause> {
+        if power.wake_keys == WakeKeys::AnyKey {
+            Some(SleepWakeCause::Button)
+        } else {
+            info!("rustmix-wave=sleep-mode-input-suppressed source={source}");
+            None
+        }
+    }
+
+    /// Add a battery reading to the history, saving it in batches.
+    fn record_battery_sample<I2C>(
+        board_services: &mut BoardServices<I2C>,
+        state: &mut AppState,
+        mounted: bool,
+    ) where
+        I2C: embedded_hal::i2c::I2c,
+        I2C::Error: core::fmt::Debug,
+    {
+        let (Ok(power), Ok(now)) = (board_services.read_power(), board_services.read_rtc()) else {
+            return;
+        };
+        let Some(percent) = power.battery_percent else {
+            return;
+        };
+        if state.battery_log.record(now.epoch_minutes(), percent)
+            && mounted
+            && state.battery_log.needs_save()
+        {
+            save_battery_log(&mut state.battery_log);
+        }
+    }
+
+    fn save_battery_log(log: &mut BatteryLog) {
+        match log.save_to_path(BATTERY_LOG_PATH) {
+            Ok(()) => info!("rustmix-wave=battery-log status=saved path={BATTERY_LOG_PATH}"),
+            Err(error) => warn!("rustmix-wave=battery-log status=save-failed error={error:#}"),
+        }
     }
 
     /// When the next weather refresh falls due, if weather is configured.
@@ -2945,14 +3058,15 @@ mod firmware {
         let error = selection.scan_error.as_deref().unwrap_or("none");
         if selection.fallback {
             warn!(
-                "rustmix-wave=sleep-image-fallback source=built-in path={SLEEP_IMAGE_DIRECTORY} raw={} candidates={} metadata-fallbacks={} ignored={} valid={} rejected={} error={}",
+                "rustmix-wave=sleep-image-fallback source=sleep-card path={SLEEP_IMAGE_DIRECTORY} raw={} candidates={} metadata-fallbacks={} ignored={} valid={} rejected={} error={} note={}",
                 selection.raw_entries,
                 selection.candidate_entries,
                 selection.metadata_fallbacks,
                 selection.ignored_entries,
                 selection.valid_count,
                 selection.rejected_count,
-                error
+                error,
+                selection.note.as_deref().unwrap_or("none")
             );
         } else {
             info!(
@@ -2966,7 +3080,7 @@ mod firmware {
                 error
             );
             info!(
-                "rustmix-wave=sleep-image-selected file={} width=800 height=480 bpp=1 payload-bytes=48000",
+                "rustmix-wave=sleep-image-selected file={}",
                 selection.file_name
             );
             if let Some(choice) = selection.choice {
