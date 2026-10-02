@@ -27,6 +27,8 @@ pub use state::AppState;
 
 /// Idle interval before the panel controller and ALDO3 rail enter sleep.
 pub const PANEL_IDLE_SLEEP_SECONDS: u64 = 60;
+/// Idle interval before the device shows the sleep image and light-sleeps.
+pub const AUTO_SLEEP_SECONDS: u64 = 10 * 60;
 /// Detail-screen status cadence inherited from the sample-app clock use case.
 pub const SAMPLE_LIVE_REFRESH_SECONDS: u64 = 30;
 /// Motion diagnostics refresh at a slower e-paper-safe cadence.

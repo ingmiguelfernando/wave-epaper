@@ -184,6 +184,20 @@ where
         Ok(decode_motion_frame(frame, status0))
     }
 
+    /// Start or stop the accelerometer and gyroscope. Stopped, the QMI8658
+    /// draws microamps instead of about a milliamp.
+    pub fn set_sensors_enabled(&mut self, enabled: bool) -> Result<()> {
+        let address = self
+            .address
+            .ok_or_else(|| anyhow!("QMI8658 power change requested before initialization"))?;
+        let value = if enabled {
+            SAMPLE_CTRL7_ACC_GYR_ENABLE
+        } else {
+            0
+        };
+        self.write_register(address, CTRL7, value)
+    }
+
     fn probe_address(&mut self) -> Result<u8> {
         for address in [QMI8658_ADDRESS_LOW, QMI8658_ADDRESS_HIGH] {
             let mut who_am_i = [0_u8; 1];

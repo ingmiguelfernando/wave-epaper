@@ -15,6 +15,7 @@ use crate::{
     power_key_menu::{PowerKeyMenuOutcome, PowerKeyMenuUiState},
     reader::{ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
     regional::RegionalPreferences,
+    sleep_mode::SleepReport,
     storage::StorageSnapshot,
     unit_converter::UnitConverterUiState,
     voice_notes::{VoiceNotesUiRequest, VoiceNotesUiState},
@@ -87,6 +88,8 @@ pub struct AppState {
     power_key_menu_return_route: ScreenRoute,
     power_key_manual_refresh_requested: bool,
     weather_refresh_requested: bool,
+    /// Battery use across the most recent sleep, for Device Info.
+    pub last_sleep: Option<SleepReport>,
 }
 
 impl Default for AppState {
@@ -124,6 +127,7 @@ impl Default for AppState {
             power_key_menu_return_route: ScreenRoute::Home,
             power_key_manual_refresh_requested: false,
             weather_refresh_requested: false,
+            last_sleep: None,
         }
     }
 }

@@ -46,7 +46,7 @@ mod firmware {
         alarm::{AlarmEngine, AlarmSnapshot, AlarmUiOutcome, ALARMS_CONFIG_PATH},
         app::{
             display::{DisplayPreferences, DISPLAY_CONFIG_PATH},
-            render_current_screen, AppState, ScreenRoute, ALARM_POLL_SECONDS,
+            render_current_screen, AppState, ScreenRoute, ALARM_POLL_SECONDS, AUTO_SLEEP_SECONDS,
             IMU_EVENT_SCREEN_REFRESH_SECONDS, MOTION_LIVE_REFRESH_SECONDS,
             NETWORK_LIVE_REFRESH_SECONDS, NETWORK_LOG_HEARTBEAT_SECONDS, PANEL_IDLE_SLEEP_SECONDS,
             SAMPLE_LIVE_REFRESH_SECONDS, VOICE_RECORD_SCREEN_REFRESH_SECONDS,
@@ -78,7 +78,7 @@ mod firmware {
             PanelGlobalReason, PanelRefreshCoordinator, PanelRefreshPlan, PanelRefreshRequest,
             PANEL_PARTIAL_REFRESH_LIMIT,
         },
-        power::Axp2101,
+        power::{Axp2101, PowerSnapshot},
         power_key::{
             PowerKeyEvent, SleepWakeGuard, SleepWakeGuardDecision, POWER_KEY_POLL_MS,
             POWER_KEY_WAKE_GUARD_QUIET_MS,
@@ -90,7 +90,7 @@ mod firmware {
         runtime_memory::log_runtime_memory,
         shared_i2c::SharedI2cBus,
         sleep_images::{SleepImageCatalog, SleepImageSelection, SLEEP_IMAGE_DIRECTORY},
-        sleep_mode::{SleepModeState, SleepWakeCause},
+        sleep_mode::{SleepModeState, SleepReport, SleepWakeCause},
         sleep_network::SleepNetworkState,
         storage::{
             StorageBrowser, StorageSnapshot, StorageUiOutcome, SDMMC_COMMAND_TIMEOUT_MS,
@@ -342,13 +342,15 @@ mod firmware {
             "rustmix-wave=boot-button-back status=ready gpio=0 active-low=true short-press=contextual-navigation hold-ms={BOOT_BACK_LONG_PRESS_MS}"
         );
         // The uploaded BSP routes the PCF85063 active-low alarm output to
-        // GPIO45. Validate that board-level line before introducing MCU
-        // deep-sleep entry in the following isolated power milestone.
+        // GPIO45; the line also wakes the chip from light sleep.
         let mut rtc_alarm_interrupt =
             RtcAlarmInterruptMonitor::new(PinDriver::input(peripherals.pins.gpio45, Pull::Up)?);
         info!(
             "rustmix-wave=rtc-alarm-int status=ready gpio={RTC_ALARM_INTERRUPT_GPIO} active-low=true wake-policy=active-loop-readiness"
         );
+        // The AXP2101 interrupt line is open-drain and active-low; it wakes light
+        // sleep on a Power-key press. The driver keeps the pull-up configured.
+        let _pmic_irq = PinDriver::input(peripherals.pins.gpio38, Pull::Up)?;
         let mut button_delay = FreeRtosDelay;
         let mut service_delay = FreeRtosDelay;
         let mut frame = FrameBuffer::new_white();
@@ -404,6 +406,7 @@ mod firmware {
         let mut sleep_wake_guard = SleepWakeGuard::default();
         let mut sleep_wake_guard_started_at: Option<Instant> = None;
         let mut sleep_network = SleepNetworkState::default();
+        let mut sleep_started: Option<(Instant, Option<PowerSnapshot>)> = None;
         state.update_audio_snapshot(initial_audio_snapshot);
         log_audio_snapshot(&state.audio);
         if let Some(config) = network_config.as_ref() {
@@ -559,12 +562,12 @@ mod firmware {
             "rustmix-wave=wifi-monitor-log-quieting-ready policy=state-change-or-heartbeat heartbeat-seconds={NETWORK_LOG_HEARTBEAT_SECONDS} rssi-immediate=false"
         );
         info!("rustmix-wave=rtc-alarm-int-readiness-ready gpio={RTC_ALARM_INTERRUPT_GPIO} active-low=true");
-        info!("rustmix-wave=power-key-sleep-image-mode-ready path={SLEEP_IMAGE_DIRECTORY} format=native-800x480-1bpp-bmp mcu-sleep=false");
+        info!("rustmix-wave=power-key-sleep-image-mode-ready path={SLEEP_IMAGE_DIRECTORY} format=native-800x480-1bpp-bmp mcu-sleep=light");
         info!("rustmix-wave=power-key-short-menu-long-sleep-ready short-press=display-maintenance-menu long-press=sleep-image wake=power-key menu-action=manual-global-refresh");
         info!("rustmix-wave=release-flash-workflow-safety-ready docs=consolidated workflow=ci release-artifact=elf supported-flash=espflash-flash factory-image=deferred");
         info!("rustmix-wave=text-editor-layout-alignment-ready voice-title-editor=shared-grid-keyboard calendar-editor-status=compact-date keyboard=boot-hv-axis footer=width-safe");
         info!("rustmix-wave=sleep-image-directory-classification-fix-ready policy=fat-metadata-fallback");
-        info!("rustmix-wave=network-suspended-sleep-image-mode-ready wifi=stop-on-sleep sntp=paused weather=paused mcu-sleep=false");
+        info!("rustmix-wave=network-suspended-sleep-image-mode-ready wifi=stop-on-sleep sntp=paused weather=paused mcu-sleep=light");
         info!("rustmix-wave=random-sleep-image-selection-ready source=esp-random policy=avoid-immediate-repeat-when-multiple");
         info!("rustmix-wave=main-category-navigation-ready categories=5");
         info!("rustmix-wave=reader-category-ready entries=3");
@@ -984,6 +987,7 @@ mod firmware {
                                 let _ = sleep_mode.exit(SleepWakeCause::RtcAlarm);
                                 sleep_wake_guard.reset_after_wake();
                                 sleep_wake_guard_started_at = None;
+                                end_sleep(&mut board_services, &mut state, &mut sleep_started);
                                 info!("rustmix-wave=sleep-mode-exit cause=rtc-alarm restore-route=alarms");
                             }
                             if woke_from_sleep {
@@ -1045,10 +1049,24 @@ mod firmware {
                 }
             }
 
-            if power_key_available
-                && last_power_key_poll.elapsed() >= Duration::from_millis(POWER_KEY_POLL_MS)
-            {
-                match board_services.take_power_key_event() {
+            let auto_sleep_due = power_key_available
+                && !sleep_mode.is_sleeping()
+                && last_activity.elapsed() >= Duration::from_secs(AUTO_SLEEP_SECONDS)
+                && state.alarms.active.is_none()
+                && voice_recording.is_none()
+                && voice_playback.is_none()
+                && wifi_transfer_server.is_none();
+            let power_key_poll_due = power_key_available
+                && last_power_key_poll.elapsed() >= Duration::from_millis(POWER_KEY_POLL_MS);
+            if auto_sleep_due || power_key_poll_due {
+                // Idle auto-sleep takes the same path as holding the Power key.
+                let event = if auto_sleep_due {
+                    info!("rustmix-wave=auto-sleep idle-seconds={AUTO_SLEEP_SECONDS}");
+                    Ok(Some(PowerKeyEvent::LongPress))
+                } else {
+                    board_services.take_power_key_event()
+                };
+                match event {
                     Ok(Some(event)) => {
                         info!(
                             "rustmix-wave=power-key event={} source=axp2101-pek",
@@ -1069,6 +1087,7 @@ mod firmware {
                             }
                             sleep_wake_guard.reset_after_wake();
                             sleep_wake_guard_started_at = None;
+                            end_sleep(&mut board_services, &mut state, &mut sleep_started);
                             let restore_route = sleep_mode.exit(SleepWakeCause::PowerKey);
                             panel.initialize()?;
                             state.panel_awake = true;
@@ -1193,8 +1212,15 @@ mod firmware {
                             );
                             panel.sleep()?;
                             state.panel_awake = false;
+                            if let Err(error) = board_services.set_imu_enabled(false) {
+                                warn!(
+                                    "rustmix-wave=imu-power status=failed enabled=false error={error:#}"
+                                );
+                            }
+                            let battery = board_services.read_power().ok();
+                            sleep_started = Some((Instant::now(), battery));
                             info!(
-                                "rustmix-wave=sleep-mode-enter image={} restore-route={} display=global-refresh panel=deep-sleep aldo3=off wifi=off network-services=paused mcu-sleep=false",
+                                "rustmix-wave=sleep-mode-enter image={} restore-route={} display=global-refresh panel=deep-sleep aldo3=off wifi=off network-services=paused mcu-sleep=light",
                                 selection.file_name,
                                 restore_route.marker()
                             );
@@ -1769,8 +1795,81 @@ mod firmware {
                 last_status_refresh = Instant::now();
             }
 
-            FreeRtos::delay_ms(20);
+            let asleep = sleep_mode.is_sleeping() && sleep_wake_guard.is_armed();
+            if !(asleep && light_sleep_until_wake()) {
+                FreeRtos::delay_ms(20);
+            }
         }
+    }
+
+    /// AXP2101 interrupt line; low while a Power-key event is latched.
+    const PMIC_IRQ_GPIO: i32 = 38;
+    /// Light sleep also ends this often, so a missed wake line only delays a wake.
+    const LIGHT_SLEEP_TIMER_US: u64 = 60_000_000;
+
+    /// Light-sleep until the Power key or an RTC alarm pulls its line low, or the
+    /// fallback timer fires; the event loop then handles the event as before.
+    /// Returns false without sleeping when a line is already low.
+    fn light_sleep_until_wake() -> bool {
+        // The BLE remote build keeps the radio running for its connection.
+        if cfg!(feature = "rustmix-remote-ble") {
+            return false;
+        }
+        let lines = [PMIC_IRQ_GPIO, i32::from(RTC_ALARM_INTERRUPT_GPIO)];
+        let line_low = |gpio| unsafe { sys::gpio_get_level(gpio) } == 0;
+        if lines.into_iter().any(line_low) {
+            return false;
+        }
+        let result = unsafe {
+            for gpio in lines {
+                sys::gpio_wakeup_enable(gpio, sys::gpio_int_type_t_GPIO_INTR_LOW_LEVEL);
+            }
+            sys::esp_sleep_enable_gpio_wakeup();
+            sys::esp_sleep_enable_timer_wakeup(LIGHT_SLEEP_TIMER_US);
+            let result = sys::esp_light_sleep_start();
+            sys::esp_sleep_disable_wakeup_source(sys::esp_sleep_source_t_ESP_SLEEP_WAKEUP_ALL);
+            for gpio in lines {
+                sys::gpio_wakeup_disable(gpio);
+            }
+            result
+        };
+        if let Err(error) = sys::EspError::convert(result) {
+            warn!("rustmix-wave=light-sleep status=failed error={error}");
+            return false;
+        }
+        true
+    }
+
+    /// Restart the IMU stopped for sleep and report the battery used asleep.
+    fn end_sleep<I2C>(
+        board_services: &mut BoardServices<I2C>,
+        state: &mut AppState,
+        sleep_started: &mut Option<(Instant, Option<PowerSnapshot>)>,
+    ) where
+        I2C: embedded_hal::i2c::I2c,
+        I2C::Error: core::fmt::Debug,
+    {
+        if let Err(error) = board_services.set_imu_enabled(true) {
+            warn!("rustmix-wave=imu-power status=failed enabled=true error={error:#}");
+        }
+        let Some((started_at, before)) = sleep_started.take() else {
+            return;
+        };
+        let after = board_services.read_power().ok();
+        let report = SleepReport {
+            seconds: started_at.elapsed().as_secs(),
+            battery_before: before.and_then(|power| power.battery_percent),
+            battery_after: after.and_then(|power| power.battery_percent),
+        };
+        info!(
+            "rustmix-wave=sleep-energy seconds={} battery-percent={:?}->{:?} battery-mv={:?}->{:?}",
+            report.seconds,
+            report.battery_before,
+            report.battery_after,
+            before.and_then(|power| power.battery_voltage_mv),
+            after.and_then(|power| power.battery_voltage_mv)
+        );
+        state.last_sleep = Some(report);
     }
 
     fn apply_calendar_ui_request(state: &mut AppState, mounted: bool) {

@@ -206,6 +206,19 @@ where
         self.imu.read_motion()
     }
 
+    /// Stop the IMU sensors while the device sleeps and restart them on wake.
+    pub fn set_imu_enabled(&mut self, enabled: bool) -> anyhow::Result<()> {
+        if !self.init_report.imu_available {
+            return Ok(());
+        }
+        self.imu.set_sensors_enabled(enabled)
+    }
+
+    /// Battery and USB state alone, for the sleep battery report.
+    pub fn read_power(&mut self) -> anyhow::Result<PowerSnapshot> {
+        self.power.read_power_snapshot()
+    }
+
     /// Capture a best-effort status snapshot. Each optional field remains
     /// independent so one absent sensor cannot blank unrelated status values.
     pub fn read_snapshot<D: DelayNs>(&mut self, delay: &mut D) -> BoardSnapshot {

@@ -144,6 +144,10 @@ pub fn render_device_info_runtime(
         state.regional.temperature_unit.marker(),
         body,
     )?;
+    let last_sleep = state
+        .last_sleep
+        .map_or_else(|| "None yet".into(), |report| report.label());
+    line(display, 412, "Last sleep", &last_sleep, body)?;
 
     Text::new("Stable ownership", Point::new(22, 450), heading).draw(display)?;
     line(display, 498, "EPD busy", "GPIO3 / ALDO3 managed", body)?;

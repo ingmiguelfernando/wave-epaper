@@ -81,6 +81,12 @@ impl SleepWakeGuard {
     pub const fn suppressed_events(&self) -> u32 {
         self.suppressed_events
     }
+
+    /// True once the quiet window has passed and a Power press would wake.
+    #[must_use]
+    pub const fn is_armed(&self) -> bool {
+        self.armed
+    }
 }
 
 /// Product-facing physical Power-key events.
@@ -161,6 +167,7 @@ mod tests {
         assert_eq!(guard.suppressed_events(), 1);
         assert!(!guard.arm_after_quiet_window(899));
         assert!(guard.arm_after_quiet_window(900));
+        assert!(guard.is_armed());
         assert_eq!(guard.on_power_press(901), SleepWakeGuardDecision::AllowWake);
     }
 

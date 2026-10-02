@@ -1,11 +1,37 @@
 //! Hardware-independent power-key sleep-image mode state.
 //!
-//! MCU deep sleep is intentionally out of scope. The ESP32-S3 event loop stays
-//! active so PMIC power-key polling and the proven GPIO45 RTC alarm route remain
-//! reliable. Optional Wi-Fi, SNTP and weather services pause while a static
-//! sleep image is visible and resume after the wake frame has rendered.
+//! While the sleep image is visible the ESP32-S3 light-sleeps between events:
+//! the Power key and the GPIO45 RTC alarm line wake it, and the event loop then
+//! handles the wake exactly as before. Optional Wi-Fi, SNTP and weather
+//! services pause while a static sleep image is visible and resume after the
+//! wake frame has rendered.
 
 use crate::app::ScreenRoute;
+
+/// Battery use across one sleep, shown on the Device Info screen.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SleepReport {
+    pub seconds: u64,
+    pub battery_before: Option<u8>,
+    pub battery_after: Option<u8>,
+}
+
+impl SleepReport {
+    /// For example `7h 32m · 82% to 80%`.
+    #[must_use]
+    pub fn label(&self) -> String {
+        let minutes = self.seconds / 60;
+        let duration = if minutes >= 60 {
+            format!("{}h {}m", minutes / 60, minutes % 60)
+        } else {
+            format!("{minutes}m")
+        };
+        match (self.battery_before, self.battery_after) {
+            (Some(before), Some(after)) => format!("{duration} · {before}% to {after}%"),
+            _ => duration,
+        }
+    }
+}
 
 /// Why a sleeping display returned to the product UI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,8 +111,24 @@ impl SleepModeState {
 
 #[cfg(test)]
 mod tests {
-    use super::{SleepModeState, SleepWakeCause};
+    use super::{SleepModeState, SleepReport, SleepWakeCause};
     use crate::app::ScreenRoute;
+
+    #[test]
+    fn sleep_report_shows_duration_and_battery_change() {
+        let report = SleepReport {
+            seconds: 7 * 3600 + 32 * 60 + 59,
+            battery_before: Some(82),
+            battery_after: Some(80),
+        };
+        assert_eq!(report.label(), "7h 32m · 82% to 80%");
+        let short = SleepReport {
+            seconds: 300,
+            battery_before: None,
+            battery_after: Some(80),
+        };
+        assert_eq!(short.label(), "5m");
+    }
 
     #[test]
     fn sleep_mode_remembers_route_and_selected_image() {

@@ -3,22 +3,28 @@
 Custom firmware for the [Waveshare ESP32-S3-ePaper-3.97](https://docs.waveshare.com/ESP32-S3-ePaper-3.97)
 board (800 × 480 e-paper, buttons only), written in Rust on top of ESP-IDF.
 
-This project is a fork of [Rustmix Wave](https://github.com/aimindseye/rustmix-wave) (MIT).
-The current code is the unmodified upstream **v1.2.0 Wi-Fi** release. It is the baseline that
-proves the build pipeline before the new features land.
+This project is a fork of [Rustmix Wave](https://github.com/aimindseye/rustmix-wave) (MIT),
+reworked phase by phase as listed below.
 
 ## Roadmap
 
 - [x] Baseline: upstream v1.2.0 (Wi-Fi) built by GitHub Actions
-- [ ] Phase 0: cleanup, long SD file names, project rename
-- [ ] Phase 1: power (deep sleep, button interrupts, short Wi-Fi bursts)
-- [ ] Phase 2: typography (Latin-1 fonts, pixel-width wrapping, ES/EN hyphenation)
+- [x] Phase 0: long SD file names, project rename (code cleanup moved to the backlog)
+- [ ] Phase 1: power (light sleep, auto-sleep, button interrupts, short Wi-Fi bursts)
+- [x] Phase 2: typography (Latin-1 fonts, large EPUBs, pixel-width wrapping, ES/EN hyphenation)
 - [ ] Phase 3: Photos and configurable sleep screens
 - [ ] Phase 4: Weather app
 - [ ] Phase 5: Bible reader and Reading Stats
 - [ ] Phase 6: Games (Sudoku, Tetris)
 - [ ] Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi)
 - [ ] Phase 8: OTA updates
+
+### Backlog
+
+Unscheduled improvements:
+
+- Reading Preferences: pick a font size or font from a list instead of cycling through the values.
+- Remove inherited code Wave no longer uses (tilt games, BLE remote).
 
 ## Get the firmware
 

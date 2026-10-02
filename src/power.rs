@@ -23,8 +23,12 @@ const BAT_DET_CTRL: u8 = 0x68;
 const LDO_ONOFF_CTRL0: u8 = 0x90;
 const LDO_VOL2_CTRL: u8 = 0x94;
 const BAT_PERCENT_DATA: u8 = 0xA4;
+const INTEN1: u8 = 0x40;
 const INTEN2: u8 = 0x41;
+const INTEN3: u8 = 0x42;
+const INTSTS1: u8 = 0x48;
 const INTSTS2: u8 = 0x49;
+const INTSTS3: u8 = 0x4A;
 const ALDO3_ENABLE_BIT: u8 = 1 << 2;
 const ALDO3_MIN_MV: u16 = 500;
 const ALDO3_MAX_MV: u16 = 3500;
@@ -114,11 +118,18 @@ where
     }
 
     /// Enable AXP2101 short- and long-press Power-key reporting and clear any
-    /// stale key status before the event loop starts.
+    /// stale status before the event loop starts. Every other interrupt is
+    /// disabled: the PMIC interrupt line wakes the chip from light sleep, so
+    /// USB or battery events would wake it too.
     pub fn initialize_power_key_events(&mut self) -> Result<()> {
         self.verify_present()?;
-        self.update_bits(INTEN2, POWER_KEY_EVENT_MASK, true)?;
-        self.write_register(INTSTS2, POWER_KEY_EVENT_MASK)
+        self.write_register(INTEN1, 0)?;
+        self.write_register(INTEN2, POWER_KEY_EVENT_MASK)?;
+        self.write_register(INTEN3, 0)?;
+        for status in [INTSTS1, INTSTS2, INTSTS3] {
+            self.write_register(status, 0xFF)?;
+        }
+        Ok(())
     }
 
     /// Read and clear one latched AXP2101 Power-key event. Long press takes
