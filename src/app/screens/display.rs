@@ -16,11 +16,20 @@ use crate::{
         widgets::{
             footer::draw_footer,
             header::draw_header,
+            option_list::draw_option_list,
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
 };
+
+/// Row names of the two Display settings.
+fn action_label(action: usize) -> &'static str {
+    match action {
+        0 => "UI font",
+        _ => "UI size",
+    }
+}
 
 pub fn render_display(
     display: &mut OrientedFrameBuffer<'_>,
@@ -40,12 +49,24 @@ pub fn render_display(
             right: prefs.persistence_label(),
         },
     )?;
+    if let Some(highlighted) = state.display_picker {
+        let action = state.display_action_selected;
+        let (options, current) = prefs.options(action);
+        Text::new(action_label(action), Point::new(22, 160), heading).draw(display)?;
+        draw_option_list(display, state.display, 184, &options, current, highlighted)?;
+        draw_footer(
+            display,
+            state.display,
+            "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
+        )?;
+        return Ok(());
+    }
     Text::new("Display preferences", Point::new(22, 160), heading).draw(display)?;
 
     draw_setting_row(
         display,
         202,
-        "UI font",
+        action_label(0),
         prefs.font_family.compact_label(),
         state.display_action_selected == 0,
         body,
@@ -53,7 +74,7 @@ pub fn render_display(
     draw_setting_row(
         display,
         292,
-        "UI size",
+        action_label(1),
         prefs.font_size.label(),
         state.display_action_selected == 1,
         body,
@@ -105,4 +126,51 @@ fn draw_setting_row(
     Text::new(label, Point::new(68, top + 43), style).draw(display)?;
     Text::new(value, Point::new(258, top + 43), style).draw(display)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        app::{
+            display::{DisplayPreferences, UiFontFamily},
+            render_current_screen, AppState, ScreenRoute,
+        },
+        buttons::ButtonEvent,
+        framebuffer::FrameBuffer,
+    };
+
+    #[test]
+    fn picker_wraps_and_applies_the_highlighted_choice() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Display);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.display_picker, Some(0));
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        state.apply(ButtonEvent::Up);
+        assert_eq!(state.display_picker, Some(1));
+        state.apply(ButtonEvent::Select);
+        assert_eq!(
+            state.display.font_family,
+            UiFontFamily::AtkinsonHyperlegible
+        );
+        assert_eq!(state.display_picker, None);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+    }
+
+    #[test]
+    fn back_closes_the_picker_before_leaving_the_screen() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Display);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.display_picker, Some(1));
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Display);
+        assert_eq!(state.display_picker, None);
+        assert_eq!(state.display, DisplayPreferences::default());
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
 }

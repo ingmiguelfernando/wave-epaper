@@ -258,6 +258,8 @@ pub enum ReadingTheme {
 }
 
 impl ReadingTheme {
+    pub const ALL: [Self; 2] = [Self::Classic, Self::HighContrast];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -305,6 +307,8 @@ pub enum ReaderOrientation {
 }
 
 impl ReaderOrientation {
+    pub const ALL: [Self; 2] = [Self::Portrait, Self::Landscape];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -364,6 +368,8 @@ pub enum BookFontSize {
 }
 
 impl BookFontSize {
+    pub const ALL: [Self; 4] = [Self::Small, Self::Medium, Self::Large, Self::XLarge];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -428,6 +434,13 @@ pub enum BookFont {
 }
 
 impl BookFont {
+    pub const ALL: [Self; 4] = [
+        Self::Inter,
+        Self::AtkinsonHyperlegible,
+        Self::Serif,
+        Self::Literata,
+    ];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -492,6 +505,8 @@ pub enum ParagraphAlignment {
 }
 
 impl ParagraphAlignment {
+    pub const ALL: [Self; 4] = [Self::Justified, Self::Left, Self::Center, Self::Right];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -1186,8 +1201,8 @@ impl ReaderOption {
     }
 }
 
-/// Reading Preferences editor rows. UP/DOWN changes the active value and
-/// SELECT advances to the next row, matching the firmware editor convention.
+/// Reading Preferences editor rows. MOVE highlights a row and SELECT opens an
+/// option list of every value for it, matching the Settings pickers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReadingPreference {
     ReadingTheme,
@@ -1264,6 +1279,8 @@ pub struct ReaderUiState {
     pub session: Option<ReaderSession>,
     pub options_selected: usize,
     pub preferences_selected: usize,
+    /// Highlighted choice of the open option list, `None` while rows show.
+    pub preferences_picker: Option<usize>,
     preferences_layout_dirty: bool,
     pub last_message: Option<String>,
     persistence_event: Option<String>,
@@ -1292,6 +1309,7 @@ impl Default for ReaderUiState {
             session: None,
             options_selected: 0,
             preferences_selected: 0,
+            preferences_picker: None,
             preferences_layout_dirty: false,
             last_message: None,
             persistence_event: None,
@@ -1811,6 +1829,7 @@ impl ReaderUiState {
 
     pub fn begin_preferences_edit(&mut self) {
         self.preferences_selected = 0;
+        self.preferences_picker = None;
         self.preferences_layout_dirty = false;
     }
 
@@ -1830,14 +1849,79 @@ impl ReaderUiState {
         ReadingPreference::ALL[self.preferences_selected]
     }
 
-    /// Apply one Settings-style SELECT action to the highlighted preference.
-    /// Redraw-only settings persist immediately in place. Layout-sensitive
-    /// settings persist immediately and request a staged current-page rebuild.
+    /// Labels of the choices for the highlighted preference and the index of
+    /// the value in use. Show Progress offers On and Off.
     #[must_use]
-    pub fn activate_selected_preference(&mut self) -> bool {
+    pub fn preference_options(&self) -> (Vec<&'static str>, usize) {
+        match self.selected_preference() {
+            ReadingPreference::ReadingTheme => (
+                ReadingTheme::ALL
+                    .iter()
+                    .map(|value| value.label())
+                    .collect(),
+                ReadingTheme::ALL
+                    .iter()
+                    .position(|&value| value == self.preferences.theme)
+                    .unwrap_or(0),
+            ),
+            ReadingPreference::Orientation => (
+                ReaderOrientation::ALL
+                    .iter()
+                    .map(|value| value.label())
+                    .collect(),
+                ReaderOrientation::ALL
+                    .iter()
+                    .position(|&value| value == self.preferences.orientation)
+                    .unwrap_or(0),
+            ),
+            ReadingPreference::BookFontSize => (
+                BookFontSize::ALL
+                    .iter()
+                    .map(|value| value.label())
+                    .collect(),
+                BookFontSize::ALL
+                    .iter()
+                    .position(|&value| value == self.preferences.font_size)
+                    .unwrap_or(0),
+            ),
+            ReadingPreference::BookFont => (
+                BookFont::ALL.iter().map(|value| value.label()).collect(),
+                BookFont::ALL
+                    .iter()
+                    .position(|&value| value == self.preferences.book_font)
+                    .unwrap_or(0),
+            ),
+            ReadingPreference::ParagraphAlignment => (
+                ParagraphAlignment::ALL
+                    .iter()
+                    .map(|value| value.label())
+                    .collect(),
+                ParagraphAlignment::ALL
+                    .iter()
+                    .position(|&value| value == self.preferences.paragraph_alignment)
+                    .unwrap_or(0),
+            ),
+            ReadingPreference::ShowProgress => (
+                vec!["On", "Off"],
+                usize::from(!self.preferences.show_progress),
+            ),
+        }
+    }
+
+    /// Open the option list for the highlighted preference at the value in use.
+    pub fn open_preference_picker(&mut self) {
+        self.preferences_picker = Some(self.preference_options().1);
+    }
+
+    /// Apply one option-list choice to the highlighted preference and close
+    /// the list. Redraw-only settings persist immediately in place.
+    /// Layout-sensitive settings persist immediately and request a staged
+    /// current-page rebuild.
+    #[must_use]
+    pub fn choose_preference(&mut self, index: usize) -> bool {
         let layout_sensitive = match self.selected_preference() {
             ReadingPreference::ReadingTheme => {
-                self.preferences.theme = self.preferences.theme.next();
+                self.preferences.theme = ReadingTheme::ALL[index % ReadingTheme::ALL.len()];
                 self.last_message =
                     Some(format!("Reading theme: {}", self.preferences.theme.label()));
                 self.persist_preferences_best_effort();
@@ -1845,7 +1929,8 @@ impl ReaderUiState {
                 false
             }
             ReadingPreference::Orientation => {
-                self.preferences.orientation = self.preferences.orientation.next();
+                self.preferences.orientation =
+                    ReaderOrientation::ALL[index % ReaderOrientation::ALL.len()];
                 self.last_message = Some(format!(
                     "Orientation: {}",
                     self.preferences.orientation.label()
@@ -1853,7 +1938,7 @@ impl ReaderUiState {
                 true
             }
             ReadingPreference::BookFontSize => {
-                self.preferences.font_size = self.preferences.font_size.next();
+                self.preferences.font_size = BookFontSize::ALL[index % BookFontSize::ALL.len()];
                 self.last_message = Some(format!(
                     "Book font size: {}",
                     self.preferences.font_size.label()
@@ -1861,13 +1946,14 @@ impl ReaderUiState {
                 true
             }
             ReadingPreference::BookFont => {
-                self.preferences.book_font = self.preferences.book_font.next();
+                self.preferences.book_font = BookFont::ALL[index % BookFont::ALL.len()];
                 self.last_message =
                     Some(format!("Book font: {}", self.preferences.book_font.label()));
                 true
             }
             ReadingPreference::ParagraphAlignment => {
-                self.preferences.paragraph_alignment = self.preferences.paragraph_alignment.next();
+                self.preferences.paragraph_alignment =
+                    ParagraphAlignment::ALL[index % ParagraphAlignment::ALL.len()];
                 self.last_message = Some(format!(
                     "Paragraph alignment: {}",
                     self.preferences.paragraph_alignment.label()
@@ -1875,7 +1961,7 @@ impl ReaderUiState {
                 true
             }
             ReadingPreference::ShowProgress => {
-                self.preferences.show_progress = !self.preferences.show_progress;
+                self.preferences.show_progress = index == 0;
                 self.last_message = Some(format!(
                     "Show progress: {}",
                     if self.preferences.show_progress {
@@ -1888,6 +1974,7 @@ impl ReaderUiState {
                 false
             }
         };
+        self.preferences_picker = None;
         if layout_sensitive {
             self.request_layout_rebuild()
         } else {
@@ -1895,55 +1982,11 @@ impl ReaderUiState {
         }
     }
 
-    /// Finish the Settings-style editor. SELECT already persists changes and
+    /// Finish the Settings-style editor. A chosen value already persists and
     /// launches any required staged rebuild, so BOOT simply returns to options.
     pub fn finish_preferences_edit(&mut self) -> bool {
         self.preferences_layout_dirty = false;
         false
-    }
-
-    pub fn cycle_reading_theme(&mut self) {
-        self.preferences.theme = self.preferences.theme.next();
-        self.last_message = Some(format!("Reading theme: {}", self.preferences.theme.label()));
-        self.persist_preferences_best_effort();
-        self.request_clear_ghosting();
-    }
-
-    pub fn cycle_orientation(&mut self) -> bool {
-        self.preferences.orientation = self.preferences.orientation.next();
-        self.last_message = Some(format!(
-            "Orientation: {}",
-            self.preferences.orientation.label()
-        ));
-        self.request_layout_rebuild()
-    }
-
-    pub fn cycle_book_font_size(&mut self) -> bool {
-        self.preferences.font_size = self.preferences.font_size.next();
-        self.last_message = Some(format!(
-            "Book font size: {}",
-            self.preferences.font_size.label()
-        ));
-        self.request_layout_rebuild()
-    }
-
-    pub fn cycle_book_font(&mut self) -> bool {
-        self.preferences.book_font = self.preferences.book_font.next();
-        self.last_message = Some(format!("Book font: {}", self.preferences.book_font.label()));
-        self.request_layout_rebuild()
-    }
-
-    pub fn toggle_show_progress(&mut self) {
-        self.preferences.show_progress = !self.preferences.show_progress;
-        self.last_message = Some(format!(
-            "Show progress: {}",
-            if self.preferences.show_progress {
-                "On"
-            } else {
-                "Off"
-            }
-        ));
-        self.persist_preferences_best_effort();
     }
 
     pub fn request_clear_ghosting(&mut self) {
@@ -3784,7 +3827,15 @@ mod tests {
         reader.library_selected = 1;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
-        assert!(reader.cycle_book_font_size());
+        reader.begin_preferences_edit();
+        reader.cycle_preference_next();
+        reader.cycle_preference_next();
+        reader.open_preference_picker();
+        let large = BookFontSize::ALL
+            .iter()
+            .position(|&size| size == BookFontSize::Large)
+            .unwrap();
+        assert!(reader.choose_preference(large));
         assert_eq!(
             reader.loading_stage(),
             Some(ReaderLoadingStage::UpdatingLayout)
@@ -3847,7 +3898,7 @@ mod tests {
     }
 
     #[test]
-    fn preference_editor_uses_move_then_select_change_policy() {
+    fn preference_editor_opens_a_picker_and_applies_the_highlighted_value() {
         let mut reader = ReaderUiState::default();
         reader.begin_preferences_edit();
         assert_eq!(
@@ -3861,8 +3912,12 @@ mod tests {
             reader.selected_preference(),
             ReadingPreference::ReadingTheme
         );
-        assert!(!reader.activate_selected_preference());
+        reader.open_preference_picker();
+        assert_eq!(reader.preferences_picker, Some(0));
+        assert_eq!(reader.preferences.theme, ReadingTheme::Classic);
+        assert!(!reader.choose_preference(1));
         assert_eq!(reader.preferences.theme, ReadingTheme::HighContrast);
+        assert_eq!(reader.preferences_picker, None);
     }
 
     #[test]

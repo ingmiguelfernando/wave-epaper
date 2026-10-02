@@ -16,6 +16,7 @@ use crate::{
         widgets::{
             footer::draw_footer,
             header::draw_header,
+            option_list::draw_option_list,
             status_row::{draw_status_row, StatusRow},
         },
     },
@@ -575,6 +576,23 @@ pub fn render_preferences(
         "READING PREFERENCES",
         "SETTINGS-STYLE ROW EDITOR",
     )?;
+    if let Some(highlighted) = state.reader.preferences_picker {
+        let (options, current) = state.reader.preference_options();
+        let heading = state.display.heading_style();
+        Text::new(
+            state.reader.selected_preference().label(),
+            Point::new(22, 160),
+            heading,
+        )
+        .draw(display)?;
+        draw_option_list(display, state.display, 184, &options, current, highlighted)?;
+        draw_footer(
+            display,
+            state.display,
+            "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
+        )?;
+        return Ok(());
+    }
     for (index, preference) in ReadingPreference::ALL.iter().copied().enumerate() {
         let badge = match preference {
             ReadingPreference::ReadingTheme => state.reader.preferences.theme.label(),
@@ -810,14 +828,48 @@ mod tests {
         render_preferences, render_toc, ReaderBodyGeometry,
     };
     use crate::{
-        app::AppState,
+        app::{render_current_screen, AppState, ScreenRoute},
+        buttons::ButtonEvent,
         framebuffer::FrameBuffer,
         orientation::OrientedFrameBuffer,
         reader::{
             BookFormat, ParagraphAlignment, PendingReaderOpen, ReaderBook, ReaderChapterPageLabel,
-            ReaderLibraryEntry, ReaderLibraryTab, ReaderLoadingStage, ReaderLocation,
+            ReaderLibraryEntry, ReaderLibraryTab, ReaderLoadingStage, ReaderLocation, ReadingTheme,
         },
     };
+
+    #[test]
+    fn preference_picker_wraps_applies_and_draws() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::ReaderPreferences);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.reader.preferences_picker, Some(0));
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        state.apply(ButtonEvent::Up);
+        assert_eq!(state.reader.preferences_picker, Some(1));
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.reader.preferences.theme, ReadingTheme::HighContrast);
+        assert_eq!(state.reader.preferences_picker, None);
+        assert_eq!(state.active_route(), ScreenRoute::ReaderPreferences);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+    }
+
+    #[test]
+    fn back_closes_the_preference_picker_before_leaving_the_editor() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::ReaderPreferences);
+        let initial_theme = state.reader.preferences.theme;
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Up);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::ReaderPreferences);
+        assert_eq!(state.reader.preferences_picker, None);
+        assert_eq!(state.reader.preferences.theme, initial_theme);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::ReaderOptions);
+    }
 
     #[test]
     fn high_contrast_frame_stays_outside_shared_text_viewport() {

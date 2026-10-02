@@ -147,6 +147,20 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     states.push(("power", power.clone()));
     power.power_ui.picker = Some(2);
     states.push(("power-picker", power));
+
+    let mut display_picker = sample_state();
+    display_picker.router.navigate_to(ScreenRoute::Display);
+    display_picker.display_picker = Some(1);
+    states.push(("display-picker", display_picker));
+
+    let mut reader_preferences_picker = sample_state();
+    open_sample_book(&mut reader_preferences_picker);
+    reader_preferences_picker.reader.begin_preferences_edit();
+    reader_preferences_picker.reader.open_preference_picker();
+    reader_preferences_picker
+        .router
+        .navigate_to(ScreenRoute::ReaderPreferences);
+    states.push(("reader-preferences-picker", reader_preferences_picker));
     states
 }
 

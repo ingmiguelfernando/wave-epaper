@@ -19,6 +19,8 @@ pub enum UiFontFamily {
 }
 
 impl UiFontFamily {
+    pub const ALL: [Self; 2] = [Self::Inter, Self::AtkinsonHyperlegible];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -43,14 +45,6 @@ impl UiFontFamily {
         }
     }
 
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Inter => Self::AtkinsonHyperlegible,
-            Self::AtkinsonHyperlegible => Self::Inter,
-        }
-    }
-
     fn parse(value: &str) -> Result<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "inter" => Ok(Self::Inter),
@@ -71,6 +65,8 @@ pub enum UiFontSize {
 }
 
 impl UiFontSize {
+    pub const ALL: [Self; 3] = [Self::Compact, Self::Standard, Self::Large];
+
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -86,15 +82,6 @@ impl UiFontSize {
             Self::Compact => "compact",
             Self::Standard => "standard",
             Self::Large => "large",
-        }
-    }
-
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Compact => Self::Standard,
-            Self::Standard => Self::Large,
-            Self::Large => Self::Compact,
         }
     }
 
@@ -115,12 +102,39 @@ pub struct DisplayPreferences {
 }
 
 impl DisplayPreferences {
-    pub fn cycle_font_family(&mut self) {
-        self.font_family = self.font_family.next();
+    /// Labels of the choices for `action` and the index of the value in use.
+    /// Action 0 is the UI font family, anything else the UI font size.
+    #[must_use]
+    pub fn options(self, action: usize) -> (Vec<&'static str>, usize) {
+        if action == 0 {
+            (
+                UiFontFamily::ALL
+                    .iter()
+                    .map(|family| family.label())
+                    .collect(),
+                UiFontFamily::ALL
+                    .iter()
+                    .position(|&family| family == self.font_family)
+                    .unwrap_or(0),
+            )
+        } else {
+            (
+                UiFontSize::ALL.iter().map(|size| size.label()).collect(),
+                UiFontSize::ALL
+                    .iter()
+                    .position(|&size| size == self.font_size)
+                    .unwrap_or(0),
+            )
+        }
     }
 
-    pub fn cycle_font_size(&mut self) {
-        self.font_size = self.font_size.next();
+    /// Apply the option-list choice `index` to `action`.
+    pub fn choose(&mut self, action: usize, index: usize) {
+        if action == 0 {
+            self.font_family = UiFontFamily::ALL[index % UiFontFamily::ALL.len()];
+        } else {
+            self.font_size = UiFontSize::ALL[index % UiFontSize::ALL.len()];
+        }
     }
 
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {

@@ -59,6 +59,8 @@ pub struct AppState {
     pub home_selected: usize,
     category_selected: [usize; CATEGORY_COUNT],
     pub display_action_selected: usize,
+    /// Highlighted choice of the open Display option list, `None` while rows show.
+    pub display_picker: Option<usize>,
     pub display: DisplayPreferences,
     /// Read-only monthly Calendar Foundation cursor and navigation mode.
     pub calendar: CalendarUiState,
@@ -120,6 +122,7 @@ impl Default for AppState {
             home_selected: 0,
             category_selected: [0; CATEGORY_COUNT],
             display_action_selected: 0,
+            display_picker: None,
             display: DisplayPreferences::default(),
             calendar: CalendarUiState::default(),
             dictionary: DictionaryUiState::default(),
@@ -356,6 +359,7 @@ impl AppState {
         }
         if target == ScreenRoute::Display {
             self.display_action_selected = 0;
+            self.display_picker = None;
         }
         if target == ScreenRoute::Power {
             self.power_ui = PowerUiState::default();
@@ -715,16 +719,35 @@ impl AppState {
                     }
                 }
             },
-            ScreenRoute::ReaderPreferences => match event {
-                ButtonEvent::Up => self.reader.cycle_preference_previous(),
-                ButtonEvent::Down => self.reader.cycle_preference_next(),
-                ButtonEvent::Select => {
-                    self.note_select_press();
-                    if self.reader.activate_selected_preference() {
-                        self.router.navigate_to(ScreenRoute::ReaderLoading);
+            ScreenRoute::ReaderPreferences => {
+                if let Some(highlighted) = self.reader.preferences_picker {
+                    let count = self.reader.preference_options().0.len();
+                    match event {
+                        ButtonEvent::Up => {
+                            self.reader.preferences_picker =
+                                Some((highlighted + count - 1) % count);
+                        }
+                        ButtonEvent::Down => {
+                            self.reader.preferences_picker = Some((highlighted + 1) % count);
+                        }
+                        ButtonEvent::Select => {
+                            self.note_select_press();
+                            if self.reader.choose_preference(highlighted) {
+                                self.router.navigate_to(ScreenRoute::ReaderLoading);
+                            }
+                        }
+                    }
+                } else {
+                    match event {
+                        ButtonEvent::Up => self.reader.cycle_preference_previous(),
+                        ButtonEvent::Down => self.reader.cycle_preference_next(),
+                        ButtonEvent::Select => {
+                            self.note_select_press();
+                            self.reader.open_preference_picker();
+                        }
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -790,7 +813,24 @@ impl AppState {
         }
     }
 
+    /// Move between the Display rows, or within the option list once Select
+    /// opened it. Select in the list applies the highlighted choice.
     fn apply_display(&mut self, event: ButtonEvent) {
+        let action = self.display_action_selected;
+        let (options, current) = self.display.options(action);
+        if let Some(highlighted) = self.display_picker {
+            let count = options.len();
+            match event {
+                ButtonEvent::Up => self.display_picker = Some((highlighted + count - 1) % count),
+                ButtonEvent::Down => self.display_picker = Some((highlighted + 1) % count),
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    self.display.choose(action, highlighted);
+                    self.display_picker = None;
+                }
+            }
+            return;
+        }
         match event {
             ButtonEvent::Up => {
                 self.display_action_selected = self
@@ -804,10 +844,7 @@ impl AppState {
             }
             ButtonEvent::Select => {
                 self.note_select_press();
-                match self.display_action_selected {
-                    0 => self.display.cycle_font_family(),
-                    _ => self.display.cycle_font_size(),
-                }
+                self.display_picker = Some(current);
             }
         }
     }
@@ -899,6 +936,14 @@ impl AppState {
             return;
         }
         if self.router.current() == ScreenRoute::Power && self.power_ui.picker.take().is_some() {
+            return;
+        }
+        if self.router.current() == ScreenRoute::Display && self.display_picker.take().is_some() {
+            return;
+        }
+        if self.router.current() == ScreenRoute::ReaderPreferences
+            && self.reader.preferences_picker.take().is_some()
+        {
             return;
         }
         if matches!(
@@ -1150,8 +1195,19 @@ mod tests {
         assert_eq!(state.active_route(), ScreenRoute::Display);
         let original = state.display;
         state.apply(ButtonEvent::Select);
-        assert_ne!(state.display.font_family, original.font_family);
+        assert_eq!(state.display_picker, Some(0));
+        assert_eq!(state.display, original);
         state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_ne!(state.display.font_family, original.font_family);
+        assert_eq!(state.display_picker, None);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.display_picker, Some(1));
+        state.apply(ButtonEvent::Up);
+        assert_eq!(state.display_picker, Some(0));
+        state.apply(ButtonEvent::Up);
+        assert_eq!(state.display_picker, Some(2));
         state.apply(ButtonEvent::Select);
         assert_ne!(state.display.font_size, original.font_size);
         state.apply(ButtonEvent::Down);
@@ -1308,7 +1364,7 @@ mod tests {
     }
 
     #[test]
-    fn reader_preferences_use_settings_style_move_then_select_change() {
+    fn reader_preferences_open_a_picker_that_applies_the_highlighted_value() {
         use crate::reader::{ReadingPreference, ReadingTheme};
 
         let mut state = AppState::default();
@@ -1330,7 +1386,12 @@ mod tests {
             ReadingPreference::ReadingTheme
         );
         state.apply(ButtonEvent::Select);
+        assert_eq!(state.reader.preferences_picker, Some(0));
+        assert_eq!(state.reader.preferences.theme, initial_theme);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
         assert_eq!(state.reader.preferences.theme, ReadingTheme::HighContrast);
+        assert_eq!(state.reader.preferences_picker, None);
         assert_eq!(state.active_route(), ScreenRoute::ReaderPreferences);
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::ReaderOptions);

@@ -111,7 +111,21 @@ Other details:
 - Previews `display-picker` and `reader-preferences-picker` exist.
 - Existing reader tests still pass.
 
-**Status:** not started.
+**Status:** done on `side-tasks` (2026-10-03). Settings › Display and Reader
+preferences now open option lists: SELECT opens the list at the value in use,
+MOVE wraps, SELECT applies and closes, HOLD BOOT cancels. Both pickers draw
+with `widgets::option_list::draw_option_list` and the footer
+`MOVE  SELECT CHOOSE  HOLD BOOT CANCEL`. The value enums got `ALL` arrays;
+`DisplayPreferences::cycle_font_family/size`, `activate_selected_preference`
+and the `ReaderUiState` value-cycling functions are gone (tests that called
+them now use the picker API). Tests cover open, move, apply, cancel and back
+for both screens; previews `display-picker` and `reader-preferences-picker`
+are in the `screen-previews` artifact. Host tests (378) and
+`cargo +stable fmt` pass locally. Needs on-device test: both pickers on the
+panel (open, scroll, apply, cancel), Display changes still reach
+`DISPLAY.TXT`, and layout-sensitive Reader choices still repaginate. Open:
+the Xtensa firmware build still has to run green on this branch
+(`gh` was not logged in on the machine used for this work).
 
 ## D2: Remove the BLE remote build
 
