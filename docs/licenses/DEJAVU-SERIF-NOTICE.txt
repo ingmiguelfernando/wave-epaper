@@ -1,7 +1,8 @@
 # DejaVu Serif generated-raster notice
 
-RustMix Wave embeds generated printable-ASCII bitmap arrays derived from
-DejaVu Serif. Raw font files are intentionally not distributed.
+RustMix Wave embeds generated bitmap arrays (ASCII, Latin-1 and common
+punctuation) derived from DejaVu Serif. Raw font files are intentionally not
+distributed.
 
 Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
 Bitstream Vera is a trademark of Bitstream, Inc.

@@ -392,8 +392,8 @@ impl BookFontSize {
     }
 }
 
-/// Reader-specific body font family. Reader-only generated bitmap strikes are
-/// printable-ASCII subsets; raw font files are not distributed. Persisted
+/// Reader-specific body font family. Reader-only generated bitmap strikes
+/// cover the shared `charset`; raw font files are not distributed. Persisted
 /// `serif` and `atkinson-hyperlegible` keys remain stable for compatibility.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BookFont {

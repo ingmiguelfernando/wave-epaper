@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - scripts/fonts/**
+      - src/charset.rs
       - .github/workflows/fonts.yml
 
 permissions:

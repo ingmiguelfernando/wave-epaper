@@ -1,10 +1,10 @@
 # Generated bitmap-font notices
 
 Wave embeds 1-bpp bitmap atlases rasterized by `scripts/fonts/generate.py`
-(run through the `fonts` GitHub workflow). Each atlas covers printable ASCII,
-Latin-1 and common typographic punctuation (see `src/charset.rs`). The
-repository contains only the generated Rust arrays; raw font files are not
-distributed.
+(run through the `fonts` GitHub workflow) from the font sources pinned in
+`scripts/fonts/fonts.toml`. Each atlas covers printable ASCII, Latin-1 and
+common typographic punctuation (see `src/charset.rs`). The repository contains
+only the generated Rust arrays; raw font files are not distributed.
 
 | Atlas file | Source font |
 | --- | --- |

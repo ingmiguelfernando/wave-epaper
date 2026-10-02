@@ -3,8 +3,8 @@
 //! Reader pages deliberately use an independent font preference boundary so
 //! global UI typography remains stable. Inter reuses the existing UI strike;
 //! Atkinson Hyperlegible Next Medium, DejaVu Serif and Literata Medium use
-//! generated printable-ASCII Reader-only bitmap strikes. TXT normalization
-//! converts unsupported punctuation before layout.
+//! generated Reader-only bitmap strikes. Every strike covers the shared
+//! `charset`; text normalization replaces other characters before layout.
 
 use embedded_graphics::pixelcolor::BinaryColor;
 

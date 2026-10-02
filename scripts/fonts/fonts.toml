@@ -1,0 +1,126 @@
+# Bitmap fonts rendered by generate.py. The `fonts` workflow runs it whenever
+# this file changes and uploads the regenerated atlases.
+#
+# [sources]     Pinned font downloads: a URL, or a zip URL plus a member path.
+# [faces.NAME]  A source with its variation axes and rasterization settings.
+#   axes        Axis values; "size" sets an axis (usually opsz) to the strike's
+#               pixel size.
+#   render      "mono"     FreeType monochrome hinting. Crisp stems, but thin
+#                          marks such as accents can break up at small sizes.
+#               "gray"     FreeType anti-aliasing, cut at `threshold`.
+#               "outline"  Unhinted 16x supersampling, cut at `threshold`.
+#   threshold   Coverage (1-255) at which a pixel turns black; lower is bolder.
+#   tracking    Pixels added to every advance; may be fractional.
+# [[outputs]]   One Rust atlas file. Each strike sets `px` (font size in pixels)
+#               or `cap` (capital H height; the smallest size reaching it is
+#               used) and keeps the line height its layouts expect.
+
+[sources]
+inter = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
+atkinson-regular = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Regular.ttf"
+atkinson-bold = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Bold.ttf"
+atkinson-next = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext%5Bwght%5D.ttf"
+literata = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/literata/Literata%5Bopsz%2Cwght%5D.ttf"
+dejavu-serif = { url = "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip", member = "dejavu-fonts-ttf-2.37/ttf/DejaVuSerif.ttf" }
+
+[faces.inter-medium]
+source = "inter"
+axes = { wght = 500, opsz = 14 }
+render = "gray"
+threshold = 96
+
+[faces.inter-semibold]
+source = "inter"
+axes = { wght = 600, opsz = 14 }
+render = "gray"
+threshold = 96
+
+[faces.atkinson-regular]
+source = "atkinson-regular"
+render = "mono"
+
+[faces.atkinson-bold]
+source = "atkinson-bold"
+render = "mono"
+
+[faces.atkinson-next-medium]
+source = "atkinson-next"
+axes = { wght = 500 }
+render = "mono"
+
+[faces.literata-medium]
+source = "literata"
+axes = { wght = 500, opsz = "size" }
+render = "gray"
+threshold = 96
+
+[faces.dejavu-serif]
+source = "dejavu-serif"
+render = "mono"
+
+# UI roles: Detail and Body use the regular weight, Heading and Large the bold
+# one. Sizes and line heights match the original ASCII atlases.
+[[outputs]]
+path = "src/app/typography/assets.rs"
+title = "UI glyph atlases: Inter (Medium, SemiBold) and Atkinson Hyperlegible (Regular, Bold)."
+imports = "use super::{BitmapFont, Glyph};"
+strikes = [
+    { name = "INTER_COMPACT_DETAIL", face = "inter-medium", px = 11, line_height = 16 },
+    { name = "INTER_COMPACT_BODY", face = "inter-medium", px = 13, line_height = 18 },
+    { name = "INTER_COMPACT_HEADING", face = "inter-semibold", px = 18, line_height = 24 },
+    { name = "INTER_COMPACT_LARGE", face = "inter-semibold", px = 22, line_height = 29 },
+    { name = "INTER_STANDARD_DETAIL", face = "inter-medium", px = 12, line_height = 17 },
+    { name = "INTER_STANDARD_BODY", face = "inter-medium", px = 15, line_height = 20 },
+    { name = "INTER_STANDARD_HEADING", face = "inter-semibold", px = 20, line_height = 26 },
+    { name = "INTER_STANDARD_LARGE", face = "inter-semibold", px = 24, line_height = 31 },
+    { name = "INTER_LARGE_DETAIL", face = "inter-medium", px = 13, line_height = 18 },
+    { name = "INTER_LARGE_BODY", face = "inter-medium", px = 17, line_height = 23 },
+    { name = "INTER_LARGE_HEADING", face = "inter-semibold", px = 22, line_height = 29 },
+    { name = "INTER_LARGE_LARGE", face = "inter-semibold", px = 26, line_height = 34 },
+    { name = "ATKINSON_COMPACT_DETAIL", face = "atkinson-regular", px = 11, line_height = 13 },
+    { name = "ATKINSON_COMPACT_BODY", face = "atkinson-regular", px = 13, line_height = 15 },
+    { name = "ATKINSON_COMPACT_HEADING", face = "atkinson-bold", px = 18, line_height = 20 },
+    { name = "ATKINSON_COMPACT_LARGE", face = "atkinson-bold", px = 22, line_height = 24 },
+    { name = "ATKINSON_STANDARD_DETAIL", face = "atkinson-regular", px = 12, line_height = 13 },
+    { name = "ATKINSON_STANDARD_BODY", face = "atkinson-regular", px = 15, line_height = 17 },
+    { name = "ATKINSON_STANDARD_HEADING", face = "atkinson-bold", px = 20, line_height = 22 },
+    { name = "ATKINSON_STANDARD_LARGE", face = "atkinson-bold", px = 24, line_height = 26 },
+    { name = "ATKINSON_LARGE_DETAIL", face = "atkinson-regular", px = 13, line_height = 15 },
+    { name = "ATKINSON_LARGE_BODY", face = "atkinson-regular", px = 17, line_height = 20 },
+    { name = "ATKINSON_LARGE_HEADING", face = "atkinson-bold", px = 22, line_height = 24 },
+    { name = "ATKINSON_LARGE_LARGE", face = "atkinson-bold", px = 26, line_height = 28 },
+]
+
+# Reader sizes are chosen by capital height to keep the page layouts.
+[[outputs]]
+path = "src/app/reader_atkinson_next_assets.rs"
+title = "Reader glyph atlases: Atkinson Hyperlegible Next Medium."
+imports = "use super::typography::{BitmapFont, Glyph};"
+strikes = [
+    { name = "ATKINSON_NEXT_SMALL", face = "atkinson-next-medium", cap = 12, line_height = 20 },
+    { name = "ATKINSON_NEXT_MEDIUM", face = "atkinson-next-medium", cap = 13, line_height = 24 },
+    { name = "ATKINSON_NEXT_LARGE", face = "atkinson-next-medium", cap = 16, line_height = 28 },
+    { name = "ATKINSON_NEXT_XLARGE", face = "atkinson-next-medium", cap = 18, line_height = 33 },
+]
+
+[[outputs]]
+path = "src/app/reader_literata_assets.rs"
+title = "Reader glyph atlases: Literata Medium."
+imports = "use super::typography::{BitmapFont, Glyph};"
+strikes = [
+    { name = "LITERATA_SMALL", face = "literata-medium", cap = 12, line_height = 20 },
+    { name = "LITERATA_MEDIUM", face = "literata-medium", cap = 15, line_height = 24 },
+    { name = "LITERATA_LARGE", face = "literata-medium", cap = 16, line_height = 28 },
+    { name = "LITERATA_XLARGE", face = "literata-medium", cap = 19, line_height = 33 },
+]
+
+[[outputs]]
+path = "src/app/reader_serif_assets.rs"
+title = "Reader glyph atlases: DejaVu Serif."
+imports = "use super::typography::{BitmapFont, Glyph};"
+strikes = [
+    { name = "SERIF_SMALL", face = "dejavu-serif", cap = 12, line_height = 20 },
+    { name = "SERIF_MEDIUM", face = "dejavu-serif", cap = 14, line_height = 24 },
+    { name = "SERIF_LARGE", face = "dejavu-serif", cap = 16, line_height = 28 },
+    { name = "SERIF_XLARGE", face = "dejavu-serif", cap = 19, line_height = 33 },
+]
