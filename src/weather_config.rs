@@ -7,6 +7,8 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{bail, Context, Result};
 
+use crate::regional::{TimeZoneProfile, DEFAULT_TIMEZONE_NAME};
+
 /// Read-only weather provisioning file consumed at boot.
 pub const WEATHER_CONFIG_PATH: &str = "/sdcard/RUSTMIX/WEATHER.TXT";
 /// Provider selected for the first weather milestone.
@@ -98,10 +100,8 @@ impl WeatherConfig {
         let timezone = values
             .get("timezone")
             .cloned()
-            .unwrap_or_else(|| "America/New_York".into());
-        if !matches!(timezone.as_str(), "America/New_York" | "UTC") {
-            bail!("timezone must be America/New_York or UTC in this milestone");
-        }
+            .unwrap_or_else(|| DEFAULT_TIMEZONE_NAME.into());
+        TimeZoneProfile::parse(&timezone)?;
 
         let refresh_minutes = values
             .get("refresh_minutes")
@@ -169,6 +169,14 @@ mod tests {
         .unwrap();
         assert_eq!(config.timezone, "UTC");
         assert_eq!(config.refresh_minutes, 60);
+    }
+
+    #[test]
+    fn defaults_to_auckland_timezone() {
+        let parsed = WeatherConfig::parse("latitude=-36.8485\nlongitude=174.7633\n");
+        let config = parsed.unwrap();
+        assert_eq!(config.timezone, "Pacific/Auckland");
+        assert!(config.forecast_url().contains("timezone=Pacific/Auckland"));
     }
 
     #[test]

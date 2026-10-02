@@ -3,7 +3,10 @@
 //! JSON parsing and cache retention are hardware-independent. ESP-IDF HTTPS
 //! wiring lives below `cfg(target_os = "espidf")`.
 
-use crate::weather_config::{WeatherConfig, WEATHER_CONFIG_PATH};
+use crate::{
+    regional::TemperatureUnit,
+    weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
+};
 use anyhow::{bail, Context, Result};
 
 /// Maximum HTTP response accepted by the bounded weather client.
@@ -100,18 +103,23 @@ pub struct CurrentConditions {
 
 impl CurrentConditions {
     #[must_use]
-    pub fn temperature_label(&self) -> String {
-        format_tenths(self.temperature_tenths_f, " F")
+    pub fn temperature_label(&self, unit: TemperatureUnit) -> String {
+        degrees_label(self.temperature_tenths_f, unit)
     }
 
     #[must_use]
-    pub fn apparent_temperature_label(&self) -> String {
-        format_tenths(self.apparent_temperature_tenths_f, " F")
+    pub fn apparent_temperature_label(&self, unit: TemperatureUnit) -> String {
+        degrees_label(self.apparent_temperature_tenths_f, unit)
     }
 
+    /// Wind in km/h alongside Celsius and in mph alongside Fahrenheit.
     #[must_use]
-    pub fn wind_label(&self) -> String {
-        format_tenths(self.wind_speed_tenths_mph as i16, " mph")
+    pub fn wind_label(&self, unit: TemperatureUnit) -> String {
+        let tenths_mph = i32::from(self.wind_speed_tenths_mph);
+        match unit {
+            TemperatureUnit::Celsius => format_tenths((tenths_mph * 1609 + 500) / 1000, " km/h"),
+            TemperatureUnit::Fahrenheit => format_tenths(tenths_mph, " mph"),
+        }
     }
 
     #[must_use]
@@ -142,8 +150,8 @@ impl DailyForecast {
             "{}  {:<12} H:{} L:{} POP:{}",
             self.date,
             self.condition_label(),
-            format_tenths(self.high_tenths_f, "F"),
-            format_tenths(self.low_tenths_f, "F"),
+            format_tenths(i32::from(self.high_tenths_f), "F"),
+            format_tenths(i32::from(self.low_tenths_f), "F"),
             self.precipitation_probability_percent
                 .map_or_else(|| "--%".into(), |value| format!("{value}%"))
         )
@@ -240,6 +248,7 @@ impl WeatherSnapshot {
         }
     }
 
+    /// Serial-log summary in provider units.
     #[must_use]
     pub fn current_summary(&self) -> String {
         self.current.as_ref().map_or_else(
@@ -248,7 +257,7 @@ impl WeatherSnapshot {
                 format!(
                     "{}  {}",
                     current.condition_label(),
-                    current.temperature_label()
+                    format_tenths(i32::from(current.temperature_tenths_f), " F")
                 )
             },
         )
@@ -363,9 +372,15 @@ pub const fn condition_label(code: u16) -> &'static str {
     }
 }
 
-fn format_tenths(value: i16, suffix: &str) -> String {
+/// Format a provider Fahrenheit value (tenths) in `unit`, e.g. `18.0°C`.
+#[must_use]
+pub fn degrees_label(tenths_f: i16, unit: TemperatureUnit) -> String {
+    format_tenths(unit.from_fahrenheit_tenths(tenths_f), unit.suffix())
+}
+
+fn format_tenths(value: i32, suffix: &str) -> String {
     let sign = if value < 0 { "-" } else { "" };
-    let magnitude = i32::from(value).abs();
+    let magnitude = value.abs();
     format!("{sign}{}.{:01}{suffix}", magnitude / 10, magnitude % 10)
 }
 
@@ -774,7 +789,7 @@ mod tests {
         condition_label, parse_open_meteo_response, WeatherFetchError, WeatherFetchState,
         WeatherSnapshot, WEATHER_RETRY_DELAYS_SECONDS, WEATHER_RETRY_LIMIT,
     };
-    use crate::weather_config::WeatherConfig;
+    use crate::{regional::TemperatureUnit, weather_config::WeatherConfig};
 
     const SAMPLE: &str = r#"{
       "timezone":"America/New_York",
@@ -790,9 +805,13 @@ mod tests {
     #[test]
     fn parses_current_conditions_and_four_day_forecast() {
         let data = parse_open_meteo_response(SAMPLE).unwrap();
-        assert_eq!(data.current.temperature_label(), "78.4 F");
-        assert_eq!(data.current.apparent_temperature_label(), "79.7 F");
-        assert_eq!(data.current.wind_label(), "8.6 mph");
+        let current = &data.current;
+        let (celsius, fahrenheit) = (TemperatureUnit::Celsius, TemperatureUnit::Fahrenheit);
+        assert_eq!(current.temperature_label(fahrenheit), "78.4°F");
+        assert_eq!(current.temperature_label(celsius), "25.8°C");
+        assert_eq!(current.apparent_temperature_label(fahrenheit), "79.7°F");
+        assert_eq!(current.wind_label(fahrenheit), "8.6 mph");
+        assert_eq!(current.wind_label(celsius), "13.8 km/h");
         assert_eq!(data.current.condition_label(), "Partly cloudy");
         assert_eq!(data.forecast.len(), 4);
         assert_eq!(data.forecast[1].condition_label(), "Rain");

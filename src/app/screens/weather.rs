@@ -19,7 +19,8 @@ use crate::{
         },
     },
     orientation::OrientedFrameBuffer,
-    weather::DailyForecast,
+    regional::TemperatureUnit,
+    weather::{degrees_label, DailyForecast},
 };
 
 pub fn render_weather(
@@ -29,17 +30,18 @@ pub fn render_weather(
     let heading = state.display.heading_style();
     let body = state.display.body_style();
     let weather = &state.weather;
+    let unit = state.regional.temperature_unit;
     let current = weather.current.as_ref();
-    let temperature = current.map_or_else(|| "--.- F".into(), |value| value.temperature_label());
+    let temperature = current.map_or_else(|| "--".into(), |value| value.temperature_label(unit));
     let apparent = current.map_or_else(
-        || "--.- F".into(),
-        |value| value.apparent_temperature_label(),
+        || "--".into(),
+        |value| value.apparent_temperature_label(unit),
     );
     let humidity = current.map_or_else(
         || "--%".into(),
         |value| format!("{}%", value.humidity_percent),
     );
-    let wind = current.map_or_else(|| "--.- mph".into(), |value| value.wind_label());
+    let wind = current.map_or_else(|| "--".into(), |value| value.wind_label(unit));
     let condition = current.map_or("Weather unavailable", |value| value.condition_label());
 
     draw_header(display, state.display, "WEATHER", "OPEN-METEO FORECAST")?;
@@ -73,7 +75,7 @@ pub fn render_weather(
         .draw(display)?;
     } else {
         for (index, row) in weather.forecast.iter().take(4).enumerate() {
-            draw_forecast_row(display, 374 + index as i32 * 52, row, body)?;
+            draw_forecast_row(display, 374 + index as i32 * 52, row, unit, body)?;
         }
     }
 
@@ -172,6 +174,7 @@ fn draw_forecast_row(
     display: &mut OrientedFrameBuffer<'_>,
     y: i32,
     row: &DailyForecast,
+    unit: TemperatureUnit,
     style: UiTextStyle,
 ) -> Result<(), Infallible> {
     let precipitation = row
@@ -185,21 +188,15 @@ fn draw_forecast_row(
     .draw(display)?;
     Text::new(
         &format!(
-            "High {}F   Low {}F   POP {precipitation}",
-            format_tenths(row.high_tenths_f),
-            format_tenths(row.low_tenths_f)
+            "High {}   Low {}   POP {precipitation}",
+            degrees_label(row.high_tenths_f, unit),
+            degrees_label(row.low_tenths_f, unit)
         ),
         Point::new(22, y + 24),
         style,
     )
     .draw(display)?;
     Ok(())
-}
-
-fn format_tenths(value: i16) -> String {
-    let sign = if value < 0 { "-" } else { "" };
-    let magnitude = i32::from(value).abs();
-    format!("{sign}{}.{:01}", magnitude / 10, magnitude % 10)
 }
 
 fn draw_action(

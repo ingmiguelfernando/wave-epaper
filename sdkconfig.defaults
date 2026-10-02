@@ -27,3 +27,10 @@ CONFIG_MBEDTLS_DEFAULT_CERTIFICATE_BUNDLE=y
 
 # Embedded browser requests commonly exceed the ESP-IDF 512-byte default.
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+# Percent-encoded long file names (accents take 6 bytes) need longer URIs.
+CONFIG_HTTPD_MAX_URI_LEN=1024
+
+# Long file names on the SD card, exposed to Rust as UTF-8 paths.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_API_ENCODING_UTF_8=y

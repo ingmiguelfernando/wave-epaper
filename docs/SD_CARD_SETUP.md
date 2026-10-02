@@ -50,10 +50,11 @@ Copy or edit `/RUSTMIX/WIFI.TXT`:
 ```text
 ssid=YOUR_NETWORK
 password=YOUR_PASSWORD
-timezone=America/New_York
+timezone=Pacific/Auckland
 ntp_server=pool.ntp.org
 ```
 
+Supported time zones: `Pacific/Auckland` (default), `America/New_York` and `UTC`.
 Do not commit real credentials.
 
 ## Weather
@@ -62,10 +63,10 @@ Optional `/RUSTMIX/WEATHER.TXT` example:
 
 ```text
 provider=open-meteo
-location=New York, NY
-latitude=40.7128
-longitude=-74.0060
-timezone=America/New_York
+location=Auckland
+latitude=-36.8485
+longitude=174.7633
+timezone=Pacific/Auckland
 refresh_minutes=30
 ```
 

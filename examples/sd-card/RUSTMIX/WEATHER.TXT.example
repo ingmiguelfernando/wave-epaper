@@ -1,7 +1,7 @@
 # Open-Meteo weather configuration. No API key is required for this milestone.
 provider=open-meteo
-location=New York, NY
-latitude=40.7128
-longitude=-74.0060
-timezone=America/New_York
+location=Auckland
+latitude=-36.8485
+longitude=174.7633
+timezone=Pacific/Auckland
 refresh_minutes=30

@@ -16,7 +16,7 @@ pub const WIFI_TRANSFER_STREAM_CHUNK_BYTES: usize = 4 * 1024;
 /// Keep accidental huge uploads bounded for the first portal slice.
 pub const WIFI_TRANSFER_MAX_UPLOAD_BYTES: usize = 64 * 1024 * 1024;
 /// Bound decoded browser paths before touching removable storage.
-pub const WIFI_TRANSFER_MAX_PATH_BYTES: usize = 128;
+pub const WIFI_TRANSFER_MAX_PATH_BYTES: usize = 255;
 /// Stop a forgotten transfer portal after ten minutes without HTTP traffic.
 pub const WIFI_TRANSFER_INACTIVITY_SECONDS: u64 = 10 * 60;
 /// The first slice uses the conventional LAN HTTP port.
@@ -120,23 +120,24 @@ impl WifiTransferSnapshot {
     }
 }
 
-/// Reject empty, traversal, absolute and overlong relative portal paths.
-/// Returned paths always stay beneath `/sdcard/RUSTMIX`.
+/// Resolve an already percent-decoded portal path. Rejects traversal, names
+/// FAT cannot store and protected configuration files. Returned paths always
+/// stay beneath `/sdcard/RUSTMIX`.
 pub fn resolve_portal_path(relative: &str) -> Result<PathBuf, &'static str> {
-    let decoded = percent_decode(relative)?;
-    if decoded.len() > WIFI_TRANSFER_MAX_PATH_BYTES {
+    if relative.len() > WIFI_TRANSFER_MAX_PATH_BYTES {
         return Err("path exceeds portal limit");
     }
-    let trimmed = decoded.trim_start_matches('/');
-    let relative_path = Path::new(trimmed);
+    let trimmed = relative.trim_start_matches('/');
     let mut safe = PathBuf::from(WIFI_TRANSFER_ROOT);
-    for component in relative_path.components() {
+    let mut normalized = Vec::new();
+    for component in Path::new(trimmed).components() {
         match component {
             Component::Normal(name) => {
                 let name = name.to_str().ok_or("path is not UTF-8")?;
-                if !is_fat83_component(name) {
-                    return Err("use FAT 8.3-safe names");
+                if !is_portal_safe_name(name) {
+                    return Err("names cannot use \\ / : * ? \" < > | or end in a dot or space");
                 }
+                normalized.push(name);
                 safe.push(name);
             }
             Component::CurDir => {}
@@ -145,46 +146,61 @@ pub fn resolve_portal_path(relative: &str) -> Result<PathBuf, &'static str> {
             }
         }
     }
+    if is_protected_portal_path(&normalized.join("/")) {
+        return Err("protected configuration file");
+    }
     Ok(safe)
 }
 
-/// Configuration files stay hidden and cannot be modified by the initial LAN
-/// portal.  This prevents accidental credential disclosure or live config
-/// replacement while services are running.
+/// Configuration files the portal never lists, reads or replaces, so
+/// credentials are not disclosed and live config is not swapped underneath
+/// running services.
+const PROTECTED_PORTAL_PATHS: [&str; 8] = [
+    "WIFI.TXT",
+    "ALARMS.TXT",
+    "DISPLAY.TXT",
+    "WEATHER.TXT",
+    "VOICE/META.TXT",
+    "VOICE/SETTINGS.TXT",
+    "APPS/CALENDAR/EVENTS.TMP",
+    "APPS/CALENDAR/EVENTS.BAK",
+];
+
 #[must_use]
 pub fn is_protected_portal_path(relative: &str) -> bool {
-    let upper = relative.trim_start_matches('/').to_ascii_uppercase();
-    matches!(
-        upper.as_str(),
-        "WIFI.TXT"
-            | "ALARMS.TXT"
-            | "DISPLAY.TXT"
-            | "WEATHER.TXT"
-            | "VOICE/META.TXT"
-            | "VOICE/SETTINGS.TXT"
-            | "APPS/CALENDAR/EVENTS.TMP"
-            | "APPS/CALENDAR/EVENTS.BAK"
-    )
+    let parts: Vec<&str> = relative
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    let normalized = parts.join("/");
+    PROTECTED_PORTAL_PATHS
+        .iter()
+        .any(|protected| may_name(&normalized, protected))
 }
 
-/// Folder names are at most eight uppercase-safe characters.  Files are 8.3.
+/// FatFs matches names without case. Compare ASCII the same way and let any
+/// non-ASCII character match, since it might fold to the protected letter.
+fn may_name(candidate: &str, protected: &str) -> bool {
+    candidate.chars().count() == protected.len()
+        && candidate
+            .chars()
+            .zip(protected.chars())
+            .all(|(left, right)| !left.is_ascii() || left.eq_ignore_ascii_case(&right))
+}
+
+/// Characters FAT long file names cannot contain.
+const FAT_RESERVED: &str = "\"*/:<>?\\|";
+
+/// FatFs also drops trailing dots and spaces, which would let one name alias
+/// another, so those are rejected too.
 #[must_use]
-pub fn is_fat83_component(component: &str) -> bool {
-    if component.is_empty() || component == "." || component == ".." {
-        return false;
-    }
-    let mut parts = component.split('.');
-    let stem = parts.next().unwrap_or_default();
-    let extension = parts.next();
-    if parts.next().is_some() || stem.is_empty() || stem.len() > 8 {
-        return false;
-    }
-    if extension.is_some_and(|value| value.is_empty() || value.len() > 3) {
-        return false;
-    }
-    component
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b'~'))
+pub fn is_portal_safe_name(name: &str) -> bool {
+    let reserved = |character: char| character.is_control() || FAT_RESERVED.contains(character);
+    !name.is_empty()
+        && name.chars().count() <= 255
+        && !name.starts_with(' ')
+        && !name.ends_with(|character| character == '.' || character == ' ')
+        && !name.chars().any(reserved)
 }
 
 /// Tiny query parser used by the portal API.  The firmware intentionally avoids
@@ -258,27 +274,36 @@ pub mod espidf {
 
     const PORTAL_HTML: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Rustmix-Wave Transfer</title><style>
+<title>Wave Transfer</title><style>
 body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}button,input{padding:.65rem;margin:.2rem}pre{white-space:pre-wrap;background:#f4f4f4;padding:1rem}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:.5rem;text-align:left}
-</style></head><body><h1>Rustmix-Wave Wi-Fi Transfer</h1>
-<p>LAN-only SD portal rooted at <code>/RUSTMIX</code>. Use FAT 8.3-safe names.</p>
+</style></head><body><h1>Wave Wi-Fi Transfer</h1>
+<p>LAN-only SD portal rooted at <code>/RUSTMIX</code>. Long file names work; avoid \ / : * ? " &lt; &gt; |.</p>
 <label>Session code <input id="code" maxlength="6"><button onclick="saveCode()">Unlock</button></label>
 <p><button onclick="loadList('/')">Home</button><button onclick="loadList(current)">Refresh</button></p>
 <p>Path: <code id="path">/</code></p><div id="list"></div>
-<h2>Upload</h2><input id="file" type="file"><input id="name" placeholder="BOOK0001.TXT"><button onclick="upload()">Upload</button>
-<h2>Folder</h2><input id="folder" placeholder="NEWFOLD"><button onclick="mkdir()">Create folder</button>
+<h2>Upload</h2><input id="file" type="file"><input id="name" placeholder="Optional new name"><button onclick="upload()">Upload</button>
+<h2>Folder</h2><input id="folder" placeholder="Folder name"><button onclick="mkdir()">Create folder</button>
 <pre id="status">Enter the six-digit code displayed on the device.</pre>
 <script>
 let current='/'; const status=t=>document.getElementById('status').textContent=t;
-const code=()=>localStorage.rustmixCode||document.getElementById('code').value;
-function saveCode(){localStorage.rustmixCode=document.getElementById('code').value;loadList(current)}
+const code=()=>localStorage.waveCode||document.getElementById('code').value;
+function saveCode(){localStorage.waveCode=document.getElementById('code').value;loadList(current)}
 const enc=s=>encodeURIComponent(s); const join=n=>(current==='/'?'/':current+'/')+n;
 async function api(url,opt){let r=await fetch(url+(url.includes('?')?'&':'?')+'code='+enc(code()),opt);let t=await r.text();if(!r.ok)throw Error(t);return t}
-async function loadList(path){try{current=path;document.getElementById('path').textContent=path;let rows=JSON.parse(await api('/api/list?path='+enc(path)));let h='<table><tr><th>Name</th><th>Type</th><th>Size</th><th>Actions</th></tr>';if(path!='/')h+='<tr><td><button onclick="up()">..</button></td><td>folder</td><td></td><td></td></tr>';for(let e of rows){let p=join(e.name);h+='<tr><td>'+e.name+'</td><td>'+e.kind+'</td><td>'+e.size+'</td><td>'+(e.kind==='folder'?'<button onclick="loadList(\''+p+'\')">Open</button>':'<a href="/api/download?code='+enc(code())+'&path='+enc(p)+'">Download</a>')+' <button onclick="renamePath(\''+p+'\')">Rename</button> <button onclick="del(\''+p+'\')">Delete</button></td></tr>'}h+='</table>';document.getElementById('list').innerHTML=h;status('Ready')}catch(e){status(e.message)}}
+// File names come from the SD card, so they are only ever set as text, never parsed as HTML.
+function cell(row,text){let c=row.insertCell();c.textContent=text;return c}
+function button(label,action){let b=document.createElement('button');b.textContent=label;b.onclick=action;return b}
+async function loadList(path){try{current=path;document.getElementById('path').textContent=path;let rows=JSON.parse(await api('/api/list?path='+enc(path)));
+let table=document.createElement('table');let head=table.createTHead().insertRow();for(let t of ['Name','Type','Size','Actions'])head.appendChild(document.createElement('th')).textContent=t;
+let body=table.createTBody();if(path!=='/'){let r=body.insertRow();cell(r,'').appendChild(button('..',up));cell(r,'folder');cell(r,'');cell(r,'')}
+for(let e of rows){let p=join(e.name);let r=body.insertRow();cell(r,e.name);cell(r,e.kind);cell(r,e.size);let a=cell(r,'');
+if(e.kind==='folder'){a.appendChild(button('Open',()=>loadList(p)))}else{let l=document.createElement('a');l.href='/api/download?code='+enc(code())+'&path='+enc(p);l.textContent='Download';a.appendChild(l)}
+a.appendChild(button('Rename',()=>renamePath(p)));a.appendChild(button('Delete',()=>del(p)))}
+document.getElementById('list').replaceChildren(table);status('Ready')}catch(e){status(e.message)}}
 function up(){let p=current.split('/').filter(Boolean);p.pop();loadList('/'+p.join('/'))}
 async function upload(){try{let f=document.getElementById('file').files[0];let n=document.getElementById('name').value||f.name;await api('/api/upload?path='+enc(join(n)),{method:'POST',body:f});status('Upload complete');loadList(current)}catch(e){status(e.message)}}
 async function mkdir(){try{await api('/api/mkdir?path='+enc(join(document.getElementById('folder').value)),{method:'POST'});status('Folder created');loadList(current)}catch(e){status(e.message)}}
-async function renamePath(p){try{let n=prompt('New FAT 8.3-safe name');if(!n)return;let parent=p.substring(0,p.lastIndexOf('/'))||'/';let to=(parent==='/'?'/':parent+'/')+n;await api('/api/rename?from='+enc(p)+'&to='+enc(to),{method:'POST'});status('Renamed');loadList(current)}catch(e){status(e.message)}}
+async function renamePath(p){try{let n=prompt('New name');if(!n)return;let parent=p.substring(0,p.lastIndexOf('/'))||'/';let to=(parent==='/'?'/':parent+'/')+n;await api('/api/rename?from='+enc(p)+'&to='+enc(to),{method:'POST'});status('Renamed');loadList(current)}catch(e){status(e.message)}}
 async function del(p){try{await api('/api/delete?path='+enc(p),{method:'POST'});status('Deleted');loadList(current)}catch(e){status(e.message)}}
 loadList('/');
 </script></body></html>"#;
@@ -569,7 +594,7 @@ loadList('/');
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().to_string();
             let child_relative = format!("{}/{}", relative.trim_end_matches('/'), name);
-            if is_protected_portal_path(&child_relative) || !super::is_fat83_component(&name) {
+            if is_protected_portal_path(&child_relative) || !super::is_portal_safe_name(&name) {
                 continue;
             }
             let metadata = entry.metadata()?;
@@ -599,9 +624,10 @@ loadList('/');
 #[cfg(test)]
 mod tests {
     use super::{
-        is_fat83_component, is_protected_portal_path, query_value, resolve_portal_path,
+        is_portal_safe_name, is_protected_portal_path, query_value, resolve_portal_path,
         WifiTransferSnapshot, WifiTransferState,
     };
+    use std::path::PathBuf;
 
     #[test]
     fn portal_is_off_until_the_user_explicitly_starts_it() {
@@ -611,13 +637,22 @@ mod tests {
     }
 
     #[test]
-    fn portal_paths_are_confined_and_fat83_safe() {
+    fn portal_paths_are_confined_and_fat_safe() {
         assert!(resolve_portal_path("/BOOKS/POIROT01.EPU").is_ok());
+        assert!(resolve_portal_path("/BOOKS/Cien años de soledad.epub").is_ok());
         assert!(resolve_portal_path("../WIFI.TXT").is_err());
-        assert!(resolve_portal_path("/BOOKS/long-file-name.txt").is_err());
-        assert!(is_fat83_component("MAIN.LUA"));
-        assert!(is_fat83_component("SUDOKU"));
-        assert!(!is_fat83_component("NOT FAT SAFE.TXT"));
+        assert!(resolve_portal_path("/BOOKS/a:b.txt").is_err());
+        assert!(is_portal_safe_name("MAIN.LUA"));
+        assert!(is_portal_safe_name("Poirot investiga.txt"));
+        assert!(!is_portal_safe_name("a\\b.txt"));
+        assert!(!is_portal_safe_name("book.txt."));
+        assert!(!is_portal_safe_name("book.txt "));
+    }
+
+    #[test]
+    fn paths_are_decoded_once() {
+        let literal = resolve_portal_path("%57IFI.TXT").unwrap();
+        assert_eq!(literal, PathBuf::from("/sdcard/RUSTMIX/%57IFI.TXT"));
     }
 
     #[test]
@@ -631,6 +666,15 @@ mod tests {
         assert!(!is_protected_portal_path("APPS/CALENDAR/EVENTS.TXT"));
         assert!(!is_protected_portal_path("/VOICE/VOICE001.WAV"));
         assert!(!is_protected_portal_path("/BOOKS/NOTES001.TXT"));
+    }
+
+    #[test]
+    fn protection_survives_other_spellings() {
+        assert!(is_protected_portal_path("./wifi.txt"));
+        assert!(is_protected_portal_path("VOICE//Meta.txt"));
+        assert!(is_protected_portal_path("WıFı.TXT"));
+        assert!(resolve_portal_path("/./WIFI.TXT").is_err());
+        assert!(resolve_portal_path("/VOICE//META.TXT").is_err());
     }
 
     #[test]

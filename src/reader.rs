@@ -158,10 +158,16 @@ impl ReaderLocation {
 
     #[must_use]
     fn matches_book(&self, book: &ReaderBook) -> bool {
-        self.path == book.path
-            && self.size_bytes == book.size_bytes
+        self.size_bytes == book.size_bytes
             && self.modified_seconds == book.modified_seconds
             && self.format == book.format
+            && (self.path == book.path || renamed_in_place(&self.path, book))
+    }
+
+    /// Same book as `other`, including an older 8.3 spelling of its path.
+    #[must_use]
+    fn same_book(&self, other: &Self) -> bool {
+        self.path == other.path || self.matches_book(&other.as_book())
     }
 
     #[must_use]
@@ -2147,10 +2153,10 @@ impl ReaderUiState {
             return;
         };
         self.resume = Some(location.clone());
-        self.positions.retain(|entry| entry.path != location.path);
+        self.positions.retain(|entry| !entry.same_book(&location));
         self.positions.insert(0, location.clone());
         self.positions.truncate(READER_POSITION_LIMIT);
-        self.recent.retain(|entry| entry.path != location.path);
+        self.recent.retain(|entry| !entry.same_book(&location));
         self.recent.insert(0, location);
         self.recent.truncate(READER_RECENT_LIMIT);
         let mut errors = Vec::new();
@@ -2282,6 +2288,17 @@ pub fn scan_txt_library(root: impl AsRef<Path>) -> Result<Vec<ReaderBook>, Strin
     }
     books.sort_by(|left, right| left.title.to_lowercase().cmp(&right.title.to_lowercase()));
     Ok(books)
+}
+
+/// Positions saved before long file names were enabled use 8.3 paths such as
+/// `POIROT~1.TXT`; an unchanged file in the same folder is the same book.
+fn renamed_in_place(saved_path: &str, book: &ReaderBook) -> bool {
+    book.modified_seconds != 0 && folder_key(saved_path) == folder_key(&book.path)
+}
+
+fn folder_key(path: &str) -> Option<String> {
+    let parent = Path::new(path).parent()?;
+    Some(parent.to_string_lossy().to_ascii_uppercase())
 }
 
 #[must_use]

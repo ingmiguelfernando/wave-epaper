@@ -338,10 +338,7 @@ fn weather_status_label(state: WeatherFetchState) -> &'static str {
 
 /// Round tenths of a degree Fahrenheit (the provider unit) to whole `unit` degrees.
 fn whole_degrees(tenths_f: i16, unit: TemperatureUnit) -> i32 {
-    let tenths = match unit {
-        TemperatureUnit::Celsius => (i32::from(tenths_f) - 320) * 5 / 9,
-        TemperatureUnit::Fahrenheit => i32::from(tenths_f),
-    };
+    let tenths = unit.from_fahrenheit_tenths(tenths_f);
     if tenths >= 0 {
         (tenths + 5) / 10
     } else {
@@ -350,11 +347,7 @@ fn whole_degrees(tenths_f: i16, unit: TemperatureUnit) -> i32 {
 }
 
 fn temperature_label(tenths_f: i16, unit: TemperatureUnit) -> String {
-    let suffix = match unit {
-        TemperatureUnit::Celsius => 'C',
-        TemperatureUnit::Fahrenheit => 'F',
-    };
-    format!("{}°{suffix}", whole_degrees(tenths_f, unit))
+    format!("{}{}", whole_degrees(tenths_f, unit), unit.suffix())
 }
 
 fn home_date_label(state: &AppState) -> String {

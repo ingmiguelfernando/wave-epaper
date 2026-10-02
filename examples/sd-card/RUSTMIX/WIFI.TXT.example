@@ -2,5 +2,5 @@
 # Edit it locally. Do not commit or share your real password.
 ssid=YOUR_NETWORK
 password=YOUR_PASSWORD
-timezone=America/New_York
+timezone=Pacific/Auckland
 ntp_server=pool.ntp.org

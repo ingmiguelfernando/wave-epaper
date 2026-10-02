@@ -7,12 +7,14 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{bail, Context, Result};
 
+use crate::regional::{TimeZoneProfile, DEFAULT_TIMEZONE_NAME};
+
 /// Read-only provisioning file consumed at boot.
 pub const WIFI_CONFIG_PATH: &str = "/sdcard/RUSTMIX/WIFI.TXT";
 /// Default SNTP pool used when the optional key is omitted.
 pub const DEFAULT_NTP_SERVER: &str = "pool.ntp.org";
 /// Default timezone profile used when the optional key is omitted.
-pub const DEFAULT_TIMEZONE: &str = "America/New_York";
+pub const DEFAULT_TIMEZONE: &str = DEFAULT_TIMEZONE_NAME;
 
 /// Validated boot-time network configuration.
 #[derive(Clone, Eq, PartialEq)]
@@ -83,9 +85,7 @@ impl NetworkConfig {
             .get("timezone")
             .cloned()
             .unwrap_or_else(|| DEFAULT_TIMEZONE.into());
-        if !matches!(timezone.as_str(), "America/New_York" | "UTC") {
-            bail!("timezone must be America/New_York or UTC in this milestone");
-        }
+        TimeZoneProfile::parse(&timezone)?;
 
         let ntp_server = values
             .get("ntp_server")
@@ -152,5 +152,12 @@ mod tests {
         assert!(NetworkConfig::parse("ssid=Lab\nextra=value\n").is_err());
         assert!(NetworkConfig::parse("ssid=Lab\nssid=Other\n").is_err());
         assert!(NetworkConfig::parse("ssid=Lab\npassword=short\n").is_err());
+        assert!(NetworkConfig::parse("ssid=Lab\ntimezone=Mars\n").is_err());
+    }
+
+    #[test]
+    fn accepts_auckland_timezone() {
+        let config = NetworkConfig::parse("ssid=Lab\ntimezone=Pacific/Auckland\n");
+        assert_eq!(config.unwrap().timezone, "Pacific/Auckland");
     }
 }

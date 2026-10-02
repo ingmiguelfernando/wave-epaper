@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(snapshot.battery_label(), "BAT --");
         assert_eq!(
             snapshot.temperature_label(TemperatureUnit::Fahrenheit),
-            "--.- F"
+            "--.-°F"
         );
         assert_eq!(snapshot.humidity_label(), "--.-%");
         assert_eq!(snapshot.motion_label(), "IMU --");
@@ -315,11 +315,11 @@ mod tests {
             }),
             ..BoardSnapshot::default()
         };
-        assert_eq!(snapshot.time_label(RegionalPreferences::default()), "02:05");
+        assert_eq!(snapshot.time_label(RegionalPreferences::default()), "18:05");
         assert_eq!(snapshot.battery_label(), "BAT 82%");
         assert_eq!(
             snapshot.temperature_label(TemperatureUnit::Fahrenheit),
-            "73.6 F"
+            "73.6°F"
         );
         assert_eq!(snapshot.humidity_label(), "48.7%");
         assert_eq!(snapshot.motion_label(), "IMU 1000 mg");

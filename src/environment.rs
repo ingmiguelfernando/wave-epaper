@@ -212,11 +212,11 @@ mod tests {
         assert_eq!(reading.temperature_tenths_f(), 736);
         assert_eq!(
             reading.temperature_label(TemperatureUnit::Fahrenheit),
-            "73.6 F"
+            "73.6°F"
         );
         assert_eq!(
             reading.temperature_label(TemperatureUnit::Celsius),
-            "23.1 C"
+            "23.1°C"
         );
     }
 }
