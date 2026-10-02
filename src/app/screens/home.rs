@@ -23,7 +23,7 @@ use crate::{
     },
     network::WifiConnectionState,
     orientation::OrientedFrameBuffer,
-    reader::BookFormat,
+    reader::{BookFormat, ReaderLocation},
     regional::TemperatureUnit,
     rtc::RtcDateTime,
     weather::WeatherFetchState,
@@ -142,7 +142,7 @@ fn draw_date_weather_strip(
 struct ReadingCard {
     title: String,
     percent: Option<u8>,
-    page: usize,
+    position: String,
 }
 
 fn reading_card(state: &AppState) -> Option<ReadingCard> {
@@ -152,7 +152,7 @@ fn reading_card(state: &AppState) -> Option<ReadingCard> {
         return Some(ReadingCard {
             title: session.book.title.clone(),
             percent: Some(percent),
-            page: location.page_index,
+            position: position_label(&location),
         });
     }
     let resume = state.reader.resume.as_ref()?;
@@ -164,8 +164,17 @@ fn reading_card(state: &AppState) -> Option<ReadingCard> {
     Some(ReadingCard {
         title: resume.title.clone(),
         percent,
-        page: resume.page_index,
+        position: position_label(resume),
     })
+}
+
+/// "Page 12", or "Ch 3 · Page 2/9" for EPUB books.
+fn position_label(location: &ReaderLocation) -> String {
+    let Some(chapter) = location.epub_chapter.as_ref() else {
+        return format!("Page {}", location.page_index + 1);
+    };
+    let number = chapter.chapter_number;
+    format!("Ch {number} · Page {}", chapter.page_text())
 }
 
 fn percent_of(offset: u64, total: u64) -> u8 {
@@ -218,8 +227,8 @@ fn draw_reading_card(
             Text::new(&label, origin, body).draw(display)?;
         }
         None => {
-            let label = format!("Page {}", book.page + 1);
-            Text::new(&label, Point::new(left, progress_baseline), body).draw(display)?;
+            let origin = Point::new(left, progress_baseline);
+            Text::new(&book.position, origin, body).draw(display)?;
         }
     }
     Ok(())

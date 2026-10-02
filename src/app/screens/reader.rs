@@ -46,10 +46,7 @@ pub fn render_continue_reading(
         )
         .draw(display)?;
         Text::new(
-            &format!(
-                "Runtime page {} is ready.",
-                session.current_absolute_page() + 1
-            ),
+            &format!("{} is open.", session.display_page_label()),
             Point::new(24, 240),
             body,
         )
@@ -58,7 +55,7 @@ pub fn render_continue_reading(
     } else if let Some(resume) = state.reader.resume.as_ref() {
         Text::new(&truncate(&resume.title, 38), Point::new(24, 190), heading).draw(display)?;
         Text::new(
-            &format!("Saved page {} is ready to restore.", resume.page_index + 1),
+            &format!("{} is ready to restore.", resume.display_page_label()),
             Point::new(24, 240),
             body,
         )

@@ -11,27 +11,45 @@
 //! XHTML is flattened into reflowable UTF-8 text, and EPUB3 navigation or EPUB2
 //! NCX records become a compact table of contents. Images, CSS layout and
 //! interactive links remain deferred.
+//!
+//! Opening a book measures every chapter once to learn its offsets in the
+//! flattened text; chapter text is then re-extracted on demand, so only one
+//! chapter is ever held in RAM and books of any length open.
 
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+    path::{Path, PathBuf},
+};
 
-use miniz_oxide::inflate::decompress_to_vec;
+use miniz_oxide::inflate::decompress_to_vec_with_limit;
 
-/// Maximum EPUB archive bytes accepted from removable storage.
-pub const EPUB_ARCHIVE_BYTES_LIMIT: usize = 16 * 1024 * 1024;
+use crate::{runtime_worker::run_named_worker, watchdog::Pacer};
+
+/// Maximum EPUB archive bytes accepted from removable storage. Members are
+/// read on demand, so this bounds offsets rather than RAM.
+pub const EPUB_ARCHIVE_BYTES_LIMIT: u64 = 256 * 1024 * 1024;
 /// Maximum central-directory records accepted from one EPUB.
-pub const EPUB_ARCHIVE_ENTRY_LIMIT: usize = 512;
+pub const EPUB_ARCHIVE_ENTRY_LIMIT: usize = 4096;
 /// Maximum compressed bytes extracted for one EPUB member.
 pub const EPUB_MEMBER_COMPRESSED_LIMIT: usize = 2 * 1024 * 1024;
 /// Maximum decompressed bytes extracted for one EPUB member.
 pub const EPUB_MEMBER_UNCOMPRESSED_LIMIT: usize = 4 * 1024 * 1024;
-/// Maximum flattened reflowable text retained in RAM for one EPUB.
-pub const EPUB_REFLOW_TEXT_LIMIT: usize = 2 * 1024 * 1024;
+/// Maximum flattened text measured for one EPUB.
+pub const EPUB_TEXT_LIMIT: u64 = 64 * 1024 * 1024;
 /// Maximum manifest records retained from one OPF package.
-pub const EPUB_MANIFEST_LIMIT: usize = 256;
+pub const EPUB_MANIFEST_LIMIT: usize = 4096;
 /// Maximum spine records retained from one OPF package.
-pub const EPUB_SPINE_LIMIT: usize = 128;
+pub const EPUB_SPINE_LIMIT: usize = 2048;
 /// Maximum TOC records rendered by the Reader UI.
-pub const EPUB_TOC_LIMIT: usize = 128;
+pub const EPUB_TOC_LIMIT: usize = 2048;
+/// Bumped whenever flattening changes, so saved chapter offsets are rebuilt.
+pub const EPUB_TEXT_VERSION: &str = "2";
+/// The end-of-central-directory record lies within this many bytes of the end.
+const EOCD_SEARCH_BYTES: u64 = 65_557;
+/// Elements whose content is never reading text.
+const SKIPPED_ELEMENTS: [&str; 3] = ["head", "script", "style"];
 /// Dedicated parser-worker stack budget. Real EPUB DEFLATE and XHTML work
 /// must not run on the 16 KB firmware main task.
 pub const EPUB_PARSER_WORKER_STACK_BYTES: usize = 64 * 1024;
@@ -40,7 +58,7 @@ pub const EPUB_PARSER_WORKER_STACK_BYTES: usize = 64 * 1024;
 pub const EPUB_TITLE_WORKER_STACK_BYTES: usize = 32 * 1024;
 
 /// One reflowable EPUB TOC destination. `text_offset` is an offset into the
-/// flattened UTF-8 text buffer retained by [`EpubDocument`].
+/// book's flattened UTF-8 text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EpubTocEntry {
     pub label: String,
@@ -48,7 +66,7 @@ pub struct EpubTocEntry {
     pub spine_index: usize,
 }
 
-/// One readable spine chapter retained alongside flattened EPUB text.
+/// One readable spine chapter of the flattened text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EpubChapter {
     /// Sequential readable chapter number exposed by the Reader UI.
@@ -57,13 +75,18 @@ pub struct EpubChapter {
     pub text_offset: u64,
     pub text_end_offset: u64,
     pub spine_index: usize,
+    /// Archive member holding the chapter's XHTML.
+    pub member: String,
 }
 
-/// One bounded, reflowable EPUB book retained while the Reader session is open.
+/// Chapter and navigation index of one EPUB. The flattened text itself stays
+/// in the archive; see [`EpubDocument::chapter_text`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EpubDocument {
+    /// EPUB file the chapters are extracted from.
+    pub path: String,
     pub title: String,
-    pub text: String,
+    pub text_size: u64,
     pub toc: Vec<EpubTocEntry>,
     pub chapters: Vec<EpubChapter>,
     pub spine_count: usize,
@@ -72,7 +95,7 @@ pub struct EpubDocument {
 impl EpubDocument {
     #[must_use]
     pub fn text_size_bytes(&self) -> u64 {
-        self.text.len() as u64
+        self.text_size
     }
 
     /// Resolve the readable chapter containing one flattened UTF-8 byte offset.
@@ -84,6 +107,34 @@ impl EpubDocument {
                     || (offset == chapter.text_end_offset
                         && chapter.text_end_offset == self.text_size_bytes()))
         })
+    }
+
+    /// Chapter shown for `offset`: gaps between chapters belong to the next
+    /// chapter and offsets past the end to the last one.
+    #[must_use]
+    pub fn chapter_index_for_offset(&self, offset: u64) -> usize {
+        self.chapters
+            .iter()
+            .position(|chapter| offset < chapter.text_end_offset)
+            .unwrap_or(self.chapters.len().saturating_sub(1))
+    }
+
+    /// Flattened text of one chapter, extracted on a dedicated worker stack.
+    pub fn chapter_text(&self, index: usize) -> Result<String, String> {
+        let chapter = self
+            .chapters
+            .get(index)
+            .ok_or_else(|| "EPUB chapter is out of range".to_string())?;
+        let path = PathBuf::from(&self.path);
+        let member = chapter.member.clone();
+        let task = move || read_chapter_text(&path, &member);
+        let text = run_named_worker("epub-chapter", EPUB_PARSER_WORKER_STACK_BYTES, task)
+            .map_err(|error| error.to_string())?;
+        if text.len() as u64 != chapter.text_end_offset - chapter.text_offset {
+            let number = chapter.number;
+            return Err(format!("EPUB chapter {number} changed since it was indexed"));
+        }
+        Ok(text)
     }
 }
 
@@ -97,37 +148,38 @@ struct ZipEntry {
     local_header_offset: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 struct ZipArchive {
-    bytes: Vec<u8>,
+    file: File,
+    size: u64,
     entries: Vec<ZipEntry>,
 }
 
 impl ZipArchive {
+    /// Read the central directory; member data stays on the card until it is
+    /// extracted.
     fn open(path: impl AsRef<Path>) -> Result<Self, String> {
-        let bytes =
-            fs::read(path.as_ref()).map_err(|error| format!("EPUB open failed: {error}"))?;
-        if bytes.len() > EPUB_ARCHIVE_BYTES_LIMIT {
-            return Err(format!(
-                "EPUB archive exceeds {} byte limit",
-                EPUB_ARCHIVE_BYTES_LIMIT
-            ));
+        let file = File::open(path.as_ref()).map_err(open_error)?;
+        let size = file.metadata().map_err(open_error)?.len();
+        if size > EPUB_ARCHIVE_BYTES_LIMIT {
+            return Err(format!("EPUB archive is too large: {size} bytes"));
         }
-        let eocd = find_eocd(&bytes).ok_or_else(|| "EPUB ZIP end record missing".to_string())?;
-        let entry_count = read_u16(&bytes, eocd + 10)? as usize;
-        let central_size = read_u32(&bytes, eocd + 12)? as usize;
-        let central_offset = read_u32(&bytes, eocd + 16)? as usize;
+        let tail_size = size.min(EOCD_SEARCH_BYTES);
+        let tail = read_at(&file, size - tail_size, tail_size as usize)?;
+        let eocd = find_eocd(&tail).ok_or_else(|| "EPUB ZIP end record missing".to_string())?;
+        let entry_count = read_u16(&tail, eocd + 10)? as usize;
+        let central_size = read_u32(&tail, eocd + 12)? as usize;
+        let central_offset = u64::from(read_u32(&tail, eocd + 16)?);
         if entry_count > EPUB_ARCHIVE_ENTRY_LIMIT {
             return Err(format!("EPUB ZIP has too many entries: {entry_count}"));
         }
-        let central_end = central_offset
-            .checked_add(central_size)
-            .ok_or_else(|| "EPUB ZIP directory overflow".to_string())?;
-        if central_end > bytes.len() {
+        if central_offset + central_size as u64 > size {
             return Err("EPUB ZIP directory exceeds archive".into());
         }
+        let bytes = read_at(&file, central_offset, central_size)?;
+        let central_end = bytes.len();
         let mut entries = Vec::new();
-        let mut cursor = central_offset;
+        let mut cursor = 0;
         for _ in 0..entry_count {
             if read_u32(&bytes, cursor)? != 0x0201_4B50 {
                 return Err("EPUB ZIP central record signature mismatch".into());
@@ -164,7 +216,11 @@ impl ZipArchive {
                 return Err("EPUB ZIP central record exceeds directory".into());
             }
         }
-        Ok(Self { bytes, entries })
+        Ok(Self {
+            file,
+            size,
+            entries,
+        })
     }
 
     fn entry(&self, name: &str) -> Option<&ZipEntry> {
@@ -200,27 +256,21 @@ impl ZipArchive {
                 entry.name
             ));
         }
-        let offset = entry.local_header_offset;
-        if read_u32(&self.bytes, offset)? != 0x0403_4B50 {
+        let offset = entry.local_header_offset as u64;
+        let header = read_at(&self.file, offset, 30)?;
+        if read_u32(&header, 0)? != 0x0403_4B50 {
             return Err(format!("EPUB local ZIP header mismatch: {}", entry.name));
         }
-        let name_len = read_u16(&self.bytes, offset + 26)? as usize;
-        let extra_len = read_u16(&self.bytes, offset + 28)? as usize;
-        let data_start = offset
-            .checked_add(30)
-            .and_then(|value| value.checked_add(name_len))
-            .and_then(|value| value.checked_add(extra_len))
-            .ok_or_else(|| "EPUB ZIP data offset overflow".to_string())?;
-        let data_end = data_start
-            .checked_add(entry.compressed_size)
-            .ok_or_else(|| "EPUB ZIP member overflow".to_string())?;
-        if data_end > self.bytes.len() {
+        let name_len = u64::from(read_u16(&header, 26)?);
+        let extra_len = u64::from(read_u16(&header, 28)?);
+        let data_start = offset + 30 + name_len + extra_len;
+        if data_start + entry.compressed_size as u64 > self.size {
             return Err(format!("EPUB ZIP member exceeds archive: {}", entry.name));
         }
-        let compressed = &self.bytes[data_start..data_end];
+        let compressed = read_at(&self.file, data_start, entry.compressed_size)?;
         let output = match entry.method {
-            0 => compressed.to_vec(),
-            8 => decompress_to_vec(compressed)
+            0 => compressed,
+            8 => decompress_to_vec_with_limit(&compressed, EPUB_MEMBER_UNCOMPRESSED_LIMIT)
                 .map_err(|error| format!("EPUB deflate failed for {}: {error:?}", entry.name))?,
             method => {
                 return Err(format!(
@@ -323,9 +373,11 @@ fn package_title(package: &str) -> String {
         .unwrap_or_else(|| "Untitled EPUB".into())
 }
 
-/// Open one EPUB archive and produce a bounded reflowable document.
+/// Open one EPUB archive and index its chapters and navigation. Each chapter
+/// is flattened once to measure it; none of the text is kept.
 #[inline(never)]
 pub fn open_epub(path: impl AsRef<Path>) -> Result<EpubDocument, String> {
+    let path = path.as_ref();
     let archive = ZipArchive::open(path)?;
     let (_, package, package_dir) = epub_package(&archive)?;
     let title = package_title(&package);
@@ -335,10 +387,12 @@ pub fn open_epub(path: impl AsRef<Path>) -> Result<EpubDocument, String> {
     if spine_ids.is_empty() {
         return Err("EPUB spine is empty".into());
     }
+    let links = parse_navigation_links(&archive, &package, &package_dir, &manifest)?;
+    let wanted = wanted_fragments(&links);
 
-    let mut text = String::new();
-    let mut chapter_offsets = BTreeMap::new();
-    let mut chapter_labels = Vec::new();
+    let mut pacer = Pacer::start();
+    let mut text_size = 0_u64;
+    let mut targets = BTreeMap::new();
     let mut chapters = Vec::new();
     for (spine_index, idref) in spine_ids.iter().enumerate() {
         let item = manifest
@@ -346,60 +400,55 @@ pub fn open_epub(path: impl AsRef<Path>) -> Result<EpubDocument, String> {
             .ok_or_else(|| format!("EPUB spine item missing from manifest: {idref}"))?;
         let member = normalize_archive_path(&package_dir, &item.href);
         let xhtml = utf8_member(&archive, &member)?;
-        let chapter = html_to_text(&xhtml);
-        if chapter.trim().is_empty() {
+        let (text, anchors) = flatten_xhtml(&xhtml, wanted.get(&member));
+        pacer.pace();
+        if text.is_empty() {
             continue;
         }
-        if !text.is_empty() {
-            text.push_str("\n\n");
+        if text_size > 0 {
+            text_size += 2;
         }
-        let offset = text.len() as u64;
-        let label = fallback_chapter_label(&xhtml, spine_index);
-        chapter_offsets.insert(member.clone(), (spine_index, offset));
-        chapter_labels.push((spine_index, offset, label.clone()));
-        text.push_str(chapter.trim());
-        let text_end_offset = text.len() as u64;
+        let offset = text_size;
+        targets.insert(member.clone(), (spine_index, offset));
+        for (id, local) in anchors {
+            let at = offset + local as u64;
+            targets.insert(format!("{member}#{id}"), (spine_index, at));
+        }
+        text_size += text.len() as u64;
+        if text_size > EPUB_TEXT_LIMIT {
+            return Err("EPUB text exceeds the size limit".into());
+        }
         chapters.push(EpubChapter {
             number: chapters.len() + 1,
-            label,
+            label: fallback_chapter_label(&xhtml, spine_index),
             text_offset: offset,
-            text_end_offset,
+            text_end_offset: text_size,
             spine_index,
+            member,
         });
-        if text.len() > EPUB_REFLOW_TEXT_LIMIT {
-            return Err(format!(
-                "EPUB reflow text exceeds {} byte limit",
-                EPUB_REFLOW_TEXT_LIMIT
-            ));
-        }
     }
-    if text.trim().is_empty() {
+    if chapters.is_empty() {
         return Err("EPUB spine did not contain readable text".into());
     }
 
-    let mut toc = parse_navigation_toc(
-        &archive,
-        &package,
-        &package_dir,
-        &manifest,
-        &chapter_offsets,
-    )?;
+    let mut toc = resolve_links(&links, &targets);
     if toc.is_empty() {
-        toc = chapter_labels
-            .into_iter()
+        toc = chapters
+            .iter()
             .take(EPUB_TOC_LIMIT)
-            .map(|(spine_index, text_offset, label)| EpubTocEntry {
-                label,
-                text_offset,
-                spine_index,
+            .map(|chapter| EpubTocEntry {
+                label: chapter.label.clone(),
+                text_offset: chapter.text_offset,
+                spine_index: chapter.spine_index,
             })
             .collect();
     }
     dedupe_toc(&mut toc);
     toc.truncate(EPUB_TOC_LIMIT);
     Ok(EpubDocument {
+        path: path.to_string_lossy().into_owned(),
         title,
-        text,
+        text_size,
         toc,
         chapters,
         spine_count: spine_ids.len(),
@@ -449,13 +498,12 @@ fn parse_spine_ids(package: &str) -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-fn parse_navigation_toc(
+fn parse_navigation_links(
     archive: &ZipArchive,
     package: &str,
     package_dir: &str,
     manifest: &BTreeMap<String, ManifestItem>,
-    chapter_offsets: &BTreeMap<String, (usize, u64)>,
-) -> Result<Vec<EpubTocEntry>, String> {
+) -> Result<Vec<NavigationLink>, String> {
     if let Some(nav) = manifest.values().find(|item| {
         item.properties
             .split_whitespace()
@@ -464,9 +512,9 @@ fn parse_navigation_toc(
         let member = normalize_archive_path(package_dir, &nav.href);
         let nav_text = utf8_member(archive, &member)?;
         let base = archive_parent(&member);
-        let toc = links_to_toc(&nav_text, &base, chapter_offsets);
-        if !toc.is_empty() {
-            return Ok(toc);
+        let links = nav_links(toc_nav(&nav_text), &base);
+        if !links.is_empty() {
+            return Ok(links);
         }
     }
 
@@ -483,19 +531,56 @@ fn parse_navigation_toc(
         let member = normalize_archive_path(package_dir, &ncx.href);
         let ncx_text = utf8_member(archive, &member)?;
         let base = archive_parent(&member);
-        return Ok(ncx_to_toc(&ncx_text, &base, chapter_offsets));
+        return Ok(ncx_links(&ncx_text, &base));
     }
     Ok(Vec::new())
 }
 
-fn links_to_toc(
-    html: &str,
-    base: &str,
-    chapter_offsets: &BTreeMap<String, (usize, u64)>,
-) -> Vec<EpubTocEntry> {
-    let mut toc = Vec::new();
+/// One TOC link before its target is located in the flattened text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NavigationLink {
+    label: String,
+    member: String,
+    fragment: Option<String>,
+}
+
+fn navigation_link(base: &str, href: &str, label: &str) -> NavigationLink {
+    let fragment = href
+        .split_once('#')
+        .map(|(_, fragment)| percent_decode(fragment))
+        .filter(|fragment| !fragment.is_empty());
+    NavigationLink {
+        label: label.to_string(),
+        member: normalize_archive_path(base, href),
+        fragment,
+    }
+}
+
+/// The `epub:type="toc"` nav of an EPUB3 navigation document, so page lists
+/// and landmarks stay out of the TOC.
+fn toc_nav(html: &str) -> &str {
     let mut cursor = 0;
-    while toc.len() < EPUB_TOC_LIMIT {
+    while let Some(start_rel) = html[cursor..].find("<nav") {
+        let start = cursor + start_rel;
+        let Some(end_rel) = html[start..].find('>') else {
+            break;
+        };
+        let kinds = attribute(&html[start + 1..start + end_rel], "type").unwrap_or_default();
+        if kinds.split_whitespace().any(|kind| kind == "toc") {
+            let end = html[start..]
+                .find("</nav>")
+                .map_or(html.len(), |close| start + close);
+            return &html[start..end];
+        }
+        cursor = start + end_rel + 1;
+    }
+    html
+}
+
+fn nav_links(html: &str, base: &str) -> Vec<NavigationLink> {
+    let mut links = Vec::new();
+    let mut cursor = 0;
+    while links.len() < EPUB_TOC_LIMIT {
         let Some(start_rel) = html[cursor..].find("<a") else {
             break;
         };
@@ -514,59 +599,78 @@ fn links_to_toc(
         };
         let close = open_end + 1 + close_rel;
         let label = html_to_text(&html[open_end + 1..close]);
-        if let Some(entry) = toc_for_href(base, &href, label.trim(), chapter_offsets) {
-            toc.push(entry);
-        }
+        links.push(navigation_link(base, &href, label.trim()));
         cursor = close + 4;
     }
-    toc
+    links
 }
 
-fn ncx_to_toc(
-    ncx: &str,
-    base: &str,
-    chapter_offsets: &BTreeMap<String, (usize, u64)>,
-) -> Vec<EpubTocEntry> {
-    let mut toc = Vec::new();
+fn ncx_links(ncx: &str, base: &str) -> Vec<NavigationLink> {
+    let mut links = Vec::new();
     let mut cursor = 0;
-    while toc.len() < EPUB_TOC_LIMIT {
+    while links.len() < EPUB_TOC_LIMIT {
         let Some(start_rel) = ncx[cursor..].find("<navPoint") else {
             break;
         };
         let start = cursor + start_rel;
-        let end = ncx[start..]
-            .find("</navPoint>")
-            .map_or(ncx.len(), |value| start + value + "</navPoint>".len());
-        let block = &ncx[start..end];
+        let body = start + "<navPoint".len();
+        // A navPoint's own label and target come before any nested navPoint.
+        let rest = &ncx[body..];
+        let child = rest.find("<navPoint").unwrap_or(rest.len());
+        let close = rest.find("</navPoint>").unwrap_or(rest.len());
+        let block = &ncx[start..body + child.min(close)];
         let href = first_open_tag(block, "content").and_then(|tag| attribute(tag, "src"));
         let label = first_element_text(block, "text").unwrap_or_else(|| "Chapter".into());
         if let Some(href) = href {
-            if let Some(entry) = toc_for_href(base, &href, label.trim(), chapter_offsets) {
-                toc.push(entry);
-            }
+            links.push(navigation_link(base, &href, label.trim()));
         }
-        cursor = end;
+        cursor = body;
     }
-    toc
+    links
 }
 
-fn toc_for_href(
-    base: &str,
-    href: &str,
-    label: &str,
-    chapter_offsets: &BTreeMap<String, (usize, u64)>,
-) -> Option<EpubTocEntry> {
-    let member = normalize_archive_path(base, href);
-    let (spine_index, text_offset) = chapter_offsets.get(&member).copied()?;
-    Some(EpubTocEntry {
-        label: if label.is_empty() {
+/// Fragment ids each member must locate for the TOC.
+fn wanted_fragments(links: &[NavigationLink]) -> BTreeMap<String, BTreeSet<String>> {
+    let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for link in links {
+        if let Some(fragment) = &link.fragment {
+            wanted
+                .entry(link.member.clone())
+                .or_default()
+                .insert(fragment.clone());
+        }
+    }
+    wanted
+}
+
+/// TOC entries for links whose member is a readable chapter. `targets` maps
+/// `member` and `member#id` to a spine index and flattened text offset.
+fn resolve_links(
+    links: &[NavigationLink],
+    targets: &BTreeMap<String, (usize, u64)>,
+) -> Vec<EpubTocEntry> {
+    let mut toc = Vec::new();
+    for link in links {
+        let anchored = link
+            .fragment
+            .as_ref()
+            .and_then(|fragment| targets.get(&format!("{}#{fragment}", link.member)));
+        let target = anchored.or_else(|| targets.get(&link.member));
+        let Some(&(spine_index, text_offset)) = target else {
+            continue;
+        };
+        let label = if link.label.is_empty() {
             format!("Chapter {}", spine_index + 1)
         } else {
-            label.to_string()
-        },
-        text_offset,
-        spine_index,
-    })
+            link.label.clone()
+        };
+        toc.push(EpubTocEntry {
+            label,
+            text_offset,
+            spine_index,
+        });
+    }
+    toc
 }
 
 fn dedupe_toc(toc: &mut Vec<EpubTocEntry>) {
@@ -594,6 +698,27 @@ fn fallback_chapter_label(xhtml: &str, spine_index: usize) -> String {
 fn utf8_member(archive: &ZipArchive, name: &str) -> Result<String, String> {
     let bytes = archive.extract(name)?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Flattened text of one archive member, exactly as `open_epub` measured it.
+fn read_chapter_text(path: &Path, member: &str) -> Result<String, String> {
+    let archive = ZipArchive::open(path)?;
+    Ok(html_to_text(&utf8_member(&archive, member)?))
+}
+
+fn open_error(error: std::io::Error) -> String {
+    format!("EPUB open failed: {error}")
+}
+
+fn read_error(error: std::io::Error) -> String {
+    format!("EPUB read failed: {error}")
+}
+
+fn read_at(mut file: &File, offset: u64, len: usize) -> Result<Vec<u8>, String> {
+    file.seek(SeekFrom::Start(offset)).map_err(read_error)?;
+    let mut bytes = vec![0_u8; len];
+    file.read_exact(&mut bytes).map_err(read_error)?;
+    Ok(bytes)
 }
 
 fn find_eocd(bytes: &[u8]) -> Option<usize> {
@@ -813,7 +938,17 @@ fn first_element_text(xml: &str, local_name: &str) -> Option<String> {
 
 /// Convert XHTML into bounded, paragraph-aware reflowable UTF-8 text.
 pub fn html_to_text(html: &str) -> String {
+    flatten_xhtml(html, None).0
+}
+
+/// `html_to_text`, also returning where each wanted element `id` starts in
+/// the text.
+fn flatten_xhtml(
+    html: &str,
+    wanted: Option<&BTreeSet<String>>,
+) -> (String, Vec<(String, usize)>) {
     let mut output = String::new();
+    let mut anchors = Vec::new();
     let mut cursor = 0;
     while cursor < html.len() {
         let rest = &html[cursor..];
@@ -830,6 +965,12 @@ pub fn html_to_text(html: &str) -> String {
                 .next()
                 .unwrap_or("")
                 .to_ascii_lowercase();
+            if !closing && SKIPPED_ELEMENTS.contains(&name.as_str()) && !tag.ends_with('/') {
+                if let Some(skip) = element_end(rest, &name) {
+                    cursor += skip;
+                    continue;
+                }
+            }
             if matches!(
                 name.as_str(),
                 "p" | "div"
@@ -850,6 +991,9 @@ pub fn html_to_text(html: &str) -> String {
                     push_newline(&mut output);
                 }
             }
+            if let Some(id) = wanted_id(tag, closing, wanted) {
+                anchors.push((id, output.len()));
+            }
             cursor += end_rel + 1;
             continue;
         }
@@ -867,7 +1011,37 @@ pub fn html_to_text(html: &str) -> String {
         push_text_character(&mut output, character);
         cursor += character.len_utf8();
     }
-    output.trim().to_string()
+    let text = output.trim().to_string();
+    for (_, offset) in &mut anchors {
+        *offset = (*offset).min(text.len());
+    }
+    (text, anchors)
+}
+
+fn wanted_id(tag: &str, closing: bool, wanted: Option<&BTreeSet<String>>) -> Option<String> {
+    let wanted = wanted.filter(|_| !closing)?;
+    attribute(tag, "id").filter(|id| wanted.contains(id))
+}
+
+/// Bytes from `<name ...>` at the start of `html` through its closing tag.
+fn element_end(html: &str, name: &str) -> Option<usize> {
+    let closing = format!("</{name}");
+    let bytes = html.as_bytes();
+    let mut cursor = 0;
+    while let Some(found) = find_ignoring_case(&bytes[cursor..], closing.as_bytes()) {
+        let after = cursor + found + closing.len();
+        if bytes.get(after).is_some_and(|byte| *byte == b'>' || byte.is_ascii_whitespace()) {
+            return html[after..].find('>').map(|end| after + end + 1);
+        }
+        cursor = after;
+    }
+    None
+}
+
+fn find_ignoring_case(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle))
 }
 
 fn push_text_character(output: &mut String, character: char) {
@@ -935,6 +1109,99 @@ fn decode_entity(entity: &str) -> String {
 }
 
 #[cfg(test)]
+fn push_u16(output: &mut Vec<u8>, value: u16) {
+    output.extend(value.to_le_bytes());
+}
+
+#[cfg(test)]
+fn push_u32(output: &mut Vec<u8>, value: u32) {
+    output.extend(value.to_le_bytes());
+}
+
+/// Uncompressed ZIP archive holding `entries`, for tests.
+#[cfg(test)]
+pub(crate) fn stored_zip(entries: &[(&str, &str)]) -> Vec<u8> {
+    let mut output = Vec::new();
+    let mut central = Vec::new();
+    for (name, body) in entries {
+        let offset = output.len() as u32;
+        push_u32(&mut output, 0x0403_4B50);
+        push_u16(&mut output, 20);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u32(&mut output, 0);
+        push_u32(&mut output, body.len() as u32);
+        push_u32(&mut output, body.len() as u32);
+        push_u16(&mut output, name.len() as u16);
+        push_u16(&mut output, 0);
+        output.extend(name.as_bytes());
+        output.extend(body.as_bytes());
+
+        push_u32(&mut central, 0x0201_4B50);
+        push_u16(&mut central, 20);
+        push_u16(&mut central, 20);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u32(&mut central, 0);
+        push_u32(&mut central, body.len() as u32);
+        push_u32(&mut central, body.len() as u32);
+        push_u16(&mut central, name.len() as u16);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u32(&mut central, 0);
+        push_u32(&mut central, offset);
+        central.extend(name.as_bytes());
+    }
+    let central_offset = output.len() as u32;
+    let central_size = central.len() as u32;
+    output.extend(central);
+    push_u32(&mut output, 0x0605_4B50);
+    push_u16(&mut output, 0);
+    push_u16(&mut output, 0);
+    push_u16(&mut output, entries.len() as u16);
+    push_u16(&mut output, entries.len() as u16);
+    push_u32(&mut output, central_size);
+    push_u32(&mut output, central_offset);
+    push_u16(&mut output, 0);
+    output
+}
+
+/// EPUB with one titled chapter per body, for tests.
+#[cfg(test)]
+pub(crate) fn sample_epub(bodies: &[String]) -> Vec<u8> {
+    let mut manifest = String::new();
+    let mut spine = String::new();
+    let mut chapters = Vec::new();
+    for (index, body) in bodies.iter().enumerate() {
+        let number = index + 1;
+        manifest.push_str(&format!("<item id='c{number}' href='c{number}.xhtml'/>"));
+        spine.push_str(&format!("<itemref idref='c{number}'/>"));
+        let content = format!("<h1>Capítulo {number}</h1><p>{body}</p>");
+        let head = "<html><head><title>Libro</title></head>";
+        let xhtml = format!("{head}<body>{content}</body></html>");
+        chapters.push((format!("OEBPS/c{number}.xhtml"), xhtml));
+    }
+    let manifest = format!("<manifest>{manifest}</manifest>");
+    let spine = format!("<spine>{spine}</spine>");
+    let package = format!("<package>{manifest}{spine}</package>");
+    let container = "<container><rootfile full-path='OEBPS/book.opf'/></container>";
+    let mut entries = vec![
+        ("META-INF/container.xml", container),
+        ("OEBPS/book.opf", package.as_str()),
+    ];
+    for (name, xhtml) in &chapters {
+        entries.push((name.as_str(), xhtml.as_str()));
+    }
+    stored_zip(&entries)
+}
+
+#[cfg(test)]
 mod tests {
     use std::{
         fs,
@@ -943,8 +1210,9 @@ mod tests {
     };
 
     use super::{
-        attribute, first_open_tag, html_to_text, open_epub, open_epub_on_worker,
-        read_epub_title_on_worker, EPUB_PARSER_WORKER_STACK_BYTES, EPUB_TITLE_WORKER_STACK_BYTES,
+        attribute, first_open_tag, html_to_text, ncx_links, open_epub, open_epub_on_worker,
+        read_epub_title_on_worker, sample_epub, stored_zip, EPUB_PARSER_WORKER_STACK_BYTES,
+        EPUB_TITLE_WORKER_STACK_BYTES,
     };
 
     fn temp_epub(name: &str) -> PathBuf {
@@ -953,65 +1221,6 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("rustmix-{name}-{nonce}.epu"))
-    }
-
-    fn push_u16(output: &mut Vec<u8>, value: u16) {
-        output.extend(value.to_le_bytes());
-    }
-    fn push_u32(output: &mut Vec<u8>, value: u32) {
-        output.extend(value.to_le_bytes());
-    }
-
-    fn stored_zip(entries: &[(&str, &str)]) -> Vec<u8> {
-        let mut output = Vec::new();
-        let mut central = Vec::new();
-        for (name, body) in entries {
-            let offset = output.len() as u32;
-            push_u32(&mut output, 0x0403_4B50);
-            push_u16(&mut output, 20);
-            push_u16(&mut output, 0);
-            push_u16(&mut output, 0);
-            push_u16(&mut output, 0);
-            push_u16(&mut output, 0);
-            push_u32(&mut output, 0);
-            push_u32(&mut output, body.len() as u32);
-            push_u32(&mut output, body.len() as u32);
-            push_u16(&mut output, name.len() as u16);
-            push_u16(&mut output, 0);
-            output.extend(name.as_bytes());
-            output.extend(body.as_bytes());
-
-            push_u32(&mut central, 0x0201_4B50);
-            push_u16(&mut central, 20);
-            push_u16(&mut central, 20);
-            push_u16(&mut central, 0);
-            push_u16(&mut central, 0);
-            push_u16(&mut central, 0);
-            push_u16(&mut central, 0);
-            push_u32(&mut central, 0);
-            push_u32(&mut central, body.len() as u32);
-            push_u32(&mut central, body.len() as u32);
-            push_u16(&mut central, name.len() as u16);
-            push_u16(&mut central, 0);
-            push_u16(&mut central, 0);
-            push_u16(&mut central, 0);
-            push_u16(&mut central, 0);
-            push_u32(&mut central, 0);
-            push_u32(&mut central, offset);
-            central.extend(name.as_bytes());
-        }
-        let central_offset = output.len() as u32;
-        let central_size = central.len() as u32;
-        output.extend(central);
-        push_u32(&mut output, 0x0605_4B50);
-        push_u16(&mut output, 0);
-        push_u16(&mut output, 0);
-        push_u16(&mut output, entries.len() as u16);
-        push_u16(&mut output, entries.len() as u16);
-        push_u32(&mut output, central_size);
-        push_u32(&mut output, central_offset);
-        push_u16(&mut output, 0);
-        output
     }
 
     #[test]
@@ -1082,11 +1291,78 @@ mod tests {
             2
         );
         assert_eq!(read_epub_title_on_worker(&path).unwrap(), "Sample EPUB");
-        assert!(epub.text.contains("First chapter."));
-        assert!(epub.text.contains("Second chapter."));
+        assert!(epub.chapter_text(0).unwrap().contains("First chapter."));
+        assert!(epub.chapter_text(1).unwrap().contains("Second chapter."));
         assert_eq!(epub.toc.len(), 2);
         assert_eq!(epub.toc[0].label, "Start");
         assert!(epub.toc[1].text_offset > epub.toc[0].text_offset);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn chapter_offsets_match_text_extracted_on_demand() {
+        let path = temp_epub("chapters");
+        let bodies = ["Uno dos.", "Tres.", "Cuatro."].map(String::from);
+        fs::write(&path, sample_epub(&bodies)).unwrap();
+        let epub = open_epub(&path).unwrap();
+        assert_eq!(epub.chapters.len(), 3);
+        let mut expected_offset = 0;
+        for (index, chapter) in epub.chapters.iter().enumerate() {
+            let text = epub.chapter_text(index).unwrap();
+            assert!(text.starts_with(&format!("Capítulo {}", index + 1)));
+            assert_eq!(chapter.text_offset, expected_offset);
+            let end = chapter.text_offset + text.len() as u64;
+            assert_eq!(end, chapter.text_end_offset);
+            expected_offset = end + 2;
+        }
+        assert_eq!(epub.text_size_bytes(), epub.chapters[2].text_end_offset);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn skips_head_style_and_script_content() {
+        let html = "<html><head><title>Libro</title><style>p{color:red}</style></head>\
+                    <body><script>var x = 1;</script><p>Hola</p></body></html>";
+        assert_eq!(html_to_text(html), "Hola");
+    }
+
+    #[test]
+    fn nested_ncx_points_keep_every_child() {
+        let ncx = "<navMap><navPoint><navLabel><text>Génesis</text></navLabel>\
+                   <content src='gen.xhtml'/>\
+                   <navPoint><navLabel><text>1</text></navLabel><content src='gen.xhtml#c1'/>\
+                   </navPoint><navPoint><navLabel><text>2</text></navLabel>\
+                   <content src='gen.xhtml#c2'/></navPoint></navPoint></navMap>";
+        let labels: Vec<String> = ncx_links(ncx, "OEBPS")
+            .into_iter()
+            .map(|link| link.label)
+            .collect();
+        assert_eq!(labels, ["Génesis", "1", "2"]);
+    }
+
+    #[test]
+    fn toc_fragments_point_inside_their_chapter() {
+        let path = temp_epub("fragments");
+        let nav = "<nav epub:type='toc'><a href='gen.xhtml#c1'>1</a><a href='gen.xhtml#c2'>2</a>\
+                   </nav><nav epub:type='page-list'><a href='gen.xhtml'>p1</a></nav>";
+        let package = "<package><manifest><item id='nav' href='nav.xhtml' properties='nav'/>\
+                       <item id='gen' href='gen.xhtml'/></manifest>\
+                       <spine><itemref idref='gen'/></spine></package>";
+        let chapter = "<html><body><h1 id='c1'>Uno</h1><p>Texto uno.</p>\
+                       <h1 id='c2'>Dos</h1><p>Texto dos.</p></body></html>";
+        let bytes = stored_zip(&[
+            ("META-INF/container.xml", "<container><rootfile full-path='book.opf'/></container>"),
+            ("book.opf", package),
+            ("nav.xhtml", nav),
+            ("gen.xhtml", chapter),
+        ]);
+        fs::write(&path, bytes).unwrap();
+        let epub = open_epub(&path).unwrap();
+        let labels: Vec<&str> = epub.toc.iter().map(|entry| entry.label.as_str()).collect();
+        assert_eq!(labels, ["1", "2"]);
+        let text = epub.chapter_text(0).unwrap();
+        let second = epub.toc[1].text_offset as usize;
+        assert!(text[second..].starts_with("Dos"));
         let _ = fs::remove_file(path);
     }
 }
