@@ -15,6 +15,7 @@ use anyhow::{anyhow, bail, Result};
 use embedded_graphics::prelude::Point;
 
 use crate::{
+    dither::{floyd_steinberg, luma},
     framebuffer::{FrameBuffer, FRAMEBUFFER_SIZE, HEIGHT, ROW_BYTES, WIDTH},
     storage::SD_MOUNT_POINT,
 };
@@ -70,6 +71,27 @@ pub struct SleepImageSelection {
     pub note: Option<String>,
 }
 
+impl SleepImageSelection {
+    /// A picture prepared elsewhere, such as a starred photo.
+    #[must_use]
+    pub fn picture(file_name: String, frame: FrameBuffer) -> Self {
+        Self {
+            file_name,
+            frame,
+            valid_count: 1,
+            rejected_count: 0,
+            raw_entries: 0,
+            candidate_entries: 0,
+            metadata_fallbacks: 0,
+            ignored_entries: 0,
+            scan_error: None,
+            choice: None,
+            fallback: false,
+            note: None,
+        }
+    }
+}
+
 /// Read-only SD-backed sleep-image catalog.
 #[derive(Clone, Debug)]
 pub struct SleepImageCatalog {
@@ -103,6 +125,12 @@ impl SleepImageCatalog {
     /// Without a usable picture the selection falls back to a built-in frame
     /// and a note that explains why.
     pub fn select_random(&mut self, random_word: u32) -> SleepImageSelection {
+        self.select(random_word, false)
+    }
+
+    /// Like `select_random`, or the picture after the previous one by name
+    /// when `in_order` is set.
+    pub fn select(&mut self, random_word: u32, in_order: bool) -> SleepImageSelection {
         match self.scan_valid_images() {
             Ok((valid, mut stats)) if !valid.is_empty() => {
                 let previous_index = self
@@ -113,8 +141,12 @@ impl SleepImageCatalog {
                             .iter()
                             .position(|path| file_name_label(path) == previous)
                     });
-                let (index, anti_repeat) =
-                    choose_random_index(valid.len(), previous_index, random_word);
+                let next = previous_index.map_or(0, |index| (index + 1) % valid.len());
+                let (index, anti_repeat) = if in_order {
+                    (next, false)
+                } else {
+                    choose_random_index(valid.len(), previous_index, random_word)
+                };
                 let path = &valid[index];
                 let file_name = file_name_label(path);
                 self.last_selected_file_name = Some(file_name.clone());
@@ -324,27 +356,13 @@ pub fn decode_sleep_bmp(bytes: &[u8]) -> Result<FrameBuffer> {
         return FrameBuffer::from_native_bytes(native).map_err(|message| anyhow!(message));
     }
 
-    // Floyd-Steinberg dithering; diffused errors are kept in sixteenths.
     let mut frame = FrameBuffer::new_white();
-    let mut current = vec![0_i32; layout.width + 2];
-    let mut next = vec![0_i32; layout.width + 2];
-    for y in 0..layout.height {
-        let row = layout.row(bytes, y);
-        for x in 0..layout.width {
-            let value = i32::from(layout.grey(row, x)) + current[x + 1] / 16;
-            let black = value < 128;
-            let error = if black { value } else { value - 255 };
-            current[x + 2] += error * 7;
-            next[x] += error * 3;
-            next[x + 1] += error * 5;
-            next[x + 2] += error;
-            if black {
-                frame.set_native_black(layout.native_point(x, y), true);
-            }
-        }
-        core::mem::swap(&mut current, &mut next);
-        next.fill(0);
-    }
+    floyd_steinberg(
+        layout.width,
+        layout.height,
+        |x, y| layout.grey(layout.row(bytes, y), x),
+        |x, y| frame.set_native_black(layout.native_point(x, y), true),
+    );
     Ok(frame)
 }
 
@@ -458,7 +476,7 @@ impl BmpLayout {
             8 => entry(row[x]),
             bits => {
                 let at = x * usize::from(bits / 8);
-                grey(row[at + 2], row[at + 1], row[at])
+                luma(row[at + 2], row[at + 1], row[at])
             }
         }
     }
@@ -472,10 +490,6 @@ impl BmpLayout {
             Point::new(y as i32, HEIGHT as i32 - 1 - x as i32)
         }
     }
-}
-
-fn grey(red: u8, green: u8, blue: u8) -> u8 {
-    ((u32::from(red) * 77 + u32::from(green) * 150 + u32::from(blue) * 29) >> 8) as u8
 }
 
 fn built_in_sleep_frame() -> FrameBuffer {
@@ -518,7 +532,7 @@ fn palette_grey(bytes: &[u8], offset: usize) -> Result<u8> {
     let entry = bytes
         .get(offset..offset + 3)
         .ok_or_else(|| anyhow!("is truncated"))?;
-    Ok(grey(entry[2], entry[1], entry[0]))
+    Ok(luma(entry[2], entry[1], entry[0]))
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16> {
