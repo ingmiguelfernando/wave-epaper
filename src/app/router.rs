@@ -1,15 +1,19 @@
 //! Hierarchical screen router for the portrait product UI shell.
 
-/// Product screens exposed by the RustMix Wave shell.
+/// Product screens exposed by the Wave shell.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ScreenRoute {
     #[default]
     Home,
     Reader,
-    Productivity,
+    Ai,
     Games,
     Tools,
     Settings,
+    Photos,
+    Bible,
+    ReadingStats,
+    XiaoZhi,
     ContinueReading,
     Library,
     Bookmarks,
@@ -61,11 +65,15 @@ impl ScreenRoute {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Home => "Home",
-            Self::Reader => "Reader",
-            Self::Productivity => "Productivity",
+            Self::Reader => "Library",
+            Self::Ai => "AI",
             Self::Games => "Games",
             Self::Tools => "Tools",
             Self::Settings => "Settings",
+            Self::Photos => "Photos",
+            Self::Bible => "Bible",
+            Self::ReadingStats => "Reading Stats",
+            Self::XiaoZhi => "XiaoZhi",
             Self::ContinueReading => "Continue Reading",
             Self::Library => "Library",
             Self::Bookmarks => "Bookmarks",
@@ -118,10 +126,14 @@ impl ScreenRoute {
         match self {
             Self::Home => "home",
             Self::Reader => "reader",
-            Self::Productivity => "productivity",
+            Self::Ai => "ai",
             Self::Games => "games",
             Self::Tools => "tools",
             Self::Settings => "settings",
+            Self::Photos => "photos",
+            Self::Bible => "bible",
+            Self::ReadingStats => "reading-stats",
+            Self::XiaoZhi => "xiaozhi",
             Self::ContinueReading => "continue-reading",
             Self::Library => "library",
             Self::Bookmarks => "bookmarks",
@@ -173,29 +185,38 @@ impl ScreenRoute {
     pub const fn is_category(self) -> bool {
         matches!(
             self,
-            Self::Reader | Self::Productivity | Self::Games | Self::Tools | Self::Settings
+            Self::Reader | Self::Ai | Self::Games | Self::Tools | Self::Settings
         )
     }
 
     #[must_use]
     pub const fn is_placeholder(self) -> bool {
-        matches!(self, Self::GamesTbd)
+        matches!(
+            self,
+            Self::GamesTbd | Self::Photos | Self::Bible | Self::ReadingStats | Self::XiaoZhi
+        )
     }
 
     #[must_use]
     pub const fn parent(self) -> Option<Self> {
         match self {
             Self::Home => None,
-            Self::Reader | Self::Productivity | Self::Games | Self::Tools | Self::Settings => {
-                Some(Self::Home)
-            }
+            Self::Reader
+            | Self::Ai
+            | Self::Games
+            | Self::Tools
+            | Self::Settings
+            | Self::Photos
+            | Self::Bible
+            | Self::ReadingStats
+            | Self::Weather => Some(Self::Home),
             Self::ContinueReading | Self::Library | Self::Bookmarks => Some(Self::Reader),
             Self::ReaderBookmarks => Some(Self::ReaderOptions),
             Self::ReaderLoading | Self::ReaderPage => Some(Self::Library),
             Self::ReaderOptions => Some(Self::ReaderPage),
             Self::ReaderPreferences => Some(Self::ReaderOptions),
             Self::ReaderToc => Some(Self::ReaderOptions),
-            Self::Calendar | Self::VoiceNotes => Some(Self::Productivity),
+            Self::VoiceNotes | Self::XiaoZhi => Some(Self::Ai),
             Self::CalendarAgenda => Some(Self::Calendar),
             Self::CalendarEventDetails => Some(Self::CalendarAgenda),
             Self::CalendarEventEditor => Some(Self::CalendarAgenda),
@@ -203,7 +224,9 @@ impl ScreenRoute {
             Self::VoiceNoteDetails | Self::VoiceNoteRecording => Some(Self::VoiceNotes),
             Self::GamesTbd | Self::LuaApps => Some(Self::Games),
             Self::LuaGame | Self::LuaGameError => Some(Self::LuaApps),
-            Self::Files | Self::Dictionary | Self::UnitConverter => Some(Self::Tools),
+            Self::Files | Self::Dictionary | Self::UnitConverter | Self::Calendar => {
+                Some(Self::Tools)
+            }
             Self::PowerKeyMenu => Some(Self::Home),
             Self::Alarms
             | Self::Audio
@@ -212,8 +235,7 @@ impl ScreenRoute {
             | Self::DeviceInfo
             | Self::Environment
             | Self::Motion
-            | Self::Network
-            | Self::Weather => Some(Self::Settings),
+            | Self::Network => Some(Self::Settings),
             Self::AudioDetails => Some(Self::Audio),
             Self::ClockDetails => Some(Self::Clock),
             Self::DeviceInfoBoard => Some(Self::DeviceInfo),
@@ -281,10 +303,12 @@ mod tests {
         assert_eq!(ScreenRoute::Files.parent(), Some(ScreenRoute::Tools));
         assert_eq!(ScreenRoute::Display.parent(), Some(ScreenRoute::Settings));
         assert_eq!(ScreenRoute::PowerKeyMenu.parent(), Some(ScreenRoute::Home));
-        assert_eq!(
-            ScreenRoute::Calendar.parent(),
-            Some(ScreenRoute::Productivity)
-        );
+        assert_eq!(ScreenRoute::Calendar.parent(), Some(ScreenRoute::Tools));
+        assert_eq!(ScreenRoute::Weather.parent(), Some(ScreenRoute::Home));
+        assert_eq!(ScreenRoute::VoiceNotes.parent(), Some(ScreenRoute::Ai));
+        assert_eq!(ScreenRoute::Photos.parent(), Some(ScreenRoute::Home));
+        assert!(ScreenRoute::Photos.is_placeholder());
+        assert!(ScreenRoute::Ai.is_category());
         assert_eq!(
             ScreenRoute::CalendarAgenda.parent(),
             Some(ScreenRoute::Calendar)

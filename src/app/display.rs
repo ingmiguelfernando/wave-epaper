@@ -172,7 +172,7 @@ impl DisplayPreferences {
     #[must_use]
     pub fn serialized(self) -> String {
         format!(
-            "# RustMix Wave UI typography\nfont_family={}\nfont_size={}\n",
+            "# Wave UI typography\nfont_family={}\nfont_size={}\n",
             self.font_family.marker(),
             self.font_size.marker()
         )

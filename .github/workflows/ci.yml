@@ -30,8 +30,20 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
       - name: Run host tests
         run: ./scripts/test-host.sh
+        env:
+          # Also renders every preview screen to PNG (see src/app/preview.rs).
+          WAVE_PREVIEW_DIR: ${{ github.workspace }}/preview
+
+      - name: Upload screen previews
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screen-previews
+          path: preview/
+          if-no-files-found: ignore
+
+      # Last, so a formatting slip still reports test results and previews.
+      - name: Check formatting
+        run: cargo fmt --all -- --check

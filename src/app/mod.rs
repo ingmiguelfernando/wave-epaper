@@ -10,6 +10,8 @@ use crate::{framebuffer::FrameBuffer, orientation::OrientedFrameBuffer};
 
 pub mod display;
 pub mod menu;
+#[cfg(test)]
+mod preview;
 pub mod reader_atkinson_next_assets;
 pub mod reader_literata_assets;
 pub mod reader_serif_assets;
@@ -54,27 +56,32 @@ pub fn render_current_screen(frame: &mut FrameBuffer, state: &AppState) -> Resul
 mod tests {
     use embedded_graphics::prelude::Point;
 
-    use super::{render_current_screen, AppState, ScreenRoute};
+    use super::{menu::home_index, render_current_screen, AppState, ScreenRoute};
     use crate::{buttons::ButtonEvent, framebuffer::FrameBuffer};
+
+    fn open_from_home(route: ScreenRoute) -> AppState {
+        let mut state = AppState::default();
+        state.home_selected = home_index(route).expect("route listed on Home");
+        state.apply(ButtonEvent::Select);
+        state
+    }
 
     #[test]
     fn home_renderer_places_black_ink_in_rotated_native_dashboard_chrome() {
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &AppState::default()).unwrap();
-        // Portrait logical header y=0 maps to the native left edge.
+        // Portrait logical status bar y=0 maps to the native left edge.
         assert_eq!(frame.is_black(Point::new(0, 479)), Some(true));
-        // The v0.13.5 fixed dark footer maps to the native right edge.
-        assert_eq!(frame.is_black(Point::new(799, 479)), Some(true));
-        // The outer margin beside the category cards remains white.
+        // The key-hint bar's top rule (logical y=752) maps to native x=752.
+        assert_eq!(frame.is_black(Point::new(752, 479)), Some(true));
+        // The outer margin beside the Home rows remains white.
         assert_eq!(frame.is_black(Point::new(400, 0)), Some(false));
     }
 
     #[test]
     fn settings_display_renderer_is_reachable_from_home() {
         let mut frame = FrameBuffer::new_white();
-        let mut state = AppState::default();
-        state.home_selected = 4;
-        state.apply(ButtonEvent::Select);
+        let mut state = open_from_home(ScreenRoute::Settings);
         assert_eq!(state.active_route(), ScreenRoute::Settings);
         for _ in 0..3 {
             state.apply(ButtonEvent::Down);
@@ -87,9 +94,7 @@ mod tests {
 
     #[test]
     fn tools_file_browser_route_is_reachable() {
-        let mut state = AppState::default();
-        state.home_selected = 3;
-        state.apply(ButtonEvent::Select);
+        let mut state = open_from_home(ScreenRoute::Tools);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Files);
     }
@@ -97,9 +102,7 @@ mod tests {
     #[test]
     fn tools_dictionary_route_renders_offline_without_sd_pack() {
         let mut frame = FrameBuffer::new_white();
-        let mut state = AppState::default();
-        state.home_selected = 3;
-        state.apply(ButtonEvent::Select);
+        let mut state = open_from_home(ScreenRoute::Tools);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Dictionary);
@@ -109,9 +112,7 @@ mod tests {
     #[test]
     fn tools_unit_converter_route_renders_offline() {
         let mut frame = FrameBuffer::new_white();
-        let mut state = AppState::default();
-        state.home_selected = 3;
-        state.apply(ButtonEvent::Select);
+        let mut state = open_from_home(ScreenRoute::Tools);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);

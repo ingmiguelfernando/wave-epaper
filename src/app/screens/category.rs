@@ -2,23 +2,24 @@
 
 use core::convert::Infallible;
 
-use embedded_graphics::prelude::Point;
-
-use crate::app::typography::Text;
-
 use crate::{
     app::{
         menu::{category_entries, CATEGORY_PAGE_SIZE},
         state::AppState,
         widgets::{
-            footer::draw_footer,
-            header::draw_header,
-            menu_row::draw_menu_row,
-            status_row::{draw_status_row, StatusRow},
+            key_hints::{draw_key_hints, KeyCap},
+            list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
     orientation::OrientedFrameBuffer,
 };
+
+const CATEGORY_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "open"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 pub fn render_category(
     display: &mut OrientedFrameBuffer<'_>,
@@ -29,44 +30,24 @@ pub fn render_category(
     let selected = state.category_selection(route);
     let page_start = (selected / CATEGORY_PAGE_SIZE) * CATEGORY_PAGE_SIZE;
     let pages = entries.len().max(1).div_ceil(CATEGORY_PAGE_SIZE);
-    let page = format!("{}/{}", (page_start / CATEGORY_PAGE_SIZE) + 1, pages);
-    let title = route.label().to_ascii_uppercase();
-    let heading = state.display.heading_style();
-    let body = state.display.body_style();
+    let status = if pages > 1 {
+        format!("{}/{}", page_start / CATEGORY_PAGE_SIZE + 1, pages)
+    } else {
+        format!("{} items", entries.len())
+    };
 
-    draw_header(display, state.display, &title, "CATEGORY MENU")?;
-    draw_status_row(
-        display,
-        state.display,
-        StatusRow {
-            left: "CATEGORY",
-            middle: &format!("{} entries", entries.len()),
-            right: &page,
-        },
-    )?;
-    Text::new("Select an entry", Point::new(22, 158), heading).draw(display)?;
-    Text::new("Hold BOOT to go back.", Point::new(22, 188), body).draw(display)?;
-
-    for (visible_index, entry) in entries
-        .iter()
-        .copied()
-        .skip(page_start)
-        .take(CATEGORY_PAGE_SIZE)
-        .enumerate()
-    {
-        draw_menu_row(
-            display,
-            214 + visible_index as i32 * 86,
-            entry,
-            page_start + visible_index == selected,
-            state.display,
-        )?;
+    draw_status_bar(display, state.display, route.label())?;
+    draw_status_text(display, state.display, &status, STATUS_BAR_RIGHT)?;
+    let visible = entries.iter().skip(page_start).take(CATEGORY_PAGE_SIZE);
+    for (offset, entry) in visible.enumerate() {
+        let row = ListRow {
+            title: entry.label,
+            subtitle: entry.subtitle,
+            value: entry.badge,
+            selected: page_start + offset == selected,
+        };
+        let top = STATUS_BAR_HEIGHT + offset as i32 * LIST_ROW_HEIGHT;
+        draw_list_row(display, state.display, top, row)?;
     }
-
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN MOVE  SELECT OPEN  HOLD BOOT BACK",
-    )?;
-    Ok(())
+    draw_key_hints(display, state.display, &CATEGORY_HINTS)
 }

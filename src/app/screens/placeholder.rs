@@ -1,60 +1,58 @@
-//! Clean placeholder for future modular applications.
+//! Placeholder for apps that are planned but not built yet.
 
 use core::convert::Infallible;
 
-use embedded_graphics::{
-    pixelcolor::BinaryColor,
-    prelude::{Drawable, Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle},
-};
-
-use crate::app::typography::Text;
+use embedded_graphics::prelude::Point;
 
 use crate::{
     app::{
+        router::ScreenRoute,
         state::AppState,
+        typography::Text,
         widgets::{
-            footer::draw_footer,
-            header::draw_header,
-            status_row::{draw_status_row, StatusRow},
+            key_hints::{draw_key_hints, KeyCap},
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_RIGHT},
         },
     },
     orientation::OrientedFrameBuffer,
 };
+
+const LEFT: i32 = 24;
+const TEXT_WIDTH: i32 = 480 - 2 * LEFT;
 
 pub fn render_placeholder(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
     let route = state.active_route();
-    let parent = route.parent().map_or("Home", |value| value.label());
-    let title = route.label().to_ascii_uppercase();
-    let heading = state.display.heading_style();
-    let body = state.display.body_style();
+    draw_status_bar(display, state.display, route.label())?;
+    draw_status_text(display, state.display, "SOON", STATUS_BAR_RIGHT)?;
 
-    draw_header(display, state.display, &title, "COMING SOON")?;
-    draw_status_row(
-        display,
-        state.display,
-        StatusRow {
-            left: "PLACEHOLDER",
-            middle: parent,
-            right: "SOON",
-        },
-    )?;
-    Text::new(
-        route.label(),
-        Point::new(22, 170),
-        state.display.navigation_style(),
-    )
-    .draw(display)?;
-    Rectangle::new(Point::new(22, 222), Size::new(436, 238))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(display)?;
-    Text::new("Reserved for a later", Point::new(48, 300), heading).draw(display)?;
-    Text::new("isolated feature milestone.", Point::new(48, 340), heading).draw(display)?;
-    Text::new("Navigation is ready now.", Point::new(48, 402), body).draw(display)?;
-    Text::new(&format!("Parent: {parent}"), Point::new(22, 530), body).draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
-    Ok(())
+    let large = state.display.large_style();
+    let body = state.display.body_style();
+    Text::new("Coming soon", Point::new(LEFT, 150), large).draw(display)?;
+    let mut baseline = 210;
+    for line in body.wrap(description(route), TEXT_WIDTH) {
+        Text::new(&line, Point::new(LEFT, baseline), body).draw(display)?;
+        baseline += i32::from(body.line_height()) + 6;
+    }
+    draw_key_hints(display, state.display, &[(KeyCap::Boot, "hold: back")])
+}
+
+fn description(route: ScreenRoute) -> &'static str {
+    match route {
+        ScreenRoute::Photos => {
+            "Browse the photos in the /PHOTOS folder of the SD card and star the ones \
+             to show on the sleep screen."
+        }
+        ScreenRoute::Bible => {
+            "Read the Bible from the SD card, with a verse of the day that can also \
+             appear on the sleep screen."
+        }
+        ScreenRoute::ReadingStats => {
+            "Reading time per day, streaks and finished books, collected while you read."
+        }
+        ScreenRoute::XiaoZhi => "Talk with the XiaoZhi voice assistant from xiaozhi.me.",
+        _ => "This app is planned for a later update.",
+    }
 }

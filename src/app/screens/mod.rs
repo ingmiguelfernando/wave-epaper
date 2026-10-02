@@ -85,10 +85,14 @@ pub fn render_active_screen(
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),
         ScreenRoute::DeviceInfoRuntime => device_info::render_device_info_runtime(display, state),
         ScreenRoute::Reader
-        | ScreenRoute::Productivity
+        | ScreenRoute::Ai
         | ScreenRoute::Games
         | ScreenRoute::Tools
         | ScreenRoute::Settings
-        | ScreenRoute::GamesTbd => unreachable!("category and placeholder routes handled above"),
+        | ScreenRoute::GamesTbd
+        | ScreenRoute::Photos
+        | ScreenRoute::Bible
+        | ScreenRoute::ReadingStats
+        | ScreenRoute::XiaoZhi => unreachable!("category and placeholder routes handled above"),
     }
 }

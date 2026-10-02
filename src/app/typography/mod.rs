@@ -1,4 +1,4 @@
-//! Global user-interface typography for RustMix Wave.
+//! Global user-interface typography for Wave.
 //!
 //! UI text uses pre-rasterized 1-bpp glyph atlases derived from the Inter and
 //! Atkinson Hyperlegible families. v0.13.2 shifts all profiles upward for the
@@ -43,6 +43,38 @@ impl BitmapFont {
             ('?' as usize) - 32
         };
         self.glyphs[index]
+    }
+
+    fn degree_diameter(self) -> i32 {
+        (i32::from(self.line_height) / 4).max(5)
+    }
+
+    fn dot_size(self) -> i32 {
+        (i32::from(self.line_height) / 9).max(2)
+    }
+}
+
+/// Symbols drawn with primitives because the UI atlases only hold ASCII.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Synthetic {
+    Degree,
+    MiddleDot,
+}
+
+impl Synthetic {
+    const fn from_char(character: char) -> Option<Self> {
+        match character {
+            '°' => Some(Self::Degree),
+            '·' => Some(Self::MiddleDot),
+            _ => None,
+        }
+    }
+
+    fn advance(self, font: &BitmapFont) -> i32 {
+        match self {
+            Self::Degree => font.degree_diameter() + 2,
+            Self::MiddleDot => font.dot_size() + 2,
+        }
     }
 }
 
@@ -117,8 +149,64 @@ impl UiTextStyle {
     pub fn text_width(self, text: &str) -> i32 {
         text.chars()
             .filter(|character| *character != '\n')
-            .map(|character| i32::from(self.font.glyph(character).advance))
+            .map(|character| self.char_advance(character))
             .sum()
+    }
+
+    /// Height of capital letters above the baseline, for vertical centering.
+    #[must_use]
+    pub fn cap_height(self) -> i32 {
+        -i32::from(self.font.glyph('H').top)
+    }
+
+    /// Shorten `text` with a trailing "..." so it fits in `max_width` pixels.
+    #[must_use]
+    pub fn fit(self, text: &str, max_width: i32) -> String {
+        if self.text_width(text) <= max_width {
+            return text.to_string();
+        }
+        let budget = max_width - self.text_width("...");
+        let mut width = 0;
+        let mut fitted = String::new();
+        for character in text.chars() {
+            width += self.char_advance(character);
+            if width > budget {
+                break;
+            }
+            fitted.push(character);
+        }
+        fitted.push_str("...");
+        fitted
+    }
+
+    /// Greedy word wrap by pixel width. A single over-long word keeps its own line.
+    #[must_use]
+    pub fn wrap(self, text: &str, max_width: i32) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut line = String::new();
+        for word in text.split_whitespace() {
+            let candidate = if line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{line} {word}")
+            };
+            if line.is_empty() || self.text_width(&candidate) <= max_width {
+                line = candidate;
+            } else {
+                lines.push(core::mem::replace(&mut line, word.to_string()));
+            }
+        }
+        if !line.is_empty() {
+            lines.push(line);
+        }
+        lines
+    }
+
+    fn char_advance(self, character: char) -> i32 {
+        Synthetic::from_char(character).map_or_else(
+            || i32::from(self.font.glyph(character).advance),
+            |symbol| symbol.advance(self.font),
+        )
     }
 }
 
@@ -176,6 +264,11 @@ impl<'a> Text<'a> {
                 cursor.y += i32::from(self.style.font.line_height);
                 continue;
             }
+            if let Some(symbol) = Synthetic::from_char(character) {
+                draw_synthetic(display, cursor, symbol, self.style, bounds)?;
+                cursor.x += symbol.advance(self.style.font);
+                continue;
+            }
             let glyph = self.style.font.glyph(character);
             draw_glyph(display, cursor, glyph, self.style, bounds)?;
             cursor.x += i32::from(glyph.advance);
@@ -206,6 +299,49 @@ where
                 baseline.x + i32::from(glyph.left) + column as i32,
                 baseline.y + i32::from(glyph.top) + row as i32,
             );
+            if bounds.map_or(true, |clip| clip.contains(point)) {
+                display.draw_iter(core::iter::once(Pixel(point, style.color)))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn draw_synthetic<D>(
+    display: &mut D,
+    baseline: Point,
+    symbol: Synthetic,
+    style: UiTextStyle,
+    bounds: Option<TextBounds>,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    let font = style.font;
+    let (size, top, ring) = match symbol {
+        Synthetic::Degree => {
+            let top = baseline.y + i32::from(font.glyph('0').top);
+            (font.degree_diameter(), top, true)
+        }
+        Synthetic::MiddleDot => {
+            let x_glyph = font.glyph('x');
+            let middle = i32::from(x_glyph.top) + i32::from(x_glyph.height) / 2;
+            let size = font.dot_size();
+            (size, baseline.y + middle - size / 2, false)
+        }
+    };
+    // Doubled coordinates keep the ring test in integers.
+    let outer = size * size;
+    let inner = (size - 2 * (size / 5).max(1)).pow(2);
+    for row in 0..size {
+        for column in 0..size {
+            let dx = 2 * column - (size - 1);
+            let dy = 2 * row - (size - 1);
+            let distance = dx * dx + dy * dy;
+            if ring && (distance > outer || distance < inner) {
+                continue;
+            }
+            let point = Point::new(baseline.x + 1 + column, top + row);
             if bounds.map_or(true, |clip| clip.contains(point)) {
                 display.draw_iter(core::iter::once(Pixel(point, style.color)))?;
             }

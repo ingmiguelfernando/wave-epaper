@@ -288,9 +288,8 @@ impl AppState {
             }
             ButtonEvent::Down => self.home_selected = (self.home_selected + 1) % count,
             ButtonEvent::Select => {
-                self.note_select_press();
                 if let Some(entry) = home_entries().get(self.home_selected) {
-                    self.router.navigate_to(entry.route);
+                    self.open_route(entry.route);
                 }
             }
         }
@@ -309,38 +308,43 @@ impl AppState {
             }
             ButtonEvent::Select => {
                 let target = entries[self.category_selection(route)].route;
-                self.note_select_press();
-                if target == ScreenRoute::Weather {
-                    self.weather_action_selected = 0;
-                }
-                if target == ScreenRoute::Audio {
-                    self.audio_action_selected = 0;
-                }
-                if target == ScreenRoute::Display {
-                    self.display_action_selected = 0;
-                }
-                if target == ScreenRoute::Calendar {
-                    self.initialize_calendar_if_needed();
-                    self.calendar.refresh_events();
-                }
-                if target == ScreenRoute::Library {
-                    self.reader.refresh_library();
-                }
-                if target == ScreenRoute::LuaApps {
-                    self.lua_runtime.refresh_catalog(true);
-                }
-                if target == ScreenRoute::VoiceNotes {
-                    self.voice_notes.refresh_catalog();
-                }
-                if target == ScreenRoute::Dictionary {
-                    self.dictionary.refresh_pack_status();
-                }
-                if target == ScreenRoute::ContinueReading && self.reader.session.is_some() {
-                    self.router.navigate_to(ScreenRoute::ReaderPage);
-                } else {
-                    self.router.navigate_to(target);
-                }
+                self.open_route(target);
             }
+        }
+    }
+
+    /// Open a screen chosen from Home or a category, running its entry hook.
+    fn open_route(&mut self, target: ScreenRoute) {
+        self.note_select_press();
+        if target == ScreenRoute::Weather {
+            self.weather_action_selected = 0;
+        }
+        if target == ScreenRoute::Audio {
+            self.audio_action_selected = 0;
+        }
+        if target == ScreenRoute::Display {
+            self.display_action_selected = 0;
+        }
+        if target == ScreenRoute::Calendar {
+            self.initialize_calendar_if_needed();
+            self.calendar.refresh_events();
+        }
+        if target == ScreenRoute::Library {
+            self.reader.refresh_library();
+        }
+        if target == ScreenRoute::LuaApps {
+            self.lua_runtime.refresh_catalog(true);
+        }
+        if target == ScreenRoute::VoiceNotes {
+            self.voice_notes.refresh_catalog();
+        }
+        if target == ScreenRoute::Dictionary {
+            self.dictionary.refresh_pack_status();
+        }
+        if target == ScreenRoute::ContinueReading && self.reader.session.is_some() {
+            self.router.navigate_to(ScreenRoute::ReaderPage);
+        } else {
+            self.router.navigate_to(target);
         }
     }
 
@@ -960,7 +964,21 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::AppState;
-    use crate::{app::router::ScreenRoute, buttons::ButtonEvent};
+    use crate::{
+        app::{
+            menu::{home_index, HOME_ENTRY_COUNT},
+            router::ScreenRoute,
+        },
+        buttons::ButtonEvent,
+    };
+
+    fn open_from_home(route: ScreenRoute) -> AppState {
+        let mut state = AppState::default();
+        state.home_selected = home_index(route).expect("route listed on Home");
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), route);
+        state
+    }
 
     #[test]
     fn motion_event_screen_cycles_thresholds_and_opens_sensor_details() {
@@ -979,24 +997,33 @@ mod tests {
     }
 
     #[test]
-    fn home_categories_wrap_and_open() {
+    fn home_entries_wrap_and_open() {
         let mut state = AppState::default();
         state.apply(ButtonEvent::Up);
-        assert_eq!(state.home_selected, 4);
+        assert_eq!(state.home_selected, HOME_ENTRY_COUNT - 1);
         state.apply(ButtonEvent::Down);
         assert_eq!(state.home_selected, 0);
         state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Reader);
+        assert_eq!(state.active_route(), ScreenRoute::Photos);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Home);
     }
 
     #[test]
-    fn productivity_calendar_opens_and_toggles_navigation_mode() {
+    fn weather_opens_from_home_and_returns_home() {
+        let mut state = open_from_home(ScreenRoute::Weather);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Home);
+    }
+
+    #[test]
+    fn tools_calendar_opens_and_toggles_navigation_mode() {
         use crate::calendar::CalendarNavigationMode;
 
-        let mut state = AppState::default();
-        state.home_selected = 1;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Productivity);
+        let mut state = open_from_home(ScreenRoute::Tools);
+        for _ in 0..3 {
+            state.apply(ButtonEvent::Down);
+        }
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Calendar);
         assert_eq!(state.calendar.mode, CalendarNavigationMode::Day);
@@ -1037,10 +1064,7 @@ mod tests {
 
     #[test]
     fn tools_file_browser_returns_to_tools() {
-        let mut state = AppState::default();
-        state.home_selected = 3;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Tools);
+        let mut state = open_from_home(ScreenRoute::Tools);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Files);
         state.router.back();
@@ -1049,10 +1073,7 @@ mod tests {
 
     #[test]
     fn settings_display_changes_persistent_preferences_without_a_back_row() {
-        let mut state = AppState::default();
-        state.home_selected = 4;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Settings);
+        let mut state = open_from_home(ScreenRoute::Settings);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
@@ -1120,10 +1141,7 @@ mod tests {
 
     #[test]
     fn tools_dictionary_opens_native_screen_without_sd_pack() {
-        let mut state = AppState::default();
-        state.home_selected = 3;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Tools);
+        let mut state = open_from_home(ScreenRoute::Tools);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Dictionary);
@@ -1185,10 +1203,7 @@ mod tests {
     fn tools_unit_converter_opens_and_edits_without_hardware() {
         use crate::unit_converter::{ConverterField, UnitCategory};
 
-        let mut state = AppState::default();
-        state.home_selected = 3;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Tools);
+        let mut state = open_from_home(ScreenRoute::Tools);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
@@ -1204,10 +1219,7 @@ mod tests {
 
     #[test]
     fn games_route_opens_sd_lua_catalog_safely_without_sd_card() {
-        let mut state = AppState::default();
-        state.home_selected = 2;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Games);
+        let mut state = open_from_home(ScreenRoute::Games);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::LuaApps);
         assert!(state.lua_runtime.catalog.warning.is_some());
@@ -1217,8 +1229,7 @@ mod tests {
 
     #[test]
     fn reader_continue_shell_routes_to_library_when_no_session() {
-        let mut state = AppState::default();
-        state.apply(ButtonEvent::Select);
+        let mut state = open_from_home(ScreenRoute::Reader);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::ContinueReading);
         state.apply(ButtonEvent::Select);
@@ -1256,11 +1267,8 @@ mod tests {
         assert_eq!(state.active_route(), ScreenRoute::ReaderOptions);
     }
     #[test]
-    fn productivity_voice_notes_opens_recording_route_and_queues_start() {
-        let mut state = AppState::default();
-        state.home_selected = 1;
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Productivity);
+    fn ai_voice_notes_opens_recording_route_and_queues_start() {
+        let mut state = open_from_home(ScreenRoute::Ai);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::VoiceNotes);
