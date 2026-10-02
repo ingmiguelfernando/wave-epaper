@@ -30,20 +30,19 @@ pub fn render_sleep_card(
     card: &SleepCard<'_>,
 ) -> Result<(), Infallible> {
     let body = preferences.body_style();
-    let detail = preferences.detail_style();
     Rectangle::new(Point::new(16, 16), Size::new(448, 768))
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
         .draw(display)?;
     centered(display, "Wave", 330, preferences.large_style())?;
     centered(display, "Sleeping", 384, body)?;
     let mut baseline = 470;
-    for line in detail.wrap(card.note, 400) {
-        centered(display, &line, baseline, detail)?;
-        baseline += i32::from(detail.line_height());
+    for line in body.wrap(card.note, 400) {
+        centered(display, &line, baseline, body)?;
+        baseline += i32::from(body.line_height());
     }
     centered(display, card.wake_hint, 690, body)?;
     if let Some(percent) = card.battery_percent {
-        centered(display, &format!("Battery {percent}%"), 736, detail)?;
+        centered(display, &format!("Battery {percent}%"), 736, body)?;
     }
     Ok(())
 }
