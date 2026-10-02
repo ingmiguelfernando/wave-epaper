@@ -120,7 +120,7 @@ inside `RUSTMIX`). Each one must be an uncompressed Windows BMP:
 Grey and color pictures are dithered to black and white. Files whose names
 start with `.` are skipped, such as the `._NAME` copies macOS leaves on FAT
 cards. When no picture can be used, the sleep screen shows the reason, for
-example `SLEEP.BMP is 1024 × 768; it must be 480 × 800 or 800 × 480`.
+example `SLEEP.BMP is 1024×768; it must be 480×800 or 800×480`.
 
 Install bundled samples:
 

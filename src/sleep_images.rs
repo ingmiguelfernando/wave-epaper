@@ -381,7 +381,7 @@ impl BmpLayout {
         if (width, height) != (native_width, native_height)
             && (width, height) != (native_height, native_width)
         {
-            bail!("is {width} \u{d7} {height}; it must be 480 \u{d7} 800 or 800 \u{d7} 480");
+            bail!("is {width}\u{d7}{height}; it must be 480\u{d7}800 or 800\u{d7}480");
         }
         if !matches!(bits_per_pixel, 1 | 4 | 8 | 24 | 32) {
             bail!("has {bits_per_pixel}-bit color; use 1, 4, 8, 24 or 32-bit");
@@ -612,7 +612,7 @@ mod tests {
         let mut wrong_width = fixture();
         wrong_width[18..22].copy_from_slice(&799_i32.to_le_bytes());
         let error = decode_sleep_bmp(&wrong_width).unwrap_err().to_string();
-        assert!(error.starts_with("is 799 × 480"), "{error}");
+        assert!(error.starts_with("is 799×480"), "{error}");
         let mut wrong_depth = fixture();
         wrong_depth[28..30].copy_from_slice(&16_u16.to_le_bytes());
         let error = decode_sleep_bmp(&wrong_depth).unwrap_err().to_string();
@@ -703,7 +703,7 @@ mod tests {
         assert_eq!(selection.rejected_count, 1);
         assert_eq!(
             selection.note.as_deref(),
-            Some("SLEEP.BMP is 1024 × 768; it must be 480 × 800 or 800 × 480")
+            Some("SLEEP.BMP is 1024×768; it must be 480×800 or 800×480")
         );
         let _ = fs::remove_dir_all(root);
     }

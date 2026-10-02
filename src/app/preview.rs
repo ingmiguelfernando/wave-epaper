@@ -99,7 +99,7 @@ fn render_reader_font_sheet() -> FrameBuffer {
 fn render_sample_sleep_card() -> FrameBuffer {
     let mut frame = FrameBuffer::new_white();
     let card = SleepCard {
-        note: "SLEEP.BMP is 1024 × 768; it must be 480 × 800 or 800 × 480",
+        note: "SLEEP.BMP is 1024×768; it must be 480×800 or 800×480",
         battery_percent: Some(78),
         wake_hint: "Press any key to wake",
     };

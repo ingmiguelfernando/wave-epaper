@@ -72,7 +72,7 @@ mod tests {
     fn card_is_drawn_in_portrait_with_its_border() {
         let mut frame = FrameBuffer::new_white();
         let card = SleepCard {
-            note: "SLEEP.BMP is 1024 × 768; it must be 480 × 800 or 800 × 480",
+            note: "SLEEP.BMP is 1024×768; it must be 480×800 or 800×480",
             battery_percent: Some(64),
             wake_hint: "Press any key to wake",
         };
