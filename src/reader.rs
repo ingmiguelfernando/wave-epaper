@@ -2721,7 +2721,9 @@ impl PageComposer<'_> {
             self.line.push(' ');
             self.width += self.setter.space;
         }
-        let word = self.text[start..end].iter().map(|(character, _)| *character);
+        let word = self.text[start..end]
+            .iter()
+            .map(|(character, _)| *character);
         self.line.extend(word);
         self.width += width;
     }
@@ -4093,7 +4095,10 @@ mod tests {
         let (lines, _) = super::compose_page(&characters(&token), 0, true, &setter);
         assert!(lines.len() > 1);
         assert_eq!(
-            lines.iter().map(|line| line.text.as_str()).collect::<String>(),
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<String>(),
             token
         );
         for line in &lines {
