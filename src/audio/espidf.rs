@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use embedded_hal::{delay::DelayNs, i2c::I2c};
 use es8311::{ClockConfig, Resolution};
 use esp_idf_svc::hal::{
-    delay::{BLOCK, NON_BLOCK},
+    delay::{FreeRtos, BLOCK, NON_BLOCK},
     gpio::{Output, PinDriver},
     i2s::{I2sBiDir, I2sDriver},
 };
@@ -21,8 +21,12 @@ use super::{
     ES8311_I2C_ADDRESS_LOW, MAX_AUDIO_VOLUME_PERCENT,
 };
 
+/// Time for the DAC reference to settle after a codec resume, before the
+/// amplifier switches on.
+const CODEC_WAKE_SETTLE_MS: u32 = 20;
+
 /// Own the safe-start playback runtime. The amplifier is held low unless PCM
-/// audio is actively being streamed.
+/// audio is actively being streamed, and the codec sleeps between uses.
 pub struct AudioRuntime<'d, I2C> {
     bus: I2C,
     codec: BoardEs8311,
@@ -31,6 +35,7 @@ pub struct AudioRuntime<'d, I2C> {
     amplifier: PinDriver<'d, Output>,
     snapshot: AudioSnapshot,
     chime: ChimeGenerator,
+    codec_awake: bool,
 }
 
 impl<'d, I2C> AudioRuntime<'d, I2C>
@@ -87,6 +92,7 @@ where
         codec
             .mute(&mut bus, true)
             .map_err(|error| anyhow!("failed to mute ES8311: {error:?}"))?;
+        let codec_awake = codec.suspend(&mut bus).is_err();
 
         Ok(Self {
             bus,
@@ -106,6 +112,7 @@ where
                 error: None,
             },
             chime: ChimeGenerator::default(),
+            codec_awake,
         })
     }
 
@@ -184,6 +191,7 @@ where
 
     pub fn begin_voice_note_playback(&mut self) -> Result<()> {
         self.chime.stop();
+        self.wake_codec()?;
         self.codec
             .mute(&mut self.bus, false)
             .map_err(|error| anyhow!("failed to unmute ES8311 for voice note: {error:?}"))?;
@@ -214,6 +222,7 @@ where
 
     pub fn begin_voice_recording(&mut self) -> Result<()> {
         self.chime.stop();
+        self.wake_codec()?;
         self.amplifier
             .set_low()
             .map_err(|error| anyhow!("failed to disable audio amplifier: {error:?}"))?;
@@ -231,6 +240,7 @@ where
         self.snapshot.playback_state = AudioPlaybackState::Muted;
         self.snapshot.muted = true;
         self.snapshot.amplifier_enabled = false;
+        self.rest_codec();
         Ok(())
     }
 
@@ -281,6 +291,7 @@ where
         self.snapshot.amplifier_enabled = false;
         self.snapshot.muted = true;
         self.snapshot.playback_state = AudioPlaybackState::Muted;
+        self.rest_codec();
         Ok(())
     }
 
@@ -288,6 +299,7 @@ where
         let _ = self.amplifier.set_low();
         let _ = self.codec.mute(&mut self.bus, true);
         self.chime.stop();
+        self.rest_codec();
         self.snapshot.amplifier_enabled = false;
         self.snapshot.muted = true;
         self.snapshot.playback_state = AudioPlaybackState::Error;
@@ -295,6 +307,7 @@ where
     }
 
     fn begin_playback(&mut self, mode: ChimeMode) -> Result<()> {
+        self.wake_codec()?;
         match mode {
             ChimeMode::TestOnce => self.chime.start_test_once(),
             ChimeMode::AlarmRepeat => self.chime.start_alarm_repeat(),
@@ -356,5 +369,23 @@ where
             .map_err(|error| anyhow!("failed to set ES8311 volume: {error:?}"))?;
         self.snapshot.volume_percent = volume;
         Ok(())
+    }
+
+    fn wake_codec(&mut self) -> Result<()> {
+        if self.codec_awake {
+            return Ok(());
+        }
+        self.codec.resume(&mut self.bus)?;
+        self.codec
+            .volume_set(&mut self.bus, self.snapshot.volume_percent, None)?;
+        FreeRtos::delay_ms(CODEC_WAKE_SETTLE_MS);
+        self.codec_awake = true;
+        Ok(())
+    }
+
+    fn rest_codec(&mut self) {
+        if self.codec_awake && self.codec.suspend(&mut self.bus).is_ok() {
+            self.codec_awake = false;
+        }
     }
 }

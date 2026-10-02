@@ -83,6 +83,7 @@ mod firmware {
             PowerKeyEvent, SleepWakeGuard, SleepWakeGuardDecision, POWER_KEY_POLL_MS,
             POWER_KEY_WAKE_GUARD_QUIET_MS,
         },
+        radio_burst::{RadioBurst, RadioPhase},
         reader::ReaderTickOutcome,
         regional::RegionalPreferences,
         rtc::RtcDateTime,
@@ -90,8 +91,10 @@ mod firmware {
         runtime_memory::log_runtime_memory,
         shared_i2c::SharedI2cBus,
         sleep_images::{SleepImageCatalog, SleepImageSelection, SLEEP_IMAGE_DIRECTORY},
-        sleep_mode::{SleepModeState, SleepReport, SleepWakeCause},
-        sleep_network::SleepNetworkState,
+        sleep_mode::{
+            light_sleep_budget, LightSleepShare, SleepModeState, SleepReport, SleepWakeCause,
+            LIGHT_SLEEP_MAX,
+        },
         storage::{
             StorageBrowser, StorageSnapshot, StorageUiOutcome, SDMMC_COMMAND_TIMEOUT_MS,
             SDMMC_STABLE_SPEED_KHZ, SD_MOUNT_POINT, STORAGE_IO_RETRY_ATTEMPTS,
@@ -111,8 +114,9 @@ mod firmware {
         },
         weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
         wifi_transfer::{
-            espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferUiRequest,
-            WIFI_TRANSFER_INACTIVITY_SECONDS, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
+            espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
+            WifiTransferUiRequest, WIFI_TRANSFER_INACTIVITY_SECONDS, WIFI_TRANSFER_ROOT,
+            WIFI_TRANSFER_SERVER_STACK_BYTES,
         },
     };
 
@@ -405,8 +409,14 @@ mod firmware {
         let mut sleep_mode = SleepModeState::default();
         let mut sleep_wake_guard = SleepWakeGuard::default();
         let mut sleep_wake_guard_started_at: Option<Instant> = None;
-        let mut sleep_network = SleepNetworkState::default();
+        let mut radio = RadioBurst::default();
+        let mut manual_weather_pending = false;
         let mut sleep_started: Option<(Instant, Option<PowerSnapshot>)> = None;
+        // Awake time since the last wake, and the part of it spent light-sleeping.
+        let mut light_sleep_clock = (Instant::now(), Duration::ZERO);
+        let mut imu_enabled = true;
+        let mut on_usb_power = false;
+        let mut last_usb_check: Option<Instant> = None;
         state.update_audio_snapshot(initial_audio_snapshot);
         log_audio_snapshot(&state.audio);
         if let Some(config) = network_config.as_ref() {
@@ -473,9 +483,8 @@ mod firmware {
         );
         info!("rustmix-wave=epd397-rust-display-ready");
 
-        // Start optional networking only after the first e-paper frame is
-        // visible. A missing config or failed association never blocks shell
-        // startup. Keep the runtime alive so Wi-Fi and SNTP remain active.
+        // Wi-Fi stays off except for short bursts driven by the main loop, so
+        // a missing config or an unreachable network never blocks the shell.
         //
         // Rustmix Remote BLE r1 is deliberately feature-gated and default-off.
         // In the r1 feature build, BLE owns the ESP32-S3 modem so Wi-Fi startup
@@ -516,21 +525,17 @@ mod firmware {
         };
         #[cfg(not(feature = "rustmix-remote-ble"))]
         let mut network_runtime = if let Some(config) = network_config.as_ref() {
-            info!(
-                "rustmix-wave=wifi-connect status=starting ssid={}",
-                config.ssid
-            );
-            match NetworkRuntime::connect(peripherals.modem, config) {
+            match NetworkRuntime::new(peripherals.modem, config) {
                 Ok(runtime) => {
                     info!(
-                        "rustmix-wave=wifi-connect status=connected ssid={}",
+                        "rustmix-wave=wifi-radio status=ready ssid={} policy=bursts",
                         config.ssid
                     );
                     runtime
                 }
                 Err(error) => {
                     warn!(
-                        "rustmix-wave=wifi-connect status=failed ssid={} error={error:#}",
+                        "rustmix-wave=wifi-radio status=failed ssid={} error={error:#}",
                         config.ssid
                     );
                     NetworkRuntime::failed(config, format!("{error:#}"))
@@ -568,6 +573,7 @@ mod firmware {
         info!("rustmix-wave=text-editor-layout-alignment-ready voice-title-editor=shared-grid-keyboard calendar-editor-status=compact-date keyboard=boot-hv-axis footer=width-safe");
         info!("rustmix-wave=sleep-image-directory-classification-fix-ready policy=fat-metadata-fallback");
         info!("rustmix-wave=network-suspended-sleep-image-mode-ready wifi=stop-on-sleep sntp=paused weather=paused mcu-sleep=light");
+        info!("rustmix-wave=power-plan-ready wifi=bursts idle-light-sleep=battery-only imu=on-demand codec=suspend-when-idle");
         info!("rustmix-wave=random-sleep-image-selection-ready source=esp-random policy=avoid-immediate-repeat-when-multiple");
         info!("rustmix-wave=main-category-navigation-ready categories=5");
         info!("rustmix-wave=reader-category-ready entries=3");
@@ -874,8 +880,117 @@ mod firmware {
                 }
             }
 
-            if !sleep_network.is_suspended() {
+            // Wi-Fi bursts: switch the radio on for due or requested work and
+            // off again once that work is done.
+            let mut manual_weather_refresh = state.take_weather_refresh_request();
+            manual_weather_refresh |= core::mem::take(&mut manual_weather_pending);
+            let weather_due = next_weather_refresh(weather_config.as_ref(), last_weather_attempt);
+            let transfer_waiting = wifi_transfer_server.is_none()
+                && state.wifi_transfer.state == WifiTransferState::Starting;
+            if let Some(config) = network_config
+                .as_ref()
+                .filter(|_| network_runtime.has_radio() && !sleep_mode.is_sleeping())
+            {
+                let now = Instant::now();
+                match radio.phase() {
+                    RadioPhase::Off => {
+                        let reason = if manual_weather_refresh && weather_config.is_some() {
+                            Some("weather-refresh")
+                        } else if transfer_waiting {
+                            Some("wifi-transfer")
+                        } else if voice_recording.is_none()
+                            && voice_playback.is_none()
+                            && now >= radio.next_burst(now, weather_due, last_activity)
+                        {
+                            Some("scheduled")
+                        } else {
+                            None
+                        };
+                        if let Some(reason) = reason {
+                            info!("rustmix-wave=wifi-burst status=starting reason={reason}");
+                            match network_runtime.begin_connect() {
+                                Ok(()) => radio.begin(now),
+                                Err(error) => {
+                                    warn!("rustmix-wave=wifi-burst status=failed error={error:#}");
+                                    network_runtime.fail_connect(format!("{error:#}"));
+                                    radio.failed(now);
+                                }
+                            }
+                            state.update_network_snapshot(network_runtime.snapshot());
+                        }
+                    }
+                    RadioPhase::Connecting => {
+                        let outcome = match network_runtime.poll_connect(config) {
+                            Ok(false) if radio.connect_timed_out(now) => {
+                                Err("connection timed out".to_string())
+                            }
+                            Ok(connected) => Ok(connected),
+                            Err(error) => Err(format!("{error:#}")),
+                        };
+                        match outcome {
+                            Ok(true) => {
+                                radio.connected(now);
+                                info!(
+                                    "rustmix-wave=wifi-burst status=connected ssid={}",
+                                    config.ssid
+                                );
+                                state.update_network_snapshot(network_runtime.snapshot());
+                            }
+                            Ok(false) => {}
+                            Err(error) => {
+                                warn!("rustmix-wave=wifi-burst status=failed error={error}");
+                                network_runtime.fail_connect(error);
+                                radio.failed(now);
+                                state.update_network_snapshot(network_runtime.snapshot());
+                            }
+                        }
+                    }
+                    RadioPhase::Connected => {
+                        let weather_settled = weather_due.map_or(true, |due| due > now)
+                            && !weather_retry.is_pending()
+                            && !manual_weather_refresh;
+                        if !transfer_waiting
+                            && wifi_transfer_server.is_none()
+                            && radio.work_done(now, weather_settled)
+                        {
+                            radio_off(
+                                &mut network_runtime,
+                                &mut state,
+                                &mut last_network_fingerprint,
+                                &mut last_network_log,
+                                "burst-done",
+                            );
+                            radio.finished(now);
+                        }
+                    }
+                }
+            }
+            if transfer_waiting && radio.phase() != RadioPhase::Connecting {
+                if radio.phase() == RadioPhase::Connected {
+                    start_wifi_transfer_server(&mut wifi_transfer_server, &mut state);
+                } else {
+                    let error = if network_runtime.has_radio() {
+                        "Wi-Fi did not connect"
+                    } else {
+                        "Connect Wi-Fi before starting transfer"
+                    };
+                    warn!("rustmix-wave=wifi-transfer-server status=start-rejected error={error}");
+                    state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(error));
+                }
+                if state.panel_awake && state.active_route() == ScreenRoute::WifiTransfer {
+                    refresh_screen(
+                        &mut panel,
+                        &mut frame,
+                        &mut state,
+                        &mut panel_refresh,
+                        RefreshRequest::Normal,
+                    )?;
+                }
+            }
+
+            if radio.phase() == RadioPhase::Connected {
                 if let Some(utc) = network_runtime.tick() {
+                    radio.time_synced(Instant::now());
                     info!(
                         "rustmix-wave=sntp-sync status=completed utc={}",
                         utc.date_time()
@@ -988,6 +1103,7 @@ mod firmware {
                                 sleep_wake_guard.reset_after_wake();
                                 sleep_wake_guard_started_at = None;
                                 end_sleep(&mut board_services, &mut state, &mut sleep_started);
+                                light_sleep_clock = (Instant::now(), Duration::ZERO);
                                 info!("rustmix-wave=sleep-mode-exit cause=rtc-alarm restore-route=alarms");
                             }
                             if woke_from_sleep {
@@ -1015,18 +1131,6 @@ mod firmware {
                                     RefreshRequest::Normal
                                 },
                             )?;
-                            if sleep_network.is_suspended() {
-                                resume_network_after_sleep(
-                                    &mut network_runtime,
-                                    network_config.as_ref(),
-                                    &mut state,
-                                    &mut sleep_network,
-                                    &mut last_network_fingerprint,
-                                    &mut last_network_log,
-                                    &mut last_weather_attempt,
-                                    &mut weather_retry,
-                                );
-                            }
                             last_activity = Instant::now();
                             last_status_refresh = Instant::now();
                         }
@@ -1088,6 +1192,7 @@ mod firmware {
                             sleep_wake_guard.reset_after_wake();
                             sleep_wake_guard_started_at = None;
                             end_sleep(&mut board_services, &mut state, &mut sleep_started);
+                            light_sleep_clock = (Instant::now(), Duration::ZERO);
                             let restore_route = sleep_mode.exit(SleepWakeCause::PowerKey);
                             panel.initialize()?;
                             state.panel_awake = true;
@@ -1102,18 +1207,6 @@ mod firmware {
                                 restore_route.marker()
                             );
                             info!("rustmix-wave=wake-global-refresh reason=power-key-sleep-image");
-                            if sleep_network.is_suspended() {
-                                resume_network_after_sleep(
-                                    &mut network_runtime,
-                                    network_config.as_ref(),
-                                    &mut state,
-                                    &mut sleep_network,
-                                    &mut last_network_fingerprint,
-                                    &mut last_network_log,
-                                    &mut last_weather_attempt,
-                                    &mut weather_retry,
-                                );
-                            }
                             last_activity = Instant::now();
                             last_status_refresh = Instant::now();
                         } else if event == PowerKeyEvent::ShortPress {
@@ -1182,16 +1275,19 @@ mod firmware {
                             let selection =
                                 sleep_images.select_random(unsafe { sys::esp_random() });
                             log_sleep_image_selection(&selection);
-                            if !suspend_network_for_sleep(
-                                &mut network_runtime,
-                                &mut state,
-                                &mut sleep_network,
-                                &mut last_network_fingerprint,
-                                &mut last_network_log,
-                            ) {
-                                warn!("rustmix-wave=sleep-mode-enter status=rejected reason=network-suspend-failed");
-                                last_activity = Instant::now();
-                                continue;
+                            if radio.phase() != RadioPhase::Off {
+                                if !radio_off(
+                                    &mut network_runtime,
+                                    &mut state,
+                                    &mut last_network_fingerprint,
+                                    &mut last_network_log,
+                                    "sleep-entry",
+                                ) {
+                                    warn!("rustmix-wave=sleep-mode-enter status=rejected reason=network-suspend-failed");
+                                    last_activity = Instant::now();
+                                    continue;
+                                }
+                                radio.finished(Instant::now());
                             }
                             if !state.panel_awake {
                                 panel.initialize()?;
@@ -1212,13 +1308,12 @@ mod firmware {
                             );
                             panel.sleep()?;
                             state.panel_awake = false;
-                            if let Err(error) = board_services.set_imu_enabled(false) {
-                                warn!(
-                                    "rustmix-wave=imu-power status=failed enabled=false error={error:#}"
-                                );
-                            }
                             let battery = board_services.read_power().ok();
                             sleep_started = Some((Instant::now(), battery));
+                            info!(
+                                "rustmix-wave=light-sleep-share asleep-seconds={} awake-seconds={}",
+                                state.light_sleep.asleep_seconds, state.light_sleep.awake_seconds
+                            );
                             info!(
                                 "rustmix-wave=sleep-mode-enter image={} restore-route={} display=global-refresh panel=deep-sleep aldo3=off wifi=off network-services=paused mcu-sleep=light",
                                 selection.file_name,
@@ -1235,13 +1330,12 @@ mod firmware {
                 last_power_key_poll = Instant::now();
             }
 
-            let manual_weather_refresh = state.take_weather_refresh_request();
-            if !sleep_network.is_suspended() {
+            if !sleep_mode.is_sleeping() {
                 if let Some(config) = weather_config.as_ref() {
                     if manual_weather_refresh {
                         weather_retry.clear();
                     }
-                    let wifi_connected = state.network.wifi_state == WifiConnectionState::Connected;
+                    let wifi_connected = radio.phase() == RadioPhase::Connected;
                     let interval_due = last_weather_attempt.map_or(true, |last| {
                         last.elapsed()
                             >= Duration::from_secs(config.refresh_minutes.saturating_mul(60))
@@ -1292,6 +1386,10 @@ mod firmware {
                                     RefreshRequest::Normal,
                                 )?;
                             }
+                        } else if manual_weather_refresh
+                            && radio.phase() == RadioPhase::Connecting
+                        {
+                            manual_weather_pending = true;
                         } else if manual_weather_refresh {
                             state.weather.record_failure("Wi-Fi is not connected");
                             warn!("rustmix-wave=weather-fetch status=deferred cause=manual error=wifi-not-connected");
@@ -1383,6 +1481,22 @@ mod firmware {
                     last_activity = Instant::now();
                 }
                 last_reader_tick = Instant::now();
+            }
+
+            // The IMU only runs on the motion screens and in motion games.
+            let route = state.active_route();
+            let imu_sampling =
+                route == ScreenRoute::MotionEvents || state.lua_game_needs_imu_events();
+            let motion_screen = matches!(route, ScreenRoute::Motion | ScreenRoute::MotionDetails);
+            let imu_wanted = !sleep_mode.is_sleeping() && (imu_sampling || motion_screen);
+            if imu_wanted != imu_enabled {
+                imu_enabled = imu_wanted;
+                match board_services.set_imu_enabled(imu_wanted) {
+                    Ok(()) => info!("rustmix-wave=imu-power enabled={imu_wanted}"),
+                    Err(error) => warn!(
+                        "rustmix-wave=imu-power status=failed enabled={imu_wanted} error={error:#}"
+                    ),
+                }
             }
 
             if !sleep_mode.is_sleeping()
@@ -1795,40 +1909,124 @@ mod firmware {
                 last_status_refresh = Instant::now();
             }
 
-            let asleep = sleep_mode.is_sleeping() && sleep_wake_guard.is_armed();
-            if !(asleep && light_sleep_until_wake()) {
+            // While awake, light-sleep between presses until the next timed job.
+            // On USB power stay awake so flashing and the serial console work.
+            let reader_open = matches!(
+                state.active_route(),
+                ScreenRoute::ReaderLoading | ScreenRoute::ReaderPage
+            );
+            let idle = !sleep_mode.is_sleeping()
+                && radio.phase() == RadioPhase::Off
+                && wifi_transfer_server.is_none()
+                && voice_recording.is_none()
+                && voice_playback.is_none()
+                && state.alarms.active.is_none()
+                && !state.audio.playback_state.is_streaming()
+                && !(reader_open && state.reader.has_background_work())
+                && !(state.panel_awake && imu_sampling)
+                && last_activity.elapsed() >= IDLE_LIGHT_SLEEP_DELAY;
+            if idle && last_usb_check.map_or(true, |at| at.elapsed() >= USB_CHECK_INTERVAL) {
+                on_usb_power = board_services
+                    .read_power()
+                    .is_ok_and(|power| power.vbus_present);
+                last_usb_check = Some(Instant::now());
+            }
+            let slept = if sleep_mode.is_sleeping() {
+                sleep_wake_guard.is_armed()
+                    && light_sleep_until_wake(&SLEEP_WAKE_GPIOS, LIGHT_SLEEP_MAX)
+            } else if idle && !on_usb_power {
+                let now = Instant::now();
+                let weather_due =
+                    next_weather_refresh(weather_config.as_ref(), last_weather_attempt);
+                let burst_due = radio
+                    .next_burst(now, weather_due, last_activity)
+                    .saturating_duration_since(now);
+                let live_status = state.panel_awake && state.active_route().uses_live_status();
+                let alarm_polling = alarm_engine.should_poll() && !state.alarms.hardware_programmed;
+                let budget = light_sleep_budget(&[
+                    state
+                        .panel_awake
+                        .then(|| time_left(last_activity, PANEL_IDLE_SLEEP_SECONDS)),
+                    power_key_available.then(|| time_left(last_activity, AUTO_SLEEP_SECONDS)),
+                    live_status.then(|| time_left(last_status_refresh, live_refresh_seconds)),
+                    alarm_polling.then(|| time_left(last_alarm_poll, ALARM_POLL_SECONDS)),
+                    network_runtime.has_radio().then_some(burst_due),
+                ]);
+                // The RTC line only needs watching while an alarm is programmed.
+                let lines = if state.alarms.hardware_programmed {
+                    &AWAKE_WAKE_GPIOS[..]
+                } else {
+                    &AWAKE_WAKE_GPIOS[1..]
+                };
+                budget.is_some_and(|budget| {
+                    let started = Instant::now();
+                    let slept = light_sleep_until_wake(lines, budget);
+                    if slept {
+                        light_sleep_clock.1 += started.elapsed();
+                    }
+                    slept
+                })
+            } else {
+                false
+            };
+            if !slept {
                 FreeRtos::delay_ms(20);
             }
+            state.light_sleep = LightSleepShare {
+                asleep_seconds: light_sleep_clock.1.as_secs(),
+                awake_seconds: light_sleep_clock.0.elapsed().as_secs(),
+            };
         }
     }
 
     /// AXP2101 interrupt line; low while a Power-key event is latched.
     const PMIC_IRQ_GPIO: i32 = 38;
-    /// Light sleep also ends this often, so a missed wake line only delays a wake.
-    const LIGHT_SLEEP_TIMER_US: u64 = 60_000_000;
+    /// Lines that end the sleep-image light sleep.
+    static SLEEP_WAKE_GPIOS: [i32; 2] = [PMIC_IRQ_GPIO, RTC_ALARM_INTERRUPT_GPIO as i32];
+    /// While awake BOOT (GPIO0) and the wheel (GPIO4-6) wake it too. The RTC
+    /// line comes first so it can be left out when no alarm is programmed.
+    static AWAKE_WAKE_GPIOS: [i32; 6] =
+        [RTC_ALARM_INTERRUPT_GPIO as i32, PMIC_IRQ_GPIO, 0, 4, 5, 6];
+    /// Grace after the last press before the idle loop light-sleeps.
+    const IDLE_LIGHT_SLEEP_DELAY: Duration = Duration::from_millis(300);
+    const USB_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
-    /// Light-sleep until the Power key or an RTC alarm pulls its line low, or the
-    /// fallback timer fires; the event loop then handles the event as before.
-    /// Returns false without sleeping when a line is already low.
-    fn light_sleep_until_wake() -> bool {
+    fn time_left(since: Instant, period_seconds: u64) -> Duration {
+        Duration::from_secs(period_seconds).saturating_sub(since.elapsed())
+    }
+
+    /// When the next weather refresh falls due, if weather is configured.
+    fn next_weather_refresh(
+        config: Option<&WeatherConfig>,
+        last_attempt: Option<Instant>,
+    ) -> Option<Instant> {
+        let interval = Duration::from_secs(config?.refresh_minutes.saturating_mul(60));
+        Some(last_attempt.map_or_else(Instant::now, |last| last + interval))
+    }
+
+    /// Light-sleep until one of `lines` is pulled low or `timer` runs out; the
+    /// event loop then handles whatever woke it. Returns false without
+    /// sleeping when a line is already low.
+    fn light_sleep_until_wake(lines: &[i32], timer: Duration) -> bool {
         // The BLE remote build keeps the radio running for its connection.
         if cfg!(feature = "rustmix-remote-ble") {
             return false;
         }
-        let lines = [PMIC_IRQ_GPIO, i32::from(RTC_ALARM_INTERRUPT_GPIO)];
-        let line_low = |gpio| unsafe { sys::gpio_get_level(gpio) } == 0;
-        if lines.into_iter().any(line_low) {
+        if lines
+            .iter()
+            .any(|&gpio| unsafe { sys::gpio_get_level(gpio) } == 0)
+        {
             return false;
         }
         let result = unsafe {
-            for gpio in lines {
+            for &gpio in lines {
                 sys::gpio_wakeup_enable(gpio, sys::gpio_int_type_t_GPIO_INTR_LOW_LEVEL);
             }
             sys::esp_sleep_enable_gpio_wakeup();
-            sys::esp_sleep_enable_timer_wakeup(LIGHT_SLEEP_TIMER_US);
+            sys::esp_sleep_enable_timer_wakeup(timer.as_micros() as u64);
             let result = sys::esp_light_sleep_start();
             sys::esp_sleep_disable_wakeup_source(sys::esp_sleep_source_t_ESP_SLEEP_WAKEUP_ALL);
-            for gpio in lines {
+            for &gpio in lines {
                 sys::gpio_wakeup_disable(gpio);
             }
             result
@@ -1840,7 +2038,7 @@ mod firmware {
         true
     }
 
-    /// Restart the IMU stopped for sleep and report the battery used asleep.
+    /// Report the battery used asleep.
     fn end_sleep<I2C>(
         board_services: &mut BoardServices<I2C>,
         state: &mut AppState,
@@ -1849,9 +2047,6 @@ mod firmware {
         I2C: embedded_hal::i2c::I2c,
         I2C::Error: core::fmt::Debug,
     {
-        if let Err(error) = board_services.set_imu_enabled(true) {
-            warn!("rustmix-wave=imu-power status=failed enabled=true error={error:#}");
-        }
         let Some((started_at, before)) = sleep_started.take() else {
             return;
         };
@@ -1978,31 +2173,12 @@ mod firmware {
                     return;
                 }
                 state.update_wifi_transfer_snapshot(WifiTransferSnapshot::starting());
-                let Some(ipv4) = state.network.ipv4_address.as_deref() else {
-                    state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(
-                        "Connect Wi-Fi before starting transfer",
-                    ));
-                    warn!("rustmix-wave=wifi-transfer-server status=start-rejected reason=wifi-not-connected");
+                if state.network.ipv4_address.is_none() {
+                    // Wi-Fi is off between bursts; the main loop connects first.
+                    info!("rustmix-wave=wifi-transfer-server status=waiting-for-wifi");
                     return;
-                };
-                let code = format!("{:06}", unsafe { sys::esp_random() } % 1_000_000);
-                info!("rustmix-wave=wifi-transfer-server status=starting ipv4={ipv4} port=80 root={WIFI_TRANSFER_ROOT} stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES}");
-                log_runtime_memory("before-wifi-transfer-start");
-                match WifiTransferServer::start(ipv4, code) {
-                    Ok(active) => {
-                        state.update_wifi_transfer_snapshot(active.snapshot());
-                        *server = Some(active);
-                        log_runtime_memory("after-wifi-transfer-start");
-                    }
-                    Err(error) => {
-                        warn!(
-                            "rustmix-wave=wifi-transfer-server status=start-failed error={error:#}"
-                        );
-                        state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(format!(
-                            "{error:#}"
-                        )));
-                    }
                 }
+                start_wifi_transfer_server(server, state);
             }
             WifiTransferUiRequest::Stop => {
                 info!("rustmix-wave=wifi-transfer-ui-request request=stop dispatch=before-refresh");
@@ -2013,6 +2189,34 @@ mod firmware {
                     mounted,
                     "settings-toggle",
                 );
+            }
+        }
+    }
+
+    fn start_wifi_transfer_server(server: &mut Option<WifiTransferServer>, state: &mut AppState) {
+        let Some(ipv4) = state.network.ipv4_address.clone() else {
+            state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(
+                "Connect Wi-Fi before starting transfer",
+            ));
+            warn!(
+                "rustmix-wave=wifi-transfer-server status=start-rejected reason=wifi-not-connected"
+            );
+            return;
+        };
+        let code = format!("{:06}", unsafe { sys::esp_random() } % 1_000_000);
+        info!("rustmix-wave=wifi-transfer-server status=starting ipv4={ipv4} port=80 root={WIFI_TRANSFER_ROOT} stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES}");
+        log_runtime_memory("before-wifi-transfer-start");
+        match WifiTransferServer::start(&ipv4, code) {
+            Ok(active) => {
+                state.update_wifi_transfer_snapshot(active.snapshot());
+                *server = Some(active);
+                log_runtime_memory("after-wifi-transfer-start");
+            }
+            Err(error) => {
+                warn!("rustmix-wave=wifi-transfer-server status=start-failed error={error:#}");
+                state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(format!(
+                    "{error:#}"
+                )));
             }
         }
     }
@@ -2182,77 +2386,27 @@ mod firmware {
         }
     }
 
-    fn suspend_network_for_sleep(
+    /// Switch the Wi-Fi radio off; false when the driver refused.
+    fn radio_off(
         runtime: &mut NetworkRuntime,
         state: &mut AppState,
-        sleep_network: &mut SleepNetworkState,
         last_network_fingerprint: &mut NetworkLogFingerprint,
         last_network_log: &mut Instant,
+        reason: &str,
     ) -> bool {
-        info!("rustmix-wave=sleep-network-suspend status=starting");
         match runtime.suspend() {
             Ok(()) => {
-                let _ = sleep_network.suspend();
                 state.update_network_snapshot(runtime.snapshot());
                 *last_network_fingerprint = state.network.log_fingerprint();
                 *last_network_log = Instant::now();
-                info!("rustmix-wave=sntp-suspend status=stopped");
-                info!("rustmix-wave=wifi-suspend status=disconnected");
-                info!("rustmix-wave=wifi-suspend status=stopped");
-                info!("rustmix-wave=weather-suspend status=paused");
+                info!("rustmix-wave=wifi-burst status=off reason={reason}");
                 true
             }
             Err(error) => {
-                warn!("rustmix-wave=sleep-network-suspend status=failed error={error:#}");
+                warn!("rustmix-wave=wifi-burst status=off-failed reason={reason} error={error:#}");
                 false
             }
         }
-    }
-
-    fn resume_network_after_sleep(
-        runtime: &mut NetworkRuntime,
-        config: Option<&NetworkConfig>,
-        state: &mut AppState,
-        sleep_network: &mut SleepNetworkState,
-        last_network_fingerprint: &mut NetworkLogFingerprint,
-        last_network_log: &mut Instant,
-        last_weather_attempt: &mut Option<Instant>,
-        weather_retry: &mut WeatherRetryState,
-    ) {
-        info!("rustmix-wave=sleep-network-resume status=starting");
-        if let Some(config) = config {
-            info!(
-                "rustmix-wave=wifi-resume status=starting ssid={}",
-                config.ssid
-            );
-            match runtime.resume(config) {
-                Ok(()) => {
-                    info!(
-                        "rustmix-wave=wifi-resume status=connected ssid={}",
-                        config.ssid
-                    );
-                    info!("rustmix-wave=sntp-resume status=started");
-                    info!("rustmix-wave=weather-resume status=pending-network-ready");
-                }
-                Err(error) => {
-                    warn!(
-                        "rustmix-wave=wifi-resume status=failed ssid={} error={error:#}",
-                        config.ssid
-                    );
-                    runtime.record_resume_failure(format!("{error:#}"));
-                }
-            }
-        } else {
-            runtime.record_configuration_missing();
-            info!("rustmix-wave=wifi-resume status=skipped reason=configuration-missing");
-        }
-        let _ = sleep_network.resume();
-        state.update_network_snapshot(runtime.snapshot());
-        log_network_snapshot(&state.network);
-        *last_network_fingerprint = state.network.log_fingerprint();
-        *last_network_log = Instant::now();
-        *last_weather_attempt = None;
-        weather_retry.clear();
     }
 
     fn apply_alarm_event(

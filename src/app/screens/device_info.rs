@@ -148,15 +148,16 @@ pub fn render_device_info_runtime(
         .last_sleep
         .map_or_else(|| "None yet".into(), |report| report.label());
     line(display, 412, "Last sleep", &last_sleep, body)?;
+    line(display, 452, "Light sleep", &state.light_sleep.label(), body)?;
 
-    Text::new("Stable ownership", Point::new(22, 450), heading).draw(display)?;
-    line(display, 498, "EPD busy", "GPIO3 / ALDO3 managed", body)?;
-    line(display, 538, "Buttons", "UP4 SELECT5 DOWN6", body)?;
-    line(display, 578, "Power key", "Short menu / hold sleep", body)?;
-    line(display, 618, "RTC alarm", "GPIO45 active-low", body)?;
+    Text::new("Stable ownership", Point::new(22, 490), heading).draw(display)?;
+    line(display, 538, "EPD busy", "GPIO3 / ALDO3 managed", body)?;
+    line(display, 578, "Buttons", "UP4 SELECT5 DOWN6", body)?;
+    line(display, 618, "Power key", "Short menu / hold sleep", body)?;
+    line(display, 658, "RTC alarm", "GPIO45 active-low", body)?;
     Text::new(
         "Hold BOOT to return to page 2.",
-        Point::new(22, 680),
+        Point::new(22, 720),
         detail,
     )
     .draw(display)?;

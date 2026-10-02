@@ -29,6 +29,7 @@ const ADC_REG16: u8 = 0x16;
 const ADC_REG17: u8 = 0x17;
 const ADC_REG1B: u8 = 0x1B;
 const ADC_REG1C: u8 = 0x1C;
+const DAC_REG32: u8 = 0x32;
 const DAC_REG37: u8 = 0x37;
 const GPIO_REG44: u8 = 0x44;
 const GP_REG45: u8 = 0x45;
@@ -127,6 +128,38 @@ impl BoardEs8311 {
         self.codec
             .mute(i2c, muted)
             .map_err(|error| anyhow!("ES8311 mute update failed: {error:?}"))
+    }
+
+    /// Power down the DAC, ADC and analogue references between uses, as
+    /// Espressif's `esp_codec_dev` does when the codec is disabled. The DAC
+    /// volume is cleared, so restore it after `resume`.
+    pub fn suspend<I2C>(&self, i2c: &mut I2C) -> Result<()>
+    where
+        I2C: I2c,
+        I2C::Error: core::fmt::Debug,
+    {
+        for (register, value) in [
+            (DAC_REG32, 0x00),
+            (ADC_REG17, 0x00),
+            (SYSTEM_REG0E, 0xFF),
+            (SYSTEM_REG12, 0x02),
+            (SYSTEM_REG14, 0x00),
+            (SYSTEM_REG0D, 0xFA),
+            (ADC_REG15, 0x00),
+            (GP_REG45, 0x01),
+        ] {
+            self.write_reg(i2c, register, value)?;
+        }
+        Ok(())
+    }
+
+    /// Power the codec back up after `suspend`.
+    pub fn resume<I2C>(&self, i2c: &mut I2C) -> Result<()>
+    where
+        I2C: I2c,
+        I2C::Error: core::fmt::Debug,
+    {
+        self.apply_waveshare_profile(i2c)
     }
 
     fn apply_waveshare_profile<I2C>(&self, i2c: &mut I2C) -> Result<()>

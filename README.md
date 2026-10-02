@@ -10,7 +10,7 @@ reworked phase by phase as listed below.
 
 - [x] Baseline: upstream v1.2.0 (Wi-Fi) built by GitHub Actions
 - [x] Phase 0: long SD file names, project rename (code cleanup moved to the backlog)
-- [ ] Phase 1: power (light sleep, auto-sleep, button interrupts, short Wi-Fi bursts)
+- [ ] Phase 1: power (light sleep, auto-sleep, Wi-Fi bursts and idle power-down done; Settings › Power next)
 - [x] Phase 2: typography (Latin-1 fonts, large EPUBs, pixel-width wrapping, ES/EN hyphenation)
 - [ ] Phase 3: Photos and configurable sleep screens
 - [ ] Phase 4: Weather app
@@ -43,6 +43,8 @@ You need a desktop Chrome or Edge browser and a USB-C data cable.
 
 1. Open the Espressif web flasher: <https://espressif.github.io/esptool-js/>
 2. Connect the board, click **Connect** and select its serial port.
+   On battery the board light-sleeps between presses and its port comes and goes; on USB power
+   it stays awake, so press any key once after plugging it in.
    If the port does not show up, hold **BOOT**, power-cycle the board, then release **BOOT**.
 3. Set **Flash Address** to `0x0`, choose `wave-epaper-<version>.bin` and click **Program**.
 4. When it finishes, power-cycle the board.

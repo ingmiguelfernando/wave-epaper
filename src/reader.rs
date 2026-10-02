@@ -1580,6 +1580,17 @@ impl ReaderUiState {
         self.loading.as_ref().map(|loading| loading.stage)
     }
 
+    /// True while `tick` still has a book to open or nearby pages to index.
+    #[must_use]
+    pub fn has_background_work(&self) -> bool {
+        if let Some(loading) = self.loading.as_ref() {
+            return loading.stage != ReaderLoadingStage::Failed;
+        }
+        self.session.as_ref().is_some_and(|session| {
+            session.cache.len() < READER_NEARBY_PAGE_CACHE && !session.index_complete
+        })
+    }
+
     pub fn tick(&mut self) -> ReaderTickOutcome {
         if let Some(mut loading) = self.loading.take() {
             if loading.stage == ReaderLoadingStage::Failed {
@@ -3533,12 +3544,18 @@ mod tests {
         );
         reader.refresh_library();
         reader.library_selected = 1;
+        assert!(!reader.has_background_work());
         assert!(reader.apply_library_button(ButtonEvent::Select));
+        assert!(reader.has_background_work());
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         let session = reader.session.as_ref().unwrap();
         assert_eq!(session.current_page, 0);
         assert!(!session.cache.is_empty());
         assert!(session.indexed_through > 0);
+        for _ in 0..16 {
+            reader.tick();
+        }
+        assert!(!reader.has_background_work());
     }
 
     #[test]

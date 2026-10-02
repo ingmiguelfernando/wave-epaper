@@ -81,6 +81,18 @@ impl AudioPlaybackState {
             Self::Error => "ERROR",
         }
     }
+
+    /// True while I2S audio is flowing, so the processor must stay awake.
+    #[must_use]
+    pub const fn is_streaming(self) -> bool {
+        matches!(
+            self,
+            Self::PlayingTestTone
+                | Self::PlayingAlarm
+                | Self::PlayingVoiceNote
+                | Self::RecordingVoiceNote
+        )
+    }
 }
 
 /// Password-free, handle-free audio state rendered by the product shell.
@@ -178,6 +190,14 @@ mod tests {
     fn seven_bit_and_wire_write_addresses_are_explicit() {
         assert_eq!(ES8311_I2C_ADDRESS_LOW, 0x18);
         assert_eq!(ES8311_WIRE_WRITE_ADDRESS_LOW, 0x30);
+    }
+
+    #[test]
+    fn only_active_audio_keeps_the_processor_awake() {
+        assert!(AudioPlaybackState::PlayingAlarm.is_streaming());
+        assert!(AudioPlaybackState::RecordingVoiceNote.is_streaming());
+        assert!(!AudioPlaybackState::Muted.is_streaming());
+        assert!(!AudioPlaybackState::Error.is_streaming());
     }
 
     #[test]

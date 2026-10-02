@@ -31,6 +31,7 @@ pub mod panel_refresh;
 pub mod power;
 pub mod power_key;
 pub mod power_key_menu;
+pub mod radio_burst;
 pub mod reader;
 pub mod regional;
 pub mod rtc;
@@ -41,8 +42,6 @@ pub mod rustmix_remote;
 pub mod shared_i2c;
 pub mod sleep_images;
 pub mod sleep_mode;
-pub mod sleep_network;
-
 pub mod storage;
 pub mod unit_converter;
 pub mod voice_note_metadata;

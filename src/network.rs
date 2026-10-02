@@ -20,7 +20,7 @@ impl WifiConnectionState {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Disabled => "DISABLED",
+            Self::Disabled => "OFF",
             Self::ConfigurationMissing => "NO CONFIG",
             Self::Connecting => "CONNECTING",
             Self::Connected => "CONNECTED",
@@ -175,7 +175,7 @@ pub mod espidf {
         eventloop::EspSystemEventLoop,
         hal::modem::WifiModemPeripheral,
         nvs::EspDefaultNvsPartition,
-        sntp::{EspSntp, SntpConf},
+        sntp::{EspSntp, SntpConf, SyncStatus},
         sys,
         wifi::{BlockingWifi, EspWifi},
     };
@@ -194,6 +194,7 @@ pub mod espidf {
         snapshot: NetworkSnapshot,
         ntp_reported: bool,
         suspended: bool,
+        connect_issued: bool,
     }
 
     impl NetworkRuntime {
@@ -205,6 +206,7 @@ pub mod espidf {
                 snapshot: NetworkSnapshot::default(),
                 ntp_reported: false,
                 suspended: false,
+                connect_issued: false,
             }
         }
 
@@ -224,11 +226,12 @@ pub mod espidf {
                 },
                 ntp_reported: false,
                 suspended: false,
+                connect_issued: false,
             }
         }
 
-        /// Start Wi-Fi after the initial e-paper frame is already visible.
-        pub fn connect<M>(modem: M, config: &NetworkConfig) -> Result<Self>
+        /// Create the station with the radio off; `begin_connect` switches it on.
+        pub fn new<M>(modem: M, config: &NetworkConfig) -> Result<Self>
         where
             M: WifiModemPeripheral + 'static,
         {
@@ -255,30 +258,16 @@ pub mod espidf {
                 auth_method,
                 ..Default::default()
             }))?;
-            wifi.start()?;
-            wifi.connect()?;
-            wifi.wait_netif_up()?;
-
-            let ip_info = wifi.wifi().sta_netif().get_ip_info()?;
-            let mut conf = SntpConf::default();
-            conf.servers[0] = config.ntp_server.as_str();
-            let sntp = EspSntp::new(&conf)?;
             Ok(Self {
                 wifi: Some(wifi),
-                sntp: Some(sntp),
+                sntp: None,
                 snapshot: NetworkSnapshot {
-                    wifi_state: WifiConnectionState::Connected,
-                    ntp_state: NtpSyncState::Synchronizing,
-                    ssid: Some(config.ssid.clone()),
-                    ipv4_address: Some(format!("{}", ip_info.ip)),
-                    rssi_dbm: read_rssi_dbm(),
-                    timezone_name: config.timezone.clone(),
-                    ntp_server: config.ntp_server.clone(),
-                    last_sync_utc: None,
-                    error: None,
+                    wifi_state: WifiConnectionState::Disabled,
+                    ..NetworkSnapshot::provisioned(config)
                 },
                 ntp_reported: false,
-                suspended: false,
+                suspended: true,
+                connect_issued: false,
             })
         }
 
@@ -292,9 +281,13 @@ pub mod espidf {
             self.suspended
         }
 
-        /// Stop optional network services while retaining station ownership so
-        /// a later power-key or RTC-alarm wake can reconnect without rebuilding
-        /// the complete application shell.
+        /// False when Wi-Fi is not configured or its driver failed to start.
+        #[must_use]
+        pub const fn has_radio(&self) -> bool {
+            self.wifi.is_some()
+        }
+
+        /// Switch the radio off. The station stays configured for the next burst.
         pub fn suspend(&mut self) -> Result<()> {
             let _ = self.sntp.take();
             if let Some(wifi) = self.wifi.as_mut() {
@@ -302,7 +295,9 @@ pub mod espidf {
                 wifi.stop()?;
             }
             self.snapshot.wifi_state = WifiConnectionState::Disabled;
-            self.snapshot.ntp_state = NtpSyncState::Disabled;
+            if self.snapshot.ntp_state != NtpSyncState::Synchronized {
+                self.snapshot.ntp_state = NtpSyncState::Disabled;
+            }
             self.snapshot.ipv4_address = None;
             self.snapshot.rssi_dbm = None;
             self.snapshot.error = None;
@@ -311,48 +306,55 @@ pub mod espidf {
             Ok(())
         }
 
-        /// Restart Wi-Fi association and SNTP after the wake frame is already
-        /// visible. Failed recovery is non-fatal and remains visible in the
-        /// product-facing network snapshot.
-        pub fn resume(&mut self, config: &NetworkConfig) -> Result<()> {
+        /// Switch the radio on and start associating; `poll_connect` finishes.
+        pub fn begin_connect(&mut self) -> Result<()> {
             let wifi = self.wifi.as_mut().context("Wi-Fi runtime is unavailable")?;
-            wifi.start()?;
-            wifi.connect()?;
-            wifi.wait_netif_up()?;
-            let ip_info = wifi.wifi().sta_netif().get_ip_info()?;
-            let mut conf = SntpConf::default();
-            conf.servers[0] = config.ntp_server.as_str();
-            self.sntp = Some(EspSntp::new(&conf)?);
-            self.snapshot.wifi_state = WifiConnectionState::Connected;
-            self.snapshot.ntp_state = NtpSyncState::Synchronizing;
-            self.snapshot.ssid = Some(config.ssid.clone());
-            self.snapshot.ipv4_address = Some(format!("{}", ip_info.ip));
-            self.snapshot.rssi_dbm = read_rssi_dbm();
-            self.snapshot.timezone_name = config.timezone.clone();
-            self.snapshot.ntp_server = config.ntp_server.clone();
-            self.snapshot.error = None;
-            self.ntp_reported = false;
+            wifi.wifi_mut().start()?;
+            self.connect_issued = false;
             self.suspended = false;
+            self.snapshot.wifi_state = WifiConnectionState::Connecting;
+            self.snapshot.error = None;
             Ok(())
         }
 
-        pub fn record_resume_failure(&mut self, error: impl Into<String>) {
-            self.snapshot.wifi_state = WifiConnectionState::Failed;
-            self.snapshot.ntp_state = NtpSyncState::Failed;
-            self.snapshot.ipv4_address = None;
-            self.snapshot.rssi_dbm = None;
-            self.snapshot.error = Some(error.into());
-            self.suspended = false;
-        }
-
-        pub fn record_configuration_missing(&mut self) {
-            self.snapshot = NetworkSnapshot::default();
+        /// Advance the connection without blocking; true once the station has
+        /// an address and SNTP is running.
+        pub fn poll_connect(&mut self, config: &NetworkConfig) -> Result<bool> {
+            let wifi = self.wifi.as_mut().context("Wi-Fi runtime is unavailable")?;
+            if !self.connect_issued {
+                if wifi.is_started()? {
+                    wifi.wifi_mut().connect()?;
+                    self.connect_issued = true;
+                }
+                return Ok(false);
+            }
+            if !wifi.is_up()? {
+                return Ok(false);
+            }
+            let ip_info = wifi.wifi().sta_netif().get_ip_info()?;
+            let mut conf = SntpConf::default();
+            conf.servers[0] = config.ntp_server.as_str();
+            let sntp = EspSntp::new(&conf)?;
+            // Drop a completion left over from an earlier burst.
+            let _ = sntp.get_sync_status();
+            self.sntp = Some(sntp);
+            self.snapshot.wifi_state = WifiConnectionState::Connected;
+            self.snapshot.ntp_state = NtpSyncState::Synchronizing;
+            self.snapshot.ipv4_address = Some(format!("{}", ip_info.ip));
+            self.snapshot.rssi_dbm = read_rssi_dbm();
+            self.snapshot.error = None;
             self.ntp_reported = false;
-            self.suspended = false;
+            Ok(true)
         }
 
-        /// Poll for an SNTP-populated system clock. The official wrapper keeps
-        /// the SNTP service alive and updates `SystemTime` in the background.
+        /// Switch the radio off after a burst that could not connect.
+        pub fn fail_connect(&mut self, error: impl Into<String>) {
+            let _ = self.suspend();
+            self.snapshot.wifi_state = WifiConnectionState::Failed;
+            self.snapshot.error = Some(error.into());
+        }
+
+        /// Report the clock once per connection, after SNTP really synced it.
         pub fn tick(&mut self) -> Option<RtcDateTime> {
             if self.suspended {
                 return None;
@@ -360,7 +362,10 @@ pub mod espidf {
             if self.wifi.is_some() {
                 self.snapshot.rssi_dbm = read_rssi_dbm();
             }
-            if self.ntp_reported || self.sntp.is_none() {
+            if self.ntp_reported {
+                return None;
+            }
+            if self.sntp.as_ref()?.get_sync_status() != SyncStatus::Completed {
                 return None;
             }
             let seconds = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
