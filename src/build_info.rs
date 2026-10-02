@@ -21,7 +21,7 @@ mod tests {
     fn exposes_text_editor_layout_alignment_metadata() {
         assert_eq!(PRODUCT_NAME, "Rustmix Wave / EPD397");
         assert_eq!(PRODUCT_SLUG, "rustmix-wave-epd397");
-        assert_eq!(FIRMWARE_VERSION, "1.0.0");
+        assert_eq!(FIRMWARE_VERSION, "1.2.0");
         assert_eq!(UI_SHELL_MILESTONE, "text-editor-layout-alignment");
     }
 }

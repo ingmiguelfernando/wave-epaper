@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ESP-IDF, the Xtensa toolchain and an LTO release build need more disk than the runner leaves free.
       - name: Free disk space
@@ -54,7 +54,7 @@ jobs:
         run: cargo binstall --no-confirm --locked --version '^3' espflash
 
       - name: Restore build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -91,7 +91,7 @@ jobs:
           fi
           mkdir -p dist
           # Bootloader, partition table and app in a single image that is flashed at offset 0x0.
-          espflash save-image --chip esp32s3 --merge --flash-size 16MB "$APP_ELF" "dist/wave-epaper-$VERSION.bin"
+          espflash save-image --chip esp32s3 --merge --flash-size 16mb "$APP_ELF" "dist/wave-epaper-$VERSION.bin"
           cp "$APP_ELF" "dist/wave-epaper-$VERSION.elf"
           (cd dist && sha256sum ./* > SHA256SUMS.txt)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -106,7 +106,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wave-epaper-${{ env.VERSION }}
           path: dist/
@@ -114,7 +114,7 @@ jobs:
 
       - name: Publish release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
