@@ -28,6 +28,10 @@ use crate::{
     weather::{CurrentConditions, WeatherFetchState},
 };
 
+const SPANISH_SAMPLE: [&str; 2] = [
+    "¿Dónde está el niño? ¡Ahí, señor!",
+    "«Cien años» — “sí”, ‘no’… 18°C · Ñandú",
+];
 
 /// Opening of Don Quijote (1605, public domain) for the Reader page preview.
 const QUIJOTE: &str = "En un lugar de la Mancha, de cuyo nombre no quiero acordarme, no ha \
@@ -41,10 +45,6 @@ const QUIJOTE: &str = "En un lugar de la Mancha, de cuyo nombre no quiero acorda
     a los veinte, y un mozo de campo y plaza, que así ensillaba el rocín como tomaba la \
     podadera. Frisaba la edad de nuestro hidalgo con los cincuenta años; era de complexión \
     recia, seco de carnes, enjuto de rostro, gran madrugador y amigo de la caza.\n";
-const SPANISH_SAMPLE: [&str; 2] = [
-    "¿Dónde está el niño? ¡Ahí, señor!",
-    "«Cien años» — “sí”, ‘no’… 18°C · Ñandú",
-];
 
 #[test]
 fn render_screen_previews() {
@@ -108,6 +108,19 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
 
     let routes = [
         ("library", ScreenRoute::Reader),
+        ("ai", ScreenRoute::Ai),
+        ("games", ScreenRoute::Games),
+        ("tools", ScreenRoute::Tools),
+        ("settings", ScreenRoute::Settings),
+        ("photos", ScreenRoute::Photos),
+        ("weather", ScreenRoute::Weather),
+        ("voice-notes", ScreenRoute::VoiceNotes),
+    ];
+    for (name, route) in routes {
+        let mut state = sample_state();
+        state.router.navigate_to(route);
+        states.push((name, state));
+    }
 
     let mut page = sample_state();
     open_sample_book(&mut page);
@@ -134,20 +147,7 @@ fn open_sample_book(state: &mut AppState) {
     assert!(reader.apply_library_button(ButtonEvent::Select));
     assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
     state.reader = reader;
-    state.router.navigate_to(ScreenRoute::ReaderPage);ai", ScreenRoute::Ai),
-        ("games", ScreenRoute::Games),
-        ("tools", ScreenRoute::Tools),
-        ("settings", ScreenRoute::Settings),
-        ("photos", ScreenRoute::Photos),
-        ("weather", ScreenRoute::Weather),
-        ("voice-notes", ScreenRoute::VoiceNotes),
-    ];
-    for (name, route) in routes {
-        let mut state = sample_state();
-        state.router.navigate_to(route);
-        states.push((name, state));
-    }
-    states
+    state.router.navigate_to(ScreenRoute::ReaderPage);
 }
 
 /// Plausible data so previews resemble a device in use.
