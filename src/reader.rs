@@ -9,7 +9,7 @@ use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    time::{Duration, UNIX_EPOCH},
+    time::{Duration, Instant, UNIX_EPOCH},
 };
 
 use crate::{
@@ -58,12 +58,11 @@ pub const READER_CACHE_OFFSET_LIMIT: usize = 4096;
 pub const READER_CACHE_CHECKPOINT_PAGES: usize = 4;
 /// Maximum pre-indexed EPUB page anchors retained for chapter-aware labels.
 pub const READER_EPUB_PAGE_ANCHOR_LIMIT: usize = 4096;
-/// Number of EPUB page anchors generated before briefly blocking the current
-/// task. The pause lets the ESP-IDF idle task feed its watchdog while large
-/// chapters are indexed for chapter-relative totals.
-pub const READER_EPUB_INDEX_YIELD_EVERY_PAGES: usize = 4;
-/// Cooperative pause used during bounded EPUB chapter pagination.
-pub const READER_EPUB_INDEX_YIELD_MILLIS: u64 = 1;
+/// Continuous EPUB chapter indexing time before the task blocks so the
+/// ESP-IDF idle task can feed the task watchdog.
+pub const READER_EPUB_INDEX_YIELD_INTERVAL: Duration = Duration::from_millis(200);
+/// One FreeRTOS tick at 100 Hz; ESP-IDF busy-waits on shorter sleeps.
+pub const READER_EPUB_INDEX_YIELD_SLEEP: Duration = Duration::from_millis(10);
 
 const READER_PERSISTENCE_VERSION: &str = "1";
 const READER_CACHE_VERSION: &str = "3";
@@ -2250,6 +2249,10 @@ pub fn scan_txt_library(root: impl AsRef<Path>) -> Result<Vec<ReaderBook>, Strin
     let entries =
         fs::read_dir(root).map_err(|error| format!("Books folder unavailable: {error}"))?;
     for entry in entries.flatten() {
+        // macOS writes hidden `._name` metadata companions to FAT cards.
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -2352,6 +2355,8 @@ fn index_epub_chapter_pages(
     document: &EpubDocument,
     layout: ReaderLayout,
 ) -> Result<Vec<ReaderEpubChapterPages>, String> {
+    let started = Instant::now();
+    let mut last_yield = started;
     let mut indexed = Vec::new();
     let mut total_pages = 0_usize;
     for chapter in &document.chapters {
@@ -2380,8 +2385,9 @@ fn index_epub_chapter_pages(
                 ));
             }
             offset = page.next_byte_offset.min(chapter.text_end_offset);
-            if total_pages % READER_EPUB_INDEX_YIELD_EVERY_PAGES == 0 {
-                std::thread::sleep(Duration::from_millis(READER_EPUB_INDEX_YIELD_MILLIS));
+            if last_yield.elapsed() >= READER_EPUB_INDEX_YIELD_INTERVAL {
+                std::thread::sleep(READER_EPUB_INDEX_YIELD_SLEEP);
+                last_yield = Instant::now();
             }
         }
         if !page_offsets.is_empty() {
@@ -2394,11 +2400,10 @@ fn index_epub_chapter_pages(
         }
     }
     log::info!(
-        "rustmix-wave=epub-chapter-index status=completed chapters={} pages={} yield-every-pages={} yield-ms={}",
+        "rustmix-wave=epub-chapter-index status=completed chapters={} pages={} elapsed-ms={}",
         indexed.len(),
         total_pages,
-        READER_EPUB_INDEX_YIELD_EVERY_PAGES,
-        READER_EPUB_INDEX_YIELD_MILLIS
+        started.elapsed().as_millis()
     );
     Ok(indexed)
 }
@@ -2431,7 +2436,7 @@ fn read_epub_page_until(
         .map_err(|_| "EPUB chapter end exceeds platform range".to_string())?
         .min(document.text.len());
     let end = start
-        .saturating_add(READER_PAGE_READ_BYTES)
+        .saturating_add(epub_page_window_bytes(layout))
         .min(bounded_end);
     let bytes = document.text.as_bytes();
     let start = next_utf8_boundary(bytes, start);
@@ -2446,6 +2451,13 @@ fn read_epub_page_until(
         next_byte_offset,
         lines,
     })
+}
+
+/// A full page of 4-byte characters, so EPUB indexing cost follows the page
+/// size rather than `READER_PAGE_READ_BYTES`.
+fn epub_page_window_bytes(layout: ReaderLayout) -> usize {
+    let bytes = layout.lines_per_page * (layout.chars_per_line + 1) * 4;
+    bytes.min(READER_PAGE_READ_BYTES)
 }
 
 fn next_utf8_boundary(bytes: &[u8], mut offset: usize) -> usize {
@@ -2515,7 +2527,7 @@ fn decode_with_offsets(bytes: &[u8], encoding: TextEncoding, base: u64) -> Vec<(
 }
 
 fn normalize_decoded(decoded: &[(char, u64)]) -> Vec<(char, u64)> {
-    let mut normalized = Vec::new();
+    let mut normalized = Vec::with_capacity(decoded.len());
     for (index, (character, next_offset)) in decoded.iter().copied().enumerate() {
         if character == '_' {
             let previous = index
@@ -3097,7 +3109,7 @@ mod tests {
         BookFormat, ParagraphAlignment, ReaderBook, ReaderChapterPageLabel, ReaderLoadingStage,
         ReaderLocation, ReaderOrientation, ReaderPreferences, ReaderSession, ReaderTickOutcome,
         ReaderUiState, ReadingPreference, ReadingTheme, TextEncoding, LEGACY_READER_POSITIONS_FILE,
-        READER_BOOKMARKS_FILE, READER_EPUB_INDEX_YIELD_EVERY_PAGES, READER_EPUB_INDEX_YIELD_MILLIS,
+        READER_BOOKMARKS_FILE, READER_EPUB_INDEX_YIELD_INTERVAL, READER_EPUB_INDEX_YIELD_SLEEP,
         READER_POSITIONS_FILE, READER_PREFS_FILE, READER_RECENT_FILE, READER_STATE_FILE,
     };
     use crate::buttons::ButtonEvent;
@@ -3653,9 +3665,46 @@ mod tests {
     }
 
     #[test]
-    fn epub_chapter_index_cooperative_yield_policy_is_bounded() {
-        assert_eq!(READER_EPUB_INDEX_YIELD_EVERY_PAGES, 4);
-        assert_eq!(READER_EPUB_INDEX_YIELD_MILLIS, 1);
+    fn epub_chapter_index_yield_blocks_for_a_full_freertos_tick() {
+        let tick = std::time::Duration::from_millis(10);
+        let watchdog = std::time::Duration::from_secs(5);
+        assert!(READER_EPUB_INDEX_YIELD_SLEEP >= tick);
+        assert!(READER_EPUB_INDEX_YIELD_INTERVAL < watchdog);
+    }
+
+    #[test]
+    fn epub_page_window_fills_a_page_of_four_byte_characters() {
+        use crate::epub::{EpubChapter, EpubDocument};
+
+        let layout = ReaderPreferences::default().layout();
+        let text = "\u{1F4D6}".repeat(1024);
+        let chapter = EpubChapter {
+            number: 1,
+            label: "Uno".into(),
+            text_offset: 0,
+            text_end_offset: text.len() as u64,
+            spine_index: 0,
+        };
+        let document = EpubDocument {
+            title: "Libro".into(),
+            text,
+            toc: Vec::new(),
+            chapters: vec![chapter],
+            spine_count: 1,
+        };
+        let page = super::read_epub_page(&document, layout, 0, 0).unwrap();
+        assert_eq!(page.lines.len(), layout.lines_per_page);
+    }
+
+    #[test]
+    fn library_skips_hidden_macos_companion_files() {
+        let root = temp_dir("hidden-books");
+        fs::write(root.join("Libro.txt"), "Hola").unwrap();
+        fs::write(root.join("._Libro.txt"), [0_u8; 4]).unwrap();
+        fs::write(root.join("._Otro.epub"), [0_u8; 4]).unwrap();
+        let books = scan_txt_library(&root).unwrap();
+        let titles: Vec<_> = books.iter().map(|book| book.title.as_str()).collect();
+        assert_eq!(titles, ["Libro"]);
     }
 
     #[test]
