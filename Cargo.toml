@@ -18,9 +18,6 @@ opt-level = "z"
 
 [features]
 default = []
-# Enables the ESP-IDF Bluedroid BLE GATT service for Rustmix Remote.
-# r1 intentionally gives BLE ownership of the modem and disables Wi-Fi startup.
-rustmix-remote-ble = ["enumset"]
 
 [profile.release]
 codegen-units = 1
@@ -33,7 +30,6 @@ anyhow = "1"
 embedded-graphics = "0.8.1"
 embedded-hal = "1.0"
 log = "0.4"
-enumset = { version = "1", optional = true }
 # Hyphenation patterns, limited to the languages the Reader hyphenates.
 hypher = { version = "0.1.8", default-features = false, features = ["alloc", "english", "spanish"] }
 miniz_oxide = "0.8"

@@ -259,7 +259,39 @@ Wear OS watch) is not used by Wave and complicates `main.rs`.
 - Host tests and fmt pass.
 - The firmware build is green.
 
-**Status:** not started.
+**Status:** implemented on `side-tasks` (2026-10-03), pending firmware
+validation. Removed the library module
+registration, the optional feature and direct `enumset` dependency, and all
+remote runtime imports, queue setup/drain, BLE startup and light-sleep bypass
+from `main.rs`. The former non-feature Wi-Fi path is unchanged and now
+unconditional. Cargo updated `Cargo.lock` through stable host tests/checks;
+`enumset` remains transitively required by the ESP service/HAL dependencies.
+Removed the architecture removal note, the Wi-Fi release's BLE recommendation,
+and the Wi-Fi builder's obsolete config-backup restore.
+
+All tracked references, including `main.rs`, workflow/script callers and
+filename links, were enumerated before deletion. Removed all 24 candidates:
+the five live remote module files, three duplicate assistant scaffold files,
+two remote READMEs, optional SDK defaults, four remote docs, BLE release notes,
+two patch overlays and six task-specified scripts. The reference scan passes
+with necessary scan
+exceptions are `CHANGELOG.md` history and this task specification, whose
+original text is retained unchanged.
+
+Retained `scripts/build_release_wifi_v1_2_0.sh` and
+`scripts/release_v1_2_0_wifi.sh` (the latter calls the former), along with the
+current build/validation/flash/package helpers. No workflow calls a BLE script;
+CI calls `scripts/test-host.sh`, and firmware builds directly with Cargo.
+Tests: 389 host tests passed; `cargo +stable fmt --all -- --check`, native
+`cargo +stable check --all-targets --all-features`, locked ESP-target Cargo
+metadata, and `git diff --check` passed. No version bump, new dependency,
+Python edit, protected-file change or unrelated task work.
+Firmware validation is pending: only stable Rust is installed locally, and
+remote CI cannot validate these uncommitted/unpushed changes. On-device needs:
+boot with and without Wi-Fi config, TXT/EPUB page turns using wheel keys,
+weather/NTP/file-transfer bursts, battery idle light-sleep, Power/wheel wake
+and RTC alarm wake. D2 is not ready for handover until deletions, final scans,
+an Xtensa firmware build and device checks are complete.
 
 ## D3: Remove the IMU tilt games
 

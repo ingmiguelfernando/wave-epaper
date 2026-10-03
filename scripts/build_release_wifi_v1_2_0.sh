@@ -7,10 +7,6 @@ mkdir -p dist/releases
 
 export PATH="$HOME/.cargo/bin:$PATH"
 
-if [ -f sdkconfig.defaults.before-rustmix-remote-ble-r1 ]; then
-  cp sdkconfig.defaults.before-rustmix-remote-ble-r1 sdkconfig.defaults
-fi
-
 rm -rf target/xtensa-esp32s3-espidf
 
 cargo +esp build \

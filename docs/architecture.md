@@ -41,8 +41,6 @@ work are in [ROADMAP.md](ROADMAP.md).
   `unit_converter.rs`; `lua_runtime/`, `games/` (SD apps); `wifi_transfer.rs`
   (file portal); `sleep_images.rs`, `sleep_mode.rs`; `power_settings.rs`,
   `battery_log.rs`.
-- The inherited `rustmix-remote-ble` feature (BLE page turner) is scheduled for
-  removal.
 
 ## Display pipeline
 
