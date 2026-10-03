@@ -1,78 +1,126 @@
-# Consolidated physical smoke test
+# Wave release physical smoke test
 
-For screen names, navigation controls, and reference images, see [`USER_GUIDE.md`](USER_GUIDE.md).
+Run on the Waveshare board for each release and after cross-cutting runtime
+changes. CI proves neither panel quality nor power/wake behavior. Use the
+[current guide](USER_GUIDE.md), [SD setup](SD_CARD_SETUP.md) and
+[known issues](KNOWN_ISSUES.md), not future mockups.
 
-Run this checklist after a release build or any cross-cutting runtime change.
+Record: date, firmware version/commit, firmware Actions run ID, board, SD card,
+battery level, USB/battery power, tester, failures and serial log/photo evidence.
+Unchecked boxes mean **not tested**, not passed. Back up SD settings and books
+before tests; never remove the card while writes are active.
 
-## Build and boot
+## Build, USB flash and boot
 
-1. Run `./scripts/validate.sh`.
-2. Run `cargo +esp build --release`.
-3. Flash with `./scripts/flash.sh monitor`.
-4. Confirm boot reaches the Home screen without panic or reset loops.
-5. Confirm the displayed version is `1.0.0` and the repository-cleanup readiness marker appears.
+- [ ] Host tests, stable format check and `git diff --check` pass for the exact
+	source being released; firmware Actions build is green for that commit.
+- [ ] Download the matching merged `.bin`, `.elf` and checksum file from the
+	firmware artifact; verify the image checksum.
+- [ ] Follow [README flashing](../README.md#flash-the-board): USB-C data cable,
+	USB power, press a key after plugging in; merged `.bin` at `0x0`.
+- [ ] If normal serial discovery fails, hold BOOT during a power cycle,
+	release it, flash and power-cycle again. Record which path was needed.
+- [ ] Boot reaches Home without reset/panic loops; Device Info shows the
+	expected release version (currently v0.7.0), not an upstream v1.0.0 marker.
+- [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
+	Photos, Bible, Reading Stats and XiaoZhi remain SOON on this branch.
+- [ ] Boot without Wi-Fi configuration still reaches usable offline Home.
 
-## Power key and display refresh
+## Books and Display (D1)
 
-1. Press Power briefly and confirm the display-maintenance menu opens.
-2. Select `Clear ghosting now` and confirm a clean global refresh returns to the underlying screen.
-3. Press Power briefly, select Cancel, and confirm no sleep transition.
-4. Hold Power and confirm random sleep-image mode starts and network services suspend.
-5. Wait for the wake quiet guard and press Power to restore the prior route.
+- [ ] Open a TXT and a long EPUB/`.EPU`; turn pages both ways, cross an EPUB
+	chapter, and cancel an Opening Book operation with hold BOOT.
+- [ ] Latin-1 accents, Spanish/English wrapping/hyphenation and long SD names
+	are readable; macOS `._` files do not appear as books.
+- [ ] Bookmark add/remove, bookmark jump, EPUB TOC and Continue Reading work;
+	reboot restores the saved position.
+- [ ] Reader's six preference lists open at `IN USE`, wrap with Up/Down,
+	apply with Select and cancel with hold BOOT before leaving the screen.
+- [ ] Select every current Reader choice: list closes without a loading screen,
+	extra full ghost refresh or preference-file write. Change a layout value and
+	verify repagination retains the reading anchor.
+- [ ] Settings › Display lists both fonts and all three sizes; open/move/apply/
+	cancel work, `DISPLAY.TXT` changes only when needed and survives reboot.
+- [ ] Review Home, lists, book text and footers at both families/all UI sizes.
 
-## Reader
+## Power lists, sleep and wake
 
-1. Open one TXT book and one EPUB or `.EPU` book.
-2. Confirm staged loading, page navigation, Reader Options, preferences, TOC behavior, and bookmark add/remove.
-3. Reboot and confirm Continue Reading restores the prior book and page.
-4. Confirm `/RUSTMIX/READER/POSITS.TXT` and `CACHE/<8HEX>.CCH` exist.
+Perform battery-only checks unplugged; USB intentionally suppresses idle CPU
+light sleep. Restore the owner's original preferences afterward.
 
-## Dictionary
+- [ ] Settings › Power opens Auto-sleep and Wake keys lists at the applied
+	value; Up/Down wraps, Select applies and hold BOOT cancels.
+- [ ] Exercise Off and a timed auto-sleep choice; confirm `POWER.TXT` and
+	persistence after reboot. Restore the intended delay (default 10 min).
+- [ ] Short Power opens maintenance, Cancel returns without sleep, and
+	Clear ghosting now performs a full refresh and restores the prior route.
+- [ ] Hold Power from a Reader page, release and wait for the guard: sleep
+	picture appears, no immediate false wake, network/portal stop.
+- [ ] Wake with Power and confirm previous route/page is restored.
+- [ ] With Any key, repeat sleep/wake separately using Up, Down, Select and
+	BOOT. The wake press must not also change page or activate an action.
+- [ ] With Power key only, wheel/BOOT do not wake; Power still does.
+- [ ] With `/RUSTMIX/SLEEP/` **empty**, enter sleep: fallback card shows a
+	useful reason, battery and the matching wake hint; Power/wheel wake work.
+- [ ] Repeat with a missing folder and an invalid-size BMP; reason is useful.
+	Restore valid portrait and landscape BMPs; hidden files are skipped and
+	multiple images do not immediately repeat.
+- [ ] Inspect the `%` glyph at Detail size on the card; record the known
+	defect for both fonts/sizes, without treating it as battery telemetry failure.
+- [ ] Battery chart gains samples after 15 minutes; last-sleep report and
+	light-sleep share update. Check idle light sleep on battery vs awake USB.
 
-1. Open `Tools > Dictionary`.
-2. Confirm `CAB`, `BARN`, and `CALENDAR` exact lookup.
-3. Confirm `AAR*` prefix lookup and result cycling.
-4. Press BOOT briefly and confirm `NAV H` / `NAV V` switches without moving the selected key.
-5. Hold BOOT and confirm hierarchical Back.
+## Weather, network and alarm while asleep (D2)
 
-## Calendar
+- [ ] With valid `WIFI.TXT`/`WEATHER.TXT`, Refresh weather starts a Wi-Fi burst,
+	updates weather/Home and returns the radio to idle after work completes.
+- [ ] Inspect weather details and NTP/Clock status; failed/offline refresh
+	keeps the shell responsive and retains any last good result.
+- [ ] Start LAN transfer explicitly, authenticate with its displayed code,
+	upload/download a test file; stop with Select and separately with hold BOOT.
+	Protected paths remain protected; sleep shuts the portal down.
+- [ ] Arm a near-future RTC alarm with verified clock time, enter sleep on
+	battery, and wait: alarm wakes to Alarms and sounds. Test Snooze and Dismiss.
+- [ ] Repeat the asleep alarm with Power key only; the key policy must not
+	block RTC wake. Confirm alarm UI is not hidden by the maintenance menu.
+- [ ] Runtime alarm edits work, but reboot reloads `ALARMS.TXT`; durable edits
+	are made in that file. Calendar events do not create RTC alarms.
 
-1. Open `Productivity > Calendar`.
-2. Confirm U.S. event markers and daily agenda rendering.
-3. Create, edit, and delete one personal event.
-4. Confirm U.S. holiday rows remain read-only.
-5. Confirm agenda summary, pagination, first row, and footer do not overlap.
-6. Confirm `EVENTS.TMP` is absent after successful write and `EVENTS.BAK` is retained.
+## Remaining games and diagnostics (D3)
 
-## Voice Notes
+- [ ] Install current examples; Games › SD Games lists Hello Grid, Sudoku and
+	Minesweeper without the removed sensor-controlled samples.
+- [ ] Hello Grid draws its static canvas; hold BOOT returns to the catalog.
+- [ ] Sudoku: Up/Down movement, short BOOT H/V toggle, Select edit, candidate
+	choice, commit, short BOOT cancel and hold BOOT exit.
+- [ ] Minesweeper: movement/axis toggle, Reveal/Flag action choice, cancel,
+	first-reveal safety and hold BOOT exit.
+- [ ] Move the board during games: no sensor-driven movement; IMU stays off
+	outside Motion diagnostics (use runtime logs/power evidence).
+- [ ] Motion and Motion details show live readings; Motion Events reports
+	TILT/SHAKE/ROTATE/LEVEL and threshold/debounce/reset controls work. Leaving
+	diagnostics stops IMU sampling/enables power-down.
+- [ ] Environment and details show live temperature/humidity; Clock and the
+	three Device Info pages open/back correctly.
+- [ ] Audio test chime, stop, volume and mute work; codec suspends when idle.
 
-1. Record a note, pause, resume, and save.
-2. Confirm a new `VOICE###.WAV` file persists after reboot.
-3. Confirm gain selection persists, metadata is readable, playback works, and delete confirmation works.
-4. Confirm LAN export displays a path and protected sidecars are not exposed.
+## Other implemented SD tools
 
-## Network, alarms, and settings
+- [ ] AI › Voice Notes: record, pause/resume, save, playback, friendly-title
+	edit/cancel, delete confirmation and LAN export; WAV survives reboot.
+- [ ] Dictionary with a full pack: exact lookup, prefix fallback and `*`
+	cycling; keyboard short BOOT switches H/V without moving the selected key.
+- [ ] Tools › Calendar: day/month, agenda, personal create/edit/delete;
+	holidays stay read-only, SAVE persists and hold BOOT cancels unsaved edits.
+- [ ] File Browser folder/text preview/back and Unit Converter fields work.
 
-1. Confirm Wi-Fi connection and SNTP status.
-2. Start the explicit Wi-Fi transfer portal, access it with the displayed code, then stop it.
-3. Confirm an alarm can sound, snooze, and dismiss.
-4. Confirm alarm behavior is not hidden by the Power-key display menu.
-5. Confirm Display settings persist after reboot.
+## D5 drawing evidence only
 
-## Games and sensors
+- [ ] Review `sleep-clock`, `sleep-clock-weather`, `sleep-weather` and font/
+	size variants in `screen-previews`: frame, digits, negative temperatures,
+	icons and wake/battery footer are readable. A hardware render harness may
+	check panel clarity separately; ordinary firmware cannot select these modes.
 
-1. Open Sudoku and verify rotary movement, BOOT-short axis toggle, edit, and commit.
-2. Open one motion game and verify debounced IMU movement.
-3. Open Environment and Motion diagnostic screens.
-4. Run the audio test chime.
-
-## Text-editor layout alignment
-
-1. Open Voice Notes, select a saved WAV, and choose **Edit friendly title**.
-2. Confirm the header reads **VOICE NOTE TITLE / EDIT FRIENDLY TITLE**.
-3. Confirm the shared grid keyboard is visible and defaults to `NAV H`.
-4. Press BOOT briefly and confirm `NAV V` appears without moving the selected key.
-5. Use `SAVE` to persist a friendly title and confirm the internal `VOICE###.WAV` filename remains unchanged.
-6. Reopen the title editor, hold BOOT, and confirm the edit is cancelled without saving.
-7. Open Calendar, create or edit a personal event, and confirm the status strip shows a compact `YYYY-MM-DD` date plus `NAV H` or `NAV V` without overlap.
-8. Confirm the Calendar editor footer is fully visible.
+Do not mark clock/weather sleep refresh scheduling, Photos, Tetris or other
+planned features as passed. Record failures/open checks in
+[delegated task status](DELEGATED_TASKS.md) and the release handover.

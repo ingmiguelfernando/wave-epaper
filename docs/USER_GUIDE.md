@@ -1,547 +1,288 @@
-# Rustmix Wave user guide
+# Wave user guide
 
-This guide describes the Rustmix Wave v1.0.0 user interface as shown by the reference screenshots under [`/screenshots`](../screenshots/). The firmware targets the Waveshare ESP32-S3 3.97-inch e-paper board and uses a rotary-first interaction model.
+This guide describes v0.7.0 with the committed D1, D5, D2 and D3 work on
+`side-tasks`. It describes implemented firmware, not the future mockup or
+the separate Photos branch. Current menus and key handlers are authoritative.
+For visual references, download the `screen-previews` artifact from a green
+[host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
+The D5 artifact includes drawing demonstrations that are **not runtime modes**.
 
-## Physical controls
+## Controls
 
-| Control | Normal behavior |
-| --- | --- |
-| Rotary up / down | Move the highlighted row, change a value, turn a reader page, or move within the active keyboard axis |
-| Rotary SELECT | Open the highlighted item, activate an action, or advance an editor field |
-| BOOT short | Contextual secondary action. On grid keyboards it toggles `NAV H` / `NAV V`. In Calendar it opens the daily agenda or creates a personal event from the agenda. In Sudoku and Minesweeper it toggles the active movement axis or cancels an edit/action mode. |
-| BOOT long | Hierarchical Back. On editors it cancels and returns without saving. |
-| Power short | Open the display-maintenance menu. Select **Clear ghosting now** for a full e-paper base refresh, or select **Cancel**. |
-| Power long | Enter random sleep-image mode. After the wake guard quiet interval, press Power briefly to restore the previous screen. |
+The wheel has Up, Select and Down keys; there is no touch input.
 
-The bottom footer on each screen repeats the controls that are valid in that context.
+| Key | Action |
+|---|---|
+| Up / Down | Move a highlighted row; in a book, previous / next page |
+| Select | Open the highlighted row or run its action |
+| BOOT short | Contextual action only: Calendar agenda, keyboard axis, or game axis/cancel |
+| Hold BOOT (at least 900 ms, then release) | Back one level; cancel an open option list before leaving its screen |
+| Power short | Open the display-maintenance menu: Clear ghosting now or Cancel |
+| Hold Power | Enter sleep-image mode; after releasing and waiting for the wake guard, Power wakes it |
 
-## 1. Home dashboard
+Wheel actions are processed after release; holding a wheel key does not repeat.
+Follow the footer for screen-specific actions. A short BOOT press is not a
+general Back key. On editors, holding BOOT cancels unsaved text; settings
+already applied with Select remain applied.
 
-<img src="../screenshots/homepage.jpg" width="360" alt="Rustmix Wave home dashboard">
+## Home
 
-The home dashboard shows date, time, battery, weather summary, Wi-Fi state, and the five top-level categories.
+Home shows time, battery, Wi-Fi burst state, date, weather and a Continue
+Reading summary. The summary card is informational: use **Library › Continue
+Reading** to resume. Up/Down wraps through the nine application rows; Select
+opens the highlighted one.
 
-| Row | Opens |
-| --- | --- |
-| Reader | Continue Reading, Library, and Bookmarks |
-| Productivity | Calendar and Voice Notes |
-| Games | SD-loaded apps backed by native Rust game surfaces |
-| Tools | File Browser, Dictionary, and Unit Converter |
-| Settings | Device services, display, network, sensors, alarms, audio, and weather |
+| Home row | Current behavior |
+|---|---|
+| Photos | SOON placeholder; no gallery or starred-photo sleep set on this branch |
+| Library | Continue Reading, Books, Bookmarks |
+| Bible | SOON placeholder |
+| Reading Stats | SOON placeholder |
+| Weather | Existing conditions/forecast screen |
+| Games | SD Games catalog |
+| AI | XiaoZhi (SOON) and implemented Voice Notes |
+| Tools | File Browser, Dictionary, Unit Converter, Calendar |
+| Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power |
 
-Navigation: rotate to choose a category, then press SELECT. Use BOOT long from a category page to return home.
+Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
+No Tetris, AI transcription, OTA updater, Weather settings or sleep-mode picker
+is implemented here.
 
-## 2. Reader
+## Library and Reader
 
-### Reader category
+Put `.TXT`, `.EPUB` or `.EPU` books in `/RUSTMIX/BOOKS/` on the SD card.
+See [SD-card setup](SD_CARD_SETUP.md) for formats and generated state files.
+Long file names are supported; hidden macOS `._` files are ignored.
 
-<img src="../screenshots/reader-main.jpg" width="360" alt="Reader category menu">
+1. Open **Home › Library › Books**.
+2. Up/Down selects a row. Select on **Change tab** cycles Recent, Books,
+	 Files and Bookmarks; Select on a book or bookmark opens it.
+3. During Opening Book, wait for the first page or hold BOOT to cancel.
+	 EPUB text is loaded chapter by chapter, rather than loading an entire
+	 long book into memory.
+4. In the reading view, Up goes back a page, Down goes forward, Select opens
+	 Reader Options, and hold BOOT returns to the book list.
 
-The Reader category contains:
-
-- **Continue Reading**: reopen the most recently saved book position.
-- **Library**: browse TXT and EPUB files.
-- **Bookmarks**: open saved reading anchors directly.
-
-Navigation: rotate to choose a row, SELECT to open, BOOT long to return home.
-
-### Continue Reading
-
-<img src="../screenshots/continue-reading1.jpg" width="360" alt="Continue Reading screen">
-
-This screen shows the last saved book and the saved page. Press SELECT to resume. Hold BOOT to return to the Reader menu.
-
-### Opening a book
-
-<img src="../screenshots/opening_book.jpg" width="360" alt="Opening Book progress screen">
-
-TXT and EPUB opening is staged. The current page becomes available before full indexing completes. Hold BOOT to cancel an in-progress open.
-
-### Library tabs
-
-The Library has four tabs. Use SELECT on the **Change tab** row to cycle tabs, then rotate through rows and press SELECT to open a book or bookmark.
-
-| Tab | Purpose | Screenshot |
-| --- | --- | --- |
-| Recent | Recently opened books | [library-recent.jpg](../screenshots/library-recent.jpg) |
-| Books | Combined TXT and EPUB library | [library-books.jpg](../screenshots/library-books.jpg) |
-| Files | File-oriented book listing | [library-files.jpg](../screenshots/library-files.jpg) |
-| Bookmarks | Saved anchors with page or chapter labels | [library-bookmarks.jpg](../screenshots/library-bookmarks.jpg) |
-
-### Reading TXT and EPUB books
-
-<table>
-<tr><td><img src="../screenshots/txt-reader.jpg" width="300" alt="TXT reader"></td><td><img src="../screenshots/epub-reader.jpg" width="300" alt="EPUB reader"></td></tr>
-</table>
-
-Reader page controls:
-
-| Control | Action |
-| --- | --- |
-| Rotary up | Previous page |
-| Rotary down | Next page |
-| SELECT | Open Reader Options |
-| BOOT long | Return to the Reader shell |
-
-TXT pages show encoding, page position, and cache state. EPUB pages additionally show chapter-relative progress.
+**Continue Reading** resumes the saved book position (or returns to the list
+when nothing is saved). **Bookmarks** opens saved anchors. Positions, recent
+books, bookmarks and preferences persist in `/RUSTMIX/READER/`; page numbers
+can change when typography changes, while anchors retain the reading position.
 
 ### Reader Options
 
-<table>
-<tr><td><img src="../screenshots/txt-reader-options.jpg" width="300" alt="TXT reader options"></td><td><img src="../screenshots/epub-reader-options.jpg" width="300" alt="EPUB reader options"></td></tr>
-</table>
-
-Available actions include:
-
-- Add or remove a bookmark
-- View bookmarks
-- Open the EPUB Table of Contents when available
-- Open Reading Preferences
-- Clear e-paper ghosting
-- Go to Library
-- Go Home
-
-Navigation: rotate to highlight an action, SELECT to activate, BOOT long to return to the page.
+Up/Down chooses an action; Select runs it. Hold BOOT returns to the page.
+Actions add/remove the current bookmark, show bookmarks, open the EPUB Table
+of Contents, open Reading Preferences, clear ghosting, go to Library or go Home.
+TXT has no chapter TOC. In bookmarks or TOC, Select jumps to the highlighted
+entry and hold BOOT returns to Options.
 
 ### Reading Preferences
 
-<img src="../screenshots/reader-reading-prefs.jpg" width="360" alt="Reading Preferences">
-
-Preferences include theme, orientation, book font size, font family, paragraph alignment, and progress display. Rotate to move; press SELECT to change a setting; hold BOOT to return.
-
-### EPUB Table of Contents
-
-<img src="../screenshots/reader-toc.jpg" width="360" alt="EPUB table of contents">
-
-The EPUB TOC lists chapter entries. Rotate to choose a chapter, SELECT to open it, and hold BOOT to return.
-
-### Bookmarks
-
-<table>
-<tr><td><img src="../screenshots/reader-bookmarks.jpg" width="300" alt="Reader bookmarks"></td><td><img src="../screenshots/reader-bookmarks-list.jpg" width="300" alt="Reader bookmarks list"></td></tr>
-</table>
-
-Bookmarks retain byte-offset anchors as the authoritative jump target. EPUB rows show chapter-relative labels when available; TXT rows show page labels. Rotate to choose a saved anchor, SELECT to open it, and hold BOOT to return.
-
-## 3. Productivity
-
-### Productivity category
-
-<img src="../screenshots/productivity.jpg" width="360" alt="Productivity menu">
-
-The Productivity category contains Calendar and Voice Notes.
-
-### Calendar month view
-
-<table>
-<tr><td><img src="../screenshots/calendar-current-day.jpg" width="300" alt="Calendar current day"></td><td><img src="../screenshots/calendar-us-events.jpg" width="300" alt="Calendar US holiday"></td></tr>
-</table>
-
-The native Calendar shows a Gregorian month grid, selected-day summary, personal events from `EVENTS.TXT`, and U.S. holidays from `US2026.TXT`. Days containing events receive markers.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move the selected day or month, depending on active mode |
-| SELECT | Toggle Day / Month navigation mode |
-| BOOT short | Open the selected-day agenda |
-| BOOT long | Return to Productivity |
-
-### Daily agenda
-
-<img src="../screenshots/calendar-date-details.jpg" width="360" alt="Calendar daily agenda">
-
-The agenda lists personal events and U.S. holidays for the selected date. It scrolls when more than six rows exist.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move through agenda rows |
-| SELECT | Open event details |
-| BOOT short | Create a new personal event for the selected date |
-| BOOT long | Return to month view |
-
-Personal events can be edited or deleted. U.S. holiday rows remain read-only.
-
-### Calendar personal-event editor
-
-<img src="../screenshots/calendar-create-note.jpg" width="360" alt="Calendar personal event editor">
-
-The editor writes only `EVENTS.TXT`. U.S. holidays remain untouched.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move within the active keyboard axis |
-| BOOT short | Toggle `NAV H` / `NAV V` without moving the highlighted key |
-| SELECT | Activate the highlighted key |
-| FIELD | Switch between title and detail |
-| SAVE | Commit the personal event |
-| CANCEL | Exit without saving |
-| BOOT long | Cancel and return |
-
-Calendar writes use recovery-safe `EVENTS.TMP -> EVENTS.TXT` replacement with `EVENTS.BAK` fallback.
-
-### Voice Notes list
-
-<img src="../screenshots/voice_notes.jpg" width="360" alt="Voice Notes list">
-
-Voice Notes records FAT 8.3 `VOICE###.WAV` files in PCM16 mono 16 kHz format. The list shows available storage, microphone gain, and saved recordings.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move between Record new note, microphone gain, and saved rows |
-| SELECT on Record new note | Begin recording |
-| SELECT on microphone gain | Cycle gain profile |
-| SELECT on saved note | Open saved-WAV details |
-| BOOT long | Return to Productivity |
-
-### Record Voice Note
-
-<img src="../screenshots/voice_notes_record.jpg" width="360" alt="Voice Notes recording screen">
-
-While recording, the screen shows filename, elapsed time, PCM byte count, peak level, microphone gain, clipping count, and streamed `.TMP` status.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Pause or resume capture |
-| SELECT | Stop and save |
-| BOOT long | Cancel and return |
-
-### Saved-WAV details
-
-<img src="../screenshots/voice_note_detail.jpg" width="360" alt="Voice Note details">
-
-The saved-note page shows the authoritative WAV filename, recorded time, duration, free storage, playback progress, and actions.
-
-Available actions:
-
-- Play note / Stop playback
-- Edit friendly title
-- Export / download through the LAN portal
-- Delete note with confirmation
-- Return to Voice Notes
-
-Navigation: rotate to choose an action, SELECT to run it, BOOT long to return.
-
-### Edit friendly title
-
-<img src="../screenshots/voice_note_edit.jpg" width="360" alt="Voice Note friendly title editor">
-
-The title editor reuses the shared keyboard-grid navigation model.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move within active keyboard axis |
-| BOOT short | Toggle `NAV H` / `NAV V` |
-| SELECT | Activate the highlighted key |
-| SAVE | Update friendly title in `META.TXT` |
-| CANCEL or BOOT long | Return without saving |
-
-The internal `VOICE###.WAV` filename does not change.
-
-## 4. Games
-
-### Games category and SD Lua app catalog
-
-<table>
-<tr><td><img src="../screenshots/games.jpg" width="300" alt="Games category"></td><td><img src="../screenshots/games-listing.jpg" width="300" alt="SD Lua apps listing"></td></tr>
-</table>
-
-Select **SD Lua Apps** to open the SD-loaded catalog. Rotate to choose a game, SELECT to open it, and hold BOOT to return.
-
-Lua scripts declare bounded app behavior, but native Rust owns game state, rendering, dirty regions, and panel refresh policy. The IMU runs only on the Motion diagnostic screens.
-
-### Hello Grid
-
-<img src="../screenshots/hello-grid.jpg" width="360" alt="Hello Grid sample">
-
-Hello Grid is the basic SD Lua foundation sample. It verifies bounded canvas rendering without exposing the e-paper transport to the script.
-
-### Sudoku
-
-<img src="../screenshots/sudoku.jpg" width="360" alt="Sudoku">
-
-Sudoku is a native board-state bridge driven by an SD app declaration.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move cursor in active H/V axis, or cycle candidate in edit mode |
-| BOOT short | Toggle H/V axis in navigation mode; cancel edit mode when editing |
-| SELECT | Enter edit mode or commit candidate |
-| BOOT long | Return to catalog |
-
-### Minesweeper
-
-<img src="../screenshots/minesweeper.jpg" width="360" alt="Minesweeper">
-
-Minesweeper uses a native beginner board with first-reveal safety, flags, flood reveal, and win/loss status.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move in active axis or change the active action |
-| BOOT short | Toggle axis or cancel action mode |
-| SELECT | Reveal or flag according to the current action |
-| BOOT long | Return to catalog |
-
-## 5. Tools
-
-### Tools category
-
-<img src="../screenshots/tools.jpg" width="360" alt="Tools menu">
-
-Tools contains File Browser, Dictionary, and Unit Converter.
-
-### File Browser
-
-<table>
-<tr><td><img src="../screenshots/directory-listing.jpg" width="300" alt="File browser root"></td><td><img src="../screenshots/files-listing.jpg" width="300" alt="File browser directory listing"></td></tr>
-</table>
-
-The File Browser is a bounded read-only SDMMC browser. Directories sort before files. Text files open in bounded preview mode; binary files report that preview is unavailable.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move row selection |
-| SELECT | Enter directory, open preview, or close preview |
-| BOOT long | Return to parent or Tools |
-
-### Dictionary
-
-<table>
-<tr><td><img src="../screenshots/dictionary.jpg" width="300" alt="Dictionary search"></td><td><img src="../screenshots/dictionary-result.jpg" width="300" alt="Dictionary result"></td></tr>
-</table>
-
-The native Dictionary reuses the X4 prefix-shard SD pack. Enter letters, use **GO** for exact lookup with prefix fallback, or use `*` for prefix lookup and repeated result cycling.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move within active keyboard axis |
-| BOOT short | Toggle `NAV H` / `NAV V` |
-| SELECT | Activate letter, DEL, CLR, GO, or `*` |
-| BOOT long | Return to Tools |
-
-### Unit Converter
-
-<table>
-<tr><td><img src="../screenshots/unit-converter.jpg" width="300" alt="Unit converter length"></td><td><img src="../screenshots/unit-converter1.jpg" width="300" alt="Unit converter volume"></td></tr>
-</table>
-
-The offline fixed-point converter supports categories such as length, mass, temperature, and volume.
-
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Change the highlighted row value |
-| SELECT | Advance to the next editable row |
-| BOOT long | Return to Tools |
-
-## 6. Settings
-
-<table>
-<tr><td><img src="../screenshots/settings.jpg" width="300" alt="Settings page one"></td><td><img src="../screenshots/settings1.jpg" width="300" alt="Settings page two"></td></tr>
-</table>
-
-Settings is paginated. Rotate through rows, SELECT to open an item, and hold BOOT to return home.
-
-### Alarms
-
-<table>
-<tr><td><img src="../screenshots/alarms.jpg" width="300" alt="Alarm schedule list"></td><td><img src="../screenshots/alarm-details.jpg" width="300" alt="Alarm editor"></td></tr>
-</table>
-
-The alarm list shows configured RTC schedules. The editor changes hour, minute, enable state, recurrence mode, and weekday/day schedule values.
-
-| Control | Action |
-| --- | --- |
-| List: rotary up / down | Move schedule row |
-| List: SELECT | Edit selected alarm |
-| Editor: rotary up / down | Change field value |
-| Editor: SELECT | Advance field |
-| Editor: BOOT short | Back |
-| BOOT long | Return to Settings |
-
-### Audio
-
-<table>
-<tr><td><img src="../screenshots/audio.jpg" width="300" alt="Audio overview"></td><td><img src="../screenshots/audio-details.jpg" width="300" alt="Audio details"></td></tr>
-</table>
-
-The Audio screen exposes codec state, volume, amplifier state, chime playback, stop, mute/unmute, and detailed ES8311 routing diagnostics.
-
-Navigation: rotate through actions, SELECT to run, hold BOOT to return.
-
-### Clock and RTC details
-
-<table>
-<tr><td><img src="../screenshots/clock.jpg" width="300" alt="Clock overview"></td><td><img src="../screenshots/rtc-details.jpg" width="300" alt="RTC details"></td></tr>
-</table>
-
-Clock shows localized RTC time, temperature, humidity, battery, USB, and charge status. RTC Details shows time basis, storage basis, battery voltage, USB state, charge state, and refresh policy.
-
-Navigation: SELECT opens details; hold BOOT returns.
+Up/Down chooses a setting; Select opens its option list at the value in use.
+Within the list, Up/Down wraps, Select applies and closes, and hold BOOT
+cancels without changing the value. `IN USE` identifies the applied choice.
+Selecting that same choice closes the list without saving, clearing ghosting
+or repaginating the book.
+
+| Setting | Choices |
+|---|---|
+| Reading Theme | Classic, High Contrast |
+| Orientation | Portrait, Landscape (book pages only) |
+| Book font size | Small, Medium, Large, XLarge |
+| Book font | Inter, Atkinson, Serif, Literata |
+| Paragraph alignment | Justified, Left, Center, Right |
+| Show progress | On, Off |
+
+Layout changes may reopen/repaginate the book; wait for loading. Theme and
+progress changes do not rebuild the layout. These are Reader preferences,
+independent of the interface font in Settings › Display. Hold BOOT again
+after closing a picker to leave Reading Preferences.
+
+## Settings
+
+Up/Down chooses one of the nine rows, Select opens it, hold BOOT returns Home.
 
 ### Display
 
-<img src="../screenshots/display.jpg" width="360" alt="Display preferences">
+Choose **UI font** (Inter / Atkinson Hyperlegible) or **UI size** (Compact /
+Standard / Large). Select opens the list, Up/Down moves, Select applies,
+hold BOOT cancels. Choices persist in `/RUSTMIX/DISPLAY.TXT`; a missing file
+uses Inter / Standard. This changes interface text, not book typography.
 
-Display settings change the global UI font and UI size. Rotate to choose a row, SELECT to change, and hold BOOT to return.
+### Power
 
-### Device Info
+The overview shows battery percent, voltage, USB/charging state, a 24-hour
+chart, the last sleep report and the light-sleep share. Samples are taken
+every 15 minutes; up to seven days are kept in `/RUSTMIX/BATTERY.TXT`.
 
-<table>
-<tr><td><img src="../screenshots/device-info.jpg" width="260" alt="Device info firmware page"></td><td><img src="../screenshots/device-info1.jpg" width="260" alt="Device info board page"></td><td><img src="../screenshots/device-info2.jpg" width="260" alt="Device info runtime page"></td></tr>
-</table>
+Up/Down chooses **Auto-sleep** or **Wake keys**. Select opens the list;
+Up/Down moves, Select applies, hold BOOT cancels.
 
-Device Info is a three-page read-only diagnostic surface covering firmware, display, board services, SD storage, runtime services, network, weather, alarm state, display zone, and temperature units.
-
-Navigation: SELECT advances to the next page; hold BOOT returns.
-
-### Environment
-
-<table>
-<tr><td><img src="../screenshots/environment.jpg" width="300" alt="Environment overview"></td><td><img src="../screenshots/environment1.jpg" width="300" alt="Environment sensor details"></td></tr>
-</table>
-
-Environment uses the SHTC3 sensor for temperature and relative humidity. SELECT opens sensor details; hold BOOT returns.
-
-### Motion and Motion Events
-
-<table>
-<tr><td><img src="../screenshots/motion.jpg" width="300" alt="Motion overview"></td><td><img src="../screenshots/motion-events.jpg" width="300" alt="Motion event diagnostics"></td></tr>
-</table>
-
-Motion uses the QMI8658 accelerometer and gyroscope. The overview shows live axes. Motion Events translates raw samples into debounced native events:
-
-```text
-TILT
-SHAKE
-ROTATE
-LEVEL
-```
-
-The Motion Events screen exposes thresholds, debounce timing, counters, reset, and sensor details.
-
-| Control | Action |
-| --- | --- |
-| Overview: SELECT | Open Motion Events |
-| Motion Events: rotary up / down | Move through threshold and action rows |
-| Motion Events: SELECT | Change threshold, reset counters, or open details |
-| BOOT long | Return |
+- Auto-sleep: Off, 5 min, 10 min (default), 15 min, 30 min, 1 hour.
+- Wake keys: Any key (default), or Power key only.
+- Choices persist in `/RUSTMIX/POWER.TXT`.
 
 ### Network and Wi-Fi transfer
 
-<table>
-<tr><td><img src="../screenshots/network.jpg" width="300" alt="Network overview"></td><td><img src="../screenshots/network-details.jpg" width="300" alt="Network details"></td></tr>
-</table>
+Configure `/RUSTMIX/WIFI.TXT` on a computer and reboot to apply changes.
+Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Provisioning
+details** is read-only, not an on-device credential editor.
 
-Network shows Wi-Fi, SNTP, SSID, IPv4 address, RSSI, provisioning details, regional timezone, RTC storage basis, and NTP server. The Wi-Fi transfer portal is off until explicitly started.
+Wi-Fi normally runs in short bursts for weather and time sync, then turns off.
+An idle/off Wi-Fi indicator does not itself mean provisioning failed.
 
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move between transfer and details actions |
-| SELECT on Start Wi-Fi Transfer | Start LAN portal and open portal status |
-| SELECT on Stop | Stop active portal |
-| SELECT on Provisioning details | Open network details |
-| BOOT long | Stop active portal when appropriate and return |
+1. Choose **Start Wi-Fi Transfer** with Up/Down and Select.
+2. Wait for the portal URL and six-digit session code.
+3. From a browser on the same LAN, open that URL and enter the code.
+4. Use the portal for permitted upload, download, rename, mkdir and delete
+	 operations inside `/RUSTMIX`; internal configuration/state paths are protected.
+5. Select **Stop and return**, or hold BOOT, to stop the portal and return.
 
-### Browser Wi-Fi transfer portal
+The portal is temporary, plain HTTP and LAN-only, not an Internet service.
+It also stops on sleep, Wi-Fi loss or inactivity. Do not expect it to run
+automatically at boot or while the device sleeps.
 
-<img src="../screenshots/wifi-transfer.jpg" width="520" alt="Rustmix Wave Wi-Fi transfer browser portal">
+### Clock
 
-From a device on the same LAN, open the displayed URL and enter the six-digit session code. The portal lists the `/RUSTMIX` tree and supports bounded upload, download, rename, directory creation, and deletion operations while protecting internal configuration files.
+Shows localized RTC time/date and board status. Select opens RTC details;
+hold BOOT returns one level. This is a read-only screen, not a clock editor.
+Time zone and NTP server come from `WIFI.TXT`; supported zones and examples
+are in [SD-card setup](SD_CARD_SETUP.md).
 
-### Weather
+### Alarms
 
-<table>
-<tr><td><img src="../screenshots/weather.png" width="300" alt="Weather overview"></td><td><img src="../screenshots/weather-1.jpg" width="300" alt="Weather details"></td></tr>
-</table>
+Persistent schedules and snooze minutes come from `/RUSTMIX/ALARMS.TXT`.
+Calendar events do not create alarms.
 
-Weather uses the configured Open-Meteo profile, bounded retries, and a last-known-good cache. The overview shows current conditions and a four-day forecast. Details show provider, timezone, observation time, last success, configuration file, and last error.
+- List: Up/Down chooses a schedule; Select opens the runtime editor.
+- Editor: Up/Down changes hour, minute, enable state, recurrence or schedule;
+	Select advances fields. On **Save runtime edit**, Select applies it to the
+	running session. For changes that survive reboot, edit `ALARMS.TXT`.
+- Hold BOOT leaves the screen; short BOOT is not an alarm-editor Back action.
+- Active alarm: Up/Down chooses Snooze or Dismiss; Select runs it.
 
-| Control | Action |
-| --- | --- |
-| Rotary up / down | Move between Refresh weather and Weather details |
-| SELECT | Run the selected action |
-| BOOT long | Return to Settings |
+An RTC alarm can wake sleep-image mode and open Alarms. Check clock accuracy,
+the RTC-armed indicator and audible output before relying on an alarm.
 
-## 7. Power-key maintenance and sleep
+### Audio
 
-A short Power press opens a display-maintenance menu from any ordinary UI route. Select **Clear ghosting now** to request the shared global-base refresh path. Select **Cancel** or hold BOOT to return without refreshing.
+Up/Down chooses Play test chime, Stop playback, Increase volume, Decrease
+volume, Mute/Unmute or Audio details; Select runs it. Hold BOOT returns.
+The codec is suspended when no audio is needed. Details are diagnostic:
+their inherited RX/deferred wording is stale; WAV microphone recording is
+implemented in Voice Notes.
 
-A long Power press enters sleep-image mode:
+### Device and sensor diagnostics
 
-<img src="../screenshots/sleep.jpg" width="360" alt="Sleep image mode">
+- **Device Info:** Select advances Firmware → Board services → Runtime
+	services. Hold BOOT walks back through those pages.
+- **Environment:** temperature/humidity; Select opens sensor details.
+- **Motion:** live accelerometer/gyroscope; Select opens Motion Events.
+	Up/Down selects threshold/debounce/reset/details controls; Select changes
+	the selected control or resets counters. Events are TILT, SHAKE, ROTATE and
+	LEVEL. Hold BOOT returns one level.
 
-The firmware selects a random image from `/sdcard/RUSTMIX/SLEEP`, suspends network activity, sleeps the panel, retains the prior route, and uses a wake guard so the entry press is not mistaken for an immediate wake press.
+The IMU is enabled only on Motion diagnostics. There is no motion-game or
+Lua sensor-input path. Threshold controls are diagnostic, not game settings.
 
-## 8. Screenshot index
+## Weather
 
-Every supplied screenshot is stored in the repository so the guide and README can link stable reference images.
+Open Home › Weather for current conditions and the existing four-day forecast.
+Up/Down chooses **Refresh weather** or **Weather details**; Select requests a
+refresh or opens details. Hold BOOT returns to Home (or from details to Weather).
+Configure location, coordinates, timezone and refresh interval in
+`/RUSTMIX/WEATHER.TXT`; there is no Weather settings route on this branch.
+Details show provider, last success and error. Refresh uses a Wi-Fi burst;
+failed requests retain the last good in-memory result. No weather updates run
+in sleep-image mode, and the last good result is not a disk cache.
 
-| Screenshot | Screen |
-| --- | --- |
-| [homepage.jpg](../screenshots/homepage.jpg) | Home dashboard |
-| [reader-main.jpg](../screenshots/reader-main.jpg) | Reader category |
-| [continue-reading1.jpg](../screenshots/continue-reading1.jpg) | Continue Reading |
-| [opening_book.jpg](../screenshots/opening_book.jpg) | Opening Book progress |
-| [library-recent.jpg](../screenshots/library-recent.jpg) | Library Recent tab |
-| [library-books.jpg](../screenshots/library-books.jpg) | Library Books tab |
-| [library-files.jpg](../screenshots/library-files.jpg) | Library Files tab |
-| [library-bookmarks.jpg](../screenshots/library-bookmarks.jpg) | Library Bookmarks tab |
-| [txt-reader.jpg](../screenshots/txt-reader.jpg) | TXT Reader page |
-| [epub-reader.jpg](../screenshots/epub-reader.jpg) | EPUB Reader page |
-| [txt-reader-options.jpg](../screenshots/txt-reader-options.jpg) | TXT Reader Options |
-| [epub-reader-options.jpg](../screenshots/epub-reader-options.jpg) | EPUB Reader Options |
-| [reader-reading-prefs.jpg](../screenshots/reader-reading-prefs.jpg) | Reading Preferences |
-| [reader-toc.jpg](../screenshots/reader-toc.jpg) | EPUB Table of Contents |
-| [reader-bookmarks.jpg](../screenshots/reader-bookmarks.jpg) | Persistent Bookmarks |
-| [reader-bookmarks-list.jpg](../screenshots/reader-bookmarks-list.jpg) | Bookmarks list |
-| [productivity.jpg](../screenshots/productivity.jpg) | Productivity category |
-| [calendar-current-day.jpg](../screenshots/calendar-current-day.jpg) | Calendar month view, selected day |
-| [calendar-us-events.jpg](../screenshots/calendar-us-events.jpg) | Calendar month view, U.S. event |
-| [calendar-date-details.jpg](../screenshots/calendar-date-details.jpg) | Calendar daily agenda |
-| [calendar-create-note.jpg](../screenshots/calendar-create-note.jpg) | Calendar personal-event editor |
-| [voice_notes.jpg](../screenshots/voice_notes.jpg) | Voice Notes list |
-| [voice_notes_record.jpg](../screenshots/voice_notes_record.jpg) | Voice Notes recording |
-| [voice_note_detail.jpg](../screenshots/voice_note_detail.jpg) | Saved-WAV details |
-| [voice_note_edit.jpg](../screenshots/voice_note_edit.jpg) | Voice Notes friendly-title editor |
-| [games.jpg](../screenshots/games.jpg) | Games category |
-| [games-listing.jpg](../screenshots/games-listing.jpg) | SD Lua apps catalog |
-| [hello-grid.jpg](../screenshots/hello-grid.jpg) | Hello Grid |
-| [sudoku.jpg](../screenshots/sudoku.jpg) | Sudoku |
-| [minesweeper.jpg](../screenshots/minesweeper.jpg) | Minesweeper |
-| [tools.jpg](../screenshots/tools.jpg) | Tools category |
-| [directory-listing.jpg](../screenshots/directory-listing.jpg) | File Browser root |
-| [files-listing.jpg](../screenshots/files-listing.jpg) | File Browser directory listing |
-| [dictionary.jpg](../screenshots/dictionary.jpg) | Dictionary input |
-| [dictionary-result.jpg](../screenshots/dictionary-result.jpg) | Dictionary result |
-| [unit-converter.jpg](../screenshots/unit-converter.jpg) | Unit Converter length example |
-| [unit-converter1.jpg](../screenshots/unit-converter1.jpg) | Unit Converter volume example |
-| [settings.jpg](../screenshots/settings.jpg) | Settings page one |
-| [settings1.jpg](../screenshots/settings1.jpg) | Settings page two |
-| [alarms.jpg](../screenshots/alarms.jpg) | Alarm schedules |
-| [alarm-details.jpg](../screenshots/alarm-details.jpg) | Alarm editor |
-| [audio.jpg](../screenshots/audio.jpg) | Audio overview |
-| [audio-details.jpg](../screenshots/audio-details.jpg) | ES8311 audio details |
-| [clock.jpg](../screenshots/clock.jpg) | Clock overview |
-| [rtc-details.jpg](../screenshots/rtc-details.jpg) | RTC details |
-| [display.jpg](../screenshots/display.jpg) | Display preferences |
-| [device-info.jpg](../screenshots/device-info.jpg) | Device Info firmware page |
-| [device-info1.jpg](../screenshots/device-info1.jpg) | Device Info board page |
-| [device-info2.jpg](../screenshots/device-info2.jpg) | Device Info runtime page |
-| [environment.jpg](../screenshots/environment.jpg) | Environment overview |
-| [environment1.jpg](../screenshots/environment1.jpg) | SHTC3 details |
-| [motion.jpg](../screenshots/motion.jpg) | Motion overview |
-| [motion-events.jpg](../screenshots/motion-events.jpg) | Motion event diagnostics |
-| [network.jpg](../screenshots/network.jpg) | Network overview |
-| [network-details.jpg](../screenshots/network-details.jpg) | Network details |
-| [wifi-transfer.jpg](../screenshots/wifi-transfer.jpg) | Browser Wi-Fi transfer portal |
-| [weather.png](../screenshots/weather.png) | Weather overview |
-| [weather-1.jpg](../screenshots/weather-1.jpg) | Weather details |
-| [sleep.jpg](../screenshots/sleep.jpg) | Sleep-image mode |
+## Games
 
-## 9. Related documentation
+Install the bundled SD samples, then open **Home › Games › SD Games**.
+Up/Down chooses an app, Select opens it, hold BOOT returns to the catalog.
+The supplied games are Hello Grid, Sudoku and Minesweeper; there are no
+IMU-controlled games or BLE remote page-turner in this build.
 
-- [`README.md`](../README.md): project overview, setup, validation, build, and release commands
-- [`ARCHITECTURE.md`](ARCHITECTURE.md): module ownership, sensor pipeline, workers, and memory-safety design
-- [`BOARD_CONTRACT.md`](BOARD_CONTRACT.md): stable hardware contract
-- [`SD_CARD_SETUP.md`](SD_CARD_SETUP.md): SD-card layout and installers
-- [`PHYSICAL_SMOKE_TEST.md`](PHYSICAL_SMOKE_TEST.md): consolidated hardware verification checklist
-- [`RELEASE.md`](RELEASE.md): ELF-only release workflow
+| Sample | Controls |
+|---|---|
+| Hello Grid | Static canvas demonstration; wheel/Select have no game action; hold BOOT exits |
+| Sudoku | Up/Down moves along the active H/V axis; short BOOT switches axis. Select enters edit mode; Up/Down chooses a candidate; Select commits; short BOOT cancels editing |
+| Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
+
+These are the existing button-driven samples, not the planned three-step
+Sudoku redesign or Tetris. A missing/invalid SD app reports an error; hold
+BOOT returns to the catalog.
+
+## AI › Voice Notes
+
+XiaoZhi remains a SOON placeholder. Voice Notes records local PCM16 mono
+16 kHz WAV; it does not transcribe or summarize recordings.
+
+- List: Up/Down chooses Record new note, microphone gain or a saved note;
+	Select starts recording, cycles gain or opens details.
+- Recording: Up/Down toggles pause/resume; Select stops and saves; hold BOOT
+	cancels. The screen reports duration, peak and clipping.
+- Saved note: Up/Down chooses Play/Stop, Edit friendly title, Export/download,
+	Delete or Return; Select runs the action. Delete asks for confirmation.
+- Title keyboard: Up/Down moves in the active axis; short BOOT toggles
+	NAV H / NAV V; Select activates a key, SAVE or CANCEL. Hold BOOT cancels.
+
+WAV names stay `VOICE###.WAV`; friendly titles are sidecar metadata in
+`/RUSTMIX/VOICE/`. Export uses the temporary LAN portal. Do not edit sidecars
+or remove the SD card during recording/playback/writes.
+
+## Tools
+
+| Tool | Practical controls |
+|---|---|
+| File Browser | Up/Down selects; Select enters a folder or opens/closes a bounded text preview; hold BOOT goes to the parent, then Tools. Read-only; binary preview is unavailable |
+| Dictionary | Up/Down moves on the keyboard; short BOOT switches NAV H/V; Select activates letters, DEL, CLR, GO or `*`. GO uses exact lookup with prefix fallback; `*` performs prefix lookup/result cycling. Requires the Dictionary SD pack |
+| Unit Converter | Up increases and Down decreases the active value; Select advances Category, From unit, Value, To unit, Step size; hold BOOT returns |
+| Calendar | Up/Down changes selected day or month; Select toggles Day/Month navigation; short BOOT opens the daily agenda |
+
+In Calendar agenda, Up/Down selects an event, Select opens details, and short
+BOOT creates a personal event. Personal details offer edit/delete actions;
+U.S. holidays are read-only. In the event keyboard, short BOOT switches NAV
+H/V, Select activates keys, FIELD changes title/detail, SAVE writes and CANCEL
+or hold BOOT cancels. Calendar writes `EVENTS.TXT` with temporary/backup files.
+Hold BOOT returns through agenda/month view to Tools.
+
+## Sleep, wake and ghosting
+
+A short Power press opens the maintenance menu. Up/Down selects **Clear
+ghosting now** or **Cancel**, Select runs it, and hold BOOT cancels. Clearing
+ghosting performs a full refresh and returns to the underlying screen.
+
+Holding Power, or reaching the Auto-sleep delay, draws a random usable BMP
+from `/RUSTMIX/SLEEP/`. With multiple pictures it avoids immediate repeats.
+If the folder is empty, missing or contains only rejected images, a sleep
+card shows the reason, battery and wake hint. BMP requirements are in
+[SD-card setup](SD_CARD_SETUP.md#sleep-images).
+
+Sleep mode retains the previous route, stops Wi-Fi/transfer/weather activity,
+turns off the IMU, suspends idle audio, and deep-sleeps the panel with its
+rail off. The CPU uses **light sleep**, not full MCU deep sleep.
+
+Release the entry key and wait for the wake guard. Power always wakes;
+BOOT/Up/Select/Down also wake with **Wake keys: Any key**. With **Power key
+only**, wheel/BOOT presses do not wake. A wake press restores the previous
+screen rather than activating its highlighted action. An RTC alarm is a
+separate wake source.
+
+The clock, clock-with-weather and weather sleep images in `screen-previews`
+are D5 drawing-only layouts. They cannot be selected at runtime and do not
+schedule periodic sleep-screen refreshes.
+
+While awake but idle on battery, the CPU also light-sleeps between work;
+the panel can power down without changing the displayed page. USB power
+disables idle CPU light sleep for flashing/serial use: after connecting,
+press a key once. See [README flashing instructions](../README.md#flash-the-board)
+and [known issues](KNOWN_ISSUES.md).
+
+## Related documents
+
+- [SD-card setup](SD_CARD_SETUP.md): folders, configuration and installers.
+- [Physical smoke test](PHYSICAL_SMOKE_TEST.md): owner checks before a release.
+- [Known issues](KNOWN_ISSUES.md): current limitations and workarounds.
+- [Architecture](architecture.md): hardware, event loop and power policy.
+- [Wave history](../CHANGELOG.md) and [roadmap](ROADMAP.md): shipped vs planned work.

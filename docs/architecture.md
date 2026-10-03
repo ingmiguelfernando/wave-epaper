@@ -99,7 +99,9 @@ Rules that keep it stable:
 
   The Power key always wakes the device; BOOT and the wheel wake it too when
   Settings › Power › Wake keys is "Any key".
-- **Peripherals.** The IMU runs only on the Motion screens and IMU games. The
+- **Peripherals.** The IMU runs only on Motion diagnostics; event sampling is
+  restricted to `MotionEvents`. SD games use keys only, and the unused BLE
+  remote build has been removed. The
   ES8311 codec is suspended when nothing plays.
 - **Battery log.** One sample (RTC minute and percent) every 15 min, kept for 7
   days.

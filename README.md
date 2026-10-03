@@ -82,12 +82,16 @@ Host tests run on stable Rust: `./scripts/test-host.sh`
 
 ## Documentation
 
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): current keys, menus, Reader, settings, sleep and SD apps.
 - [docs/architecture.md](docs/architecture.md): how the firmware works (hardware, event loop, power, SD files, CI).
 - [docs/ROADMAP.md](docs/ROADMAP.md): status and specs of the remaining phases.
+- [docs/DELEGATED_TASKS.md](docs/DELEGATED_TASKS.md): side-task scope, evidence and remaining device checks.
 - [docs/SD_CARD_SETUP.md](docs/SD_CARD_SETUP.md): SD card layout and settings files.
-
-The other guides in [docs/](docs/) come from upstream Rustmix Wave and are kept for reference
-until they are rewritten.
+- [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md): current limitations and workarounds.
+- [docs/PHYSICAL_SMOKE_TEST.md](docs/PHYSICAL_SMOKE_TEST.md): release checklist for the board owner.
+- [docs/BOARD_CONTRACT.md](docs/BOARD_CONTRACT.md): hardware contract.
+- [CHANGELOG.md](CHANGELOG.md): Wave history, newest first, with an upstream history link.
+- [docs/licenses/](docs/licenses/): font and hyphenation notices.
 
 ## License
 

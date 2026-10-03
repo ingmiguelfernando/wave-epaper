@@ -152,12 +152,11 @@ for both screens; previews `display-picker` and `reader-preferences-picker`
 are in the `screen-previews` artifact. Host tests (378) and
 `cargo +stable fmt` pass locally. Needs on-device test: both pickers on the
 panel (open, scroll, apply, cancel), Display changes still reach
-`DISPLAY.TXT`, and layout-sensitive Reader choices still repaginate. Open:
-the Xtensa firmware build still has to run green on this branch
-(`gh` was not logged in on the machine used for this work).
+`DISPLAY.TXT`, and layout-sensitive Reader choices still repaginate.
+The original firmware build passed; physical checks remain with the owner.
 
-**D1 follow-up status (2026-10-03):** implemented locally on `side-tasks`,
-not committed or pushed. Choosing any current Reader value closes the picker
+**D1 follow-up status (2026-10-03):** committed and pushed as `27bd2bf`.
+Choosing any current Reader value closes the picker
 without saving, requesting ghost clearing, or rebuilding the book. Added the
 shared `option_labels` helper and typed `DisplaySetting::{Font, Size}` API;
 all D1 option choices use checked `.get()` lookups, including On/Off, and
@@ -166,8 +165,8 @@ enum `next`/`previous` methods after checking tracked call sites, including
 `main.rs`; compatibility tests now check `ALL` order and persisted markers.
 Host tests: 386 passed; stable formatting check and `git diff --check` passed.
 No changes to D5 files, previews, module registration, or firmware runtime.
-Still needs: a firmware build for this uncommitted follow-up and panel smoke
-tests; the previously reviewed firmware build does not cover these changes.
+Covered by green CI `37082267617` and firmware `37082265451` on `dc5baec`.
+Panel smoke tests remain with the owner.
 
 **Review (main developer, 2026-10-03):** good work; merge after the fix
 below. `ci.yml` (378 host tests, fmt, no warnings) and the firmware build
@@ -280,18 +279,20 @@ original text is retained unchanged.
 
 Retained `scripts/build_release_wifi_v1_2_0.sh` and
 `scripts/release_v1_2_0_wifi.sh` (the latter calls the former), along with the
-current build/validation/flash/package helpers. No workflow calls a BLE script;
+current build/validation/flash/package helpers at the D2 checkpoint. D4 later
+removed the unused upstream Wi-Fi release scripts and source packager.
+No workflow calls a BLE script;
 CI calls `scripts/test-host.sh`, and firmware builds directly with Cargo.
 Tests: 389 host tests passed; `cargo +stable fmt --all -- --check`, native
 `cargo +stable check --all-targets --all-features`, locked ESP-target Cargo
 metadata, and `git diff --check` passed. No version bump, new dependency,
 Python edit, protected-file change or unrelated task work.
-Firmware validation is pending: only stable Rust is installed locally, and
-remote CI cannot validate these uncommitted/unpushed changes. On-device needs:
+Committed and pushed as `2e30703`; firmware run `37083296561` passed.
+On-device needs:
 boot with and without Wi-Fi config, TXT/EPUB page turns using wheel keys,
 weather/NTP/file-transfer bursts, battery idle light-sleep, Power/wheel wake
-and RTC alarm wake. D2 is not ready for handover until deletions, final scans,
-an Xtensa firmware build and device checks are complete.
+and RTC alarm wake. Deletions and reference scans passed; physical checks
+remain with the owner.
 
 ## D3: Remove the IMU tilt games
 
@@ -357,7 +358,8 @@ the manifest rejection test deliberately names the removed input capability.
 README's removal note, upstream `RELEASE_NOTES-v1.0.0.md`, the architecture's
 old IMU-games statement and protected ROADMAP text are left for the planned
 documentation follow-up. Protected ROADMAP text remains unchanged.
-Firmware validation is pending. Device needs: open and use
+Committed and pushed as `cd9dd3f`; firmware run `37083864113` passed.
+Device needs: open and use
 all three remaining samples, SELECT/short BOOT/hold BOOT, Motion/Details live
 readings, MotionEvents tilt/shake/rotate/level and threshold/reset controls,
 and IMU off outside diagnostics including Games. Handover requires a green
@@ -401,7 +403,20 @@ Do this last so it describes the code after D1 to D3.
 
 **Done when:** links between docs work, and nothing removed is still referenced.
 
-**Status:** not started.
+**Status:** implemented on `side-tasks` (2026-10-03). Rewrote the User Guide,
+Known Issues and release smoke checklist for current firmware, replaced the
+upstream changelog with Wave history, and updated only README's Documentation
+section. D5 previews are explicitly drawing demonstrations, not runtime modes.
+Removed upstream release notes, release docs, Wi-Fi v1.2.0 builders and the
+unused source packager after checking workflow and remaining script callers.
+Kept the current build-release-firmware, flash-release and regression helpers.
+Updated architecture's stale motion-game statement. README's backlog and the
+protected ROADMAP still describe removed work; these remain unchanged as
+required by file ownership. Owner must run the physical checklist before a
+release; no hardware test is claimed here. Host tests (378), stable format
+check and relative documentation file-link checks pass. The retained flash
+regression fails its pre-existing hard-coded v1.0.0 artifact expectation
+against v0.7.0; recorded in Known Issues rather than changing unrelated code.
 
 ## D5: Sleep screen layouts (drawing only)
 
@@ -504,8 +519,8 @@ Mockup: "Reposo: reloj y fecha" and "Reposo: clima" in `mockups/index.html`.
 **Done when:** the previews look like the mockup, all text fits at every
 Display size (Compact, Standard, Large), and the tests pass.
 
-**Status:** implemented locally on `side-tasks` (2026-10-03), not committed
-or pushed. Added the exact drawing API and portrait frame wrappers, rounded
+**Status:** committed and pushed as `dc5baec` (2026-10-03).
+Added the exact drawing API and portrait frame wrappers, rounded
 seven-segment digits (`0-9`, `:`, `°`, `-`), allocation-free width measurement,
 and transparent nearest-neighbour icon scaling (zero scale is a no-op).
 Both layouts use the inset-16, 3 px frame and measured, bounded text; the wake
@@ -518,6 +533,7 @@ editor diagnostics pass. Required previews and 18 typography variants are in
 `/tmp/wave-d5-previews`; required images and Compact/Large family samples were
 visually inspected without overlaps. No settings, routes, runtime, dependencies,
 versions or prohibited files changed; D1 review remains unchanged.
-Still needs: Xtensa firmware build and on-device checks of frame/digit clarity,
+CI `37082267617` and firmware `37082265451` passed. Still needs on-device
+checks of frame/digit clarity,
 both font families at all sizes, negative temperatures and footer readability.
 Sleep-mode selection, refresh scheduling and wake behavior remain Phase 3b work.

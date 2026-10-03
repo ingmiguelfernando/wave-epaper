@@ -1,28 +1,66 @@
-# Known issues and deferred work
+# Wave known issues
+
+Current `side-tasks` firmware (v0.7.0 plus delegated work). This is not a list
+of promised mockup features. See [the guide](USER_GUIDE.md) and
+[release hardware checks](PHYSICAL_SMOKE_TEST.md).
+
+## Percent glyph at Detail size
+
+The `%` sign has been observed looking broken at the small Detail font size
+on the sleep card. The [roadmap backlog](ROADMAP.md#backlog) records the
+Inter 11–12 px atlas as the investigation target, not a confirmed root cause.
+Compare both interface families and all three sizes on the actual panel;
+do not infer a battery-reading failure from the glyph. No font fix is included
+in D4.
+
+## USB flashing and disappearing serial port
+
+On battery, idle light sleep can make USB serial appear and disappear.
+Connect a USB-C **data** cable with USB power and press a key once so the
+firmware detects VBUS and stops idle CPU light sleep. If the port still does
+not appear, hold BOOT while power-cycling, then release it for download mode.
+Use the merged Wave `.bin` at `0x0`, as described in
+[README](../README.md#flash-the-board). This is distinct from the retained
+ELF-aware local flash helper; do not flash an ELF at a raw address.
 
 ## Weather provider reliability
 
-Open-Meteo requests can fail transiently with transport, TLS, timeout, or HTTP service errors. The device already applies bounded retries, delayed backoff, and last-known-good in-memory retention. A cold boot with no successful fetch may still end in a readable `Weather unavailable` state.
+Open-Meteo can fail with transport, TLS, timeout or HTTP errors. Bounded
+retries/backoff retain the last good result in memory; a cold boot without a
+successful request can show Weather unavailable. Inspect Weather details for
+the error. Wi-Fi is normally off between bursts and weather is paused during
+sleep-image mode; neither is a continuous-connection guarantee.
 
 ## MCU deep sleep
 
-Sleep-image mode suspends network services, sleeps the e-paper panel, and disables the panel rail, but the MCU event loop remains active. This preserves validated AXP2101 Power-key polling and GPIO45 RTC-alarm handling. Full MCU deep sleep remains deferred.
+The panel deep-sleeps with its rail off, but the CPU uses light sleep in
+bounded intervals. Full MCU deep sleep is not implemented. GPIO38 Power and
+GPIO45 RTC-alarm wake must be preserved; the mockup's deep-sleep current is
+not a measured firmware result. D5 clock/weather layouts are drawing-only,
+not selectable sleep modes or scheduled refreshes.
 
 ## EPUB scope
 
-Reader supports bounded reflowable text extraction, TOC navigation, bookmarks, and resume. CSS layout, images, hyperlinks, footnotes, fixed-layout EPUB, DRM, ZIP64, and SD-backed EPUB anchor caches remain deferred.
+Reader extracts reflowable text with TOC, bookmarks and resume. It is not a
+full browser: CSS layout, images, interactive hyperlinks/footnotes,
+fixed-layout EPUB, DRM and ZIP64 are not supported. Long books are loaded
+chapter by chapter; layout changes can still require repagination.
 
-## Calendar scope
+## Runtime alarm edits do not persist
 
-Calendar personal events and U.S. holidays are active. U.S. holiday rows remain read-only. Calendar reminders do not automatically create RTC alarms. Non-U.S. calendar packs are intentionally excluded from the native Calendar route.
+The Alarms editor saves to the running engine only. Edit `/RUSTMIX/ALARMS.TXT`
+and reboot for durable schedules. Calendar personal events are separate and
+do not arm RTC alarms; U.S. holiday rows are read-only.
 
-## Dictionary scope
+## Inherited diagnostic wording
 
-Dictionary exact and prefix lookup is active through the complete X4 pack. Saved words, search history, and Reader word-selection lookup remain deferred.
+The retained `scripts/test-release-flash-workflow.sh` regression hard-codes
+v1.0.0 artifact names although Cargo currently declares v0.7.0, so it fails
+its file-name assertions. The builder produces the current-version ELF;
+this is a stale test expectation, not a firmware build failure.
 
-## Merged factory-image release artifact
-
-The supported release artifact is the ESP-IDF ELF flashed through `espflash flash`.
-Raw-address flashing with `espflash write-bin` is intentionally unsupported. A
-merged factory image remains deferred until the bootloader, partition-table, and
-application offsets have been validated on physical hardware.
+Audio details still labels I2S as TX-only and the RX input as deferred
+(`src/app/screens/audio.rs`), although Voice Notes capture is implemented.
+Some boot log readiness strings also describe old category counts or an
+ELF-only release policy. Use current menus, the guide and the README flashing
+instructions, not those legacy strings. Correcting runtime text is outside D4.

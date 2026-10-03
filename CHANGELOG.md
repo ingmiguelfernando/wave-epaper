@@ -1,50 +1,84 @@
-# Changelog
+# Wave changelog
 
-## v1.0.0-r3 — Screenshot User Guide and Architecture Documentation
+Newest first. Versions and milestone commits follow the
+[roadmap status table](docs/ROADMAP.md#status) and Git history; delegated work
+does not bump the firmware version. Photos v0.8.0 is on a separate branch,
+not a shipped entry here.
 
-- Add `screenshots/` with the physically verified UI screenshot set.
-- Add `docs/USER_GUIDE.md` with screen-by-screen navigation for Home, Reader, Productivity, Games, Tools, Settings, Wi-Fi transfer, and sleep-image mode.
-- Expand `README.md` with sensor-driven utility coverage, motion-game behavior, and main-task worker-isolation policy.
-- Expand `docs/ARCHITECTURE.md` with board-service ownership, the native QMI8658 motion-event pipeline, Lua/native game boundaries, runtime memory telemetry, and named worker stack budgets.
-- Preserve firmware runtime behavior and the ELF-only release workflow.
+## Unreleased — side-tasks (based on v0.7.0)
 
-## v1.0.0-r2 — Text Editor Layout Alignment
+- D4: refresh the practical guide, known issues, release smoke checklist and
+	documentation index; audit obsolete upstream release files for removal.
+- D3 (`cd9dd3f`): remove IMU tilt games and Lua motion input; retain Motion
+	diagnostics and button-driven Hello Grid, Minesweeper and Sudoku.
+- D2 (`2e30703`): remove the unused BLE remote build and its optional runtime
+	path, docs and helpers; keep Wi-Fi bursts.
+- D5 (`dc5baec`): add drawing-only clock and weather sleep layouts, large
+	digits, scaled icons, tests and previews. No runtime sleep-mode selection.
+- D1 (`1773deb`, follow-up `27bd2bf`): Display and Reader preference option
+	lists; selecting the value already in use closes without unnecessary save,
+	ghost clearing or repagination.
 
-- Move the Voice Notes friendly-title editor onto the shared grid keyboard with BOOT-short NAV H / NAV V toggling.
-- Give the Voice Notes title editor its own header, width-safe status strip, keyboard SAVE/CANCEL actions, and long-BOOT cancel/back behavior.
-- Compact the Calendar personal-event editor status date and footer so NAV H / NAV V and instructions remain readable on e-paper.
-- Preserve the ELF-only release flash workflow and all accepted runtime paths.
+## v0.7.0 — Power settings (Phase 1c)
 
-## v1.0.0-r1 — Release Flash Workflow Safety Repair
+Milestone `d27dced`; follow-ups `fe0b9da`, `8eda12a`, `72e9554`.
 
-- Remove the unsafe raw-address `espflash write-bin ... 0x0` release instructions and the unverified `*-flash.bin` artifact.
-- Publish the ESP-IDF ELF as the supported firmware release artifact.
-- Add `scripts/flash-release.sh` to flash an existing release ELF through `espflash flash --chip esp32s3 --monitor`.
-- Preserve the ordinary `./scripts/flash.sh monitor` development path.
-- Defer any merged factory-image workflow until bootloader, partition-table, and application offsets are validated on physical hardware.
+- Settings › Power: auto-sleep and wake-key lists, battery history and sleep
+	diagnostics; persist power preferences and sample battery every 15 minutes.
+- Accept portrait/landscape sleep BMPs, show actionable fallback-card reasons,
+	and improve card text. Owner device validation remains pending in the roadmap.
 
-## v1.0.0 — First Stable Rustmix Wave Release
+## v0.6.0 — Idle power and radio bursts (Phase 1b)
 
-- Promote the physically accepted Rustmix Wave firmware baseline to the first stable release.
-- Preserve Reader, Voice Notes, Dictionary, Calendar, Wi-Fi transfer, RTC alarms, weather, audio, sensors, sleep-image mode, Power-key maintenance menu, Lua apps, and motion games.
-- Preserve short Power press for manual ghost-clearing maintenance and long Power press for sleep-image mode.
+Milestone `038269f`.
 
-## v0.20.5 — Repository Cleanup, Consolidated Documentation, CI, and Release Binary Builder
+- Light-sleep between presses on battery; keep awake on USB for flashing.
+- Use short Wi-Fi bursts for weather/NTP; turn off IMU and codec when idle.
 
-- Remove extracted patch-overlay folders, generated archives, patch scripts, repair documents, milestone smoke-test documents, and cache artifacts from the source tree.
-- Consolidate durable project documentation into `README.md`, `docs/ARCHITECTURE.md`, `docs/BOARD_CONTRACT.md`, `docs/SD_CARD_SETUP.md`, `docs/PHYSICAL_SMOKE_TEST.md`, `docs/KNOWN_ISSUES.md`, and `docs/RELEASE.md`.
-- Replace the stale GitHub workflow with `.github/workflows/ci.yml`, which checks stable formatting, the cleaned source contract, shell syntax, and native-target host tests.
-- Add `scripts/build-release-firmware.sh` to produce release artifacts. The later v1.0.0-r1 safety repair restricts supported distribution to the ELF-aware flashing path.
-- Tighten `scripts/package-release.sh` so generated source archives exclude overlay directories and local artifacts.
-- Preserve the physically accepted runtime: Reader, Voice Notes, Dictionary, Calendar, Power-key maintenance menu and long-press sleep, Wi-Fi transfer, alarms, weather, audio, sensors, Lua apps, and motion games.
+## v0.5.0 — Sleep mode (Phase 1a)
 
-## Accepted runtime baseline before cleanup
+Milestone `f78cb18`.
 
-- v0.20.4: short Power press display-maintenance menu and long Power press sleep-image mode.
-- v0.20.3: Calendar personal-event editor with U.S. holidays read-only and atomic `EVENTS.TMP -> EVENTS.TXT` persistence with `EVENTS.BAK` rollback.
-- v0.20.1: Calendar U.S. events, month markers, daily agenda, and details.
-- v0.20.0: native X4-pack Dictionary with exact, prefix, wildcard, and BOOT-short `NAV H` / `NAV V` keyboard navigation.
-- v0.19.x: Voice Notes recording, gain, pause/resume, playback, metadata, titles, storage telemetry, delete confirmation, and LAN export.
-- v0.18.x: explicit Wi-Fi transfer portal, bounded Lua app foundation, native game bridges, and IMU motion games.
-- v0.17.x: bounded reflowable EPUB Reader foundation and TOC navigation.
-- v0.16.x: TXT Reader persistence, bookmarks, preferences, FAT 8.3 runtime names, and Library bookmark alignment.
+- Light-sleep while the sleep image is displayed; auto-sleep after ten idle
+	minutes; preserve wake keys and RTC alarm handling.
+
+## v0.4.0 — Reader layout (Phase 2d)
+
+Milestone `7b3b112`.
+
+- Wrap by measured pixel width, add Spanish/English hyphenation, and open books
+	in one tick. Keep logical reading anchors across layout changes.
+
+## v0.3.0 — Long EPUBs (Phase 2c)
+
+Milestone `55668f2`.
+
+- Load EPUB text one chapter at a time instead of retaining the whole book.
+
+## v0.2.1 — Reader reliability (Phase 2b)
+
+Milestone `23caaa7`.
+
+- Fix EPUB watchdog resets and hide macOS `._` files from the library.
+
+## v0.2.0 — Font generation (Phase 2a)
+
+Milestone `ef529b0`; typography follow-ups include `1bab141`, `54fb828`,
+`553d41e` and `6d8d2a5`.
+
+- Generate bitmap font atlases with Latin-1 and punctuation coverage; tune
+	rendering and centralize font configuration.
+
+## v0.1.0 — Wave shell (Phase 0)
+
+Milestone `72334ad`; follow-up `0066e71`.
+
+- Add the Wave Home/menu layout and SOON placeholders; support long SD names,
+	New Zealand time and metric units; rename the fork.
+
+## Baseline — upstream v1.2.0
+
+Milestone `a67ceb5`: build the inherited Wi-Fi firmware with GitHub Actions.
+Wave version numbering starts at v0.1.0 after this baseline.
+
+Older history: [upstream Rustmix Wave](https://github.com/aimindseye/rustmix-wave).
