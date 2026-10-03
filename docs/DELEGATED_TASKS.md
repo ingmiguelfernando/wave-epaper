@@ -178,7 +178,14 @@ fecha" and "Reposo: clima" in `mockups/index.html`. Change only
 - the fit and region tests pass, updated for the new positions;
 - every font family and size still fits.
 
-**Status:** not started.
+**Status:** implemented locally on `side-tasks-2` (2026-10-03), D7 only.
+  Clock keeps y 180–330; date starts at 340, with measured rule/weather gaps.
+  Both icon/text groups are centered; weather has the 3 px forecast rule.
+  Rain uses Body in a 34 px box because D6 remains blocked; APIs unchanged.
+  All six typography combinations fit; long labels wrap/ellipsis, negatives fit.
+  Host tests: 405 pass (8 layout tests); fmt, diff check and editor errors pass.
+  DOM and side-by-side PNG evidence: `/tmp/wave-r2-d7/`; required seven-segment
+  digits and existing icons/fonts differ from HTML. Firmware/device checks pending.
 
 ### D8: Audio details describe the real audio path
 

@@ -60,21 +60,30 @@ pub fn render_sleep_clock(
 ) -> Result<(), Infallible> {
     draw_frame(display)?;
     draw_big_text(display, clock.time, 240, 180, 150)?;
+    let date_height = text_height(clock.date, preferences.large_style(), 408, 2);
     text_block(
         display,
         clock.date,
         preferences.large_style(),
-        TextBounds::new(36, 356, 444, 450),
+        TextBounds::new(36, 340, 444, 340 + date_height),
         2,
         true,
     )?;
-    Line::new(Point::new(70, 470), Point::new(410, 470))
+    let rule_y = 340 + date_height + 40;
+    Line::new(Point::new(70, rule_y), Point::new(410, rule_y))
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
         .draw(display)?;
     if let Some(weather) = &clock.weather {
+        let (icon, summary) = centered_group(
+            weather.summary,
+            preferences.large_style(),
+            52,
+            12,
+            rule_y + 28,
+        );
         weather_icon(weather.weather_code).draw_scaled(
             display,
-            Point::new(40, 514),
+            Point::new(icon.left, icon.top),
             2,
             BinaryColor::On,
         )?;
@@ -82,15 +91,16 @@ pub fn render_sleep_clock(
             display,
             weather.summary,
             preferences.large_style(),
-            TextBounds::new(106, 510, 440, 610),
+            summary,
             2,
-            false,
+            true,
         )?;
+        let details_top = icon.bottom.max(summary.bottom) + 6;
         text_block(
             display,
             weather.details,
             preferences.body_style(),
-            TextBounds::new(36, 622, 444, 708),
+            TextBounds::new(36, details_top, 444, details_top + 64),
             2,
             true,
         )?;
@@ -104,11 +114,12 @@ pub fn render_sleep_weather(
     weather: &SleepWeather<'_>,
 ) -> Result<(), Infallible> {
     draw_frame(display)?;
+    let layout = weather_layout(preferences, weather);
     text_block(
         display,
         weather.place,
         preferences.detail_style(),
-        TextBounds::new(46, 48, 434, 80),
+        TextBounds::new(46, 48, 434, 70),
         1,
         false,
     )?;
@@ -116,13 +127,13 @@ pub fn render_sleep_weather(
         display,
         weather.updated,
         preferences.body_style(),
-        TextBounds::new(46, 88, 434, 158),
+        TextBounds::new(46, 70, 434, layout.hero_top - 22),
         2,
         false,
     )?;
     weather_icon(weather.weather_code).draw_scaled(
         display,
-        Point::new(46, 185),
+        Point::new(layout.icon.left, layout.icon.top),
         5,
         BinaryColor::On,
     )?;
@@ -130,15 +141,15 @@ pub fn render_sleep_weather(
     draw_big_text(
         display,
         weather.temperature,
-        318,
-        195 + (110 - height) / 2,
+        layout.condition.left + layout.condition.width() / 2,
+        layout.temperature_top,
         height,
     )?;
     text_block(
         display,
         weather.condition,
         preferences.heading_style(),
-        TextBounds::new(192, 322, 444, 410),
+        layout.condition,
         2,
         true,
     )?;
@@ -146,23 +157,29 @@ pub fn render_sleep_weather(
         display,
         weather.details,
         preferences.body_style(),
-        TextBounds::new(36, 426, 444, 530),
+        layout.details,
         3,
         true,
     )?;
+    Line::new(
+        Point::new(42, layout.rule_y),
+        Point::new(438, layout.rule_y),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
+    .draw(display)?;
     for (index, day) in weather.days.iter().take(3).enumerate() {
         let left = 36 + index as i32 * 136;
         text_block(
             display,
             day.name,
             preferences.heading_style(),
-            TextBounds::new(left + 4, 552, left + 132, 588),
+            TextBounds::new(left + 4, layout.rule_y + 20, left + 132, layout.icon_y - 8),
             1,
             true,
         )?;
         weather_icon(day.weather_code).draw_scaled(
             display,
-            Point::new(left + 42, 600),
+            Point::new(left + 42, layout.icon_y),
             2,
             BinaryColor::On,
         )?;
@@ -170,15 +187,15 @@ pub fn render_sleep_weather(
             display,
             day.range,
             preferences.body_style(),
-            TextBounds::new(left + 4, 666, left + 132, 700),
+            TextBounds::new(left + 4, layout.range_y, left + 132, layout.rain_y - 6),
             1,
             true,
         )?;
         text_block(
             display,
             day.rain,
-            preferences.detail_style(),
-            TextBounds::new(left + 4, 708, left + 132, 738),
+            preferences.body_style(),
+            TextBounds::new(left + 4, layout.rain_y, left + 132, layout.rain_y + 34),
             1,
             true,
         )?;
@@ -189,6 +206,94 @@ pub fn render_sleep_weather(
         weather.wake_hint,
         weather.battery_percent,
     )
+}
+
+fn text_height(text: &str, style: UiTextStyle, width: i32, limit: usize) -> i32 {
+    fitted_lines(text, style, width, limit).len() as i32 * i32::from(style.line_height())
+}
+
+fn text_width(text: &str, style: UiTextStyle, width: i32) -> i32 {
+    fitted_lines(text, style, width, 2)
+        .iter()
+        .map(|line| style.text_width(line))
+        .max()
+        .unwrap_or(0)
+}
+
+fn centered_group(
+    text: &str,
+    style: UiTextStyle,
+    icon_size: i32,
+    gap: i32,
+    top: i32,
+) -> (TextBounds, TextBounds) {
+    let width = text_width(text, style, 408 - icon_size - gap);
+    let height = text_height(text, style, width, 2);
+    let group_height = icon_size.max(height);
+    let left = 240 - (icon_size + gap + width) / 2;
+    let icon_top = top + (group_height - icon_size) / 2;
+    let text_top = top + (group_height - height) / 2;
+    (
+        TextBounds::new(left, icon_top, left + icon_size, icon_top + icon_size),
+        TextBounds::new(
+            left + icon_size + gap,
+            text_top,
+            left + icon_size + gap + width,
+            text_top + height,
+        ),
+    )
+}
+
+struct WeatherLayout {
+    hero_top: i32,
+    icon: TextBounds,
+    temperature_top: i32,
+    condition: TextBounds,
+    details: TextBounds,
+    rule_y: i32,
+    icon_y: i32,
+    range_y: i32,
+    rain_y: i32,
+}
+
+fn weather_layout(preferences: DisplayPreferences, weather: &SleepWeather<'_>) -> WeatherLayout {
+    let hero_top = 70 + text_height(weather.updated, preferences.body_style(), 388, 2) + 22;
+    let temperature_height = temperature_height(weather.temperature);
+    let width = big_text_width(weather.temperature, temperature_height).max(text_width(
+        weather.condition,
+        preferences.heading_style(),
+        240,
+    ));
+    let condition_height = text_height(weather.condition, preferences.heading_style(), width, 2);
+    let column_height = temperature_height + 8 + condition_height;
+    let hero_height = 130.max(column_height);
+    let left = 240 - (130 + 8 + width) / 2;
+    let icon_top = hero_top + (hero_height - 130) / 2;
+    let temperature_top = hero_top + (hero_height - column_height) / 2;
+    let condition_top = temperature_top + temperature_height + 8;
+    let details_top = hero_top + hero_height + 12;
+    let details_bottom =
+        details_top + text_height(weather.details, preferences.body_style(), 408, 3);
+    let rule_y = details_bottom + 34;
+    let icon_y = rule_y + 20 + i32::from(preferences.heading_style().line_height()) + 8;
+    let range_y = icon_y + 52 + 12;
+    let rain_y = range_y + i32::from(preferences.body_style().line_height()) + 6;
+    WeatherLayout {
+        hero_top,
+        icon: TextBounds::new(left, icon_top, left + 130, icon_top + 130),
+        temperature_top,
+        condition: TextBounds::new(
+            left + 138,
+            condition_top,
+            left + 138 + width,
+            condition_top + condition_height,
+        ),
+        details: TextBounds::new(36, details_top, 444, details_bottom),
+        rule_y,
+        icon_y,
+        range_y,
+        rain_y,
+    }
 }
 
 fn temperature_height(text: &str) -> i32 {
@@ -363,8 +468,15 @@ mod tests {
         check_frame(&frame);
         assert!(black(&frame, 169, 189));
         assert!(!black(&frame, 169, 222));
-        assert!(black(&frame, 240, 470));
-        assert!(!black(&frame, 56, 516));
+        let rule_y = 380
+            + text_height(
+                clock(false).date,
+                DisplayPreferences::default().large_style(),
+                408,
+                2,
+            );
+        assert!(black(&frame, 240, rule_y));
+        assert!(!black(&frame, 240, rule_y + 28));
     }
 
     #[test]
@@ -373,9 +485,18 @@ mod tests {
         render_sleep_clock(&mut frame, DisplayPreferences::default(), &clock(true)).unwrap();
         check_frame(&frame);
         assert!(black(&frame, 169, 189));
-        assert!(black(&frame, 56, 516));
-        assert!(black(&frame, 57, 517));
-        assert!(!black(&frame, 40, 514));
+        let preferences = DisplayPreferences::default();
+        let rule_y = 380 + text_height(clock(true).date, preferences.large_style(), 408, 2);
+        let (icon, _) = centered_group(
+            "18° · Partly cloudy",
+            preferences.large_style(),
+            52,
+            12,
+            rule_y + 28,
+        );
+        assert!(black(&frame, icon.left + 16, icon.top + 2));
+        assert!(black(&frame, icon.left + 17, icon.top + 3));
+        assert!(!black(&frame, icon.left, icon.top));
     }
 
     #[test]
@@ -383,12 +504,19 @@ mod tests {
         let mut frame = FrameBuffer::from_native_bytes(vec![0; 48_000]).unwrap();
         render_sleep_weather(&mut frame, DisplayPreferences::default(), &weather()).unwrap();
         check_frame(&frame);
-        assert!(black(&frame, 333, 201));
-        assert!(!black(&frame, 333, 230));
-        assert!(black(&frame, 86, 190));
-        assert!(black(&frame, 102, 604));
-        assert!(black(&frame, 242, 602));
-        assert!(black(&frame, 378, 602));
+        let layout = weather_layout(DisplayPreferences::default(), &weather());
+        let digit_left =
+            layout.condition.left + layout.condition.width() / 2 - big_text_width("18°", 110) / 2;
+        assert!(black(&frame, digit_left + 48, layout.temperature_top + 14));
+        assert!(!black(&frame, digit_left + 5, layout.temperature_top + 35));
+        assert!(black(&frame, layout.icon.left + 40, layout.icon.top + 5));
+        assert!(black(&frame, 102, layout.icon_y + 4));
+        assert!(black(&frame, 242, layout.icon_y + 2));
+        assert!(black(&frame, 378, layout.icon_y + 2));
+        for y in layout.rule_y - 1..=layout.rule_y + 1 {
+            assert!(black(&frame, 42, y));
+            assert!(black(&frame, 438, y));
+        }
     }
 
     #[test]
@@ -400,11 +528,11 @@ mod tests {
                     font_size,
                 };
                 for (text, style, width, lines, height) in [
-                    ("Friday, October 2", preferences.large_style(), 408, 2, 94),
+                    ("Friday, October 2", preferences.large_style(), 408, 2, 88),
                     (
                         "18° · Partly cloudy",
                         preferences.large_style(),
-                        334,
+                        344,
                         2,
                         100,
                     ),
@@ -413,7 +541,7 @@ mod tests {
                         preferences.body_style(),
                         408,
                         2,
-                        86,
+                        64,
                     ),
                     (
                         "Fri, Oct 2 · updated 13:30",
@@ -422,17 +550,17 @@ mod tests {
                         2,
                         70,
                     ),
-                    ("Partly cloudy", preferences.heading_style(), 252, 2, 88),
+                    ("Partly cloudy", preferences.heading_style(), 240, 2, 58),
                     (
                         "H 21° · L 11° · Wind 12 km/h · Rain 10%",
                         preferences.body_style(),
                         408,
                         3,
-                        104,
+                        69,
                     ),
                     ("23° / 12°", preferences.body_style(), 128, 1, 34),
                     ("Sat", preferences.heading_style(), 128, 1, 36),
-                    ("100%", preferences.detail_style(), 128, 1, 30),
+                    ("100%", preferences.body_style(), 128, 1, 34),
                 ] {
                     let wrapped = style.wrap(text, width);
                     assert!(wrapped.len() <= lines);
@@ -474,11 +602,29 @@ mod tests {
                 sample.condition = long;
                 sample.details = long;
                 sample.wake_hint = long;
+                let days = [SleepWeatherDay {
+                    name: long,
+                    weather_code: 95,
+                    range: "-12345° / -12345°",
+                    rain: "Rain 100% with an exceptionallylongunbrokenlabel",
+                }];
+                sample.days = &days;
+                let layout = weather_layout(preferences, &sample);
                 let height = temperature_height(sample.temperature);
                 assert!(height < 110 && height > 0);
                 assert!(big_text_width(sample.temperature, height) <= 240);
                 let mut frame = FrameBuffer::new_white();
                 render_sleep_weather(&mut frame, preferences, &sample).unwrap();
+                let temperature_left = layout.condition.left + layout.condition.width() / 2
+                    - big_text_width(sample.temperature, height) / 2;
+                assert!(
+                    black(
+                        &frame,
+                        temperature_left + height / 4,
+                        layout.temperature_top + (height - height / 8) / 2 + height / 16,
+                    ),
+                    "negative temperature must retain its minus sign"
+                );
                 for y in 19..782 {
                     for x in 19..462 {
                         if !black(&frame, x, y) {
@@ -486,13 +632,19 @@ mod tests {
                         }
                         assert!(
                             [
-                                TextBounds::new(46, 48, 434, 80),
-                                TextBounds::new(46, 88, 434, 158),
-                                TextBounds::new(46, 185, 176, 315),
-                                TextBounds::new(198, 195, 438, 305),
-                                TextBounds::new(192, 322, 444, 410),
-                                TextBounds::new(36, 426, 444, 530),
-                                TextBounds::new(36, 552, 444, 738),
+                                TextBounds::new(46, 48, 434, 70),
+                                TextBounds::new(46, 70, 434, layout.hero_top - 22),
+                                layout.icon,
+                                TextBounds::new(
+                                    layout.condition.left,
+                                    layout.temperature_top,
+                                    layout.condition.right,
+                                    layout.temperature_top + height
+                                ),
+                                layout.condition,
+                                layout.details,
+                                TextBounds::new(42, layout.rule_y - 1, 439, layout.rule_y + 2),
+                                TextBounds::new(36, layout.rule_y + 20, 444, layout.rain_y + 34),
                                 TextBounds::new(36, 746, 444, 774),
                             ]
                             .iter()
@@ -514,6 +666,111 @@ mod tests {
     }
 
     #[test]
+    fn groups_are_centered_and_rows_fit_every_typography() {
+        for font_family in UiFontFamily::ALL {
+            for font_size in UiFontSize::ALL {
+                let preferences = DisplayPreferences {
+                    font_family,
+                    font_size,
+                };
+                for summary in [
+                    "18° · Partly cloudy",
+                    "-123° · Freezing rain",
+                    "",
+                    "An exceptionallylongunbrokencondition followed by more words than fit",
+                ] {
+                    let rule_y =
+                        380 + text_height("Friday, October 2", preferences.large_style(), 408, 2);
+                    let (icon, text) =
+                        centered_group(summary, preferences.large_style(), 52, 12, rule_y + 28);
+                    assert!((icon.left + text.right - 480).abs() <= 1);
+                    assert!((icon.top + icon.bottom - text.top - text.bottom).abs() <= 1);
+                    assert_eq!(text.left - icon.right, 12);
+                    assert!(icon.left >= 36 && text.right <= 444);
+                    assert_eq!(icon.top.min(text.top), rule_y + 28);
+                    assert!(icon.bottom.max(text.bottom) + 6 + 64 < 746);
+                }
+                for temperature in ["18°", "-40°", "-12345°", "", "-12345678901234567890°"] {
+                    for condition in [
+                        "Partly cloudy",
+                        "Freezing rain and exceptionallylongunbrokenconditions",
+                        "",
+                    ] {
+                        let mut sample = weather();
+                        sample.temperature = temperature;
+                        sample.condition = condition;
+                        sample.updated =
+                            "Updated at an unusually long time with a very long location label";
+                        sample.details = "H -40° · L -50° · Wind 999 km/h · Rain 100% with unusually long extra details";
+                        let layout = weather_layout(preferences, &sample);
+                        let height = temperature_height(temperature);
+                        assert!((layout.icon.left + layout.condition.right - 480).abs() <= 1);
+                        assert!(
+                            (layout.icon.top + layout.icon.bottom
+                                - layout.temperature_top
+                                - layout.condition.bottom)
+                                .abs()
+                                <= 1
+                        );
+                        assert!(layout.icon.left >= 36 && layout.condition.right <= 444);
+                        assert!(big_text_width(temperature, height) <= layout.condition.width());
+                        assert_eq!(layout.condition.top, layout.temperature_top + height + 8);
+                        assert!(layout.details.top >= layout.icon.bottom + 12);
+                        assert_eq!(layout.rule_y - layout.details.bottom, 34);
+                        assert!(layout.rain_y + 34 < 746);
+                        assert!(i32::from(preferences.body_style().line_height()) <= 34);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn clock_extremes_stay_below_time_and_above_footer() {
+        let long = "An exceptionallylongunbrokenlocationname and a very long weather description with more words";
+        for font_family in UiFontFamily::ALL {
+            for font_size in UiFontSize::ALL {
+                let preferences = DisplayPreferences {
+                    font_family,
+                    font_size,
+                };
+                let mut sample = clock(true);
+                sample.date = long;
+                sample.weather = Some(SleepWeatherLine {
+                    weather_code: 95,
+                    summary: long,
+                    details: long,
+                });
+                let mut frame = FrameBuffer::new_white();
+                render_sleep_clock(&mut frame, preferences, &sample).unwrap();
+                let date_bottom = 340 + text_height(long, preferences.large_style(), 408, 2);
+                let rule_y = date_bottom + 40;
+                let (icon, summary) =
+                    centered_group(long, preferences.large_style(), 52, 12, rule_y + 28);
+                let details_top = icon.bottom.max(summary.bottom) + 6;
+                for y in 331..746 {
+                    for x in 19..462 {
+                        if black(&frame, x, y) {
+                            assert!(
+                                [
+                                    TextBounds::new(36, 340, 444, date_bottom),
+                                    TextBounds::new(70, rule_y - 1, 411, rule_y + 2),
+                                    icon,
+                                    summary,
+                                    TextBounds::new(36, details_top, 444, details_top + 64),
+                                ]
+                                .iter()
+                                .any(|b| x >= b.left && x < b.right && y >= b.top && y < b.bottom),
+                                "escaped clock pixel {x},{y}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn forecast_ignores_extra_days_and_accepts_no_days_or_battery() {
         let mut three = FrameBuffer::new_white();
         let mut four = FrameBuffer::new_white();
@@ -525,7 +782,11 @@ mod tests {
         sample.days = &[];
         sample.battery_percent = None;
         render_sleep_weather(&mut four, DisplayPreferences::default(), &sample).unwrap();
-        assert!(!black(&four, 110, 604));
+        assert!(!black(
+            &four,
+            102,
+            weather_layout(DisplayPreferences::default(), &sample).icon_y + 4
+        ));
         assert_eq!(
             footer_widths(DisplayPreferences::default().body_style(), None),
             (String::new(), 408)
