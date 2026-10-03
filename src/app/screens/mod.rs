@@ -25,6 +25,7 @@ pub mod power;
 pub mod power_key;
 pub mod reader;
 pub mod sleep_card;
+pub mod sleep_screens;
 pub mod unit_converter;
 pub mod voice_notes;
 pub mod weather;

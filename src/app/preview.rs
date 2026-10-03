@@ -12,6 +12,11 @@ use super::{
     display::UiFontSize, reader_typography::reader_body_style, render_current_screen,
     render_sleep_card, typography::Text, AppState, ScreenRoute, SleepCard,
 };
+use super::{
+    display::{DisplayPreferences, UiFontFamily},
+    render_sleep_clock, render_sleep_weather, SleepClock, SleepWeather, SleepWeatherDay,
+    SleepWeatherLine,
+};
 use crate::{
     board_services::BoardSnapshot,
     buttons::ButtonEvent,
@@ -55,6 +60,18 @@ fn render_screen_previews() {
     let mut images = vec![
         ("reader-fonts", render_reader_font_sheet()),
         ("sleep-card", render_sample_sleep_card()),
+        (
+            "sleep-clock",
+            render_sample_sleep_clock(sample_state().display, false),
+        ),
+        (
+            "sleep-clock-weather",
+            render_sample_sleep_clock(sample_state().display, true),
+        ),
+        (
+            "sleep-weather",
+            render_sample_sleep_weather(sample_state().display),
+        ),
     ];
     for (name, state) in preview_states() {
         let mut frame = FrameBuffer::new_white();
@@ -65,6 +82,31 @@ fn render_screen_previews() {
         for (name, frame) in images {
             let png = encode_png(&frame, DisplayOrientation::Portrait);
             fs::write(Path::new(directory).join(format!("{name}.png")), png).unwrap();
+        }
+    }
+    for family in UiFontFamily::ALL {
+        for size in UiFontSize::ALL {
+            let preferences = DisplayPreferences {
+                font_family: family,
+                font_size: size,
+            };
+            for (name, frame) in [
+                ("sleep-clock", render_sample_sleep_clock(preferences, false)),
+                (
+                    "sleep-clock-weather",
+                    render_sample_sleep_clock(preferences, true),
+                ),
+                ("sleep-weather", render_sample_sleep_weather(preferences)),
+            ] {
+                if let Some(directory) = output.as_deref() {
+                    let name = format!("{name}-{}-{}.png", family.marker(), size.marker());
+                    fs::write(
+                        Path::new(directory).join(name),
+                        encode_png(&frame, DisplayOrientation::Portrait),
+                    )
+                    .unwrap();
+                }
+            }
         }
     }
 }
@@ -104,6 +146,59 @@ fn render_sample_sleep_card() -> FrameBuffer {
         wake_hint: "Press any key to wake",
     };
     render_sleep_card(&mut frame, sample_state().display, &card).unwrap();
+    frame
+}
+
+fn render_sample_sleep_clock(preferences: DisplayPreferences, with_weather: bool) -> FrameBuffer {
+    let mut frame = FrameBuffer::new_white();
+    let clock = SleepClock {
+        time: "13:42",
+        date: "Friday, October 2",
+        weather: with_weather.then_some(SleepWeatherLine {
+            weather_code: 2,
+            summary: "18° · Partly cloudy",
+            details: "H 21° · L 11° · Rain 10%",
+        }),
+        battery_percent: Some(78),
+        wake_hint: "Press any key to wake",
+    };
+    render_sleep_clock(&mut frame, preferences, &clock).unwrap();
+    frame
+}
+
+fn render_sample_sleep_weather(preferences: DisplayPreferences) -> FrameBuffer {
+    let mut frame = FrameBuffer::new_white();
+    let weather = SleepWeather {
+        place: "Madrid",
+        updated: "Fri, Oct 2 · updated 13:30",
+        weather_code: 2,
+        temperature: "18°",
+        condition: "Partly cloudy",
+        details: "H 21° · L 11° · Wind 12 km/h · Rain 10%",
+        days: &[
+            SleepWeatherDay {
+                name: "Sat",
+                weather_code: 0,
+                range: "23° / 12°",
+                rain: "0%",
+            },
+            SleepWeatherDay {
+                name: "Sun",
+                weather_code: 61,
+                range: "17° / 10°",
+                rain: "80%",
+            },
+            SleepWeatherDay {
+                name: "Mon",
+                weather_code: 95,
+                range: "15° / 9°",
+                rain: "60%",
+            },
+        ],
+        battery_percent: Some(78),
+        wake_hint: "Press any key to wake",
+    };
+    render_sleep_weather(&mut frame, preferences, &weather).unwrap();
     frame
 }
 

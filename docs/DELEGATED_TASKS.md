@@ -438,4 +438,20 @@ Mockup: "Reposo: reloj y fecha" and "Reposo: clima" in `mockups/index.html`.
 **Done when:** the previews look like the mockup, all text fits at every
 Display size (Compact, Standard, Large), and the tests pass.
 
-**Status:** not started.
+**Status:** implemented locally on `side-tasks` (2026-10-03), not committed
+or pushed. Added the exact drawing API and portrait frame wrappers, rounded
+seven-segment digits (`0-9`, `:`, `°`, `-`), allocation-free width measurement,
+and transparent nearest-neighbour icon scaling (zero scale is a no-op).
+Both layouts use the inset-16, 3 px frame and measured, bounded text; the wake
+hint and battery percent have separate footer budgets. Long temperatures shrink
+to fit beside the 5× icon; forecasts show at most three 2× icon columns.
+Host tests: 399 passed (13 D5 tests added), including frame/digit pixels,
+glyph widths, icon scaling, all six size/family combinations and extreme text.
+Stable full formatting check, native library check, `git diff --check` and
+editor diagnostics pass. Required previews and 18 typography variants are in
+`/tmp/wave-d5-previews`; required images and Compact/Large family samples were
+visually inspected without overlaps. No settings, routes, runtime, dependencies,
+versions or prohibited files changed; D1 review remains unchanged.
+Still needs: Xtensa firmware build and on-device checks of frame/digit clarity,
+both font families at all sizes, negative temperatures and footer readability.
+Sleep-mode selection, refresh scheduling and wake behavior remain Phase 3b work.

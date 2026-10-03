@@ -46,6 +46,39 @@ impl Icon {
         }
         Ok(())
     }
+
+    /// Replicate each ink pixel into a square; zero scale draws nothing.
+    pub fn draw_scaled<D>(
+        &self,
+        display: &mut D,
+        top_left: Point,
+        scale: u32,
+        color: BinaryColor,
+    ) -> Result<(), D::Error>
+    where
+        D: DrawTarget<Color = BinaryColor>,
+    {
+        if scale == 0 {
+            return Ok(());
+        }
+        for (y, row) in self.rows.iter().enumerate() {
+            for (x, cell) in row.bytes().enumerate() {
+                if cell == b'#' {
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            let point = top_left
+                                + Point::new(
+                                    (x as u32 * scale + dx) as i32,
+                                    (y as u32 * scale + dy) as i32,
+                                );
+                            display.draw_iter(core::iter::once(Pixel(point, color)))?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Pick the icon for one WMO weather interpretation code.
@@ -582,6 +615,45 @@ pub static WIFI: Icon = Icon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framebuffer::FrameBuffer;
+
+    #[test]
+    fn scaling_replicates_pixels_and_preserves_transparent_paper() {
+        let icon = Icon {
+            rows: &["#.", ".#"],
+        };
+        for scale in [1, 2, 3, 4, 5] {
+            let mut frame = FrameBuffer::new_white();
+            icon.draw_scaled(&mut frame, Point::new(7, 9), scale, BinaryColor::On)
+                .unwrap();
+            for y in 0..2 * scale {
+                for x in 0..2 * scale {
+                    assert_eq!(
+                        frame.is_black(Point::new(7 + x as i32, 9 + y as i32)),
+                        Some(x / scale == y / scale)
+                    );
+                }
+            }
+            assert_eq!(frame.is_black(Point::new(6, 9)), Some(false));
+            icon.draw_scaled(&mut frame, Point::new(7, 9), scale, BinaryColor::Off)
+                .unwrap();
+            assert_eq!(frame, FrameBuffer::new_white());
+        }
+    }
+
+    #[test]
+    fn scale_one_matches_draw_and_zero_is_noop() {
+        let mut original = FrameBuffer::new_white();
+        let mut scaled = FrameBuffer::new_white();
+        SUN.draw(&mut original, Point::new(3, 5), BinaryColor::On)
+            .unwrap();
+        SUN.draw_scaled(&mut scaled, Point::new(3, 5), 1, BinaryColor::On)
+            .unwrap();
+        assert_eq!(original, scaled);
+        SUN.draw_scaled(&mut scaled, Point::new(-100, -100), 0, BinaryColor::Off)
+            .unwrap();
+        assert_eq!(original, scaled);
+    }
 
     #[test]
     fn square_icons_share_one_grid() {
