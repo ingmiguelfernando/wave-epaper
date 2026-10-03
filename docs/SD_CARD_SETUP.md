@@ -1,8 +1,10 @@
 # SD-card setup
 
-Use a FAT-formatted SD card. Rustmix Wave mounts it at `/sdcard` and expects the following product tree:
+Use a FAT-formatted SD card. Wave mounts it at `/sdcard` and expects the following product tree:
 
 ```text
+/PHOTOS/
+  *.JPG
 /RUSTMIX/
   WIFI.TXT
   WEATHER.TXT
@@ -10,6 +12,10 @@ Use a FAT-formatted SD card. Rustmix Wave mounts it at `/sdcard` and expects the
   DISPLAY.TXT
   POWER.TXT
   BATTERY.TXT
+  STARRED.TXT
+  SLEEPSCREEN.TXT
+  CACHE/
+    PHOTOS/
   BOOKS/
   READER/
     CACHE/
@@ -124,6 +130,40 @@ Install bundled samples:
 ```bash
 ./scripts/install-sleep-images.sh /Volumes/YOUR_SD_CARD
 ```
+
+## Photos
+
+Copy JPEG photos (`.jpg`, `.jpeg`) into `/PHOTOS` at the root of the card,
+next to `RUSTMIX` rather than inside it. Use a computer: the Wi-Fi file
+transfer only reaches `/RUSTMIX`. Sub-folders are ignored, and up to 500
+photos are listed, newest first.
+
+- Standard (baseline) JPEGs of any size work. Progressive JPEGs work up to 1
+  megapixel; save larger ones as standard JPEGs.
+- Phone photos come out upright (EXIF orientation).
+- Each photo is prepared once, in the background while Photos is open: a few
+  seconds for a 12 MP photo. The result goes to `/RUSTMIX/CACHE/PHOTOS/`,
+  about 100 KB per photo, and is removed when the photo is. Deleting that
+  folder is safe; the photos are prepared again.
+
+Photos starred in the gallery (BOOT short press) are listed in
+`/RUSTMIX/STARRED.TXT`, one file name per line.
+
+## Sleep screen
+
+Settings › Sleep screen writes `/RUSTMIX/SLEEPSCREEN.TXT`:
+
+```text
+source=starred|folder
+order=shuffle|in-order
+fit=fill|whole
+```
+
+- `starred` (default) shows a starred photo at each sleep, once Photos has
+  prepared it; until then the pictures in `/RUSTMIX/SLEEP` are used. `folder`
+  always uses `/RUSTMIX/SLEEP`.
+- `fill` (default) crops the photo to cover the screen; `whole` shows all of
+  it with white bars.
 
 ## Reader books and state
 

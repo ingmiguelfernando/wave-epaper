@@ -20,12 +20,14 @@ pub mod home;
 pub mod lua_game;
 pub mod motion;
 pub mod network;
+pub mod photos;
 pub mod placeholder;
 pub mod power;
 pub mod power_key;
 pub mod reader;
 pub mod sleep_card;
 pub mod sleep_screens;
+pub mod sleep_settings;
 pub mod unit_converter;
 pub mod voice_notes;
 pub mod weather;
@@ -84,6 +86,9 @@ pub fn render_active_screen(
         ScreenRoute::Files => files::render_files(display, state),
         ScreenRoute::Display => display::render_display(display, state),
         ScreenRoute::Power => power::render_power(display, state),
+        ScreenRoute::SleepScreen => sleep_settings::render_sleep_settings(display, state),
+        ScreenRoute::Photos => photos::render_photos(display, state),
+        ScreenRoute::PhotoViewer => photos::render_photo_viewer(display, state),
         ScreenRoute::PowerKeyMenu => power_key::render_power_key_menu(display, state),
         ScreenRoute::DeviceInfo => device_info::render_device_info(display, state),
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),
@@ -94,7 +99,6 @@ pub fn render_active_screen(
         | ScreenRoute::Tools
         | ScreenRoute::Settings
         | ScreenRoute::GamesTbd
-        | ScreenRoute::Photos
         | ScreenRoute::Bible
         | ScreenRoute::ReadingStats
         | ScreenRoute::XiaoZhi => unreachable!("category and placeholder routes handled above"),

@@ -23,6 +23,7 @@ use crate::{
     framebuffer::FrameBuffer,
     network::WifiConnectionState,
     orientation::{DisplayOrientation, OrientedFrameBuffer},
+    photos::{test_photos::jpeg_from_grey, ui::PhotosUiState, worker::prepare},
     power::PowerSnapshot,
     reader::{
         BookFont, BookFontSize, BookFormat, ReaderLocation, ReaderTickOutcome, ReaderUiState,
@@ -222,7 +223,6 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         ("games", ScreenRoute::Games),
         ("tools", ScreenRoute::Tools),
         ("settings", ScreenRoute::Settings),
-        ("photos", ScreenRoute::Photos),
         ("weather", ScreenRoute::Weather),
         ("voice-notes", ScreenRoute::VoiceNotes),
     ];
@@ -256,7 +256,66 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         .router
         .navigate_to(ScreenRoute::ReaderPreferences);
     states.push(("reader-preferences-picker", reader_preferences_picker));
+
+    let mut gallery = sample_state();
+    open_sample_gallery(&mut gallery);
+    states.push(("photos", gallery.clone()));
+    gallery.apply(ButtonEvent::Select);
+    states.push(("photo-viewer", gallery.clone()));
+    gallery.apply(ButtonEvent::Select);
+    states.push(("photo-actions", gallery));
+
+    let mut sleep_screen = sample_state();
+    sleep_screen.router.navigate_to(ScreenRoute::SleepScreen);
+    states.push(("sleep-screen", sleep_screen));
     states
+}
+
+/// Seven photos: four prepared (two starred), one waiting, one unreadable.
+fn open_sample_gallery(state: &mut AppState) {
+    let root = std::env::temp_dir().join(format!("wave-preview-photos-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let photos = root.join("PHOTOS");
+    fs::create_dir_all(&photos).unwrap();
+    for variant in 0..6 {
+        let jpeg = jpeg_from_grey(&scene(300, 400, variant), 300, 400);
+        let name = format!("IMG_04{:02}.jpg", 12 - variant);
+        fs::write(photos.join(name), jpeg).unwrap();
+    }
+    fs::write(photos.join("IMG_0399.jpg"), b"not a photo").unwrap();
+    state.photos = PhotosUiState::with_roots(&photos, root.join("CACHE"));
+    state.photos.refresh();
+    for job in state.photos.cache_jobs().into_iter().take(5) {
+        let result = prepare(&photos, state.photos.cache_directory(), &job);
+        state.photos.on_job_result(&result);
+    }
+    state.photos.starred.toggle("IMG_0407.jpg");
+    state.photos.starred.toggle("IMG_0409.jpg");
+    state.photos.selected = 1;
+    state.router.navigate_to(ScreenRoute::Photos);
+}
+
+/// A grey landscape: sky gradient, sun and a hill line that varies.
+fn scene(width: usize, height: usize, variant: usize) -> Vec<u8> {
+    let (sun_x, sun_y) = (width * (1 + variant % 4) / 5, height / 4);
+    let radius = width / 9;
+    let mut pixels = Vec::with_capacity(width * height);
+    for y in 0..height {
+        for x in 0..width {
+            let phase = x as f32 / width as f32 * (3.0 + variant as f32);
+            let ridge = (height as f32 * (0.5 + phase.sin() / 10.0)) as usize;
+            let sun = x.abs_diff(sun_x).pow(2) + y.abs_diff(sun_y).pow(2) < radius.pow(2);
+            let level = if y > ridge {
+                40 + (y - ridge) * 60 / height
+            } else if sun {
+                250
+            } else {
+                110 + y * 120 / height
+            };
+            pixels.push(level as u8);
+        }
+    }
+    pixels
 }
 
 /// A day of use with an afternoon charge, sampled every 15 minutes.

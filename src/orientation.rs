@@ -93,6 +93,11 @@ impl<'a> OrientedFrameBuffer<'a> {
     pub const fn orientation(&self) -> DisplayOrientation {
         self.orientation
     }
+
+    /// Paste a frame prepared in native panel layout, such as a photo.
+    pub fn copy_native_frame(&mut self, source: &FrameBuffer) {
+        self.frame.copy_from(source);
+    }
 }
 
 impl OriginDimensions for OrientedFrameBuffer<'_> {

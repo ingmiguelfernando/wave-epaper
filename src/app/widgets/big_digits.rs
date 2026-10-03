@@ -102,7 +102,6 @@ where
     D: DrawTarget<Color = BinaryColor>,
 {
     use Segment::{A, B, C, D as DSegment, E, F, G};
-    #[allow(clippy::unreadable_literal)]
     const LIT: [&[Segment]; 10] = [
         &[A, B, C, DSegment, E, F],
         &[B, C],

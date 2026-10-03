@@ -11,6 +11,7 @@ pub enum ScreenRoute {
     Tools,
     Settings,
     Photos,
+    PhotoViewer,
     Bible,
     ReadingStats,
     XiaoZhi,
@@ -45,6 +46,7 @@ pub enum ScreenRoute {
     ClockDetails,
     Display,
     Power,
+    SleepScreen,
     PowerKeyMenu,
     DeviceInfo,
     DeviceInfoBoard,
@@ -72,6 +74,7 @@ impl ScreenRoute {
             Self::Tools => "Tools",
             Self::Settings => "Settings",
             Self::Photos => "Photos",
+            Self::PhotoViewer => "Photo",
             Self::Bible => "Bible",
             Self::ReadingStats => "Reading Stats",
             Self::XiaoZhi => "XiaoZhi",
@@ -106,6 +109,7 @@ impl ScreenRoute {
             Self::ClockDetails => "RTC details",
             Self::Display => "Display",
             Self::Power => "Power",
+            Self::SleepScreen => "Sleep screen",
             Self::PowerKeyMenu => "Power Key Menu",
             Self::DeviceInfo => "Device Info",
             Self::DeviceInfoBoard => "Board services",
@@ -133,6 +137,7 @@ impl ScreenRoute {
             Self::Tools => "tools",
             Self::Settings => "settings",
             Self::Photos => "photos",
+            Self::PhotoViewer => "photo-viewer",
             Self::Bible => "bible",
             Self::ReadingStats => "reading-stats",
             Self::XiaoZhi => "xiaozhi",
@@ -167,6 +172,7 @@ impl ScreenRoute {
             Self::ClockDetails => "rtc-details",
             Self::Display => "display",
             Self::Power => "power",
+            Self::SleepScreen => "sleep-screen",
             Self::PowerKeyMenu => "power-key-menu",
             Self::DeviceInfo => "device-info",
             Self::DeviceInfoBoard => "device-info-board",
@@ -196,7 +202,7 @@ impl ScreenRoute {
     pub const fn is_placeholder(self) -> bool {
         matches!(
             self,
-            Self::GamesTbd | Self::Photos | Self::Bible | Self::ReadingStats | Self::XiaoZhi
+            Self::GamesTbd | Self::Bible | Self::ReadingStats | Self::XiaoZhi
         )
     }
 
@@ -214,6 +220,7 @@ impl ScreenRoute {
             | Self::ReadingStats
             | Self::Weather => Some(Self::Home),
             Self::ContinueReading | Self::Library | Self::Bookmarks => Some(Self::Reader),
+            Self::PhotoViewer => Some(Self::Photos),
             Self::ReaderBookmarks => Some(Self::ReaderOptions),
             Self::ReaderLoading | Self::ReaderPage => Some(Self::Library),
             Self::ReaderOptions => Some(Self::ReaderPage),
@@ -239,7 +246,8 @@ impl ScreenRoute {
             | Self::Environment
             | Self::Motion
             | Self::Network
-            | Self::Power => Some(Self::Settings),
+            | Self::Power
+            | Self::SleepScreen => Some(Self::Settings),
             Self::AudioDetails => Some(Self::Audio),
             Self::ClockDetails => Some(Self::Clock),
             Self::DeviceInfoBoard => Some(Self::DeviceInfo),
@@ -312,7 +320,12 @@ mod tests {
         assert_eq!(ScreenRoute::Weather.parent(), Some(ScreenRoute::Home));
         assert_eq!(ScreenRoute::VoiceNotes.parent(), Some(ScreenRoute::Ai));
         assert_eq!(ScreenRoute::Photos.parent(), Some(ScreenRoute::Home));
-        assert!(ScreenRoute::Photos.is_placeholder());
+        assert!(!ScreenRoute::Photos.is_placeholder());
+        assert_eq!(ScreenRoute::PhotoViewer.parent(), Some(ScreenRoute::Photos));
+        assert_eq!(
+            ScreenRoute::SleepScreen.parent(),
+            Some(ScreenRoute::Settings)
+        );
         assert!(ScreenRoute::Ai.is_category());
         assert_eq!(
             ScreenRoute::CalendarAgenda.parent(),

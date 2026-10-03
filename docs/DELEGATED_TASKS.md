@@ -1,19 +1,59 @@
 # Delegated tasks
 
 Small, self-contained tasks for a second developer or AI working in parallel
-with the main line (Phase 3, Photos). Read this file first, then
+with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
+
+## Round 1 result (2026-10-03)
+
+Pull request #1 (D1 to D5) was reviewed, merged into `main` and released as
+v0.8.1. The work was careful, well tested and well documented. The
+`side-tasks` branch is deleted and no task is open right now. When new tasks
+appear in this file, start a new branch from the latest `main`.
+
+What the main developer did at merge time:
+
+- Merged `main` (v0.8.0, Photos) into the branch. Every conflict was "both
+  sides added": `AppState::back()` (the Display and Reader pickers next to the
+  Sleep screen preview and the photo viewer), `preview_states()`,
+  `screens/mod.rs`, the IMU comment in `main.rs` and `architecture.md`.
+- Updated the docs for Photos, which they still described as SOON: the User
+  Guide (Photos and Settings › Sleep screen), Known Issues, the smoke test,
+  CHANGELOG (v0.8.0 and v0.8.1), the README backlog and the ROADMAP.
+- Bumped the version to 0.8.1, milestone `option-lists`.
+
+Verdict per task:
+
+- **D1:** done, review fix included; the same-value tests are thorough.
+- **D2 and D3:** done; the reference scans and the Games test pass.
+- **D4:** done; the guides are practical and accurate.
+- **D5:** done as specified. Polish against the mockup moves to Phase 3b, done
+  by the main developer:
+  - the clock has large gaps (rule at y 470, details at y 622), where the
+    mockup keeps them close;
+  - the weather line is not centered as one group;
+  - the weather screen lacks the rule above the three days;
+  - the rain row uses the Detail size, where `%` is broken.
+
+Do differently next time:
+
+- Write docs for `main` as it will be after the merge, not "on this branch";
+  if another branch changes the same feature, say so in the Status line.
+- Keep each Status to about eight lines: what changed, the checks, what to
+  test on the device. Logs and evidence go in the pull request description.
+- Indent Markdown continuation lines with two spaces, not tabs.
+- Compare previews with the mockup side by side; spacing is part of "looks
+  like the mockup".
 
 ## How to work
 
-- **Branch.** Create `side-tasks` from the latest `main` and do every task
-  there, one commit per task (`D1: ...`, `D2: ...`). Push often.
-- **Pull request.** When done, open a pull request to `main` titled
-  `Side tasks`. Do not merge it; the main developer reviews it, resolves any
-  conflicts with Phase 3 and merges.
+- **Branch.** Each round of tasks gets its own branch from the latest `main`
+  (round 2: `side-tasks-2`), with one commit per task (`D6: ...`). Push often.
+- **Pull request.** When done, open a pull request to `main`. Do not merge
+  it; the main developer reviews it, resolves any conflicts and merges.
 - **Report.** Update the **Status** line of each task below in your branch:
   what changed, what needs a test on the device, and anything left open.
-- **Order.** D1, D5, D2, D3, then D4. Each task stands alone, so skip a task
+- **Order.** As listed in the round. Each task stands alone, so skip a task
   rather than blocking on it.
 
 ### Tools
@@ -23,7 +63,7 @@ with the main line (Phase 3, Photos). Read this file first, then
   - run `cargo +stable fmt`;
   - both must pass.
 - The firmware build (Xtensa) runs on GitHub Actions:
-  `gh workflow run firmware.yml -R ingmiguelfernando/wave-epaper --ref side-tasks`
+  `gh workflow run firmware.yml -R ingmiguelfernando/wave-epaper --ref <branch>`
   takes about 8 minutes and must be green before you hand over.
 - `ci.yml` runs on the pull request: host tests, the `screen-previews` artifact
   (one PNG per screen) and `cargo fmt --check`.
@@ -43,7 +83,7 @@ with the main line (Phase 3, Photos). Read this file first, then
 - Logic changes come with host tests. UI changes come with a preview: add an
   entry at the end of `preview_states()` in `src/app/preview.rs`, then check
   the PNG in the `screen-previews` artifact.
-- Phase 3 is changing these files at the same time. Keep edits to them small
+- The main line changes these files at the same time. Keep edits to them small
   and local:
   - `src/main.rs`;
   - `src/app/state.rs`;
@@ -60,34 +100,19 @@ with the main line (Phase 3, Photos). Read this file first, then
 - Hardware facts and the event loop are in `architecture.md`. The board cannot
   be tested from CI, so list what to try on the device in the Status line.
 
-### Tips from the D1 review
+### Tips
 
-- **Pull first.** The D1 review was pushed to `side-tasks` (this file only).
-  Run `git pull --rebase` before you continue.
 - **Choosing the value in use does nothing:** no save, no refresh, no
   repagination. This holds for every list you add.
 - **Host tests do not compile `src/main.rs`.** Before you remove or rename
   something, run `git grep -n <name> -- src` and read the `main.rs` hits;
   otherwise only the firmware build finds them.
 - **Firmware build without `gh`.** Ask the user to start it: GitHub ›
-  Actions › firmware › Run workflow › branch `side-tasks`. Hand a task over
-  only when it is green.
+  Actions › firmware › Run workflow › your branch. Hand a task over only
+  when it is green.
 - **Code shape.** Prefer an enum to a row index (`PowerSetting` is the
   model), `ALL.get(index)` to `ALL[index % len]`, and one generic helper to
   several copies of the same match arm.
-- **D2.** No workflow builds with `rustmix-remote-ble`, so the
-  `#[cfg(not(feature = "rustmix-remote-ble"))]` code is what runs today:
-  keep it and drop only the attribute. The workflows call only
-  `scripts/test-host.sh`; still check the remaining scripts before deleting
-  one (this applies to D4 too).
-- **D5 draws only.** Phase 3a adds Settings › Sleep screen
-  (`src/sleep_screen.rs`, route `SleepScreen`) for the photo options. D5
-  does not touch settings, routes or `main.rs`.
-- **Fewer conflicts with Phase 3a.** `phase3-photos` will probably reach
-  `main` first. It changes `state.rs` (`apply`, `open_route`, `back()`),
-  `router.rs`, `menu.rs` (Settings gains "Sleep screen"), `preview.rs`,
-  `screens/mod.rs` and `lib.rs`. In those files put new code next to related
-  code, and do not move, reorder or reformat existing lines.
 
 ## D1: Option lists instead of cycling values
 

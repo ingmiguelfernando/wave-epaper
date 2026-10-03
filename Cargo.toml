@@ -1,6 +1,6 @@
 [package]
 name = "waveshare-epd397-rust-app"
-version = "0.7.0"
+version = "0.8.1"
 authors = ["Piyush Daiya"]
 edition = "2021"
 resolver = "2"
@@ -32,7 +32,13 @@ embedded-hal = "1.0"
 log = "0.4"
 # Hyphenation patterns, limited to the languages the Reader hyphenates.
 hypher = { version = "0.1.8", default-features = false, features = ["alloc", "english", "spanish"] }
+# Photos; without rayon, which would start a thread pool.
+jpeg-decoder = { version = "0.3.2", default-features = false }
 miniz_oxide = "0.8"
+
+[dev-dependencies]
+# Builds test JPEGs in memory, so no image files are committed.
+jpeg-encoder = "0.7.1"
 
 [target.'cfg(target_os = "espidf")'.dependencies]
 embedded-svc = "0.29"

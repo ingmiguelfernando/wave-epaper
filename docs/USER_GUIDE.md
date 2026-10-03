@@ -1,11 +1,11 @@
 # Wave user guide
 
-This guide describes v0.7.0 with the committed D1, D5, D2 and D3 work on
-`side-tasks`. It describes implemented firmware, not the future mockup or
-the separate Photos branch. Current menus and key handlers are authoritative.
-For visual references, download the `screen-previews` artifact from a green
+This guide describes firmware v0.8.1: what is implemented, not the future
+mockup. Current menus and key handlers are authoritative. For visual
+references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
-The D5 artifact includes drawing demonstrations that are **not runtime modes**.
+Its `sleep-clock` and `sleep-weather` images are layouts for a later release,
+**not modes you can choose yet**.
 
 ## Controls
 
@@ -15,7 +15,7 @@ The wheel has Up, Select and Down keys; there is no touch input.
 |---|---|
 | Up / Down | Move a highlighted row; in a book, previous / next page |
 | Select | Open the highlighted row or run its action |
-| BOOT short | Contextual action only: Calendar agenda, keyboard axis, or game axis/cancel |
+| BOOT short | Contextual action only: Calendar agenda, keyboard axis, game axis/cancel, star a photo, or preview the sleep picture |
 | Hold BOOT (at least 900 ms, then release) | Back one level; cancel an open option list before leaving its screen |
 | Power short | Open the display-maintenance menu: Clear ghosting now or Cancel |
 | Hold Power | Enter sleep-image mode; after releasing and waiting for the wake guard, Power wakes it |
@@ -34,7 +34,7 @@ opens the highlighted one.
 
 | Home row | Current behavior |
 |---|---|
-| Photos | SOON placeholder; no gallery or starred-photo sleep set on this branch |
+| Photos | Gallery of the JPEG photos in `/PHOTOS`; see [Photos](#photos) |
 | Library | Continue Reading, Books, Bookmarks |
 | Bible | SOON placeholder |
 | Reading Stats | SOON placeholder |
@@ -42,11 +42,35 @@ opens the highlighted one.
 | Games | SD Games catalog |
 | AI | XiaoZhi (SOON) and implemented Voice Notes |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
-| Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power |
+| Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power, Sleep screen |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
-No Tetris, AI transcription, OTA updater, Weather settings or sleep-mode picker
-is implemented here.
+Tetris, AI transcription, OTA updates, Weather settings and the clock or
+weather sleep screens are not implemented yet.
+
+## Photos
+
+Copy JPEG photos into `/PHOTOS` at the root of the SD card, next to
+`RUSTMIX` (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
+
+- **Gallery.** Six thumbnails per page, newest first. Up/Down moves through
+  the photos across pages; Select opens the viewer; short BOOT stars or
+  unstars the highlighted photo; hold BOOT returns Home. The status row shows
+  the photo count, the starred count and the page; the line under the grid
+  shows the name, size and date.
+- **Preparation.** Each photo is prepared once while Photos is open, a few
+  seconds for a 12 MP photo, and its thumbnail appears when ready. The keys
+  keep working meanwhile. A photo that cannot be used says why, for example a
+  progressive JPEG over 1 megapixel.
+- **Viewer.** The photo fills the screen as set by Settings › Sleep screen ›
+  Fit. Up/Down shows the previous or next photo; short BOOT stars; Select
+  opens the actions; hold BOOT returns to the gallery.
+- **Actions.** Add to (or Remove from) sleep set; Use only this photo, which
+  unstars the others; Delete photo, which asks again: Select deletes the file,
+  hold BOOT cancels.
+
+Starred photos form the sleep set: with Settings › Sleep screen › Source on
+**Starred photos**, one of them shows each time the device sleeps.
 
 ## Library and Reader
 
@@ -100,7 +124,7 @@ after closing a picker to leave Reading Preferences.
 
 ## Settings
 
-Up/Down chooses one of the nine rows, Select opens it, hold BOOT returns Home.
+Up/Down chooses one of the ten rows, Select opens it, hold BOOT returns Home.
 
 ### Display
 
@@ -121,6 +145,20 @@ Up/Down moves, Select applies, hold BOOT cancels.
 - Auto-sleep: Off, 5 min, 10 min (default), 15 min, 30 min, 1 hour.
 - Wake keys: Any key (default), or Power key only.
 - Choices persist in `/RUSTMIX/POWER.TXT`.
+
+### Sleep screen
+
+Up/Down chooses **Source**, **Order** or **Fit**; Select opens the list,
+Up/Down moves, Select applies, hold BOOT cancels. Choices persist in
+`/RUSTMIX/SLEEPSCREEN.TXT`.
+
+- Source: Starred photos (default) or Sleep folder (`/RUSTMIX/SLEEP/`).
+- Order: Shuffle (default) or In order.
+- Fit: Fill (crop, default) or Whole photo. It also applies to the Photos
+  viewer.
+
+A short BOOT press shows the picture the next sleep would use; any key
+returns to the settings.
 
 ### Network and Wi-Fi transfer
 
@@ -253,10 +291,11 @@ A short Power press opens the maintenance menu. Up/Down selects **Clear
 ghosting now** or **Cancel**, Select runs it, and hold BOOT cancels. Clearing
 ghosting performs a full refresh and returns to the underlying screen.
 
-Holding Power, or reaching the Auto-sleep delay, draws a random usable BMP
-from `/RUSTMIX/SLEEP/`. With multiple pictures it avoids immediate repeats.
-If the folder is empty, missing or contains only rejected images, a sleep
-card shows the reason, battery and wake hint. BMP requirements are in
+Holding Power, or reaching the Auto-sleep delay, draws the sleep picture set
+in Settings › Sleep screen: a starred photo once Photos has prepared it, or a
+BMP from `/RUSTMIX/SLEEP/`, which is also the fallback. Shuffle avoids showing
+the same picture twice in a row. If no picture can be used, a sleep card shows
+the reason, battery and wake hint. BMP requirements are in
 [SD-card setup](SD_CARD_SETUP.md#sleep-images).
 
 Sleep mode retains the previous route, stops Wi-Fi/transfer/weather activity,
@@ -269,9 +308,8 @@ only**, wheel/BOOT presses do not wake. A wake press restores the previous
 screen rather than activating its highlighted action. An RTC alarm is a
 separate wake source.
 
-The clock, clock-with-weather and weather sleep images in `screen-previews`
-are D5 drawing-only layouts. They cannot be selected at runtime and do not
-schedule periodic sleep-screen refreshes.
+The clock, clock-with-weather and weather images in `screen-previews` are
+layouts for a later release; they cannot be selected yet.
 
 While awake but idle on battery, the CPU also light-sleeps between work;
 the panel can power down without changing the displayed page. USB power

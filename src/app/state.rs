@@ -8,16 +8,19 @@ use crate::{
     buttons::ButtonEvent,
     calendar::{CalendarEditorOutcome, CalendarUiRequest, CalendarUiState},
     dictionary::DictionaryUiState,
+    framebuffer::FrameBuffer,
     imu::ImuReading,
     imu_events::{ImuControlOutcome, ImuDetectedEvent, ImuEventBridge},
     lua_runtime::LuaRuntimeUiState,
     network::NetworkSnapshot,
     orientation::DisplayOrientation,
+    photos::ui::PhotosUiState,
     power_key_menu::{PowerKeyMenuOutcome, PowerKeyMenuUiState},
     power_settings::{PowerPreferences, PowerSetting},
     reader::{ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
     regional::RegionalPreferences,
     sleep_mode::{LightSleepShare, SleepReport},
+    sleep_screen::{SleepScreenSetting, SleepScreenSettings},
     storage::StorageSnapshot,
     unit_converter::UnitConverterUiState,
     voice_notes::{VoiceNotesUiRequest, VoiceNotesUiState},
@@ -51,6 +54,20 @@ impl PowerUiState {
     #[must_use]
     pub fn setting(self) -> PowerSetting {
         PowerSetting::ALL[self.selected % PowerSetting::ALL.len()]
+    }
+}
+
+/// Settings › Sleep screen cursor and the highlighted choice of an open list.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SleepScreenUiState {
+    pub selected: usize,
+    pub picker: Option<usize>,
+}
+
+impl SleepScreenUiState {
+    #[must_use]
+    pub fn setting(self) -> SleepScreenSetting {
+        SleepScreenSetting::ALL[self.selected % SleepScreenSetting::ALL.len()]
     }
 }
 
@@ -111,6 +128,15 @@ pub struct AppState {
     pub power_ui: PowerUiState,
     /// Battery level history drawn on Settings › Power.
     pub battery_log: BatteryLog,
+    /// SD photo gallery and viewer.
+    pub photos: PhotosUiState,
+    /// Where sleep pictures come from; main.rs saves changes.
+    pub sleep_screen: SleepScreenSettings,
+    pub sleep_screen_ui: SleepScreenUiState,
+    sleep_preview_requested: bool,
+    /// The next sleep picture, shown on Settings › Sleep screen until a key.
+    pub sleep_preview: Option<FrameBuffer>,
+    full_refresh_requested: bool,
     /// Battery use across the most recent sleep, for Settings › Power.
     pub last_sleep: Option<SleepReport>,
     pub light_sleep: LightSleepShare,
@@ -155,6 +181,12 @@ impl Default for AppState {
             power: PowerPreferences::default(),
             power_ui: PowerUiState::default(),
             battery_log: BatteryLog::default(),
+            photos: PhotosUiState::default(),
+            sleep_screen: SleepScreenSettings::default(),
+            sleep_screen_ui: SleepScreenUiState::default(),
+            sleep_preview_requested: false,
+            sleep_preview: None,
+            full_refresh_requested: false,
             last_sleep: None,
             light_sleep: LightSleepShare::default(),
         }
@@ -175,6 +207,10 @@ impl AppState {
             self.apply_display(event);
         } else if route == ScreenRoute::Power {
             self.apply_power(event);
+        } else if matches!(route, ScreenRoute::Photos | ScreenRoute::PhotoViewer) {
+            self.apply_photos(route, event);
+        } else if route == ScreenRoute::SleepScreen {
+            self.apply_sleep_screen(event);
         } else if route == ScreenRoute::PowerKeyMenu {
             self.apply_power_key_menu(event);
         } else if route == ScreenRoute::Calendar {
@@ -363,6 +399,13 @@ impl AppState {
         }
         if target == ScreenRoute::Power {
             self.power_ui = PowerUiState::default();
+        }
+        if target == ScreenRoute::Photos {
+            self.photos.refresh();
+        }
+        if target == ScreenRoute::SleepScreen {
+            self.sleep_screen_ui = SleepScreenUiState::default();
+            self.sleep_preview = None;
         }
         if target == ScreenRoute::Calendar {
             self.initialize_calendar_if_needed();
@@ -872,6 +915,112 @@ impl AppState {
         }
     }
 
+    fn apply_photos(&mut self, route: ScreenRoute, event: ButtonEvent) {
+        if event == ButtonEvent::Select {
+            self.note_select_press();
+        }
+        if route == ScreenRoute::Photos {
+            if self.photos.apply_grid(event) {
+                self.photos.open_viewer();
+                self.router.navigate_to(ScreenRoute::PhotoViewer);
+            }
+        } else if self.photos.apply_viewer(event) {
+            self.photos.close_viewer();
+            self.router.navigate_to(ScreenRoute::Photos);
+        }
+    }
+
+    /// BOOT short press stars the selected photo in the gallery and viewer.
+    pub fn apply_photos_boot_short_press(&mut self) -> bool {
+        let viewer = &self.photos.viewer;
+        let viewer_idle = viewer.action.is_none() && !viewer.confirm_delete;
+        match self.router.current() {
+            ScreenRoute::Photos => {}
+            ScreenRoute::PhotoViewer if viewer_idle => {}
+            _ => return false,
+        }
+        self.photos.toggle_star();
+        true
+    }
+
+    /// After a delete finished: leave the viewer if no photo is left.
+    pub fn finish_photo_delete(&mut self, deleted: bool) {
+        if !self.photos.finish_delete(deleted) && self.active_route() == ScreenRoute::PhotoViewer {
+            self.photos.close_viewer();
+            self.router.navigate_to(ScreenRoute::Photos);
+        }
+    }
+
+    /// Rows of Settings › Sleep screen, each opening a list of its values.
+    /// Any key closes the preview.
+    fn apply_sleep_screen(&mut self, event: ButtonEvent) {
+        if self.sleep_preview.take().is_some() {
+            self.full_refresh_requested = true;
+            return;
+        }
+        let setting = self.sleep_screen_ui.setting();
+        let (options, current) = self.sleep_screen.options(setting);
+        if let Some(highlighted) = self.sleep_screen_ui.picker {
+            let count = options.len();
+            let moved = match event {
+                ButtonEvent::Up => (highlighted + count - 1) % count,
+                ButtonEvent::Down => (highlighted + 1) % count,
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    self.sleep_screen.choose(setting, highlighted);
+                    self.photos.fit = self.sleep_screen.fit;
+                    self.sleep_screen_ui.picker = None;
+                    return;
+                }
+            };
+            self.sleep_screen_ui.picker = Some(moved);
+            return;
+        }
+        let count = SleepScreenSetting::ALL.len();
+        let selected = self.sleep_screen_ui.selected;
+        match event {
+            ButtonEvent::Up => self.sleep_screen_ui.selected = (selected + count - 1) % count,
+            ButtonEvent::Down => self.sleep_screen_ui.selected = (selected + 1) % count,
+            ButtonEvent::Select => {
+                self.note_select_press();
+                self.sleep_screen_ui.picker = Some(current);
+            }
+        }
+    }
+
+    /// BOOT short press on Settings › Sleep screen asks for a preview, or
+    /// closes the one on screen.
+    pub fn apply_sleep_screen_boot_short_press(&mut self) -> bool {
+        if self.router.current() != ScreenRoute::SleepScreen {
+            return false;
+        }
+        if self.sleep_preview.take().is_some() {
+            self.full_refresh_requested = true;
+        } else if self.sleep_screen_ui.picker.is_none() {
+            self.sleep_preview_requested = true;
+        } else {
+            return false;
+        }
+        true
+    }
+
+    /// main.rs answers with `show_sleep_preview`.
+    pub fn take_sleep_preview_request(&mut self) -> bool {
+        std::mem::take(&mut self.sleep_preview_requested)
+    }
+
+    pub fn show_sleep_preview(&mut self, picture: FrameBuffer) {
+        self.sleep_preview = Some(picture);
+        self.full_refresh_requested = true;
+    }
+
+    /// True once after a full-screen picture appeared or went away; a full
+    /// refresh then clears its ghost.
+    pub fn take_full_refresh(&mut self) -> bool {
+        let photos = self.photos.take_full_refresh();
+        std::mem::take(&mut self.full_refresh_requested) || photos
+    }
+
     /// Apply one Audio-overview event. Hardware requests are returned to
     /// main.rs so this product state remains independent of ESP-IDF handles.
     pub fn apply_audio_button(&mut self, event: ButtonEvent) -> Option<AudioUiRequest> {
@@ -937,6 +1086,22 @@ impl AppState {
             && self.reader.preferences_picker.take().is_some()
         {
             return;
+        }
+        if self.router.current() == ScreenRoute::SleepScreen && self.sleep_preview.is_some() {
+            self.sleep_preview = None;
+            self.full_refresh_requested = true;
+            return;
+        }
+        if self.router.current() == ScreenRoute::SleepScreen
+            && self.sleep_screen_ui.picker.take().is_some()
+        {
+            return;
+        }
+        if self.router.current() == ScreenRoute::PhotoViewer {
+            if self.photos.close_viewer_layer() {
+                return;
+            }
+            self.photos.close_viewer();
         }
         if matches!(
             self.router.current(),

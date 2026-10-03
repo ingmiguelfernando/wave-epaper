@@ -1,6 +1,6 @@
 # Wave architecture
 
-How the firmware is put together as of v0.7.0. Plans and specs for upcoming
+How the firmware is put together as of v0.8.1. Plans and specs for upcoming
 work are in [ROADMAP.md](ROADMAP.md).
 
 ## Hardware
@@ -30,8 +30,10 @@ work are in [ROADMAP.md](ROADMAP.md).
   - `router.rs`: `ScreenRoute`, the screen tree (`parent()` is where hold-BOOT
     goes).
   - `menu.rs`: Home and category entries.
-  - `screens/`: one renderer per route.
-  - `widgets/`: header, status row, list row, option list, footer, icons.
+  - `screens/`: one renderer per route, plus the sleep card and the clock and
+    weather sleep layouts (`sleep_card.rs`, `sleep_screens.rs`).
+  - `widgets/`: header, status row, list row, option list, footer, icons, big
+    seven-segment digits.
   - `typography/`: bitmap fonts and `UiTextStyle` (`text_width`, `wrap`, `fit`).
   - `preview.rs`: host-only PNG previews of the screens (CI artifact
     `screen-previews`).
@@ -39,8 +41,9 @@ work are in [ROADMAP.md](ROADMAP.md).
   `weather.rs`; `network.rs`, `radio_burst.rs` (Wi-Fi); `alarm.rs`, `rtc*.rs`;
   `audio/`, `voice_notes.rs`; `calendar.rs`, `dictionary.rs`,
   `unit_converter.rs`; `lua_runtime/`, `games/` (SD apps); `wifi_transfer.rs`
-  (file portal); `sleep_images.rs`, `sleep_mode.rs`; `power_settings.rs`,
-  `battery_log.rs`.
+  (file portal); `sleep_images.rs`, `sleep_mode.rs`, `sleep_screen.rs`;
+  `photos/` and `dither.rs` (gallery, JPEG decoding, cache files, worker);
+  `power_settings.rs`, `battery_log.rs`.
 
 ## Display pipeline
 
@@ -62,7 +65,7 @@ work are in [ROADMAP.md](ROADMAP.md).
 1. RTC alarm poll.
 2. Power key (PMIC IRQ) and auto-sleep; wake from sleep mode.
 3. Weather refresh and Wi-Fi bursts (awake only).
-4. Reader and worker ticks, live status refresh.
+4. Reader ticks, photo worker results and deletes, live status refresh.
 5. BOOT button (short press: contextual action, hold: back), then the wheel.
 6. Battery sample every 15 minutes.
 7. Idle light sleep.
@@ -75,6 +78,9 @@ Rules that keep it stable:
   work.
 - Heavy jobs (weather HTTPS, EPUB loading, Lua loading) run on named worker
   threads (`runtime_worker.rs`). The panel SPI stays on the main task.
+- The photo worker (`photos/worker.rs`) runs alongside the loop, pinned to
+  core 1 at priority 1, so a JPEG decode never delays the keys. Light sleep
+  waits until it is idle, and a photo is deleted only then.
 
 ## Power
 
@@ -92,17 +98,19 @@ Rules that keep it stable:
   - Failures back off from 15 min up to 4 h.
 - **Sleep mode.** Holding the Power key, or the auto-sleep delay from Settings ›
   Power, enters sleep mode:
-  - The sleep picture is drawn. If no picture can be used, a card says why.
+  - The sleep picture is drawn: a starred photo or a picture from
+    `/RUSTMIX/SLEEP/`, as set in Settings › Sleep screen. Only cached photo
+    frames are used, so nothing is decoded here. If no picture can be used, a
+    card says why.
   - The panel enters deep sleep with ALDO3 off.
   - Wi-Fi and the IMU are off, and the codec is suspended.
   - The CPU light-sleeps in 60 s steps.
 
   The Power key always wakes the device; BOOT and the wheel wake it too when
   Settings › Power › Wake keys is "Any key".
-- **Peripherals.** The IMU runs only on Motion diagnostics; event sampling is
-  restricted to `MotionEvents`. SD games use keys only, and the unused BLE
-  remote build has been removed. The
-  ES8311 codec is suspended when nothing plays.
+- **Peripherals.** The IMU runs only on the Motion screens, and samples events
+  only on Motion Events; SD games use the keys. The ES8311 codec is suspended
+  when nothing plays.
 - **Battery log.** One sample (RTC minute and percent) every 15 min, kept for 7
   days.
 
@@ -126,6 +134,10 @@ Rules that keep it stable:
 | `/RUSTMIX/BOOKS/` | `reader.rs` | TXT and EPUB books |
 | `/RUSTMIX/READER/` | `reader.rs` | Positions, recent books, bookmarks, preferences, page cache |
 | `/RUSTMIX/SLEEP/` | `sleep_images.rs` | Sleep pictures (BMP) |
+| `/RUSTMIX/SLEEPSCREEN.TXT` | `sleep_screen.rs` | Sleep picture source, order and fit |
+| `/PHOTOS/` | `photos/` | JPEG photos for Photos and the sleep screen |
+| `/RUSTMIX/STARRED.TXT` | `photos/mod.rs` | Starred photo names |
+| `/RUSTMIX/CACHE/PHOTOS/` | `photos/cache.rs` | Per photo: thumbnail and two screen frames (`.PIC`) |
 | `/RUSTMIX/VOICE/` | `voice_notes.rs` | Voice notes (WAV) and their settings |
 | `/RUSTMIX/APPS/` | `lua_runtime/` | SD apps and games, Dictionary and Calendar packs |
 

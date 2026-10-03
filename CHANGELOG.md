@@ -1,23 +1,33 @@
 # Wave changelog
 
 Newest first. Versions and milestone commits follow the
-[roadmap status table](docs/ROADMAP.md#status) and Git history; delegated work
-does not bump the firmware version. Photos v0.8.0 is on a separate branch,
-not a shipped entry here.
+[roadmap status table](docs/ROADMAP.md#status) and Git history.
 
-## Unreleased — side-tasks (based on v0.7.0)
+## v0.8.1 — Delegated tasks (pull request #1)
 
-- D4: refresh the practical guide, known issues, release smoke checklist and
-	documentation index; audit obsolete upstream release files for removal.
-- D3 (`cd9dd3f`): remove IMU tilt games and Lua motion input; retain Motion
-	diagnostics and button-driven Hello Grid, Minesweeper and Sudoku.
-- D2 (`2e30703`): remove the unused BLE remote build and its optional runtime
-	path, docs and helpers; keep Wi-Fi bursts.
-- D5 (`dc5baec`): add drawing-only clock and weather sleep layouts, large
-	digits, scaled icons, tests and previews. No runtime sleep-mode selection.
 - D1 (`1773deb`, follow-up `27bd2bf`): Display and Reader preference option
 	lists; selecting the value already in use closes without unnecessary save,
 	ghost clearing or repagination.
+- D5 (`dc5baec`): add drawing-only clock and weather sleep layouts, large
+	digits, scaled icons, tests and previews. No runtime sleep-mode selection.
+- D2 (`2e30703`): remove the unused BLE remote build and its optional runtime
+	path, docs and helpers; keep Wi-Fi bursts.
+- D3 (`cd9dd3f`): remove IMU tilt games and Lua motion input; retain Motion
+	diagnostics and button-driven Hello Grid, Minesweeper and Sudoku.
+- D4 (`1c6495b`): refresh the practical guide, known issues, release smoke
+	checklist and documentation index; remove obsolete upstream release files.
+
+## v0.8.0 — Photos (Phase 3a)
+
+Milestone `f36eeb7`; release commit `4f3de3a`.
+
+- Home › Photos: JPEG gallery from `/PHOTOS` with thumbnails, a full-screen
+	viewer and actions (sleep set, use only this photo, delete).
+- Photos are decoded once in the background on the second core, upright from
+	EXIF, dithered and cached in `/RUSTMIX/CACHE/PHOTOS/`.
+- Settings › Sleep screen: source (starred photos or the sleep folder), order
+	and fit, with a BOOT preview; sleep shows starred photos.
+- Holding BOOT to close an option list now redraws the screen.
 
 ## v0.7.0 — Power settings (Phase 1c)
 

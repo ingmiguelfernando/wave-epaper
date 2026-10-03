@@ -21,9 +21,9 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.7.0), not an upstream v1.0.0 marker.
+	expected release version (currently v0.8.1), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
-	Photos, Bible, Reading Stats and XiaoZhi remain SOON on this branch.
+	Bible, Reading Stats and XiaoZhi remain SOON.
 - [ ] Boot without Wi-Fi configuration still reaches usable offline Home.
 
 ## Books and Display (D1)
@@ -42,6 +42,25 @@ before tests; never remove the card while writes are active.
 - [ ] Settings › Display lists both fonts and all three sizes; open/move/apply/
 	cancel work, `DISPLAY.TXT` changes only when needed and survives reboot.
 - [ ] Review Home, lists, book text and footers at both families/all UI sizes.
+
+## Photos and sleep screen
+
+- [ ] Copy a few phone JPEGs (one 12 MP, one portrait) and one progressive
+	JPEG into `/PHOTOS`. Open Photos: thumbnails appear one by one while the
+	keys stay responsive; the progressive file shows its reason.
+- [ ] Photos are upright in the viewer; Up/Down change photo with a full
+	refresh; hold BOOT returns to the gallery without a ghost of the photo.
+- [ ] Short BOOT stars and unstars in the gallery and the viewer; the starred
+	count changes and `STARRED.TXT` survives a reboot.
+- [ ] Viewer actions: Use only this photo works; Delete photo asks again, hold
+	BOOT cancels, Select deletes the file and its star.
+- [ ] Settings › Sleep screen: change Source, Order and Fit; `SLEEPSCREEN.TXT`
+	survives a reboot. Short BOOT previews the next sleep picture; any key
+	returns.
+- [ ] With two or more starred photos, sleep and wake several times: a starred
+	photo shows each time, without immediate repeats on Shuffle.
+- [ ] With no starred photo, sleep falls back to `/RUSTMIX/SLEEP/`, or to the
+	sleep card that explains why.
 
 ## Power lists, sleep and wake
 
@@ -121,6 +140,6 @@ light sleep. Restore the owner's original preferences afterward.
 	icons and wake/battery footer are readable. A hardware render harness may
 	check panel clarity separately; ordinary firmware cannot select these modes.
 
-Do not mark clock/weather sleep refresh scheduling, Photos, Tetris or other
+Do not mark clock/weather sleep refresh scheduling, Tetris or other
 planned features as passed. Record failures/open checks in
 [delegated task status](DELEGATED_TASKS.md) and the release handover.

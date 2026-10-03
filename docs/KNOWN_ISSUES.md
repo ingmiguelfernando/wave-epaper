@@ -1,13 +1,12 @@
 # Wave known issues
 
-Current `side-tasks` firmware (v0.7.0 plus delegated work). This is not a list
-of promised mockup features. See [the guide](USER_GUIDE.md) and
-[release hardware checks](PHYSICAL_SMOKE_TEST.md).
+Firmware v0.8.1. This is not a list of promised mockup features. See
+[the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
 
 The `%` sign has been observed looking broken at the small Detail font size
-on the sleep card. The [roadmap backlog](ROADMAP.md#backlog) records the
+on the sleep card, and in the rain row of the weather sleep layout preview. The [roadmap backlog](ROADMAP.md#backlog) records the
 Inter 11–12 px atlas as the investigation target, not a confirmed root cause.
 Compare both interface families and all three sizes on the actual panel;
 do not infer a battery-reading failure from the glyph. No font fix is included
@@ -22,6 +21,14 @@ not appear, hold BOOT while power-cycling, then release it for download mode.
 Use the merged Wave `.bin` at `0x0`, as described in
 [README](../README.md#flash-the-board). This is distinct from the retained
 ELF-aware local flash helper; do not flash an ELF at a raw address.
+
+## Photos
+
+Photos go to `/PHOTOS` at the card root, which the Wi-Fi transfer portal
+cannot reach (it only serves `/RUSTMIX`): copy them with a computer.
+Progressive JPEGs over 1 megapixel are refused with a message; save them as
+standard (baseline) JPEGs. A starred photo shows at sleep only after Photos
+has prepared it once.
 
 ## Weather provider reliability
 
@@ -55,8 +62,8 @@ do not arm RTC alarms; U.S. holiday rows are read-only.
 ## Inherited diagnostic wording
 
 The retained `scripts/test-release-flash-workflow.sh` regression hard-codes
-v1.0.0 artifact names although Cargo currently declares v0.7.0, so it fails
-its file-name assertions. The builder produces the current-version ELF;
+v1.0.0 artifact names although Cargo declares the current Wave version, so it
+fails its file-name assertions. The builder produces the current-version ELF;
 this is a stale test expectation, not a firmware build failure.
 
 Audio details still labels I2S as TX-only and the RX input as deferred
