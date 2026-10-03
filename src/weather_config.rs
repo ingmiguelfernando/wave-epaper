@@ -4,7 +4,7 @@
 //! Weather retrieval is intentionally separate from Wi-Fi credentials. The
 //! Open-Meteo provider does not require an API key.
 
-use std::{collections::BTreeMap, fs, path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 use anyhow::{bail, Context, Result};
 
@@ -127,7 +127,7 @@ impl WeatherConfig {
     /// Load and validate the read-only boot configuration.
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let contents = fs::read_to_string(path)
+        let contents = crate::sd_file::read_to_string(path)
             .with_context(|| format!("unable to read {}", path.display()))?;
         Self::parse(&contents)
             .with_context(|| format!("invalid weather configuration in {}", path.display()))
@@ -304,7 +304,7 @@ impl WeatherConfig {
 
     pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        fs::write(path, self.serialized())
+        crate::sd_file::replace(path, &self.serialized())
             .with_context(|| format!("write weather configuration {}", path.display()))
     }
 

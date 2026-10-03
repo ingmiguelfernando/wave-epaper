@@ -146,14 +146,14 @@ impl StarredPhotos {
 
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let text = fs::read_to_string(path)
+        let text = crate::sd_file::read_to_string(path)
             .with_context(|| format!("read starred photos {}", path.display()))?;
         Ok(Self::parse(&text))
     }
 
     pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        fs::write(path, self.serialized())
+        crate::sd_file::replace(path, &self.serialized())
             .with_context(|| format!("write starred photos {}", path.display()))
     }
 

@@ -1,6 +1,6 @@
 //! Bounded reading history and key-driven time accounting, without runtime wiring.
 
-use std::{collections::BTreeMap, fs, io::Write, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{bail, Context, Result};
 
@@ -265,52 +265,17 @@ impl ReadingStats {
     /// Falls back to the `.BAK` copy left by a save interrupted between renames.
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let backup = path.with_extension("BAK");
-        let source = if !path.exists() && backup.is_file() {
-            backup.as_path()
-        } else {
-            path
-        };
-        let text = fs::read_to_string(source)
-            .with_context(|| format!("read reading stats {}", source.display()))?;
+        let text = crate::sd_file::read_to_string(path)
+            .with_context(|| format!("read reading stats {}", path.display()))?;
         Self::parse(&text)
     }
 
-    /// FAT cannot rename onto an existing file, so the old file waits as `.BAK`
-    /// until the new one is in place, as in the Reader's state files.
+    /// FAT cannot rename onto an existing file, so `crate::sd_file::replace`
+    /// moves the old file to `.BAK` until the new one is in place.
     pub fn save_to_path(&mut self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        let temporary = path.with_extension("TMP");
-        let backup = path.with_extension("BAK");
-        if temporary == path || backup == path {
-            bail!("reading stats destination must differ from its TMP and BAK paths");
-        }
-        let saved = (|| -> std::io::Result<()> {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)?;
-            file.write_all(self.serialized().as_bytes())?;
-            file.sync_all()?;
-            drop(file);
-            let _ = fs::remove_file(&backup);
-            let replacing = path.is_file();
-            if replacing {
-                fs::rename(path, &backup)?;
-            }
-            if let Err(error) = fs::rename(&temporary, path) {
-                if replacing {
-                    let _ = fs::rename(&backup, path);
-                }
-                return Err(error);
-            }
-            let _ = fs::remove_file(&backup);
-            Ok(())
-        })();
-        if saved.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        saved.with_context(|| format!("save reading stats {}", path.display()))?;
+        crate::sd_file::replace(path, &self.serialized())
+            .with_context(|| format!("save reading stats {}", path.display()))?;
         self.mark_saved();
         Ok(())
     }
@@ -441,7 +406,7 @@ impl ReadingClock {
 mod tests {
     use super::*;
     use std::{
-        io,
+        fs, io,
         path::PathBuf,
         sync::atomic::{AtomicUsize, Ordering},
     };
@@ -949,10 +914,13 @@ mod tests {
         stats.save_to_path(&path).unwrap();
         assert!(!stats.has_unsaved());
         assert!(!path.with_extension("TMP").exists());
+        assert!(!path.with_extension("BAK").exists());
         assert_eq!(ReadingStats::load_from_path(&path).unwrap(), stats);
         stats.mark_finished("Café.txt");
         stats.save_to_path(&path).unwrap();
         assert!(!stats.has_unsaved());
+        assert!(!path.with_extension("TMP").exists());
+        assert!(!path.with_extension("BAK").exists());
         assert_eq!(
             ReadingStats::load_from_path(path).unwrap().books_finished(),
             1
@@ -1009,20 +977,18 @@ mod tests {
     }
 
     #[test]
-    fn stale_tmp_file_fails_safely_is_removed_and_allows_retry() {
+    fn stale_tmp_file_is_discarded_and_the_save_succeeds() {
         let root = TempRoot::new();
         let path = root.stats_path();
         fs::write(&path, "original").unwrap();
         fs::write(path.with_extension("TMP"), "interrupted save").unwrap();
         let mut stats = ReadingStats::default();
         stats.record(0, 60, 1, None);
-        assert!(stats.save_to_path(&path).is_err());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
-        assert!(stats.has_unsaved());
-        assert!(!path.with_extension("TMP").exists());
         stats.save_to_path(&path).unwrap();
-        assert_eq!(ReadingStats::load_from_path(&path).unwrap(), stats);
         assert!(!stats.has_unsaved());
+        assert!(!path.with_extension("TMP").exists());
+        assert!(!path.with_extension("BAK").exists());
+        assert_eq!(ReadingStats::load_from_path(&path).unwrap(), stats);
     }
 
     #[test]
@@ -1073,7 +1039,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn stale_tmp_symlink_cannot_overwrite_original() {
+    fn stale_tmp_symlink_is_discarded_without_writing_through_it() {
         use std::os::unix::fs::symlink;
         let root = TempRoot::new();
         let path = root.stats_path();
@@ -1081,12 +1047,12 @@ mod tests {
         symlink(&path, path.with_extension("TMP")).unwrap();
         let mut stats = ReadingStats::default();
         stats.mark_finished("book");
-        assert!(stats.save_to_path(&path).is_err());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
-        assert!(stats.has_unsaved());
-        assert!(!path.with_extension("TMP").exists());
-        stats.save_to_path(path).unwrap();
+        stats.save_to_path(&path).unwrap();
+        // The stale link is removed before any write, so it cannot redirect it.
         assert!(!stats.has_unsaved());
+        assert!(!path.with_extension("TMP").exists());
+        assert!(!path.with_extension("BAK").exists());
+        assert_eq!(ReadingStats::load_from_path(&path).unwrap(), stats);
     }
 
     #[test]

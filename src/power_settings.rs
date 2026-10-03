@@ -1,7 +1,7 @@
 //! Power preferences kept on the SD card: the auto-sleep delay and which keys
 //! wake the device from sleep.
 
-use std::{fs, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 use anyhow::{bail, Context, Result};
 
@@ -176,7 +176,7 @@ impl PowerPreferences {
 
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let text = fs::read_to_string(path)
+        let text = crate::sd_file::read_to_string(path)
             .with_context(|| format!("read power config {}", path.display()))?;
         Self::parse(&text)
     }
@@ -213,7 +213,7 @@ impl PowerPreferences {
 
     pub fn save_to_path(self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        fs::write(path, self.serialized())
+        crate::sd_file::replace(path, &self.serialized())
             .with_context(|| format!("write power config {}", path.display()))
     }
 

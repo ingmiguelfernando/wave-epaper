@@ -3,7 +3,7 @@
 //! One sample every 15 minutes, timestamped in RTC minutes since 2000, covers
 //! the last week. The loop saves it in batches to spare SD writes.
 
-use std::{fs, path::Path};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
@@ -45,14 +45,14 @@ impl BatteryLog {
 
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let text = fs::read_to_string(path)
+        let text = crate::sd_file::read_to_string(path)
             .with_context(|| format!("read battery log {}", path.display()))?;
         Ok(Self::parse(&text))
     }
 
     pub fn save_to_path(&mut self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        fs::write(path, self.serialized())
+        crate::sd_file::replace(path, &self.serialized())
             .with_context(|| format!("write battery log {}", path.display()))?;
         self.unsaved = 0;
         Ok(())

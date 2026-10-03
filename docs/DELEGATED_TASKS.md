@@ -326,7 +326,16 @@ The Reader already replaces its files safely.
 **Tests:** create; replace leaving no `.TMP` or `.BAK`; the `.BAK` fallback;
 a failed rename keeps the original; one round trip per settings file.
 
-**Status:** not started.
+**Status:** done on `side-tasks-3` (2026-10-04). Added `src/sd_file.rs` with
+  `replace` (the `atomic_replace_text` steps: write `.TMP`, old to `.BAK`,
+  rename in, delete; restores `.BAK` when the last rename fails) and
+  `read_to_string` with the `.BAK` fallback. `weather_config`,
+  `power_settings`, `app/display`, `battery_log`, `photos` (starred) and
+  `reading_stats` save and load through it; `reading_stats` dropped its own
+  swap and its save tests assert no leftover `.TMP`/`.BAK`. Host tests green
+  (531) with 12 new helper tests, fmt and diff checks clean. Device: change
+  each settings file from its screen and pull the power mid-save; boot must
+  recover from `.BAK`.
 
 ### D16: One module for calendar dates
 
