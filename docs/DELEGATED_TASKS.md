@@ -326,7 +326,15 @@ task builds and tests the counting and the file only: no UI or `main.rs`.
 morning case), finished books, the file round trip and trimming, and the clock
 with gaps shorter and longer than 2 minutes.
 
-**Status:** not started.
+**Status:** implemented locally on `side-tasks-2` (2026-10-03), D11 only.
+  Added `reading_stats.rs` and library registration; Phase 5 wiring remains pending.
+  Gregorian Unix days, saturating totals, seven-day chart and morning streak tested.
+  Latest 400 days and 200 last-touched books; file order preserves book recency.
+  UTF-8 paths validated; duplicates replace totals; parsed/loaded state is clean.
+  Clock retains fractions and pre-idle eligible time, ignores regressing timestamps.
+  Host tests: 475 pass (37 new); stable fmt, editor errors and diff checks pass.
+  Saves sync STATS.TMP then rename, retaining original/dirty state on failure;
+  firmware/device checks pending: SD replacement support and batched saves after wiring.
 
 ## Round 1 tasks (done in v0.8.1)
 

@@ -38,6 +38,7 @@ pub mod power_key_menu;
 pub mod power_settings;
 pub mod radio_burst;
 pub mod reader;
+pub mod reading_stats;
 pub mod regional;
 pub mod rtc;
 pub mod rtc_alarm_interrupt;
