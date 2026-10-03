@@ -32,9 +32,14 @@ pub struct PhotoJob {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PhotoJobResult {
-    Ready { key: u32 },
+    Ready {
+        key: u32,
+    },
     /// `reason` completes a sentence that starts with the file name.
-    Failed { key: u32, reason: String },
+    Failed {
+        key: u32,
+        reason: String,
+    },
 }
 
 /// One thread at a time works through the queue, then exits.
@@ -92,17 +97,17 @@ impl PhotoWorker {
         let queue = Arc::clone(&self.queue);
         let sender = self.sender.clone();
         let (photos, cache) = (self.photos.clone(), self.cache.clone());
-        let spawned = std::thread::Builder::new()
+        let builder = std::thread::Builder::new()
             .name("photos".into())
-            .stack_size(PHOTO_WORKER_STACK_BYTES)
-            .spawn(move || loop {
-                let Some(job) = lock(&queue).pop_front() else {
-                    break;
-                };
-                if sender.send(prepare(&photos, &cache, &job)).is_err() {
-                    break;
-                }
-            });
+            .stack_size(PHOTO_WORKER_STACK_BYTES);
+        let spawned = spawn_on_second_core(builder, move || loop {
+            let Some(job) = lock(&queue).pop_front() else {
+                break;
+            };
+            if sender.send(prepare(&photos, &cache, &job)).is_err() {
+                break;
+            }
+        });
         match spawned {
             Ok(thread) => self.thread = Some(thread),
             Err(error) => log::warn!("rustmix-wave=photo-worker status=failed error={error}"),
@@ -112,6 +117,36 @@ impl PhotoWorker {
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The main task owns core 0; on core 1 a decode never delays button polling.
+#[cfg(target_os = "espidf")]
+fn spawn_on_second_core<F>(builder: std::thread::Builder, task: F) -> io::Result<JoinHandle<()>>
+where
+    F: FnOnce() + Send + 'static,
+{
+    use esp_idf_svc::hal::{cpu::Core, task::thread::ThreadSpawnConfiguration};
+
+    let previous = ThreadSpawnConfiguration::get().unwrap_or_default();
+    let pinned = ThreadSpawnConfiguration {
+        priority: 1,
+        pin_to_core: Some(Core::Core1),
+        ..Default::default()
+    };
+    if let Err(error) = pinned.set() {
+        log::warn!("rustmix-wave=photo-worker status=unpinned error={error}");
+    }
+    let spawned = builder.spawn(task);
+    let _ = previous.set();
+    spawned
+}
+
+#[cfg(not(target_os = "espidf"))]
+fn spawn_on_second_core<F>(builder: std::thread::Builder, task: F) -> io::Result<JoinHandle<()>>
+where
+    F: FnOnce() + Send + 'static,
+{
+    builder.spawn(task)
 }
 
 /// Decode one photo and write its cache file, unless that file exists.

@@ -8,6 +8,7 @@ use crate::{
     buttons::ButtonEvent,
     calendar::{CalendarEditorOutcome, CalendarUiRequest, CalendarUiState},
     dictionary::DictionaryUiState,
+    framebuffer::FrameBuffer,
     imu::ImuReading,
     imu_events::{ImuControlOutcome, ImuDetectedEvent, ImuEventBridge},
     lua_runtime::LuaRuntimeUiState,
@@ -131,6 +132,9 @@ pub struct AppState {
     pub sleep_screen: SleepScreenSettings,
     pub sleep_screen_ui: SleepScreenUiState,
     sleep_preview_requested: bool,
+    /// The next sleep picture, shown on Settings › Sleep screen until a key.
+    pub sleep_preview: Option<FrameBuffer>,
+    full_refresh_requested: bool,
     /// Battery use across the most recent sleep, for Settings › Power.
     pub last_sleep: Option<SleepReport>,
     pub light_sleep: LightSleepShare,
@@ -178,6 +182,8 @@ impl Default for AppState {
             sleep_screen: SleepScreenSettings::default(),
             sleep_screen_ui: SleepScreenUiState::default(),
             sleep_preview_requested: false,
+            sleep_preview: None,
+            full_refresh_requested: false,
             last_sleep: None,
             light_sleep: LightSleepShare::default(),
         }
@@ -395,6 +401,7 @@ impl AppState {
         }
         if target == ScreenRoute::SleepScreen {
             self.sleep_screen_ui = SleepScreenUiState::default();
+            self.sleep_preview = None;
         }
         if target == ScreenRoute::Calendar {
             self.initialize_calendar_if_needed();
@@ -916,7 +923,12 @@ impl AppState {
     }
 
     /// Rows of Settings › Sleep screen, each opening a list of its values.
+    /// Any key closes the preview.
     fn apply_sleep_screen(&mut self, event: ButtonEvent) {
+        if self.sleep_preview.take().is_some() {
+            self.full_refresh_requested = true;
+            return;
+        }
         let setting = self.sleep_screen_ui.setting();
         let (options, current) = self.sleep_screen.options(setting);
         if let Some(highlighted) = self.sleep_screen_ui.picker {
@@ -947,18 +959,37 @@ impl AppState {
         }
     }
 
-    /// BOOT short press on Settings › Sleep screen asks for a preview.
+    /// BOOT short press on Settings › Sleep screen asks for a preview, or
+    /// closes the one on screen.
     pub fn apply_sleep_screen_boot_short_press(&mut self) -> bool {
-        let idle = self.sleep_screen_ui.picker.is_none();
-        if self.router.current() == ScreenRoute::SleepScreen && idle {
-            self.sleep_preview_requested = true;
-            return true;
+        if self.router.current() != ScreenRoute::SleepScreen {
+            return false;
         }
-        false
+        if self.sleep_preview.take().is_some() {
+            self.full_refresh_requested = true;
+        } else if self.sleep_screen_ui.picker.is_none() {
+            self.sleep_preview_requested = true;
+        } else {
+            return false;
+        }
+        true
     }
 
+    /// main.rs answers with `show_sleep_preview`.
     pub fn take_sleep_preview_request(&mut self) -> bool {
         std::mem::take(&mut self.sleep_preview_requested)
+    }
+
+    pub fn show_sleep_preview(&mut self, picture: FrameBuffer) {
+        self.sleep_preview = Some(picture);
+        self.full_refresh_requested = true;
+    }
+
+    /// True once after a full-screen picture appeared or went away; a full
+    /// refresh then clears its ghost.
+    pub fn take_full_refresh(&mut self) -> bool {
+        let photos = self.photos.take_full_refresh();
+        std::mem::take(&mut self.full_refresh_requested) || photos
     }
 
     /// Apply one Audio-overview event. Hardware requests are returned to
@@ -1017,6 +1048,11 @@ impl AppState {
             return;
         }
         if self.router.current() == ScreenRoute::Power && self.power_ui.picker.take().is_some() {
+            return;
+        }
+        if self.router.current() == ScreenRoute::SleepScreen && self.sleep_preview.is_some() {
+            self.sleep_preview = None;
+            self.full_refresh_requested = true;
             return;
         }
         if self.router.current() == ScreenRoute::SleepScreen

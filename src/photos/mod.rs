@@ -207,7 +207,13 @@ pub(crate) mod test_photos {
     /// A grey JPEG, dark on its left half, with an optional EXIF orientation.
     pub fn grey_jpeg(width: u16, height: u16, orientation: Option<u16>) -> Vec<u8> {
         let pixels = half_dark(width, height, 1);
-        encode(&pixels, (width, height), ColorType::Luma, orientation, false)
+        encode(
+            &pixels,
+            (width, height),
+            ColorType::Luma,
+            orientation,
+            false,
+        )
     }
 
     pub fn color_jpeg(width: u16, height: u16) -> Vec<u8> {

@@ -23,10 +23,14 @@ use crate::{
 
 const ROWS_TOP: i32 = 184;
 
-pub fn render_sleep_screen(
+pub fn render_sleep_settings(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
+    if let Some(picture) = &state.sleep_preview {
+        display.copy_native_frame(picture);
+        return Ok(());
+    }
     let settings = state.sleep_screen;
     let starred = format!("{} starred", state.photos.starred.len());
     draw_header(display, state.display, "SLEEP SCREEN", "WHILE WAVE SLEEPS")?;
@@ -114,12 +118,34 @@ mod tests {
         assert_eq!(state.sleep_screen.fit, PhotoFit::Whole);
         assert_eq!(state.photos.fit, PhotoFit::Whole);
 
-        assert!(state.apply_sleep_screen_boot_short_press());
-        assert!(state.take_sleep_preview_request());
         state.apply(ButtonEvent::Select);
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::SleepScreen);
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
+
+    #[test]
+    fn boot_previews_the_next_sleep_picture_until_a_key() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::SleepScreen);
+        assert!(state.apply_sleep_screen_boot_short_press());
+        assert!(state.take_sleep_preview_request());
+
+        let picture = FrameBuffer::new_white();
+        state.show_sleep_preview(picture.clone());
+        assert!(state.take_full_refresh());
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        assert!(frame == picture);
+        state.apply(ButtonEvent::Select);
+        assert!(state.sleep_preview.is_none());
+        assert_eq!(state.sleep_screen_ui.picker, None);
+        assert!(state.take_full_refresh());
+
+        state.show_sleep_preview(picture);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::SleepScreen);
+        assert!(state.sleep_preview.is_none());
     }
 }

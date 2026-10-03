@@ -79,6 +79,10 @@ mod firmware {
             PanelGlobalReason, PanelRefreshCoordinator, PanelRefreshPlan, PanelRefreshRequest,
             PANEL_PARTIAL_REFRESH_LIMIT,
         },
+        photos::{
+            worker::{PhotoJobResult, PhotoWorker},
+            StarredPhotos, PHOTOS_DIRECTORY, PHOTO_CACHE_DIRECTORY, STARRED_PATH,
+        },
         power::{Axp2101, PowerSnapshot},
         power_key::{
             PowerKeyEvent, SleepWakeGuard, SleepWakeGuardDecision, POWER_KEY_POLL_MS,
@@ -97,6 +101,7 @@ mod firmware {
             light_sleep_budget, LightSleepShare, SleepModeState, SleepReport, SleepWakeCause,
             LIGHT_SLEEP_MAX,
         },
+        sleep_screen::{choose_sleep_picture, SleepScreenSettings, SLEEP_SCREEN_CONFIG_PATH},
         storage::{
             StorageBrowser, StorageSnapshot, StorageUiOutcome, SDMMC_COMMAND_TIMEOUT_MS,
             SDMMC_STABLE_SPEED_KHZ, SD_MOUNT_POINT, STORAGE_IO_RETRY_ATTEMPTS,
@@ -390,7 +395,16 @@ mod firmware {
                 Ok(log) => state.battery_log = log,
                 Err(error) => info!("rustmix-wave=battery-log status=new error={error:#}"),
             }
+            match StarredPhotos::load_from_path(STARRED_PATH) {
+                Ok(starred) => state.photos.starred = starred,
+                Err(error) => info!("rustmix-wave=starred-photos status=none error={error:#}"),
+            }
+            match SleepScreenSettings::load_from_path(SLEEP_SCREEN_CONFIG_PATH) {
+                Ok(settings) => state.sleep_screen = settings,
+                Err(error) => info!("rustmix-wave=sleep-screen status=default error={error:#}"),
+            }
         }
+        state.photos.fit = state.sleep_screen.fit;
         let reader_persistence = state.reader.load_persistent_state();
         state.reader.refresh_library();
         if _mounted_sd.is_some() {
@@ -431,6 +445,8 @@ mod firmware {
             reader_persistence.warning.as_deref().unwrap_or("none")
         );
         let mut sleep_images = SleepImageCatalog::default();
+        let mut photo_worker = PhotoWorker::new(PHOTOS_DIRECTORY, PHOTO_CACHE_DIRECTORY);
+        let mut photo_jobs_queued = false;
         let mut sleep_mode = SleepModeState::default();
         let mut sleep_wake_guard = SleepWakeGuard::default();
         let mut sleep_wake_guard_started_at: Option<Instant> = None;
@@ -1285,8 +1301,11 @@ mod firmware {
                                 state.update_audio_snapshot(runtime.snapshot());
                                 log_audio_snapshot(&state.audio);
                             }
-                            let selection =
-                                sleep_images.select_random(unsafe { sys::esp_random() });
+                            let selection = next_sleep_picture(
+                                &state,
+                                &mut sleep_images,
+                                sleep_mode.last_image(),
+                            );
                             log_sleep_image_selection(&selection);
                             if radio.phase() != RadioPhase::Off {
                                 if !radio_off(
@@ -1533,6 +1552,64 @@ mod firmware {
                 last_reader_tick = Instant::now();
             }
 
+            // Photos are prepared in the background while the gallery is open.
+            let photos_open = !sleep_mode.is_sleeping()
+                && matches!(
+                    state.active_route(),
+                    ScreenRoute::Photos | ScreenRoute::PhotoViewer
+                );
+            if photos_open && state.photos.delete_request().is_none() {
+                if state.photos.take_jobs_changed() || !photo_jobs_queued {
+                    photo_worker.set_jobs(state.photos.cache_jobs());
+                    photo_jobs_queued = true;
+                }
+            } else if core::mem::take(&mut photo_jobs_queued) {
+                photo_worker.set_jobs(Vec::new());
+            }
+            let mut photos_changed = false;
+            for result in photo_worker.poll() {
+                if let PhotoJobResult::Failed { key, reason } = &result {
+                    warn!("rustmix-wave=photo-prepare status=failed key={key:08X} {reason}");
+                }
+                photos_changed |= state.photos.on_job_result(&result);
+            }
+            // The worker may be reading the photo, so delete it once idle.
+            if !photo_worker.is_busy() {
+                if let Some(name) = state.photos.delete_request().map(str::to_string) {
+                    let path = state.photos.photos_directory().join(&name);
+                    let deleted = std::fs::remove_file(path);
+                    match &deleted {
+                        Ok(()) => info!("rustmix-wave=photo-delete file={name}"),
+                        Err(error) => warn!("rustmix-wave=photo-delete file={name} error={error}"),
+                    }
+                    state.finish_photo_delete(deleted.is_ok());
+                    photos_changed = true;
+                }
+            }
+            if state.photos.take_starred_changed() {
+                match state.photos.starred.save_to_path(STARRED_PATH) {
+                    Ok(()) => info!(
+                        "rustmix-wave=starred-photos-write status=saved count={}",
+                        state.photos.starred.len()
+                    ),
+                    Err(error) => warn!("rustmix-wave=starred-photos-write error={error:#}"),
+                }
+            }
+            if photos_changed && photos_open && state.panel_awake {
+                let request = if state.take_full_refresh() {
+                    RefreshRequest::ForceGlobalManual
+                } else {
+                    RefreshRequest::Normal
+                };
+                refresh_screen(
+                    &mut panel,
+                    &mut frame,
+                    &mut state,
+                    &mut panel_refresh,
+                    request,
+                )?;
+            }
+
             // The IMU only runs on the motion screens and in motion games.
             let route = state.active_route();
             let imu_sampling =
@@ -1665,9 +1742,13 @@ mod firmware {
                             state.active_route().marker()
                         );
                     }
-                    if woke_from_sleep || state.active_route() != previous_route {
+                    // Back may only close a list or a picture, so redraw unless on Home.
+                    if woke_from_sleep || previous_route != ScreenRoute::Home {
+                        let full_refresh = state.take_full_refresh();
                         let request = if woke_from_sleep {
                             RefreshRequest::ForceGlobalAfterWake
+                        } else if full_refresh {
+                            RefreshRequest::ForceGlobalManual
                         } else {
                             RefreshRequest::Normal
                         };
@@ -1702,7 +1783,13 @@ mod firmware {
                     } else {
                         state.apply_lua_game_boot_short_press()
                     };
-                    if calendar_agenda_context || keyboard_context || lua_game_context {
+                    let photos_context = state.apply_photos_boot_short_press()
+                        || state.apply_sleep_screen_boot_short_press();
+                    if calendar_agenda_context
+                        || keyboard_context
+                        || lua_game_context
+                        || photos_context
+                    {
                         if calendar_agenda_context {
                             info!("rustmix-wave=calendar-agenda route=selected-day outcome=opened");
                         }
@@ -1740,8 +1827,16 @@ mod firmware {
                         );
                         log_board_snapshot(state.board, state.regional);
                         log_lua_runtime_events(&mut state);
+                        if state.take_sleep_preview_request() {
+                            let previous = sleep_mode.last_image();
+                            let picture = sleep_preview(&state, &sleep_images, previous)?;
+                            state.show_sleep_preview(picture);
+                        }
+                        let full_refresh = state.take_full_refresh();
                         let request = if woke_from_sleep {
                             RefreshRequest::ForceGlobalAfterWake
+                        } else if full_refresh {
+                            RefreshRequest::ForceGlobalManual
                         } else {
                             RefreshRequest::Normal
                         };
@@ -1854,6 +1949,7 @@ mod firmware {
                 let previous_route = state.active_route();
                 let previous_display = state.display;
                 let previous_power = state.power;
+                let previous_sleep_screen = state.sleep_screen;
                 if previous_route == ScreenRoute::Files {
                     apply_storage_event(&mut storage_browser, &mut state, event);
                 } else if previous_route == ScreenRoute::Alarms {
@@ -1943,6 +2039,18 @@ mod firmware {
                         state.power.wake_keys.marker()
                     );
                 }
+                if state.sleep_screen != previous_sleep_screen {
+                    match state.sleep_screen.save_to_path(SLEEP_SCREEN_CONFIG_PATH) {
+                        Ok(()) => info!("rustmix-wave=sleep-screen-write status=saved"),
+                        Err(error) => warn!("rustmix-wave=sleep-screen-write error={error:#}"),
+                    }
+                    info!(
+                        "rustmix-wave=sleep-screen-updated source={} order={} fit={}",
+                        state.sleep_screen.source.marker(),
+                        state.sleep_screen.order.marker(),
+                        state.sleep_screen.fit.marker()
+                    );
+                }
                 if state.active_route() != previous_route {
                     info!(
                         "rustmix-wave=screen-route route={}",
@@ -1951,9 +2059,10 @@ mod firmware {
                 }
                 let reader_clear_ghost = state.take_reader_clear_ghost_request();
                 let power_key_clear_ghost = state.take_power_key_manual_refresh_request();
+                let full_refresh = state.take_full_refresh();
                 let request = if woke_from_sleep {
                     RefreshRequest::ForceGlobalAfterWake
-                } else if reader_clear_ghost || power_key_clear_ghost {
+                } else if reader_clear_ghost || power_key_clear_ghost || full_refresh {
                     RefreshRequest::ForceGlobalManual
                 } else {
                     RefreshRequest::Normal
@@ -1989,6 +2098,7 @@ mod firmware {
                 && !state.audio.playback_state.is_streaming()
                 && !(reader_open && state.reader.has_background_work())
                 && !(state.panel_awake && imu_sampling)
+                && !photo_worker.is_busy()
                 && last_activity.elapsed() >= IDLE_LIGHT_SLEEP_DELAY;
             if idle && last_usb_check.map_or(true, |at| at.elapsed() >= USB_CHECK_INTERVAL) {
                 on_usb_power = board_services
@@ -2001,7 +2111,10 @@ mod firmware {
                     WakeKeys::AnyKey => &AWAKE_WAKE_GPIOS[..],
                     WakeKeys::PowerKey => &SLEEP_WAKE_GPIOS[..],
                 };
-                sleep_wake_guard.is_armed() && light_sleep_until_wake(lines, LIGHT_SLEEP_MAX)
+                // Light sleep would stall the photo worker in the middle of an SD write.
+                !photo_worker.is_busy()
+                    && sleep_wake_guard.is_armed()
+                    && light_sleep_until_wake(lines, LIGHT_SLEEP_MAX)
             } else if idle && !on_usb_power {
                 let now = Instant::now();
                 let weather_due =
@@ -2075,6 +2188,46 @@ mod firmware {
             info!("rustmix-wave=sleep-mode-input-suppressed source={source}");
             None
         }
+    }
+
+    /// The picture for the next sleep, as set in Settings › Sleep screen.
+    fn next_sleep_picture(
+        state: &AppState,
+        folder: &mut SleepImageCatalog,
+        previous: Option<&str>,
+    ) -> SleepImageSelection {
+        let photos = &state.photos;
+        let roots = (photos.photos_directory(), photos.cache_directory());
+        let random = unsafe { sys::esp_random() };
+        choose_sleep_picture(
+            state.sleep_screen,
+            &photos.starred,
+            roots,
+            folder,
+            previous,
+            random,
+        )
+    }
+
+    /// What the next sleep would show, or the card that explains why it shows
+    /// no picture. A copy of the folder keeps its order where it was.
+    fn sleep_preview(
+        state: &AppState,
+        folder: &SleepImageCatalog,
+        previous: Option<&str>,
+    ) -> Result<FrameBuffer> {
+        let selection = next_sleep_picture(state, &mut folder.clone(), previous);
+        log_sleep_image_selection(&selection);
+        let mut picture = selection.frame;
+        if let Some(note) = selection.note.as_deref() {
+            let card = SleepCard {
+                note,
+                battery_percent: state.board.power.and_then(|power| power.battery_percent),
+                wake_hint: state.power.wake_keys.wake_hint(),
+            };
+            render_sleep_card(&mut picture, state.display, &card)?;
+        }
+        Ok(picture)
     }
 
     /// Add a battery reading to the history, saving it in batches.

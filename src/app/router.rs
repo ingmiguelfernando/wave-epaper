@@ -322,7 +322,10 @@ mod tests {
         assert_eq!(ScreenRoute::Photos.parent(), Some(ScreenRoute::Home));
         assert!(!ScreenRoute::Photos.is_placeholder());
         assert_eq!(ScreenRoute::PhotoViewer.parent(), Some(ScreenRoute::Photos));
-        assert_eq!(ScreenRoute::SleepScreen.parent(), Some(ScreenRoute::Settings));
+        assert_eq!(
+            ScreenRoute::SleepScreen.parent(),
+            Some(ScreenRoute::Settings)
+        );
         assert!(ScreenRoute::Ai.is_category());
         assert_eq!(
             ScreenRoute::CalendarAgenda.parent(),

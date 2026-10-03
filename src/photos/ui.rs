@@ -241,7 +241,11 @@ impl PhotosUiState {
             Some((width, height)) => format!("{width}\u{d7}{height}"),
             None => photo.size_label(),
         };
-        Some(format!("{} \u{b7} {size} \u{b7} {}", photo.name, photo.date_label()))
+        Some(format!(
+            "{} \u{b7} {size} \u{b7} {}",
+            photo.name,
+            photo.date_label()
+        ))
     }
 
     /// Read thumbnails for the visible page, dropping the rest.
@@ -366,6 +370,7 @@ impl PhotosUiState {
     pub fn close_viewer(&mut self) {
         self.viewer = PhotoViewer::default();
         self.viewer_open = false;
+        self.full_refresh = true;
     }
 
     fn load_viewer_frame(&mut self) {

@@ -26,7 +26,7 @@ pub mod power;
 pub mod power_key;
 pub mod reader;
 pub mod sleep_card;
-pub mod sleep_screen;
+pub mod sleep_settings;
 pub mod unit_converter;
 pub mod voice_notes;
 pub mod weather;
@@ -85,7 +85,7 @@ pub fn render_active_screen(
         ScreenRoute::Files => files::render_files(display, state),
         ScreenRoute::Display => display::render_display(display, state),
         ScreenRoute::Power => power::render_power(display, state),
-        ScreenRoute::SleepScreen => sleep_screen::render_sleep_screen(display, state),
+        ScreenRoute::SleepScreen => sleep_settings::render_sleep_settings(display, state),
         ScreenRoute::Photos => photos::render_photos(display, state),
         ScreenRoute::PhotoViewer => photos::render_photo_viewer(display, state),
         ScreenRoute::PowerKeyMenu => power_key::render_power_key_menu(display, state),
