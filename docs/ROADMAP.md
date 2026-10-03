@@ -29,6 +29,7 @@ Last updated: 2026-10-03, firmware v0.9.1.
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
+| Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | | | Ready, branch `side-tasks-3` |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -237,7 +238,8 @@ reading stats in batches (`has_unsaved`), since each save rewrites the file.
   (`date,seconds,pages`) plus per-book totals. Writes are batched every few
   minutes and before sleep.
 - **Screen.** Today, a bar chart of this week (like the battery chart), the
-  streak (days with at least 5 minutes) and books finished.
+  streak (days with at least 5 minutes) and books finished. Delegated task
+  D14 draws it; this phase adds the route and the Reader wiring.
 - Home shows `5-day streak`, and the Continue reading card shows
   `12% · 25 min today`.
 
@@ -247,7 +249,9 @@ reading stats in batches (`has_unsaved`), since each save rewrites the file.
   - Add the three-step entry from the mockup: row, then cell, then number.
   - Also a timer, auto-save, best time per difficulty and a three-level
     difficulty choice.
-- **Tetris** (new native engine).
+- **Tetris** (new native engine). Delegated tasks D12 (rules) and D13 (Zen as
+  an SD app); this phase adds Classic gravity, which needs a timer in
+  `main.rs`, and saves the best score.
   - Board: 10 × 20.
   - Modes: Zen (no gravity; pieces move only when a key is pressed) and Classic
     (slow gravity, at least 1 s per step).

@@ -9,8 +9,7 @@ with the main line. Read this file first, then
 Pull request #2 (D6 to D11) was reviewed, merged into `main` and released as
 v0.9.1. D7, D8 and D9 went in as they were; D10 and D11 are solid libraries
 with thorough tests, and D6 stopped correctly when no setting fixed the glyph.
-The `side-tasks-2` branch is deleted. Round 3 tasks will be added here with
-the next phase.
+The `side-tasks-2` branch is deleted; round 3 is in "Round 3 tasks" below.
 
 What the main developer changed at merge time:
 
@@ -148,6 +147,198 @@ Do differently next time:
 - **SD files.** Replace a file with `.TMP` then `.BAK` renames, as
   `atomic_replace_text` in `reader.rs` does; FAT cannot rename onto an
   existing file.
+
+## Round 3 tasks
+
+Branch `side-tasks-3` from the latest `main` (v0.9.1); pull request title
+`Side tasks 3`. Order: D12, D13, D14, D15, D16, D17.
+
+The main line builds Phase 3b (sleep screen modes) at the same time.
+
+- Do not edit: `src/sleep_mode.rs`, `src/sleep_screen.rs`,
+  `src/sleep_images.rs`, `src/radio_burst.rs`, `src/app/screens/sleep_*.rs`,
+  `docs/ROADMAP.md`, `docs/architecture.md`.
+- Keep edits small and local: `src/main.rs`, `src/app/state.rs`,
+  `src/app/router.rs`, `src/app/menu.rs`, `src/app/mod.rs`,
+  `src/app/preview.rs`, `src/app/screens/home.rs`, `src/lib.rs`,
+  `README.md`, `Cargo.toml`.
+
+### D12: Tetris engine (library only)
+
+**Why.** Phase 6 adds Tetris (ROADMAP › Phase 6, mockup "Tetris"). This task
+builds and tests the game rules only: no drawing and no SD app.
+
+**Add `src/games/tetris.rs`**, registered in `src/games/mod.rs`:
+
+- Board 10 × 20; the seven pieces I, O, T, S, Z, J and L, four rotations each.
+- `TetrisMode { Zen, Classic }`, `TetrisAction { Left, Right, Rotate, Drop }`
+  and `TetrisGame::new(mode, seed: u32)`.
+- Pieces come from a 7-bag (each piece once in every seven), shuffled by a
+  small seeded xorshift in the module; no new dependency.
+- A new piece spawns centred in the top two rows. If it overlaps, the game is
+  over and every action does nothing.
+- `apply(action)`: Left and Right move one column when free; Rotate turns
+  clockwise and, when blocked, tries the column offsets 0, −1, +1, −2, +2;
+  Drop moves the piece to the bottom and locks it.
+- Locking clears full rows, adds the score and spawns the next piece.
+- `step()` moves the piece down one row and locks it when it cannot move.
+  Zen never calls it. Classic calls it every `GRAVITY_MS = 1000` at every
+  level, because e-paper cannot refresh faster.
+- Score 100, 300, 500 or 800 times the level for 1 to 4 rows; level is
+  `1 + lines / 10`.
+- Queries for drawing: `cell(column, row)` for locked cells,
+  `active_cells()`, `ghost_cells()` (where Drop would land), `next()`,
+  `score()`, `lines()`, `level()` and `is_over()`.
+
+**Tests:** each piece rotates through four states and back; walls and locked
+cells block moves; the kicks; one to four cleared rows with their scores and
+the level; each piece once per bag; the same seed gives the same pieces; the
+ghost; game over at spawn; Drop locks at once.
+
+**Status:** not started.
+
+### D13: Tetris Zen as an SD app
+
+**Why.** With D12, Tetris can run through the SD game path that Sudoku and
+Minesweeper use. Zen has no gravity, so it needs no timer; Classic needs one
+in `main.rs` and stays with the main line.
+
+**Change.**
+
+- `src/lua_runtime/event_bridge.rs`: `tetris.init('zen', <seed>)` loads a
+  `TetrisGame`, next to `sudoku.init` and `minesweeper.init`.
+- Draw into `NativeGameCanvas` like `minesweeper.rs` does (`render_initial`,
+  `apply_button_and_render`, `apply_boot_short_press_and_render`), following
+  the mockup "Tetris":
+  - the board in 30 px cells, the dotted ghost, Next, Score, Lines, Level and
+    Best (kept in memory until Phase 6 saves it);
+  - title `Tetris · Zen`, footer `▲▼ move  ● rotate  BOOT drop`;
+  - ▲ moves left, ▼ right, ● rotates and a short BOOT press drops. Game over
+    shows the score, and ● starts a new game.
+- Stay under `MAX_GAME_DRAW_COMMANDS` (256): draw each row's run of filled
+  cells as one rectangle. Invalidate only what changed (at most
+  `MAX_DIRTY_REGIONS` regions), and request a full refresh every 20 locked
+  pieces to clear ghosting.
+- `examples/sd-card/RUSTMIX/APPS/TETRIS/` with `APP.TOM`, `MAIN.LUA` and
+  `README.TXT`, like `MINES`; add Tetris to the Games section of the User
+  Guide.
+- A `tetris` preview.
+
+**Done when:** the preview matches the mockup's layout; tests cover the key
+mapping, the command limit on a nearly full board and the dirty regions; the
+firmware build is green. Device check: play a game from Games › SD Games.
+
+**Status:** not started.
+
+### D14: Reading Stats screen (drawing only)
+
+**Why.** Phase 5 shows reading statistics (mockup "Reading Stats"). This task
+draws the screen from a `ReadingStats`; the main line wires it to the Reader
+later.
+
+**Change.**
+
+- `src/reading_stats.rs`, with tests:
+  - `best_streak(&self) -> u32` over the retained days;
+  - `total(&self, first: u32, last: u32) -> DayStats`, both days included;
+  - `book(&self, path: &str) -> Option<DayStats>`, a book's totals.
+- `src/app/screens/reading_stats.rs`:
+  `render_reading_stats(display, preferences, stats, today, current)`, where
+  `current` is an optional `CurrentBook { title, path, percent }`. No route
+  yet: previews call it directly, like the sleep layouts.
+- Top to bottom, as in the mockup:
+  - header `READING STATS` / `THIS WEEK`;
+  - Today (minutes and pages), Streak (current and best), This week (time,
+    and the change against the week before);
+  - minutes per day for the last seven days as bars, labelled with weekday
+    initials;
+  - the last 12 weeks as 12 × 7 squares, filled for days with 5 minutes or
+    more;
+  - this year: pages, hours, pages per hour, and books finished (all retained
+    books; finish dates are not stored);
+  - the current book: time read, percent, and time left at that pace
+    (`read × (100 − percent) / percent`) when the percent is known;
+  - footer `HOLD BOOT BACK`; the week, month and year ranges come with the
+    wiring.
+- Percentages in Body size (Known Issues › Percent glyph).
+- Previews `reading-stats` (a month of sample reading) and
+  `reading-stats-empty`.
+
+**Done when:** both previews look like the mockup at every font family and
+size, and the tests pass.
+
+**Status:** not started.
+
+### D15: Safe SD writes for settings files
+
+**Why.** `WEATHER.TXT`, `POWER.TXT`, `DISPLAY.TXT`, `BATTERY.TXT` and
+`STARRED.TXT` are written with a plain `fs::write`, so a power cut during the
+write can leave an empty file; `WEATHER.TXT` holds the user's coordinates.
+The Reader already replaces its files safely.
+
+**Change.**
+
+- New `src/sd_file.rs`, registered in `src/lib.rs`:
+  - `replace(path: &Path, text: &str) -> io::Result<()>`: write and sync
+    `.TMP`, move the old file to `.BAK`, rename `.TMP` into place, delete
+    `.BAK`; if that rename fails, put `.BAK` back. These are the steps of
+    `atomic_replace_text` in `reader.rs`, since FAT cannot rename onto an
+    existing file.
+  - `read_to_string(path: &Path) -> io::Result<String>`: the file, or its
+    `.BAK` when the file is missing after an interrupted write.
+- Use both in `weather_config.rs`, `power_settings.rs`, `app/display.rs`,
+  `battery_log.rs`, `photos/mod.rs` (starred list) and `reading_stats.rs`,
+  which drops its own swap; update its save tests to the helper's steps.
+- Leave `reader.rs`, `calendar.rs`, `voice_note_metadata.rs`,
+  `wifi_transfer.rs` and `photos/cache.rs` as they are. `sleep_screen.rs`
+  moves to the helper with Phase 3b.
+
+**Tests:** create; replace leaving no `.TMP` or `.BAK`; the `.BAK` fallback;
+a failed rename keeps the original; one round trip per settings file.
+
+**Status:** not started.
+
+### D16: One module for calendar dates
+
+**Why.** The same date arithmetic lives in four places: `rtc.rs` (private
+helpers), `weather.rs` (`weekday_of`), `reading_stats.rs` (`parse_day`,
+`day_label`) and `screens/home.rs` (weekday and month names).
+
+**Change.**
+
+- New `src/civil_date.rs`, registered in `src/lib.rs`:
+  `days_from_civil(year, month, day) -> i64`,
+  `civil_from_days(days: i64) -> (i64, u8, u8)`, `weekday(days: i64) -> u8`
+  (0 is Sunday), and the `WEEKDAY_SHORT` and `MONTH_SHORT` names.
+- Use it in those four places. Their public functions keep their behaviour,
+  and their existing tests pass unchanged.
+
+**Tests:** 1970-01-01, 2000-02-29, 2026-10-03 (a Saturday), the last day of
+every month in a leap and a common year, and a round trip across several
+centuries.
+
+**Status:** not started.
+
+### D17: Boot log markers that match the firmware
+
+**Why.** `main.rs` logs about 90 `rustmix-wave=*-ready` markers at boot. Some
+still describe upstream features or old counts (Known Issues › Inherited
+diagnostic wording).
+
+**Change.**
+
+- In the boot block of `main.rs` only, remove the markers that announce
+  features Wave no longer has or that only restate a design (BLE, tilt
+  games, ELF-only releases, old category counts). Keep those that report
+  what happened at boot (a file loaded, a device found).
+- Nothing in `scripts/`, `.github/` or `docs/` reads them today; check again
+  with `git grep` before removing one.
+- Remove the Known Issues section once nothing stale is left.
+
+**Done when:** no boot marker names a removed feature or a wrong count, and
+the firmware build is green. Device check: the serial log at boot.
+
+**Status:** not started.
 
 ## Round 2 tasks (done in v0.9.1)
 
