@@ -24,7 +24,8 @@ use crate::{
     storage::StorageSnapshot,
     unit_converter::UnitConverterUiState,
     voice_notes::{VoiceNotesUiRequest, VoiceNotesUiState},
-    weather::WeatherSnapshot,
+    weather::{WeatherFetchState, WeatherSnapshot},
+    weather_config::{WeatherConfig, WeatherSetting},
     wifi_transfer::{WifiTransferSnapshot, WifiTransferState, WifiTransferUiRequest},
 };
 
@@ -38,8 +39,6 @@ use super::{
 pub const AUDIO_ACTION_COUNT: usize = 6;
 /// Number of selectable rows in the Display settings screen.
 pub const DISPLAY_ACTION_COUNT: usize = DisplaySetting::ALL.len();
-/// Number of selectable rows in the Weather overview screen.
-pub const WEATHER_ACTION_COUNT: usize = 2;
 /// Start/stop portal and provisioning-details rows on the Network screen.
 pub const NETWORK_ACTION_COUNT: usize = 2;
 
@@ -71,7 +70,22 @@ impl SleepScreenUiState {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Settings › Weather cursor and the highlighted choice of an open list.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WeatherSettingsUiState {
+    pub selected: usize,
+    pub picker: Option<usize>,
+}
+
+impl WeatherSettingsUiState {
+    #[must_use]
+    pub fn setting(self) -> WeatherSetting {
+        WeatherSetting::ALL[self.selected % WeatherSetting::ALL.len()]
+    }
+}
+
+// Not `Eq`: the weather location is a pair of `f64` coordinates.
+#[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
     pub home_selected: usize,
     category_selected: [usize; CATEGORY_COUNT],
@@ -103,14 +117,15 @@ pub struct AppState {
     pub network: NetworkSnapshot,
     /// Cached weather snapshot retained across transient HTTP failures.
     pub weather: WeatherSnapshot,
+    /// WEATHER.TXT; Settings › Weather edits it and main.rs saves it.
+    pub weather_config: Option<WeatherConfig>,
+    pub weather_settings_ui: WeatherSettingsUiState,
     /// SD-backed alarm schedules and active-alarm UI snapshot.
     pub alarms: AlarmSnapshot,
     /// Playback-only ES8311 diagnostics snapshot.
     pub audio: AudioSnapshot,
     /// Selected Audio-overview action.
     pub audio_action_selected: usize,
-    /// Selected Weather-overview action: refresh or details.
-    pub weather_action_selected: usize,
     /// Selected Network action: portal toggle or provisioning details.
     pub network_action_selected: usize,
     /// Compact LAN portal lifecycle snapshot.
@@ -166,10 +181,11 @@ impl Default for AppState {
             storage: StorageSnapshot::default(),
             network: NetworkSnapshot::default(),
             weather: WeatherSnapshot::default(),
+            weather_config: None,
+            weather_settings_ui: WeatherSettingsUiState::default(),
             alarms: AlarmSnapshot::default(),
             audio: AudioSnapshot::default(),
             audio_action_selected: 0,
-            weather_action_selected: 0,
             network_action_selected: 0,
             wifi_transfer: WifiTransferSnapshot::default(),
             wifi_transfer_request: None,
@@ -211,6 +227,8 @@ impl AppState {
             self.apply_photos(route, event);
         } else if route == ScreenRoute::SleepScreen {
             self.apply_sleep_screen(event);
+        } else if route == ScreenRoute::WeatherSettings {
+            self.apply_weather_settings(event);
         } else if route == ScreenRoute::PowerKeyMenu {
             self.apply_power_key_menu(event);
         } else if route == ScreenRoute::Calendar {
@@ -259,23 +277,15 @@ impl AppState {
             // consistently handled by the dedicated GPIO0 BOOT long press.
         } else {
             match (route, event) {
-                (ScreenRoute::Weather, ButtonEvent::Up) => {
-                    self.weather_action_selected = self
-                        .weather_action_selected
-                        .checked_sub(1)
-                        .unwrap_or(WEATHER_ACTION_COUNT - 1);
-                }
                 (ScreenRoute::Weather, ButtonEvent::Down) => {
-                    self.weather_action_selected =
-                        (self.weather_action_selected + 1) % WEATHER_ACTION_COUNT;
+                    self.router.navigate_to(ScreenRoute::WeatherDetails);
                 }
-                (ScreenRoute::Weather, ButtonEvent::Select) => {
+                (ScreenRoute::WeatherDetails, ButtonEvent::Up) => {
+                    self.router.navigate_to(ScreenRoute::Weather);
+                }
+                (ScreenRoute::Weather | ScreenRoute::WeatherDetails, ButtonEvent::Select) => {
                     self.note_select_press();
-                    if self.weather_action_selected == 0 {
-                        self.weather_refresh_requested = true;
-                    } else {
-                        self.router.navigate_to(ScreenRoute::WeatherDetails);
-                    }
+                    self.weather_refresh_requested = self.weather_enabled();
                 }
                 (ScreenRoute::Clock, ButtonEvent::Select) => {
                     self.note_select_press();
@@ -340,8 +350,7 @@ impl AppState {
                     | ScreenRoute::EnvironmentDetails
                     | ScreenRoute::MotionDetails
                     | ScreenRoute::NetworkDetails
-                    | ScreenRoute::WifiTransfer
-                    | ScreenRoute::WeatherDetails,
+                    | ScreenRoute::WifiTransfer,
                     _,
                 )
                 | (ScreenRoute::Files | ScreenRoute::Alarms | ScreenRoute::Audio, _) => {}
@@ -387,8 +396,8 @@ impl AppState {
     /// Open a screen chosen from Home or a category, running its entry hook.
     fn open_route(&mut self, target: ScreenRoute) {
         self.note_select_press();
-        if target == ScreenRoute::Weather {
-            self.weather_action_selected = 0;
+        if target == ScreenRoute::WeatherSettings {
+            self.weather_settings_ui = WeatherSettingsUiState::default();
         }
         if target == ScreenRoute::Audio {
             self.audio_action_selected = 0;
@@ -1021,6 +1030,84 @@ impl AppState {
         std::mem::take(&mut self.full_refresh_requested) || photos
     }
 
+    /// Rows of Settings › Weather, each opening a list of its values.
+    /// Without WEATHER.TXT the screen only explains how to add it.
+    fn apply_weather_settings(&mut self, event: ButtonEvent) {
+        let Some(config) = self.weather_config.as_ref() else {
+            return;
+        };
+        let setting = self.weather_settings_ui.setting();
+        let (options, current) = config.options(setting);
+        if let Some(highlighted) = self.weather_settings_ui.picker {
+            let count = options.len();
+            let moved = match event {
+                ButtonEvent::Up => (highlighted + count - 1) % count,
+                ButtonEvent::Down => (highlighted + 1) % count,
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    self.weather_settings_ui.picker = None;
+                    if highlighted != current {
+                        self.choose_weather_setting(setting, highlighted);
+                    }
+                    return;
+                }
+            };
+            self.weather_settings_ui.picker = Some(moved);
+            return;
+        }
+        let count = WeatherSetting::ALL.len();
+        let selected = self.weather_settings_ui.selected;
+        match event {
+            ButtonEvent::Up => self.weather_settings_ui.selected = (selected + count - 1) % count,
+            ButtonEvent::Down => self.weather_settings_ui.selected = (selected + 1) % count,
+            ButtonEvent::Select => {
+                self.note_select_press();
+                let start = if current < options.len() { current } else { 0 };
+                self.weather_settings_ui.picker = Some(start);
+            }
+        }
+    }
+
+    /// Turning the service on asks for an update straight away; turning it
+    /// off stops all weather requests.
+    fn choose_weather_setting(&mut self, setting: WeatherSetting, index: usize) {
+        let Some(config) = self.weather_config.as_mut() else {
+            return;
+        };
+        config.choose(setting, index);
+        self.regional.temperature_unit = config.units.temperature_unit();
+        if setting != WeatherSetting::Service {
+            return;
+        }
+        if config.enabled {
+            self.weather.state = if self.weather.current.is_some() {
+                WeatherFetchState::Stale
+            } else {
+                WeatherFetchState::WaitingForNetwork
+            };
+            self.weather_refresh_requested = true;
+        } else {
+            self.weather.state = WeatherFetchState::Disabled;
+        }
+    }
+
+    /// BOOT short press on Weather switches between °C and °F; main.rs saves
+    /// the change to WEATHER.TXT.
+    pub fn apply_weather_boot_short_press(&mut self) -> bool {
+        if !matches!(
+            self.router.current(),
+            ScreenRoute::Weather | ScreenRoute::WeatherDetails
+        ) {
+            return false;
+        }
+        let Some(config) = self.weather_config.as_mut() else {
+            return false;
+        };
+        config.units = config.units.toggled();
+        self.regional.temperature_unit = config.units.temperature_unit();
+        true
+    }
+
     /// Apply one Audio-overview event. Hardware requests are returned to
     /// main.rs so this product state remains independent of ESP-IDF handles.
     pub fn apply_audio_button(&mut self, event: ButtonEvent) -> Option<AudioUiRequest> {
@@ -1094,6 +1181,11 @@ impl AppState {
         }
         if self.router.current() == ScreenRoute::SleepScreen
             && self.sleep_screen_ui.picker.take().is_some()
+        {
+            return;
+        }
+        if self.router.current() == ScreenRoute::WeatherSettings
+            && self.weather_settings_ui.picker.take().is_some()
         {
             return;
         }
@@ -1227,6 +1319,30 @@ impl AppState {
         core::mem::take(&mut self.weather_refresh_requested)
     }
 
+    /// Adopt WEATHER.TXT, including its temperature unit.
+    pub fn set_weather_config(&mut self, config: Option<WeatherConfig>) {
+        if let Some(config) = config.as_ref() {
+            self.regional.temperature_unit = config.units.temperature_unit();
+        }
+        self.weather_config = config;
+    }
+
+    /// WEATHER.TXT is present and the service is on.
+    #[must_use]
+    pub fn weather_enabled(&self) -> bool {
+        self.weather_config
+            .as_ref()
+            .is_some_and(|config| config.enabled)
+    }
+
+    /// Weather shows on Home unless Settings › Weather hides it or turns it off.
+    #[must_use]
+    pub fn weather_on_home(&self) -> bool {
+        self.weather_config
+            .as_ref()
+            .is_some_and(|config| config.enabled && config.show_on_home)
+    }
+
     pub fn set_orientation(&mut self, orientation: DisplayOrientation) {
         self.orientation = orientation;
     }
@@ -1241,6 +1357,9 @@ mod tests {
             router::ScreenRoute,
         },
         buttons::ButtonEvent,
+        regional::TemperatureUnit,
+        weather::WeatherFetchState,
+        weather_config::{WeatherConfig, WeatherUnits, SAMPLE_CONFIG},
     };
 
     fn open_from_home(route: ScreenRoute) -> AppState {
@@ -1400,15 +1519,74 @@ mod tests {
         );
     }
 
+    fn sample_weather_config() -> WeatherConfig {
+        WeatherConfig::parse(SAMPLE_CONFIG).unwrap()
+    }
+
     #[test]
-    fn weather_details_use_select_then_hierarchical_back() {
+    fn weather_scrolls_to_details_and_refreshes_only_when_on() {
         let mut state = AppState::default();
         state.router.navigate_to(ScreenRoute::Weather);
-        state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
+        assert!(!state.take_weather_refresh_request());
+        state.set_weather_config(Some(sample_weather_config()));
+        state.apply(ButtonEvent::Down);
         assert_eq!(state.active_route(), ScreenRoute::WeatherDetails);
+        state.apply(ButtonEvent::Select);
+        assert!(state.take_weather_refresh_request());
+        state.apply(ButtonEvent::Up);
+        assert_eq!(state.active_route(), ScreenRoute::Weather);
+        state.apply(ButtonEvent::Down);
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Weather);
+    }
+
+    #[test]
+    fn weather_boot_short_switches_units_everywhere() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Weather);
+        assert!(!state.apply_weather_boot_short_press());
+        state.set_weather_config(Some(sample_weather_config()));
+        assert!(state.apply_weather_boot_short_press());
+        let config = state.weather_config.as_ref().unwrap();
+        assert_eq!(config.units, WeatherUnits::Imperial);
+        let unit = state.regional.temperature_unit;
+        assert_eq!(unit, TemperatureUnit::Fahrenheit);
+        state.router.navigate_to(ScreenRoute::Home);
+        assert!(!state.apply_weather_boot_short_press());
+    }
+
+    #[test]
+    fn weather_settings_lists_turn_the_service_off_and_on() {
+        let mut state = AppState::default();
+        state.set_weather_config(Some(sample_weather_config()));
+        state.router.navigate_to(ScreenRoute::WeatherSettings);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.weather_settings_ui.picker, Some(0));
+        state.apply(ButtonEvent::Select);
+        assert!(state.weather_enabled());
+        assert!(!state.take_weather_refresh_request());
+
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert!(!state.weather_enabled() && !state.weather_on_home());
+        assert_eq!(state.weather.state, WeatherFetchState::Disabled);
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Up);
+        state.apply(ButtonEvent::Select);
+        assert!(state.weather_enabled() && state.weather_on_home());
+        assert_eq!(state.weather.state, WeatherFetchState::WaitingForNetwork);
+        assert!(state.take_weather_refresh_request());
+
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.weather_settings_ui.picker, Some(2));
+        state.back();
+        assert_eq!(state.weather_settings_ui.picker, None);
+        assert_eq!(state.active_route(), ScreenRoute::WeatherSettings);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
     }
 
     #[test]

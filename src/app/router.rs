@@ -61,6 +61,7 @@ pub enum ScreenRoute {
     WifiTransfer,
     Weather,
     WeatherDetails,
+    WeatherSettings,
 }
 
 impl ScreenRoute {
@@ -124,6 +125,7 @@ impl ScreenRoute {
             Self::WifiTransfer => "Wi-Fi Transfer",
             Self::Weather => "Weather",
             Self::WeatherDetails => "Weather details",
+            Self::WeatherSettings => "Weather settings",
         }
     }
 
@@ -187,6 +189,7 @@ impl ScreenRoute {
             Self::WifiTransfer => "wifi-transfer",
             Self::Weather => "weather",
             Self::WeatherDetails => "weather-details",
+            Self::WeatherSettings => "weather-settings",
         }
     }
 
@@ -247,7 +250,8 @@ impl ScreenRoute {
             | Self::Motion
             | Self::Network
             | Self::Power
-            | Self::SleepScreen => Some(Self::Settings),
+            | Self::SleepScreen
+            | Self::WeatherSettings => Some(Self::Settings),
             Self::AudioDetails => Some(Self::Audio),
             Self::ClockDetails => Some(Self::Clock),
             Self::DeviceInfoBoard => Some(Self::DeviceInfo),
@@ -324,6 +328,10 @@ mod tests {
         assert_eq!(ScreenRoute::PhotoViewer.parent(), Some(ScreenRoute::Photos));
         assert_eq!(
             ScreenRoute::SleepScreen.parent(),
+            Some(ScreenRoute::Settings)
+        );
+        assert_eq!(
+            ScreenRoute::WeatherSettings.parent(),
             Some(ScreenRoute::Settings)
         );
         assert!(ScreenRoute::Ai.is_category());

@@ -221,16 +221,19 @@ mod firmware {
             }
         };
 
-        let weather_config = match WeatherConfig::load_from_path(WEATHER_CONFIG_PATH) {
+        let mut weather_config = match WeatherConfig::load_from_path(WEATHER_CONFIG_PATH) {
             Ok(config) => {
                 info!(
-                    "rustmix-wave=weather-config status=ready path={WEATHER_CONFIG_PATH} provider={} location={} latitude={:.4} longitude={:.4} timezone={} refresh-minutes={}",
+                    "rustmix-wave=weather-config status=ready path={WEATHER_CONFIG_PATH} provider={} location={} latitude={:.4} longitude={:.4} timezone={} refresh-minutes={} enabled={} units={} show-on-home={}",
                     config.provider,
                     config.location,
                     config.latitude,
                     config.longitude,
                     config.timezone,
-                    config.refresh_minutes
+                    config.refresh_minutes,
+                    config.enabled,
+                    config.units.marker(),
+                    config.show_on_home
                 );
                 Some(config)
             }
@@ -458,6 +461,7 @@ mod firmware {
         if let Some(config) = weather_config.as_ref() {
             state.update_weather_snapshot(WeatherSnapshot::provisioned(config));
         }
+        state.set_weather_config(weather_config.clone());
         state.update_alarm_snapshot(alarm_engine.snapshot());
         state.update_storage_snapshot(storage_browser.snapshot());
         log_storage_snapshot(&state.storage);
@@ -884,7 +888,7 @@ mod firmware {
                 let now = Instant::now();
                 match radio.phase() {
                     RadioPhase::Off => {
-                        let reason = if manual_weather_refresh && weather_config.is_some() {
+                        let reason = if manual_weather_refresh && state.weather_enabled() {
                             Some("weather-refresh")
                         } else if transfer_waiting {
                             Some("wifi-transfer")
@@ -1347,14 +1351,18 @@ mod firmware {
             }
 
             if !sleep_mode.is_sleeping() {
-                if let Some(config) = weather_config.as_ref() {
+                let enabled_weather = weather_config.as_ref().filter(|config| config.enabled);
+                if enabled_weather.is_none() {
+                    weather_retry.clear();
+                }
+                if let Some(config) = enabled_weather {
                     if manual_weather_refresh {
                         weather_retry.clear();
                     }
                     let wifi_connected = radio.phase() == RadioPhase::Connected;
-                    let interval_due = last_weather_attempt.map_or(true, |last| {
-                        last.elapsed()
-                            >= Duration::from_secs(config.refresh_minutes.saturating_mul(60))
+                    // Manual means no automatic updates, not even at start.
+                    let interval_due = config.refresh_interval().is_some_and(|interval| {
+                        last_weather_attempt.map_or(true, |last| last.elapsed() >= interval)
                     });
                     let scheduled_retry = if wifi_connected {
                         weather_retry.take_due()
@@ -1722,12 +1730,13 @@ mod firmware {
                     } else {
                         state.apply_lua_game_boot_short_press()
                     };
-                    let photos_context = state.apply_photos_boot_short_press()
-                        || state.apply_sleep_screen_boot_short_press();
+                    let screen_context = state.apply_photos_boot_short_press()
+                        || state.apply_sleep_screen_boot_short_press()
+                        || state.apply_weather_boot_short_press();
                     if calendar_agenda_context
                         || keyboard_context
                         || lua_game_context
-                        || photos_context
+                        || screen_context
                     {
                         if calendar_agenda_context {
                             info!("rustmix-wave=calendar-agenda route=selected-day outcome=opened");
@@ -1766,6 +1775,7 @@ mod firmware {
                         );
                         log_board_snapshot(state.board, state.regional);
                         log_lua_runtime_events(&mut state);
+                        sync_weather_config(&state, &mut weather_config);
                         if state.take_sleep_preview_request() {
                             let previous = sleep_mode.last_image();
                             let picture = sleep_preview(&state, &sleep_images, previous)?;
@@ -1920,6 +1930,7 @@ mod firmware {
                         state.sleep_screen.fit.marker()
                     );
                 }
+                sync_weather_config(&state, &mut weather_config);
                 if state.active_route() != previous_route {
                     info!(
                         "rustmix-wave=screen-route route={}",
@@ -2129,13 +2140,36 @@ mod firmware {
         }
     }
 
-    /// When the next weather refresh falls due, if weather is configured.
+    /// When the next automatic weather update falls due; `None` when weather
+    /// is missing, off or manual.
     fn next_weather_refresh(
         config: Option<&WeatherConfig>,
         last_attempt: Option<Instant>,
     ) -> Option<Instant> {
-        let interval = Duration::from_secs(config?.refresh_minutes.saturating_mul(60));
+        let interval = config?.refresh_interval()?;
         Some(last_attempt.map_or_else(Instant::now, |last| last + interval))
+    }
+
+    /// Save a Settings › Weather or BOOT change to WEATHER.TXT and adopt it.
+    fn sync_weather_config(state: &AppState, weather_config: &mut Option<WeatherConfig>) {
+        if state.weather_config == *weather_config {
+            return;
+        }
+        weather_config.clone_from(&state.weather_config);
+        let Some(config) = weather_config.as_ref() else {
+            return;
+        };
+        match config.save_to_path(WEATHER_CONFIG_PATH) {
+            Ok(()) => info!("rustmix-wave=weather-config-write status=saved"),
+            Err(error) => warn!("rustmix-wave=weather-config-write error={error:#}"),
+        }
+        info!(
+            "rustmix-wave=weather-settings-updated enabled={} refresh-minutes={} units={} show-on-home={}",
+            config.enabled,
+            config.refresh_minutes,
+            config.units.marker(),
+            config.show_on_home
+        );
     }
 
     /// Light-sleep until one of `lines` is pulled low or `timer` runs out; the

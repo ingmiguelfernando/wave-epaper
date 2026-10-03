@@ -26,7 +26,7 @@ use crate::{
     reader::{BookFormat, ReaderLocation},
     regional::TemperatureUnit,
     rtc::RtcDateTime,
-    weather::WeatherFetchState,
+    weather::{short_degrees_label, whole_degrees, CurrentConditions, WeatherFetchState},
 };
 
 const MARGIN: i32 = 16;
@@ -120,12 +120,15 @@ fn draw_date_weather_strip(
     Text::new(&date, Point::new(MARGIN, baseline), style).draw(display)?;
 
     let unit = state.regional.temperature_unit;
-    let (label, icon) = match state.weather.current.as_ref() {
+    let (label, icon) = match home_conditions(state) {
         Some(current) => {
             let temperature = temperature_label(current.temperature_tenths_f, unit);
             let label = format!("{temperature} · {}", current.condition_label());
-            (label, Some(icons::weather_icon(current.weather_code)))
+            let icon = icons::weather_icon_at(current.weather_code, current.is_day);
+            (label, Some(icon))
         }
+        // Settings › Weather turned it off or keeps it off Home.
+        None if state.weather_config.is_some() && !state.weather_on_home() => return Ok(()),
         None => (weather_status_label(state.weather.state).to_string(), None),
     };
     let left = MARGIN + CONTENT_WIDTH - style.text_width(&label);
@@ -314,9 +317,18 @@ fn home_icon(route: ScreenRoute, state: &AppState) -> &'static Icon {
 }
 
 fn current_weather_icon(state: &AppState) -> &'static Icon {
-    match state.weather.current.as_ref() {
-        Some(current) => icons::weather_icon(current.weather_code),
+    match home_conditions(state) {
+        Some(current) => icons::weather_icon_at(current.weather_code, current.is_day),
         None => &icons::PARTLY_CLOUDY,
+    }
+}
+
+/// Current conditions, unless Settings › Weather keeps weather off Home.
+fn home_conditions(state: &AppState) -> Option<&CurrentConditions> {
+    if state.weather_on_home() {
+        state.weather.current.as_ref()
+    } else {
+        None
     }
 }
 
@@ -325,11 +337,12 @@ fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
     let books = state.reader.books.len();
     match entry.route {
         ScreenRoute::Reader if books > 0 => books.to_string(),
-        ScreenRoute::Weather => match state.weather.current.as_ref() {
+        ScreenRoute::Weather => match home_conditions(state) {
             Some(current) => {
                 let unit = state.regional.temperature_unit;
-                format!("{}°", whole_degrees(current.temperature_tenths_f, unit))
+                short_degrees_label(current.temperature_tenths_f, unit)
             }
+            None if state.weather_config.is_some() && !state.weather_enabled() => "Off".into(),
             None => String::new(),
         },
         _ => entry.badge.to_string(),
@@ -342,16 +355,6 @@ fn weather_status_label(state: WeatherFetchState) -> &'static str {
         WeatherFetchState::ConfigurationMissing => "Weather not set up",
         WeatherFetchState::Failed => "Weather unavailable",
         _ => "Weather pending",
-    }
-}
-
-/// Round tenths of a degree Fahrenheit (the provider unit) to whole `unit` degrees.
-fn whole_degrees(tenths_f: i16, unit: TemperatureUnit) -> i32 {
-    let tenths = unit.from_fahrenheit_tenths(tenths_f);
-    if tenths >= 0 {
-        (tenths + 5) / 10
-    } else {
-        (tenths - 5) / 10
     }
 }
 
@@ -386,8 +389,14 @@ fn compact_local_date(local: RtcDateTime) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{compact_local_date, percent_of, temperature_label, whole_degrees};
-    use crate::{regional::TemperatureUnit, rtc::RtcDateTime};
+    use super::{compact_local_date, home_meta, percent_of, temperature_label};
+    use crate::{
+        app::{menu::home_entries, router::ScreenRoute, AppState},
+        regional::TemperatureUnit,
+        rtc::RtcDateTime,
+        weather::{parse_open_meteo_response, SAMPLE_RESPONSE},
+        weather_config::{WeatherConfig, SAMPLE_CONFIG},
+    };
 
     #[test]
     fn renders_compact_dashboard_date() {
@@ -406,11 +415,27 @@ mod tests {
     }
 
     #[test]
-    fn converts_provider_fahrenheit_to_whole_degrees() {
-        assert_eq!(whole_degrees(644, TemperatureUnit::Celsius), 18);
-        assert_eq!(whole_degrees(784, TemperatureUnit::Fahrenheit), 78);
-        assert_eq!(whole_degrees(140, TemperatureUnit::Celsius), -10);
+    fn strip_temperature_rounds_to_whole_degrees() {
         assert_eq!(temperature_label(644, TemperatureUnit::Celsius), "18°C");
+        assert_eq!(temperature_label(784, TemperatureUnit::Fahrenheit), "78°F");
+        assert_eq!(temperature_label(140, TemperatureUnit::Celsius), "-10°C");
+    }
+
+    #[test]
+    fn weather_row_follows_settings() {
+        let mut state = AppState::default();
+        state.set_weather_config(Some(WeatherConfig::parse(SAMPLE_CONFIG).unwrap()));
+        let data = parse_open_meteo_response(SAMPLE_RESPONSE).unwrap();
+        state.weather.record_success(data);
+        let entry = home_entries()
+            .iter()
+            .find(|entry| entry.route == ScreenRoute::Weather)
+            .unwrap();
+        assert_eq!(home_meta(entry, &state), "18°");
+        state.weather_config.as_mut().unwrap().show_on_home = false;
+        assert_eq!(home_meta(entry, &state), "");
+        state.weather_config.as_mut().unwrap().enabled = false;
+        assert_eq!(home_meta(entry, &state), "Off");
     }
 
     #[test]
