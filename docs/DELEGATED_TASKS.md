@@ -237,7 +237,17 @@ in `main.rs` and stays with the main line.
 mapping, the command limit on a nearly full board and the dirty regions; the
 firmware build is green. Device check: play a game from Games › SD Games.
 
-**Status:** not started.
+**Status:** done on `side-tasks-3`; firmware build pending.
+  `TetrisApp` draws through `NativeGameCanvas` like Minesweeper: run-of-cells
+  rectangles, dotted ghost, Next/Score/Lines/Level/Best panel, dirty regions
+  bounded by `MAX_DIRTY_REGIONS`, full refresh every 20 locks.
+  `tetris.init('zen', seed)` added to `event_bridge.rs`; the `TETRIS/` sample
+  app and a `tetris` preview are in place; the User Guide lists Tetris Zen.
+  Deviation: the atlas lacks `▲▼●`, so the footer uses the house wording
+  `UP/DOWN move  SELECT rotate  BOOT drop` instead of the mockup's glyphs.
+  Checks: host tests green (507), fmt and diff checks clean; preview reviewed.
+  Device: play from Games › SD Games and confirm refresh cadence.
+  Left open: nothing.
 
 ### D14: Reading Stats screen (drawing only)
 

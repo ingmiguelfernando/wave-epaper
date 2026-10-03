@@ -264,7 +264,7 @@ costs about 2 mAh a day.
 
 Install the bundled SD samples, then open **Home › Games › SD Games**.
 Up/Down chooses an app, Select opens it, hold BOOT returns to the catalog.
-The supplied games are Hello Grid, Sudoku and Minesweeper; there are no
+The supplied games are Hello Grid, Sudoku, Minesweeper and Tetris; there are no
 IMU-controlled games or BLE remote page-turner in this build.
 
 | Sample | Controls |
@@ -272,10 +272,11 @@ IMU-controlled games or BLE remote page-turner in this build.
 | Hello Grid | Static canvas demonstration; wheel/Select have no game action; hold BOOT exits |
 | Sudoku | Up/Down moves along the active H/V axis; short BOOT switches axis. Select enters edit mode; Up/Down chooses a candidate; Select commits; short BOOT cancels editing |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
+| Tetris Zen | Up moves left, Down right, Select rotates, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game |
 
-These are the existing button-driven samples, not the planned three-step
-Sudoku redesign or Tetris. A missing/invalid SD app reports an error; hold
-BOOT returns to the catalog.
+These are button-driven samples. The Sudoku three-step redesign and Tetris
+Classic gravity belong to Phase 6. A missing/invalid SD app reports an error;
+hold BOOT returns to the catalog.
 
 ## AI › Voice Notes
 

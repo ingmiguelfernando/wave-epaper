@@ -1,7 +1,15 @@
-//! Pure Tetris rules for the SD game path: no drawing, no timers and no I/O.
+//! Tetris rules and the native Zen view for the SD game path.
 //!
-//! Row 0 is the top row of the 10 x 20 board. Pieces rotate inside their
-//! bounding box (SRS-like states); queries speak in (column, row) pairs.
+//! The rules stay free of drawing and I/O. Row 0 is the top row of the
+//! 10 x 20 board. Pieces rotate inside their bounding box (SRS-like states);
+//! queries speak in (column, row) pairs.
+
+use crate::buttons::ButtonEvent;
+
+use super::{
+    canvas::{CanvasTextStyle, NativeGameCanvas},
+    dirty_regions::{DirtyRect, GAME_CANVAS_HEIGHT, GAME_CANVAS_WIDTH},
+};
 
 pub const TETRIS_WIDTH: usize = 10;
 pub const TETRIS_HEIGHT: usize = 20;
@@ -22,6 +30,28 @@ pub enum TetrisAction {
     Right,
     Rotate,
     Drop,
+}
+
+impl TetrisMode {
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Zen => "zen",
+            Self::Classic => "classic",
+        }
+    }
+}
+
+impl TetrisAction {
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Rotate => "rotate",
+            Self::Drop => "drop",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -353,9 +383,484 @@ fn piece_cells(piece: TetrisPiece, rotation: u8) -> [(u8, u8); 4] {
     cells
 }
 
+pub const TETRIS_CELL: i32 = 30;
+pub const TETRIS_BOARD_X: i32 = 16;
+pub const TETRIS_BOARD_Y: i32 = 84;
+/// Locked pieces between full-frame refreshes that clear ghosting.
+pub const TETRIS_REFRESH_LOCKS: u32 = 20;
+
+const TETRIS_FOOTER: &str = "UP/DOWN move  SELECT rotate  BOOT drop";
+const TETRIS_SIDE_X: i32 = 336;
+const TETRIS_NEXT_X: i32 = 336;
+const TETRIS_NEXT_Y: i32 = 132;
+const TETRIS_NEXT_CELL: i32 = 20;
+const TETRIS_NEXT_COLUMNS: usize = 4;
+const TETRIS_NEXT_ROWS: usize = 2;
+const TETRIS_BOARD_RECT: DirtyRect = DirtyRect::new(
+    TETRIS_BOARD_X,
+    TETRIS_BOARD_Y,
+    TETRIS_WIDTH as i32 * TETRIS_CELL + 1,
+    TETRIS_HEIGHT as i32 * TETRIS_CELL + 1,
+);
+const TETRIS_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
+const TETRIS_SIDE_RECT: DirtyRect = DirtyRect::new(TETRIS_SIDE_X, 92, 144, 480);
+const TETRIS_NEXT_RECT: DirtyRect = DirtyRect::new(
+    TETRIS_NEXT_X,
+    TETRIS_NEXT_Y,
+    TETRIS_NEXT_COLUMNS as i32 * TETRIS_NEXT_CELL + 4,
+    TETRIS_NEXT_ROWS as i32 * TETRIS_NEXT_CELL + 4,
+);
+const TETRIS_STATUS_RECT: DirtyRect = DirtyRect::new(16, 688, 448, 40);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TetrisEventResult {
+    pub reason: &'static str,
+    pub row: usize,
+    pub column: usize,
+    pub mode: TetrisMode,
+    pub action: Option<TetrisAction>,
+    pub score: u32,
+    pub lines: u32,
+    pub level: u32,
+    pub completed: bool,
+    pub dirty_regions: Vec<DirtyRect>,
+}
+
+/// Zen view over one `TetrisGame`: redraws, key mapping and the in-memory
+/// best score that Phase 6 will persist.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TetrisApp {
+    game: TetrisGame,
+    seed: u32,
+    best: u32,
+    locks: u32,
+}
+
+impl TetrisApp {
+    #[must_use]
+    pub fn new(mode: TetrisMode, seed: u32) -> Self {
+        Self {
+            game: TetrisGame::new(mode, seed),
+            seed,
+            best: 0,
+            locks: 0,
+        }
+    }
+
+    #[must_use]
+    pub const fn game(&self) -> &TetrisGame {
+        &self.game
+    }
+
+    #[must_use]
+    pub const fn best(&self) -> u32 {
+        self.best
+    }
+
+    #[must_use]
+    pub const fn locks(&self) -> u32 {
+        self.locks
+    }
+
+    pub fn render_initial(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        self.render_commands(canvas)?;
+        canvas.reset_dirty_regions();
+        canvas.invalidate_rect(TETRIS_FULL_RECT);
+        canvas.request_refresh();
+        Ok(())
+    }
+
+    /// ▲ moves left, ▼ right and ● rotates. After game over ● starts a new
+    /// game and every other key is ignored.
+    pub fn apply_button_and_render(
+        &mut self,
+        event: ButtonEvent,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<TetrisEventResult, String> {
+        let before = (
+            self.game.active_cells(),
+            self.game.ghost_cells(),
+            self.game.lines(),
+        );
+        if self.game.is_over() {
+            let reason = match event {
+                ButtonEvent::Select => {
+                    self.seed = self.seed.wrapping_add(1);
+                    self.game = TetrisGame::new(self.game.mode(), self.seed);
+                    "new-game"
+                }
+                _ => "game-finished",
+            };
+            return self.finish_and_render(reason, None, before, canvas);
+        }
+        let action = match event {
+            ButtonEvent::Up => TetrisAction::Left,
+            ButtonEvent::Down => TetrisAction::Right,
+            ButtonEvent::Select => TetrisAction::Rotate,
+        };
+        let reason = if self.game.apply(action) {
+            match action {
+                TetrisAction::Left => "move-left",
+                TetrisAction::Right => "move-right",
+                TetrisAction::Rotate => "rotate",
+                TetrisAction::Drop => "drop",
+            }
+        } else {
+            "blocked"
+        };
+        self.finish_and_render(reason, Some(action), before, canvas)
+    }
+
+    /// A short BOOT press drops the piece to the landing row and locks it.
+    pub fn apply_boot_short_press_and_render(
+        &mut self,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<TetrisEventResult, String> {
+        let before = (
+            self.game.active_cells(),
+            self.game.ghost_cells(),
+            self.game.lines(),
+        );
+        if self.game.is_over() {
+            return self.finish_and_render("game-finished", None, before, canvas);
+        }
+        self.game.apply(TetrisAction::Drop);
+        self.locks += 1;
+        self.best = self.best.max(self.game.score());
+        let reason = if self.game.is_over() {
+            "game-over"
+        } else {
+            "drop"
+        };
+        self.finish_and_render(reason, Some(TetrisAction::Drop), before, canvas)
+    }
+
+    fn finish_and_render(
+        &mut self,
+        reason: &'static str,
+        action: Option<TetrisAction>,
+        before: ([(usize, usize); 4], [(usize, usize); 4], u32),
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<TetrisEventResult, String> {
+        self.render_commands(canvas)?;
+        canvas.reset_dirty_regions();
+        let dirty_regions = self.dirty_regions(reason, &before);
+        for rect in &dirty_regions {
+            canvas.invalidate_rect(*rect);
+        }
+        canvas.request_refresh();
+        let (column, row) = self.game.active_cells()[0];
+        Ok(TetrisEventResult {
+            reason,
+            row,
+            column,
+            mode: self.game.mode(),
+            action,
+            score: self.game.score(),
+            lines: self.game.lines(),
+            level: self.game.level(),
+            completed: self.game.is_over(),
+            dirty_regions,
+        })
+    }
+
+    fn dirty_regions(
+        &self,
+        reason: &'static str,
+        before: &([(usize, usize); 4], [(usize, usize); 4], u32),
+    ) -> Vec<DirtyRect> {
+        let (old_active, old_ghost, old_lines) = before;
+        match reason {
+            "new-game" => vec![TETRIS_FULL_RECT],
+            "game-finished" => vec![TETRIS_STATUS_RECT],
+            "blocked" => Vec::new(),
+            "move-left" | "move-right" | "rotate" => vec![cells_span(&[
+                *old_active,
+                *old_ghost,
+                self.game.active_cells(),
+                self.game.ghost_cells(),
+            ])],
+            _ => {
+                // one locked piece: every 20th lock asks for a full refresh
+                if self.locks % TETRIS_REFRESH_LOCKS == 0 {
+                    return vec![TETRIS_FULL_RECT];
+                }
+                if reason == "game-over" {
+                    return vec![TETRIS_BOARD_RECT, TETRIS_SIDE_RECT, TETRIS_STATUS_RECT];
+                }
+                if self.game.lines() > *old_lines {
+                    return vec![TETRIS_BOARD_RECT, TETRIS_SIDE_RECT];
+                }
+                let active = self.game.active_cells();
+                let ghost = self.game.ghost_cells();
+                let mut regions = vec![cells_span(&[*old_active, *old_ghost]), cells_rect(&active)];
+                if ghost != active {
+                    regions.push(cells_rect(&ghost));
+                }
+                regions.push(TETRIS_NEXT_RECT);
+                regions
+            }
+        }
+    }
+
+    fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        canvas.clear_frame();
+        canvas.text(24, 64, "Tetris · Zen".into(), CanvasTextStyle::Heading)?;
+        canvas.rect(
+            TETRIS_BOARD_RECT.x,
+            TETRIS_BOARD_RECT.y,
+            TETRIS_BOARD_RECT.width,
+            TETRIS_BOARD_RECT.height,
+            false,
+        )?;
+        for row in 0..TETRIS_HEIGHT {
+            for (start, end) in filled_runs(
+                |column, row| self.game.cell(column, row).is_some(),
+                row,
+                TETRIS_WIDTH,
+            ) {
+                fill_run(
+                    canvas,
+                    TETRIS_BOARD_X,
+                    TETRIS_BOARD_Y,
+                    TETRIS_CELL,
+                    row,
+                    start,
+                    end,
+                )?;
+            }
+        }
+        let active = self.game.active_cells();
+        let ghost = self.game.ghost_cells();
+        if !self.game.is_over() {
+            for row in 0..TETRIS_HEIGHT {
+                for (start, end) in filled_runs(
+                    |column, row| cells_contain(&active, column, row),
+                    row,
+                    TETRIS_WIDTH,
+                ) {
+                    fill_run(
+                        canvas,
+                        TETRIS_BOARD_X,
+                        TETRIS_BOARD_Y,
+                        TETRIS_CELL,
+                        row,
+                        start,
+                        end,
+                    )?;
+                    canvas.rect(
+                        TETRIS_BOARD_X + start as i32 * TETRIS_CELL,
+                        TETRIS_BOARD_Y + row as i32 * TETRIS_CELL,
+                        (end - start + 1) as i32 * TETRIS_CELL,
+                        TETRIS_CELL,
+                        false,
+                    )?;
+                }
+            }
+            if ghost != active {
+                for row in 0..TETRIS_HEIGHT {
+                    for (start, end) in filled_runs(
+                        |column, row| cells_contain(&ghost, column, row),
+                        row,
+                        TETRIS_WIDTH,
+                    ) {
+                        dotted_rect(
+                            canvas,
+                            DirtyRect::new(
+                                TETRIS_BOARD_X + start as i32 * TETRIS_CELL,
+                                TETRIS_BOARD_Y + row as i32 * TETRIS_CELL,
+                                (end - start + 1) as i32 * TETRIS_CELL,
+                                TETRIS_CELL,
+                            ),
+                        )?;
+                    }
+                }
+            }
+        }
+        canvas.text(TETRIS_SIDE_X, 120, "NEXT".into(), CanvasTextStyle::Detail)?;
+        canvas.rect(
+            TETRIS_NEXT_RECT.x,
+            TETRIS_NEXT_RECT.y,
+            TETRIS_NEXT_RECT.width,
+            TETRIS_NEXT_RECT.height,
+            false,
+        )?;
+        let next =
+            piece_cells(self.game.next(), 0).map(|(column, row)| (column as usize, row as usize));
+        for row in 0..TETRIS_NEXT_ROWS {
+            for (start, end) in filled_runs(
+                |column, row| cells_contain(&next, column, row),
+                row,
+                TETRIS_NEXT_COLUMNS,
+            ) {
+                fill_run(
+                    canvas,
+                    TETRIS_NEXT_X + 2,
+                    TETRIS_NEXT_Y + 2,
+                    TETRIS_NEXT_CELL,
+                    row,
+                    start,
+                    end,
+                )?;
+            }
+        }
+        canvas.text(TETRIS_SIDE_X, 236, "SCORE".into(), CanvasTextStyle::Detail)?;
+        canvas.text(
+            TETRIS_SIDE_X,
+            268,
+            grouped(self.game.score()),
+            CanvasTextStyle::Heading,
+        )?;
+        canvas.text(TETRIS_SIDE_X, 326, "LINES".into(), CanvasTextStyle::Detail)?;
+        canvas.text(
+            TETRIS_SIDE_X,
+            358,
+            self.game.lines().to_string(),
+            CanvasTextStyle::Heading,
+        )?;
+        canvas.text(TETRIS_SIDE_X, 416, "LEVEL".into(), CanvasTextStyle::Detail)?;
+        canvas.text(
+            TETRIS_SIDE_X,
+            448,
+            self.game.level().to_string(),
+            CanvasTextStyle::Heading,
+        )?;
+        canvas.text(TETRIS_SIDE_X, 506, "BEST".into(), CanvasTextStyle::Detail)?;
+        canvas.text(
+            TETRIS_SIDE_X,
+            538,
+            grouped(self.best),
+            CanvasTextStyle::Heading,
+        )?;
+        let status = if self.game.is_over() {
+            format!(
+                "Game over  Score {}  SELECT starts a new game",
+                grouped(self.game.score())
+            )
+        } else {
+            "No gravity: the piece moves only when you press.".into()
+        };
+        canvas.text(24, 716, status, CanvasTextStyle::Detail)?;
+        canvas.text(24, 742, TETRIS_FOOTER.into(), CanvasTextStyle::Detail)?;
+        Ok(())
+    }
+}
+
+/// Inclusive (start, end) runs of filled cells in one row.
+fn filled_runs(
+    mut is_filled: impl FnMut(usize, usize) -> bool,
+    row: usize,
+    columns: usize,
+) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut column = 0;
+    while column < columns {
+        if !is_filled(column, row) {
+            column += 1;
+            continue;
+        }
+        let start = column;
+        while column < columns && is_filled(column, row) {
+            column += 1;
+        }
+        runs.push((start, column - 1));
+    }
+    runs
+}
+
+/// One filled rectangle per row run, inset so runs read as separate blocks.
+fn fill_run(
+    canvas: &mut NativeGameCanvas,
+    origin_x: i32,
+    origin_y: i32,
+    cell: i32,
+    row: usize,
+    start: usize,
+    end: usize,
+) -> Result<(), String> {
+    canvas.rect(
+        origin_x + start as i32 * cell + 2,
+        origin_y + row as i32 * cell + 2,
+        (end - start + 1) as i32 * cell - 4,
+        cell - 4,
+        true,
+    )
+}
+
+/// Dotted outline: 3 px dots on a 6 px pitch around `rect`.
+fn dotted_rect(canvas: &mut NativeGameCanvas, rect: DirtyRect) -> Result<(), String> {
+    let mut x = rect.x;
+    while x + 3 <= rect.right() {
+        canvas.rect(x, rect.y, 3, 3, true)?;
+        canvas.rect(x, rect.bottom() - 3, 3, 3, true)?;
+        x += 6;
+    }
+    let mut y = rect.y + 6;
+    while y + 3 <= rect.bottom() - 6 {
+        canvas.rect(rect.x, y, 3, 3, true)?;
+        canvas.rect(rect.right() - 3, y, 3, 3, true)?;
+        y += 6;
+    }
+    Ok(())
+}
+
+fn cells_contain(cells: &[(usize, usize); 4], column: usize, row: usize) -> bool {
+    cells.contains(&(column, row))
+}
+
+fn cells_rect(cells: &[(usize, usize); 4]) -> DirtyRect {
+    let mut min_column = usize::MAX;
+    let mut max_column = 0;
+    let mut min_row = usize::MAX;
+    let mut max_row = 0;
+    for (column, row) in cells {
+        min_column = min_column.min(*column);
+        max_column = max_column.max(*column);
+        min_row = min_row.min(*row);
+        max_row = max_row.max(*row);
+    }
+    DirtyRect::new(
+        TETRIS_BOARD_X + min_column as i32 * TETRIS_CELL,
+        TETRIS_BOARD_Y + min_row as i32 * TETRIS_CELL,
+        (max_column - min_column + 1) as i32 * TETRIS_CELL,
+        (max_row - min_row + 1) as i32 * TETRIS_CELL,
+    )
+}
+
+fn cells_span(sets: &[[(usize, usize); 4]]) -> DirtyRect {
+    let mut rectangles = sets.iter().map(cells_rect);
+    let Some(mut span) = rectangles.next() else {
+        return DirtyRect::default();
+    };
+    for rectangle in rectangles {
+        span = span.union(rectangle);
+    }
+    span
+}
+
+/// Thousands-separated value like the mockup ("12,400").
+fn grouped(value: u32) -> String {
+    let digits = value.to_string();
+    let mut grouped = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        buttons::ButtonEvent,
+        games::{
+            canvas::{DrawCommand, NativeGameCanvas, MAX_GAME_DRAW_COMMANDS},
+            dirty_regions::MAX_DIRTY_REGIONS,
+        },
+    };
 
     fn set_active(game: &mut TetrisGame, piece: TetrisPiece, rotation: u8, column: i32, row: i32) {
         game.active = piece;
@@ -589,5 +1094,174 @@ mod tests {
         assert_eq!(game.cell(4, 19), Some(TetrisPiece::O));
         assert_eq!(game.cell(5, 18), Some(TetrisPiece::O));
         assert_eq!(game.active, next);
+    }
+
+    #[test]
+    fn zen_keys_move_left_right_rotate_and_drop() {
+        let mut app = TetrisApp::new(TetrisMode::Zen, 4);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+
+        set_active(&mut app.game, TetrisPiece::I, 0, 3, 5);
+        let left = app
+            .apply_button_and_render(ButtonEvent::Up, &mut canvas)
+            .unwrap();
+        assert_eq!(left.reason, "move-left");
+        assert_eq!(left.action, Some(TetrisAction::Left));
+        assert_eq!(app.game.active_cells(), [(2, 6), (3, 6), (4, 6), (5, 6)]);
+
+        let right = app
+            .apply_button_and_render(ButtonEvent::Down, &mut canvas)
+            .unwrap();
+        assert_eq!(right.reason, "move-right");
+        assert_eq!(right.action, Some(TetrisAction::Right));
+        assert_eq!(app.game.active_cells(), [(3, 6), (4, 6), (5, 6), (6, 6)]);
+
+        set_active(&mut app.game, TetrisPiece::T, 0, 3, 5);
+        let spawn = app.game.active_cells();
+        let rotate = app
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
+            .unwrap();
+        assert_eq!(rotate.reason, "rotate");
+        assert_eq!(rotate.action, Some(TetrisAction::Rotate));
+        assert_ne!(app.game.active_cells(), spawn);
+
+        let drop = app.apply_boot_short_press_and_render(&mut canvas).unwrap();
+        assert_eq!(drop.reason, "drop");
+        assert_eq!(drop.action, Some(TetrisAction::Drop));
+        assert!(app.game.active_cells().iter().all(|(_, row)| *row < 2));
+    }
+
+    #[test]
+    fn nearly_full_board_stays_under_the_command_limit() {
+        let mut app = TetrisApp::new(TetrisMode::Zen, 4);
+        // alternating cells leave one clear column band for the piece and its
+        // ghost while packing every other cell with runs
+        for row in 0..TETRIS_HEIGHT {
+            for column in 0..TETRIS_WIDTH {
+                if (2..6).contains(&column) || (row + column) % 2 != 0 {
+                    continue;
+                }
+                app.game.board[row][column] = Some(TetrisPiece::O);
+            }
+        }
+        set_active(&mut app.game, TetrisPiece::I, 0, 2, 0);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        assert!(canvas.commands().len() < MAX_GAME_DRAW_COMMANDS);
+
+        // the most runs one board can hold also fits the budget
+        for row in 0..TETRIS_HEIGHT {
+            for column in 0..TETRIS_WIDTH {
+                if (row + column) % 2 == 0 {
+                    app.game.board[row][column] = Some(TetrisPiece::O);
+                }
+            }
+        }
+        for (column, row) in app.game.active_cells() {
+            app.game.board[row][column] = None;
+        }
+        app.render_initial(&mut canvas).unwrap();
+        assert!(canvas.commands().len() < MAX_GAME_DRAW_COMMANDS);
+    }
+
+    #[test]
+    fn draws_each_row_run_as_one_rectangle() {
+        let mut app = TetrisApp::new(TetrisMode::Zen, 4);
+        for column in 0..TETRIS_WIDTH {
+            app.game.board[TETRIS_HEIGHT - 1][column] = Some(TetrisPiece::O);
+        }
+        app.game.game_over = true;
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        // one full row is one filled rectangle, not ten cell rectangles
+        assert!(canvas.commands().iter().any(|command| matches!(
+            command,
+            DrawCommand::Rect {
+                x: 18,
+                y: 656,
+                width: 296,
+                height: 26,
+                filled: true
+            }
+        )));
+    }
+
+    #[test]
+    fn invalidates_only_what_changed_with_bounded_regions() {
+        let mut app = TetrisApp::new(TetrisMode::Zen, 4);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+
+        set_active(&mut app.game, TetrisPiece::T, 0, 3, 5);
+        let moved = app
+            .apply_button_and_render(ButtonEvent::Up, &mut canvas)
+            .unwrap();
+        assert_eq!(moved.dirty_regions.len(), 1, "one span around the move");
+        assert!(canvas.dirty().regions().len() <= MAX_DIRTY_REGIONS);
+        assert!(!canvas.dirty().full_canvas_fallback());
+
+        let dropped = app.apply_boot_short_press_and_render(&mut canvas).unwrap();
+        assert!(
+            dropped.dirty_regions.len() <= MAX_DIRTY_REGIONS,
+            "drop frames stay bounded"
+        );
+        assert!(canvas.dirty().regions().len() <= MAX_DIRTY_REGIONS);
+        assert!(!canvas.dirty().full_canvas_fallback());
+    }
+
+    #[test]
+    fn requests_a_full_refresh_every_twenty_locks() {
+        let mut app = TetrisApp::new(TetrisMode::Zen, 4);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        for lock in 1..=TETRIS_REFRESH_LOCKS {
+            let dropped = app.apply_boot_short_press_and_render(&mut canvas).unwrap();
+            if lock % TETRIS_REFRESH_LOCKS == 0 {
+                assert_eq!(dropped.dirty_regions, vec![TETRIS_FULL_RECT], "lock {lock}");
+            } else {
+                assert_ne!(dropped.dirty_regions, vec![TETRIS_FULL_RECT], "lock {lock}");
+            }
+            // keep the stack from ending the game before the cadence point
+            app.game.board = [[None; TETRIS_WIDTH]; TETRIS_HEIGHT];
+        }
+    }
+
+    #[test]
+    fn game_over_shows_the_score_and_select_starts_a_new_game() {
+        let mut app = TetrisApp::new(TetrisMode::Zen, 9);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        fill_row_except(&mut app.game, TETRIS_HEIGHT - 1, 0);
+        set_active(&mut app.game, TetrisPiece::I, 1, -1, 16);
+        assert!(app.game.apply(TetrisAction::Drop));
+        assert_eq!(app.game.score(), 100);
+
+        let spawn = spawn_column(app.game.next());
+        for (column, row) in piece_cells(app.game.next(), 0) {
+            app.game.board[row as usize][column as usize + spawn as usize] = Some(TetrisPiece::T);
+        }
+        set_active(&mut app.game, TetrisPiece::I, 0, 3, 17);
+        let over = app.apply_boot_short_press_and_render(&mut canvas).unwrap();
+        assert_eq!(over.reason, "game-over");
+        assert!(over.completed);
+        assert_eq!(over.score, 100);
+        assert!(canvas.commands().iter().any(|command| matches!(
+            command,
+            DrawCommand::Text { text, .. } if text.starts_with("Game over  Score 100")
+        )));
+
+        let ignored = app
+            .apply_button_and_render(ButtonEvent::Up, &mut canvas)
+            .unwrap();
+        assert_eq!(ignored.reason, "game-finished");
+        assert!(app.game.is_over());
+
+        let restarted = app
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
+            .unwrap();
+        assert_eq!(restarted.reason, "new-game");
+        assert_eq!(restarted.score, 0);
+        assert!(!app.game.is_over());
     }
 }

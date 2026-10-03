@@ -1707,13 +1707,14 @@ mod tests {
                 .filter(|entry| entry.manifest.kind == LuaAppKind::Game)
                 .map(|entry| entry.manifest.name.as_str())
                 .collect::<Vec<_>>(),
-            ["Hello Grid", "Minesweeper", "Sudoku"]
+            ["Hello Grid", "Minesweeper", "Sudoku", "Tetris"]
         );
 
         for (id, bridge, reason) in [
             ("hello_grid", "static", None),
             ("minesweeper", "minesweeper", Some("action-enter")),
             ("sudoku", "sudoku", Some("edit-enter")),
+            ("tetris", "tetris", Some("rotate")),
         ] {
             for _ in 0..state.lua_runtime.catalog.entries.len() {
                 if state.lua_runtime.selected_entry().unwrap().manifest.id == id {

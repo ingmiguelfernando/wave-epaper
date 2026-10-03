@@ -21,6 +21,12 @@ use crate::{
     board_services::BoardSnapshot,
     buttons::ButtonEvent,
     framebuffer::FrameBuffer,
+    games::{canvas::NativeGameCanvas, refresh_policy::GameRefreshPlan},
+    lua_runtime::{
+        event_bridge::LuaEventBridge,
+        manifest::{LuaAppEntry, LuaAppKind, LuaAppManifest},
+        LuaAppSession,
+    },
     network::WifiConnectionState,
     orientation::{DisplayOrientation, OrientedFrameBuffer},
     photos::{test_photos::jpeg_from_grey, ui::PhotosUiState, worker::prepare},
@@ -292,7 +298,53 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut audio_details = sample_state();
     audio_details.router.navigate_to(ScreenRoute::AudioDetails);
     states.push(("audio-details", audio_details));
+
+    let mut tetris = sample_state();
+    tetris.lua_runtime.session = Some(tetris_sample_session());
+    tetris.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("tetris", tetris));
     states
+}
+
+/// A Zen Tetris game a few drops in, drawn through the native SD game canvas.
+fn tetris_sample_session() -> LuaAppSession {
+    let source = "tetris.init('zen', 1803)";
+    let mut canvas = NativeGameCanvas::default();
+    let mut event_bridge = LuaEventBridge::load(source, &mut canvas).unwrap();
+    for _ in 0..4 {
+        event_bridge
+            .apply_button(ButtonEvent::Up, &mut canvas)
+            .unwrap();
+        event_bridge
+            .apply_button(ButtonEvent::Up, &mut canvas)
+            .unwrap();
+        event_bridge.apply_boot_short_press(&mut canvas).unwrap();
+        event_bridge
+            .apply_button(ButtonEvent::Down, &mut canvas)
+            .unwrap();
+        event_bridge
+            .apply_button(ButtonEvent::Down, &mut canvas)
+            .unwrap();
+        event_bridge.apply_boot_short_press(&mut canvas).unwrap();
+    }
+    LuaAppSession {
+        entry: LuaAppEntry {
+            directory_name: "TETRIS".into(),
+            directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS/TETRIS"),
+            manifest: LuaAppManifest {
+                id: "tetris".into(),
+                name: "Tetris".into(),
+                kind: LuaAppKind::Game,
+                entry: "MAIN.LUA".into(),
+                version: "1.0".into(),
+                input: vec![],
+            },
+        },
+        source_bytes: source.len(),
+        canvas,
+        refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
+        event_bridge,
+    }
 }
 
 /// Seven photos: four prepared (two starred), one waiting, one unreadable.
