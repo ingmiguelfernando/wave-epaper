@@ -66,8 +66,6 @@ v1.0.0 artifact names although Cargo declares the current Wave version, so it
 fails its file-name assertions. The builder produces the current-version ELF;
 this is a stale test expectation, not a firmware build failure.
 
-Audio details still labels I2S as TX-only and the RX input as deferred
-(`src/app/screens/audio.rs`), although Voice Notes capture is implemented.
 Some boot log readiness strings also describe old category counts or an
 ELF-only release policy. Use current menus, the guide and the README flashing
 instructions, not those legacy strings. Correcting runtime text is outside D4.

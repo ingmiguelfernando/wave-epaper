@@ -204,7 +204,15 @@ Voice Notes record through that input.
 
 **Done when:** the preview shows the corrected lines and the tests pass.
 
-**Status:** not started.
+**Status:** implemented locally on `side-tasks-2` (2026-10-03), D8 only.
+  Details show `TX + RX / S16 STEREO` and `DIN GPIO21 · voice notes`.
+  Verified against `espidf.rs` RX capture and `main.rs` bidirectional setup;
+  driver and event-loop code are unchanged. Only the obsolete audio issue
+  text was removed; release-helper and boot-log issues remain unchanged.
+  Host tests: 407 pass, including two new wording/fit tests; fmt and editor
+  errors pass. Previews in `/tmp/wave-r2-d8/`: all six font combinations
+  viewed without overlap. Firmware/device checks pending: inspect Audio
+  details, play the test chime, then record and replay a Voice Note.
 
 ### D9: Retire the upstream release helpers
 

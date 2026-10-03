@@ -268,6 +268,49 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut sleep_screen = sample_state();
     sleep_screen.router.navigate_to(ScreenRoute::SleepScreen);
     states.push(("sleep-screen", sleep_screen));
+
+    let mut audio_details = sample_state();
+    audio_details.router.navigate_to(ScreenRoute::AudioDetails);
+    states.push(("audio-details", audio_details.clone()));
+    for (name, font_family, font_size) in [
+        (
+            "audio-details-inter-compact",
+            UiFontFamily::Inter,
+            UiFontSize::Compact,
+        ),
+        (
+            "audio-details-inter-standard",
+            UiFontFamily::Inter,
+            UiFontSize::Standard,
+        ),
+        (
+            "audio-details-inter-large",
+            UiFontFamily::Inter,
+            UiFontSize::Large,
+        ),
+        (
+            "audio-details-atkinson-compact",
+            UiFontFamily::AtkinsonHyperlegible,
+            UiFontSize::Compact,
+        ),
+        (
+            "audio-details-atkinson-standard",
+            UiFontFamily::AtkinsonHyperlegible,
+            UiFontSize::Standard,
+        ),
+        (
+            "audio-details-atkinson-large",
+            UiFontFamily::AtkinsonHyperlegible,
+            UiFontSize::Large,
+        ),
+    ] {
+        let mut state = audio_details.clone();
+        state.display = DisplayPreferences {
+            font_family,
+            font_size,
+        };
+        states.push((name, state));
+    }
     states
 }
 

@@ -25,6 +25,12 @@ use crate::{
     orientation::OrientedFrameBuffer,
 };
 
+const I2S_MODE_LABEL: &str = "TX + RX / S16 STEREO";
+
+fn rx_input_label() -> String {
+    format!("DIN GPIO{AUDIO_DIN_GPIO} · voice notes")
+}
+
 pub fn render_audio(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -109,7 +115,7 @@ pub fn render_audio_details(
     Text::new("Codec", Point::new(22, 160), heading).draw(display)?;
     line(display, 204, "Device", "ES8311 BSP-REF58", body)?;
     line(display, 238, "Address", &address, body)?;
-    line(display, 272, "I2S mode", "TX ONLY / S16 STEREO", body)?;
+    line(display, 272, "I2S mode", I2S_MODE_LABEL, body)?;
     line(
         display,
         306,
@@ -126,13 +132,7 @@ pub fn render_audio_details(
         &format!("M{AUDIO_MCLK_GPIO} B{AUDIO_BCLK_GPIO} W{AUDIO_WS_GPIO} D{AUDIO_DOUT_GPIO}"),
         body,
     )?;
-    line(
-        display,
-        448,
-        "RX input",
-        &format!("DIN GPIO{AUDIO_DIN_GPIO} deferred"),
-        body,
-    )?;
+    line(display, 448, "RX input", &rx_input_label(), body)?;
     line(
         display,
         482,
@@ -193,8 +193,46 @@ fn draw_action(
 
 #[cfg(test)]
 mod tests {
-    use super::{render_audio, render_audio_details};
-    use crate::{app::AppState, framebuffer::FrameBuffer, orientation::OrientedFrameBuffer};
+    use super::{render_audio, render_audio_details, rx_input_label, I2S_MODE_LABEL};
+    use crate::{
+        app::{
+            display::{DisplayPreferences, UiFontFamily, UiFontSize},
+            AppState,
+        },
+        framebuffer::FrameBuffer,
+        orientation::OrientedFrameBuffer,
+    };
+
+    #[test]
+    fn audio_details_describe_bidirectional_i2s_and_voice_notes_input() {
+        assert_eq!(I2S_MODE_LABEL, "TX + RX / S16 STEREO");
+        assert_eq!(rx_input_label(), "DIN GPIO21 · voice notes");
+    }
+
+    #[test]
+    fn audio_details_corrected_rows_fit_every_ui_font_and_size() {
+        for font_family in UiFontFamily::ALL {
+            for font_size in UiFontSize::ALL {
+                let mut state = AppState::default();
+                state.display = DisplayPreferences {
+                    font_family,
+                    font_size,
+                };
+                let body = state.display.body_style();
+                for (label, value) in [
+                    ("I2S mode", I2S_MODE_LABEL.to_string()),
+                    ("RX input", rx_input_label()),
+                ] {
+                    assert!(22 + body.text_width(label) < 170);
+                    assert!(170 + body.text_width(&value) <= 458);
+                }
+                assert!(body.line_height() < 34);
+                let mut frame = FrameBuffer::new_white();
+                let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
+                render_audio_details(&mut display, &state).unwrap();
+            }
+        }
+    }
 
     #[test]
     fn audio_overview_and_details_render_when_codec_is_unavailable() {
