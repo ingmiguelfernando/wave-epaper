@@ -19,8 +19,8 @@ Connect a USB-C **data** cable with USB power and press a key once so the
 firmware detects VBUS and stops idle CPU light sleep. If the port still does
 not appear, hold BOOT while power-cycling, then release it for download mode.
 Use the merged Wave `.bin` at `0x0`, as described in
-[README](../README.md#flash-the-board). This is distinct from the retained
-ELF-aware local flash helper; do not flash an ELF at a raw address.
+[README](../README.md#flash-the-board). An ELF requires the ELF-aware
+`espflash flash` command; do not flash an ELF at a raw address.
 
 ## Photos
 
@@ -61,10 +61,10 @@ do not arm RTC alarms; U.S. holiday rows are read-only.
 
 ## Inherited diagnostic wording
 
-The retained `scripts/test-release-flash-workflow.sh` regression hard-codes
-v1.0.0 artifact names although Cargo declares the current Wave version, so it
-fails its file-name assertions. The builder produces the current-version ELF;
-this is a stale test expectation, not a firmware build failure.
+The unused upstream ELF release helpers are not part of Wave's merged-image
+workflow. Their retirement is pending the deletions listed in D9's Status in
+[delegated tasks](DELEGATED_TASKS.md#d9-retire-the-upstream-release-helpers).
+Use the README build and flashing instructions instead.
 
 Some boot log readiness strings also describe old category counts or an
 ELF-only release policy. Use current menus, the guide and the README flashing

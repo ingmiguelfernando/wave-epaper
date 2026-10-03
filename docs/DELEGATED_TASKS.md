@@ -232,7 +232,14 @@ upstream's ELF releases, and the regression fails on its v1.0.0 file names.
 **Done when:** nothing refers to a removed script, and every kept script
 passes `bash -n`.
 
-**Status:** not started.
+**Status:** implemented (2026-10-03); D9 audit and docs updated.
+  README/workflows use no retired helper; only the obsolete chain calls itself.
+  Keep `validate.sh` (VS Code task), `test-host.sh` (README/CI) and other scripts;
+  kept scripts need no fixed-version change; firmware tag/SHA naming stays.
+  Removed build-release-firmware, flash-release, their regression, build and flash
+  helpers. Known Issues now uses current merged-image flashing guidance.
+  Host tests: 407 pass; fmt, diff and retained-script bash syntax pass. No device test.
+  Historical task references remain; protected architecture/ROADMAP have no helper hits.
 
 ### D10: Bible text module (library only)
 
