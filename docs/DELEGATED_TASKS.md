@@ -139,7 +139,15 @@ broken, for example the battery on the sleep card and the rain row of the
 **Done when:** `%` reads clearly in the `sleep-card` and `sleep-weather`
 previews at Inter Standard, and the other previews are unchanged.
 
-**Status:** not started.
+**Status:** blocked (2026-10-03); fonts config and atlases left unchanged.
+  Workflow artifact `36977900797` matches all four checked-in atlases exactly.
+  Raw Inter 12 px `%` has 20 ink pixels and no slash; Inter 11/13 px and all
+  Atkinson Detail strikes retain it. All 255 thresholds fail isolation;
+  mono/outline change 134/182 other glyphs; sampled axes also change others.
+  Pinned-tool local baseline differs only in advances for `ª` and `°`.
+  Host tests: 403 pass; fmt passes; comparisons are in `/tmp/wave-r2-d6/`.
+  Sleep-card battery already uses Body. D7 must use Body for rain; device
+  check remains with the owner; glyph-level config is absent.
 
 ### D7: Sleep layouts closer to the mockup
 
