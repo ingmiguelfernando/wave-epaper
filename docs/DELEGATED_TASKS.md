@@ -4,6 +4,51 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 2 result (2026-10-03)
+
+Pull request #2 (D6 to D11) was reviewed, merged into `main` and released as
+v0.9.1. D7, D8 and D9 went in as they were; D10 and D11 are solid libraries
+with thorough tests, and D6 stopped correctly when no setting fixed the glyph.
+The `side-tasks-2` branch is deleted. Round 3 tasks will be added here with
+the next phase.
+
+What the main developer changed at merge time:
+
+- Merged `main` (v0.9.0, Weather). The only conflict was "both sides added"
+  in `preview_states()`. Kept one `audio-details` preview instead of seven;
+  the fit test already covers every font.
+- D11: `save_to_path` renamed `STATS.TMP` over `STATS.TXT`. FAT refuses that
+  once the file exists (FatFs `f_rename` returns `FR_EXIST`), so every save
+  after the first would have failed on the device. The old file now moves to
+  `STATS.BAK` first, as in the Reader's state files, and `load_from_path`
+  falls back to the backup. The helpers also moved above the test module.
+- Known Issues: dropped the "retirement pending" note (D9 already deleted
+  the scripts) and rewrote the `%` entry with D6's findings.
+
+Verdict per task:
+
+- **D6:** blocked, as allowed; findings in Known Issues and the backlog.
+- **D7:** done; close to the mockup at every font family and size.
+- **D8:** done.
+- **D9:** done; nothing refers to the removed scripts.
+- **D10:** done; path traversal is rejected and chapter reads stay bounded.
+- **D11:** done after the save fix above.
+
+Do differently next time:
+
+- Check what the device's filesystem allows, not only the host: FAT cannot
+  rename onto an existing file. Copy a pattern already proven on the device
+  (`atomic_replace_text` in `reader.rs`).
+- Keep production code above `#[cfg(test)] mod tests`.
+- Size tests to real ranges: reading time never reaches `u32::MAX` seconds,
+  and dates past year 9999 add code without value.
+- A test that compares a constant with its own literal proves nothing; test
+  behaviour such as fit or rendering.
+- Status lines: about eight lines, and no local `/tmp` paths, which nobody
+  else can open. Evidence goes in the pull request.
+- Write docs for the state after the merge: "retirement is pending" was
+  false once the same pull request deleted the scripts.
+
 ## Round 1 result (2026-10-03)
 
 Pull request #1 (D1 to D5) was reviewed, merged into `main` and released as
@@ -46,7 +91,7 @@ Do differently next time:
 ## How to work
 
 - **Branch.** Each round of tasks gets its own branch from the latest `main`
-  (round 2: `side-tasks-2`), with one commit per task (`D6: ...`). Push often.
+  (round 3: `side-tasks-3`), with one commit per task (`D12: ...`). Push often.
 - **Pull request.** When done, open a pull request to `main`. Do not merge
   it; the main developer reviews it, resolves any conflicts and merges.
 - **Report.** Update the **Status** line of each task below in your branch:
@@ -81,22 +126,9 @@ Do differently next time:
 - Logic changes come with host tests. UI changes come with a preview: add an
   entry at the end of `preview_states()` in `src/app/preview.rs`, then check
   the PNG in the `screen-previews` artifact.
-- The main line (Phase 4, Weather) changes these files at the same time. Keep
-  edits to them small and local:
-  - `src/main.rs`, `src/app/state.rs`, `src/app/router.rs`, `src/app/menu.rs`;
-  - `src/app/mod.rs`, `src/app/preview.rs`, `src/app/screens/home.rs`;
-  - `README.md`, `Cargo.toml`, `src/lib.rs`.
-
-  Do not edit these at all:
-  - `src/weather.rs`, `src/weather_config.rs`, `src/app/screens/weather.rs`;
-  - `src/app/widgets/icons.rs`;
-  - `docs/ROADMAP.md`, `docs/architecture.md`.
-- Phase 4 is on `main` as v0.9.0. Merge `main` into `side-tasks-2` before you
-  open the pull request. What changed for you: `AppState` is no longer `Eq`
-  (`WeatherConfig` holds `f64` coordinates), `weather_icon_at(code, is_day)`
-  adds night icons (`weather_icon(code)` still works for D7), and
-  `CurrentConditions` has an `is_day` field. The files above stay off-limits
-  for this round.
+- The main line works on a phase at the same time. Each round lists the files
+  that phase changes; keep edits to them small, and leave alone the ones it
+  marks off-limits.
 - Hardware facts and the event loop are in `architecture.md`. The board cannot
   be tested from CI, so list what to try on the device in the Status line.
 
@@ -113,11 +145,13 @@ Do differently next time:
 - **Code shape.** Prefer an enum to a row index (`PowerSetting` is the
   model), `ALL.get(index)` to `ALL[index % len]`, and one generic helper to
   several copies of the same match arm.
+- **SD files.** Replace a file with `.TMP` then `.BAK` renames, as
+  `atomic_replace_text` in `reader.rs` does; FAT cannot rename onto an
+  existing file.
 
-## Round 2 tasks
+## Round 2 tasks (done in v0.9.1)
 
-Branch `side-tasks-2` from the latest `main` (v0.8.1); pull request title
-`Side tasks 2`. Order: D6, D7, D8, D9, D10, D11.
+Kept as the reference for the code they added.
 
 ### D6: Fix the `%` glyph at the Detail size
 
@@ -145,15 +179,9 @@ broken, for example the battery on the sleep card and the rain row of the
 **Done when:** `%` reads clearly in the `sleep-card` and `sleep-weather`
 previews at Inter Standard, and the other previews are unchanged.
 
-**Status:** blocked (2026-10-03); fonts config and atlases left unchanged.
-  Workflow artifact `36977900797` matches all four checked-in atlases exactly.
-  Raw Inter 12 px `%` has 20 ink pixels and no slash; Inter 11/13 px and all
-  Atkinson Detail strikes retain it. All 255 thresholds fail isolation;
-  mono/outline change 134/182 other glyphs; sampled axes also change others.
-  Pinned-tool local baseline differs only in advances for `ª` and `°`.
-  Host tests: 403 pass; fmt passes; comparisons are in `/tmp/wave-r2-d6/`.
-  Sleep-card battery already uses Body. D7 must use Body for rain; device
-  check remains with the owner; glyph-level config is absent.
+**Status:** blocked (`b1fa110`). No threshold, render mode or axis value fixes
+`%` at Inter 12 px without changing other glyphs; fonts are unchanged.
+Percentages use Body size instead (Known Issues › Percent glyph).
 
 ### D7: Sleep layouts closer to the mockup
 
@@ -184,14 +212,9 @@ fecha" and "Reposo: clima" in `mockups/index.html`. Change only
 - the fit and region tests pass, updated for the new positions;
 - every font family and size still fits.
 
-**Status:** implemented locally on `side-tasks-2` (2026-10-03), D7 only.
-  Clock keeps y 180–330; date starts at 340, with measured rule/weather gaps.
-  Both icon/text groups are centered; weather has the 3 px forecast rule.
-  Rain uses Body in a 34 px box because D6 remains blocked; APIs unchanged.
-  All six typography combinations fit; long labels wrap/ellipsis, negatives fit.
-  Host tests: 405 pass (8 layout tests); fmt, diff check and editor errors pass.
-  DOM and side-by-side PNG evidence: `/tmp/wave-r2-d7/`; required seven-segment
-  digits and existing icons/fonts differ from HTML. Firmware/device checks pending.
+**Status:** done in v0.9.1 (`7b22583`). Positions come from measured text
+heights, so every font family and size fits; rain uses Body in a 34 px box.
+Device check: the layouts become visible with Phase 3b.
 
 ### D8: Audio details describe the real audio path
 
@@ -210,15 +233,8 @@ Voice Notes record through that input.
 
 **Done when:** the preview shows the corrected lines and the tests pass.
 
-**Status:** implemented locally on `side-tasks-2` (2026-10-03), D8 only.
-  Details show `TX + RX / S16 STEREO` and `DIN GPIO21 · voice notes`.
-  Verified against `espidf.rs` RX capture and `main.rs` bidirectional setup;
-  driver and event-loop code are unchanged. Only the obsolete audio issue
-  text was removed; release-helper and boot-log issues remain unchanged.
-  Host tests: 407 pass, including two new wording/fit tests; fmt and editor
-  errors pass. Previews in `/tmp/wave-r2-d8/`: all six font combinations
-  viewed without overlap. Firmware/device checks pending: inspect Audio
-  details, play the test chime, then record and replay a Voice Note.
+**Status:** done in v0.9.1 (`e03d6e9`). Device check: open Audio details,
+play the test chime, then record and replay a Voice Note.
 
 ### D9: Retire the upstream release helpers
 
@@ -238,14 +254,9 @@ upstream's ELF releases, and the regression fails on its v1.0.0 file names.
 **Done when:** nothing refers to a removed script, and every kept script
 passes `bash -n`.
 
-**Status:** implemented (2026-10-03); D9 audit and docs updated.
-  README/workflows use no retired helper; only the obsolete chain calls itself.
-  Keep `validate.sh` (VS Code task), `test-host.sh` (README/CI) and other scripts;
-  kept scripts need no fixed-version change; firmware tag/SHA naming stays.
-  Removed build-release-firmware, flash-release, their regression, build and flash
-  helpers. Known Issues now uses current merged-image flashing guidance.
-  Host tests: 407 pass; fmt, diff and retained-script bash syntax pass. No device test.
-  Historical task references remain; protected architecture/ROADMAP have no helper hits.
+**Status:** done in v0.9.1 (`dec9ee4`). Removed `build-release-firmware.sh`,
+`flash-release.sh`, `test-release-flash-workflow.sh`, `build.sh` and
+`flash.sh`; kept `validate.sh` (VS Code task) and `test-host.sh` (README, CI).
 
 ### D10: Bible text module (library only)
 
@@ -286,14 +297,9 @@ builds and tests the data layer only: no UI, routes or `main.rs`.
 boundaries and the last chapter, a BOM, the daily rotation, and
 `translations` on a temporary directory.
 
-**Status:** implemented locally on `side-tasks-2` at `dec9ee4` (2026-10-03).
-  Added `bible.rs` and local library registration; no UI/runtime integration.
-  BOOKS and verse-list parsers validate fields/ranges with physical line errors;
-  chapter reads retain only the target and stop after one validated boundary.
-  Translation discovery is sorted; load paths reject component traversal.
-  Host tests: 438 pass (31 new on macOS); Linux-only non-UTF-8 fixture added.
-  Stable fmt, editor errors and diff checks pass; existing Drawable warning remains.
-  Firmware/device checks pending: SD UTF-8/final chapter reads after Phase 5 wiring.
+**Status:** done in v0.9.1 (`3d2aa1e`). Translation codes must be a single
+path component. Device check after Phase 5 wiring: UTF-8 text from the SD and
+the last chapter of a book.
 
 ### D11: Reading stats module (library only)
 
@@ -332,15 +338,9 @@ task builds and tests the counting and the file only: no UI or `main.rs`.
 morning case), finished books, the file round trip and trimming, and the clock
 with gaps shorter and longer than 2 minutes.
 
-**Status:** implemented locally on `side-tasks-2` (2026-10-03), D11 only.
-  Added `reading_stats.rs` and library registration; Phase 5 wiring remains pending.
-  Gregorian Unix days, saturating totals, seven-day chart and morning streak tested.
-  Latest 400 days and 200 last-touched books; file order preserves book recency.
-  UTF-8 paths validated; duplicates replace totals; parsed/loaded state is clean.
-  Clock retains fractions and pre-idle eligible time, ignores regressing timestamps.
-  Host tests: 475 pass (37 new); stable fmt, editor errors and diff checks pass.
-  Saves sync STATS.TMP then rename, retaining original/dirty state on failure;
-  firmware/device checks pending: SD replacement support and batched saves after wiring.
+**Status:** done in v0.9.1 (`e7900ce`, save made FAT-safe at merge). Books
+are kept in last-touched order. Device check after Phase 5 wiring: two saves
+in a row replace `STATS.TXT`, and saves are batched.
 
 ## Round 1 tasks (done in v0.8.1)
 

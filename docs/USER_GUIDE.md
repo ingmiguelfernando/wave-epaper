@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.9.0: what is implemented, not the future
+This guide describes firmware v0.9.1: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -207,9 +207,9 @@ the RTC-armed indicator and audible output before relying on an alarm.
 
 Up/Down chooses Play test chime, Stop playback, Increase volume, Decrease
 volume, Mute/Unmute or Audio details; Select runs it. Hold BOOT returns.
-The codec is suspended when no audio is needed. Details are diagnostic:
-their inherited RX/deferred wording is stale; WAV microphone recording is
-implemented in Voice Notes.
+The codec is suspended when no audio is needed. Details are diagnostic: they
+show the bidirectional I2S link and the microphone input that Voice Notes
+records through.
 
 ### Device and sensor diagnostics
 

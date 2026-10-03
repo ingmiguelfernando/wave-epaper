@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-03, firmware v0.9.0.
+Last updated: 2026-10-03, firmware v0.9.1.
 
 ## Status
 
@@ -28,7 +28,7 @@ Last updated: 2026-10-03, firmware v0.9.0.
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | Planned |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
-| Delegated tasks D6 to D11: `%` glyph, sleep layout polish, small fixes, Bible and reading stats data | | | In progress, branch `side-tasks-2` |
+| Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -150,12 +150,9 @@ the mockup:
 | Clock + weather | Clock and weather line | about 5 mAh/day | Clock 5 min, weather 2 h |
 | Verse of the day | Verse from the Bible on the SD | 1 wake-up per day | Disabled until Phase 5 |
 
-- Layouts come from task D5 (`src/app/screens/sleep_screens.rs`); delegated
-  task D7 brings them closer to the mockup:
-  - clock: the rule about 40 px under the date, the weather icon and summary
-    centered as one group, the details right under the summary;
-  - weather: a rule above the three days;
-  - the rain row in Body size, since the `%` glyph is broken at Detail size.
+- Layouts come from tasks D5 and D7 (`src/app/screens/sleep_screens.rs`),
+  already close to the mockup: the clock's weather icon and summary centered
+  as one group, a rule above the three days, rain chances in Body size.
 - **Clock.** While asleep the loop already wakes at least every 60 s. When a
   minute is due:
   1. power the panel (ALDO3) and initialize it;
@@ -212,8 +209,9 @@ Done in v0.9.0; this section stays as the reference for the Weather code.
 
 ## Phase 5: Bible and Reading Stats
 
-The data layers are delegated tasks D10 (`bible.rs`) and D11
-(`reading_stats.rs`); this phase adds the screens and wires them up.
+The data layers are done (v0.9.1, tasks D10 and D11): `bible.rs` and
+`reading_stats.rs`. This phase adds the screens and wires them up; save
+reading stats in batches (`has_unsaved`), since each save rewrites the file.
 
 ### Bible
 
@@ -306,8 +304,9 @@ The data layers are delegated tasks D10 (`bible.rs`) and D11
   sleep can only wake from RTC GPIOs (0 to 21), so BOOT and the wheel could wake
   it but the Power key (GPIO38) and the RTC alarm (GPIO45) could not. Needs
   research before any change.
-- The `%` sign looks broken at the Detail font size (seen on the sleep card);
-  delegated as task D6.
+- The `%` sign is broken in the Inter Standard Detail strike (12 px). Task D6
+  found no `fonts.toml` setting that fixes it alone; a fix needs a per-glyph
+  override in the generator. Until then, show percentages in Body size.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics.

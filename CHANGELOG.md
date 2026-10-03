@@ -3,6 +3,23 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.1 — Delegated tasks (pull request #2)
+
+- D6 (`b1fa110`): the `%` glyph at Inter Standard Detail cannot be fixed from
+  `fonts.toml` alone; findings recorded, fonts unchanged.
+- D7 (`7b22583`): clock and weather sleep layouts closer to the mockup
+  (centered groups, rule above the days, rain in Body size). Still not
+  selectable.
+- D8 (`e03d6e9`): Audio details describe the bidirectional I2S link and the
+  Voice Notes input.
+- D9 (`dec9ee4`): remove the unused upstream ELF build, flash and release
+  scripts.
+- D10 (`3d2aa1e`): `bible.rs`, the Bible text library: book list, streamed
+  chapter reads, translations and verse of the day. Not wired yet.
+- D11 (`e7900ce`): `reading_stats.rs`, daily and per-book reading totals,
+  week chart, streak and a key-driven reading clock. Not wired yet. At merge,
+  saves were made FAT-safe with a `.BAK` swap.
+
 ## v0.9.0 — Weather (Phase 4)
 
 Milestone `e9bffc8`.
