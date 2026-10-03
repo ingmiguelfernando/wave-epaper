@@ -8,8 +8,7 @@ with the main line. Read this file first, then
 
 Pull request #1 (D1 to D5) was reviewed, merged into `main` and released as
 v0.8.1. The work was careful, well tested and well documented. The
-`side-tasks` branch is deleted and no task is open right now. When new tasks
-appear in this file, start a new branch from the latest `main`.
+`side-tasks` branch is deleted; round 2 is in "Round 2 tasks" below.
 
 What the main developer did at merge time:
 
@@ -27,8 +26,7 @@ Verdict per task:
 - **D1:** done, review fix included; the same-value tests are thorough.
 - **D2 and D3:** done; the reference scans and the Games test pass.
 - **D4:** done; the guides are practical and accurate.
-- **D5:** done as specified. Polish against the mockup moves to Phase 3b, done
-  by the main developer:
+- **D5:** done as specified. Polish against the mockup is round 2 task D7:
   - the clock has large gaps (rule at y 470, details at y 622), where the
     mockup keeps them close;
   - the weather line is not centered as one group;
@@ -83,20 +81,16 @@ Do differently next time:
 - Logic changes come with host tests. UI changes come with a preview: add an
   entry at the end of `preview_states()` in `src/app/preview.rs`, then check
   the PNG in the `screen-previews` artifact.
-- The main line changes these files at the same time. Keep edits to them small
-  and local:
-  - `src/main.rs`;
-  - `src/app/state.rs`;
-  - `src/app/router.rs` and `src/app/menu.rs`;
-  - `src/app/mod.rs` and `src/app/preview.rs`;
+- The main line (Phase 4, Weather) changes these files at the same time. Keep
+  edits to them small and local:
+  - `src/main.rs`, `src/app/state.rs`, `src/app/router.rs`, `src/app/menu.rs`;
+  - `src/app/mod.rs`, `src/app/preview.rs`, `src/app/screens/home.rs`;
   - `README.md`, `Cargo.toml`, `src/lib.rs`.
 
   Do not edit these at all:
-  - `src/sleep_images.rs`, `src/sleep_mode.rs`;
-  - `src/power_settings.rs`, `src/battery_log.rs`;
-  - `src/app/screens/power.rs`, `src/app/screens/sleep_card.rs`;
-  - `docs/ROADMAP.md`;
-  - anything named `photo*`.
+  - `src/weather.rs`, `src/weather_config.rs`, `src/app/screens/weather.rs`;
+  - `src/app/widgets/icons.rs`;
+  - `docs/ROADMAP.md`, `docs/architecture.md`.
 - Hardware facts and the event loop are in `architecture.md`. The board cannot
   be tested from CI, so list what to try on the device in the Status line.
 
@@ -114,7 +108,194 @@ Do differently next time:
   model), `ALL.get(index)` to `ALL[index % len]`, and one generic helper to
   several copies of the same match arm.
 
-## D1: Option lists instead of cycling values
+## Round 2 tasks
+
+Branch `side-tasks-2` from the latest `main` (v0.8.1); pull request title
+`Side tasks 2`. Order: D6, D7, D8, D9, D10, D11.
+
+### D6: Fix the `%` glyph at the Detail size
+
+**Why.** In Inter at the Standard size the Detail strike (12 px) draws `%`
+broken, for example the battery on the sleep card and the rain row of the
+`sleep-weather` preview. Compact (11 px) and Large look right.
+
+**Where.**
+
+- `scripts/fonts/fonts.toml`: strike `INTER_STANDARD_DETAIL` uses the face
+  `inter-medium` (gray, threshold 128).
+- Pushing a change to `scripts/fonts/` runs the `fonts` workflow, which
+  uploads the `generated-fonts` artifact; commit the atlas `.rs` files from
+  it. Do not change `generate.py`.
+
+**Change.**
+
+1. Compare `%` in `INTER_STANDARD_DETAIL` with the 11 px strike in the
+   generated atlas, and check the Atkinson Detail strikes too.
+2. Fix it in `fonts.toml` only, for example with a face for that one strike
+   that has its own `threshold`, `render` or `tracking`.
+3. Other glyphs and strikes must not change: check the atlas diff.
+4. If no setting fixes it, stop and write what you found in the Status line.
+
+**Done when:** `%` reads clearly in the `sleep-card` and `sleep-weather`
+previews at Inter Standard, and the other previews are unchanged.
+
+**Status:** not started.
+
+### D7: Sleep layouts closer to the mockup
+
+**Why.** The D5 layouts work, but their spacing differs from "Reposo: reloj y
+fecha" and "Reposo: clima" in `mockups/index.html`. Change only
+`src/app/screens/sleep_screens.rs` and its tests.
+
+**Clock** (portrait 480 × 800):
+
+- Keep the time at y 180–330.
+- Date (Large) right under it, top about 340.
+- The rule about 40 px under the date, x 70 to 410.
+- The weather line about 28 px under the rule: the 2× icon and the summary
+  (Large) centered as one group, the summary vertically centered on the icon.
+- The details (Body) centered, right under the weather line.
+
+**Weather:**
+
+- Center the big icon with the temperature and condition as one group.
+- Add a 3 px rule above the three days, x 42 to 438, as in the mockup.
+- Rain row: Detail if D6 fixed `%`, otherwise Body, with a box tall enough
+  for Body at the Large size.
+
+**Done when:**
+
+- `sleep-clock`, `sleep-clock-weather` and `sleep-weather` match the
+  mockup's proportions when compared side by side;
+- the fit and region tests pass, updated for the new positions;
+- every font family and size still fits.
+
+**Status:** not started.
+
+### D8: Audio details describe the real audio path
+
+**Why.** Settings › Audio › Audio details still says `I2S mode: TX ONLY` and
+`RX input: DIN GPIO21 deferred`, but the I2S driver is bidirectional and
+Voice Notes record through that input.
+
+**Change.**
+
+- `src/app/screens/audio.rs`: describe both directions in the terse style,
+  for example `TX + RX / S16 STEREO` and `DIN GPIO21 · voice notes`. Take the
+  facts from `src/audio/espidf.rs` and the `I2sDriver::new_std_bidir` call in
+  `main.rs`.
+- Remove the paragraph about it from `docs/KNOWN_ISSUES.md`.
+- Add an `audio-details` preview.
+
+**Done when:** the preview shows the corrected lines and the tests pass.
+
+**Status:** not started.
+
+### D9: Retire the upstream release helpers
+
+**Why.** Wave ships the merged `.bin` built by `firmware.yml` (README › Flash
+the board). `scripts/build-release-firmware.sh`, `scripts/flash-release.sh`
+and their regression `scripts/test-release-flash-workflow.sh` come from
+upstream's ELF releases, and the regression fails on its v1.0.0 file names.
+
+**Change.**
+
+- Search for each of them, and for `scripts/build.sh`, `scripts/flash.sh` and
+  `scripts/validate.sh`, in `.github/`, `scripts/`, `README.md` and `docs/`.
+- Remove what nothing current uses. Keep what README or a workflow uses, and
+  make it read the version from `Cargo.toml` instead of a fixed one.
+- Update `docs/KNOWN_ISSUES.md` and any doc that names a removed script.
+
+**Done when:** nothing refers to a removed script, and every kept script
+passes `bash -n`.
+
+**Status:** not started.
+
+### D10: Bible text module (library only)
+
+**Why.** Phase 5 adds a Bible reader (ROADMAP › Phase 5 › Bible). This task
+builds and tests the data layer only: no UI, routes or `main.rs`.
+
+**Add `src/bible.rs`**, registered in `src/lib.rs`:
+
+- `pub const BIBLE_ROOT: &str = "/sdcard/RUSTMIX/BIBLE";`
+- `Testament { Old, New }`: books 1–39 are Old, 40–66 New.
+- `BibleBook { number: u8, name: String, short_name: String, chapters: u16 }`
+  and `parse_books(text: &str) -> Result<Vec<BibleBook>>` for `BOOKS.TXT`:
+  - lines `number|name|short name|chapters`, fields trimmed;
+  - skip blank lines, lines starting with `#` and a UTF-8 BOM;
+  - errors name the line: bad number, missing field, number outside 1–66,
+    duplicate number, zero chapters.
+- `book_file_name(number: u8) -> String`: `01.TXT` to `66.TXT`.
+- `Verse { number: u16, text: String }` and
+  `read_chapter(reader: impl BufRead, chapter: u16) -> Result<Vec<Verse>>`:
+  - lines `chapter:verse<TAB>text`;
+  - read line by line and stop after the chapter, so a book is never fully
+    in memory;
+  - skip blank lines and a BOM; a malformed line is an error naming its line.
+- `load_chapter(root: &Path, code: &str, book: u8, chapter: u16)` opens
+  `root/code/NN.TXT` and calls `read_chapter`.
+- `translations(root: &Path) -> io::Result<Vec<String>>`: the sub-folders that
+  hold a `BOOKS.TXT`, sorted, ignoring names that start with `.`.
+- Verse of the day, from `/RUSTMIX/BIBLE/VERSES.TXT`:
+  - `VerseRef { book: u8, chapter: u16, first: u16, last: u16 }`, written
+    `19 23:1` or `19 23:1-3` (book number, chapter, verse or range);
+  - `parse_verse_list(text: &str) -> Result<Vec<VerseRef>>`, with the same
+    skipping and line-numbered errors;
+  - `VerseRef::label(&self, books: &[BibleBook]) -> String`, e.g. `Sal 23:1-3`;
+  - `verse_of_the_day(list: &[VerseRef], epoch_day: u32) -> Option<&VerseRef>`
+    returns `list[epoch_day % len]`.
+
+**Tests:** every parser on good and bad input (fixtures as strings), chapter
+boundaries and the last chapter, a BOM, the daily rotation, and
+`translations` on a temporary directory.
+
+**Status:** not started.
+
+### D11: Reading stats module (library only)
+
+**Why.** Phase 5 adds Reading Stats (ROADMAP › Phase 5 › Reading Stats). This
+task builds and tests the counting and the file only: no UI or `main.rs`.
+
+**Add `src/reading_stats.rs`**, registered in `src/lib.rs`:
+
+- `pub const READING_STATS_PATH: &str = "/sdcard/RUSTMIX/READER/STATS.TXT";`
+- Days are `epoch_day: u32` (days since 1970-01-01), with a `2026-10-03`
+  label and its parser; reuse `rtc.rs` helpers where they fit.
+- `ReadingStats`:
+  - `record(&mut self, day: u32, seconds: u32, pages: u32, book: Option<&str>)`;
+  - `mark_finished(&mut self, book: &str)`;
+  - `day(&self, day: u32) -> DayStats` with `seconds` and `pages`;
+  - `week(&self, today: u32) -> [u32; 7]`: minutes for the seven days ending
+    today, oldest first, for the chart;
+  - `streak(&self, today: u32) -> u32`: consecutive days with at least 5
+    minutes, counting back from today, or from yesterday while today is still
+    under 5 minutes;
+  - `books_finished(&self) -> usize`;
+  - `parse`, `serialized`, `load_from_path`, and `save_to_path` that writes a
+    `.TMP` file and renames it;
+  - `has_unsaved` and `mark_saved`, so `main.rs` can batch writes.
+- The file has one record per line, separated by `|` (FAT names cannot
+  contain it):
+  - `# Wave reading stats v1`;
+  - `day|2026-10-03|1520|34`: date, seconds, pages;
+  - `book|<book path>|5400|210|0`: seconds, pages, finished (0 or 1);
+  - keep the latest 400 days and 200 books; skip unknown lines.
+- `ReadingClock` turns key presses into reading time: `on_key(now_ms)` and
+  `take_seconds(now_ms) -> u32`. Time counts only while the last key was less
+  than 2 minutes ago, and is never counted twice.
+
+**Tests:** recording across days, the week, the streak rules (including the
+morning case), finished books, the file round trip and trimming, and the clock
+with gaps shorter and longer than 2 minutes.
+
+**Status:** not started.
+
+## Round 1 tasks (done in v0.8.1)
+
+Kept for reference; the verdict is in "Round 1 result" above.
+
+### D1: Option lists instead of cycling values
 
 **Why.** Pressing Select on a setting steps to the next value, so reaching a
 value can take several presses and refreshes. Settings › Power already opens a
@@ -253,7 +434,7 @@ choices. Ordinary UI redraw still closes the picker; no extra preference
 refresh is requested. No host failures or editor errors in the changed files.
 The main developer review above is retained unchanged.
 
-## D2: Remove the BLE remote build
+### D2: Remove the BLE remote build
 
 **Why.** The inherited `rustmix-remote-ble` feature (a BLE page turner for a
 Wear OS watch) is not used by Wave and complicates `main.rs`.
@@ -319,7 +500,7 @@ weather/NTP/file-transfer bursts, battery idle light-sleep, Power/wheel wake
 and RTC alarm wake. Deletions and reference scans passed; physical checks
 remain with the owner.
 
-## D3: Remove the IMU tilt games
+### D3: Remove the IMU tilt games
 
 **Why.** Wave keeps button games only (Phase 6 adds Sudoku and Tetris). The
 IMU should only run on the Motion diagnostic screens.
@@ -390,7 +571,7 @@ readings, MotionEvents tilt/shake/rotate/level and threshold/reset controls,
 and IMU off outside diagnostics including Games. Handover requires a green
 Xtensa firmware build; physical checks remain with the owner.
 
-## D4: Documentation refresh
+### D4: Documentation refresh
 
 Do this last so it describes the code after D1 to D3.
 
@@ -443,7 +624,7 @@ check and relative documentation file-link checks pass. The retained flash
 regression fails its pre-existing hard-coded v1.0.0 artifact expectation
 against v0.7.0; recorded in Known Issues rather than changing unrelated code.
 
-## D5: Sleep screen layouts (drawing only)
+### D5: Sleep screen layouts (drawing only)
 
 **Why.** Phase 3b adds clock and weather sleep screens. The main developer
 wires up when they show and how they refresh; this task only draws them.

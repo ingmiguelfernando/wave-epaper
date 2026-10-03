@@ -22,12 +22,13 @@ Last updated: 2026-10-03, firmware v0.8.1.
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
 | Phase 3b: sleep screen modes (clock, weather) | 0.9.0 | | Planned |
-| Phase 4: Weather app and Settings › Weather | | | Planned |
+| Phase 4: Weather app and Settings › Weather | | | In progress, branch `phase4-weather` |
 | Phase 5: Bible and Reading Stats | | | Planned |
 | Phase 6: Games (Sudoku, Tetris) | | | Planned |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | Planned |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
+| Delegated tasks D6 to D11: `%` glyph, sleep layout polish, small fixes, Bible and reading stats data | | | In progress, branch `side-tasks-2` |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -149,8 +150,8 @@ the mockup:
 | Clock + weather | Clock and weather line | about 5 mAh/day | Clock 5 min, weather 2 h |
 | Verse of the day | Verse from the Bible on the SD | 1 wake-up per day | Disabled until Phase 5 |
 
-- Layouts come from task D5 (`src/app/screens/sleep_screens.rs`). Before
-  wiring them, bring them closer to the mockup:
+- Layouts come from task D5 (`src/app/screens/sleep_screens.rs`); delegated
+  task D7 brings them closer to the mockup:
   - clock: the rule about 40 px under the date, the weather icon and summary
     centered as one group, the details right under the summary;
   - weather: a rule above the three days;
@@ -201,6 +202,9 @@ the mockup:
 - **Cost.** About 4 s of Wi-Fi per update, so 2 h is about 2 mAh/day.
 
 ## Phase 5: Bible and Reading Stats
+
+The data layers are delegated tasks D10 (`bible.rs`) and D11
+(`reading_stats.rs`); this phase adds the screens and wires them up.
 
 ### Bible
 
@@ -294,7 +298,7 @@ the mockup:
   it but the Power key (GPIO38) and the RTC alarm (GPIO45) could not. Needs
   research before any change.
 - The `%` sign looks broken at the Detail font size (seen on the sleep card);
-  check the Inter 11–12 px atlas.
+  delegated as task D6.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics.
