@@ -438,7 +438,9 @@ fn outline(
 
 #[cfg(test)]
 mod tests {
-    use super::{next_update, render_weather, render_weather_details, shown_forecast, updated_line};
+    use super::{
+        next_update, render_weather, render_weather_details, shown_forecast, updated_line,
+    };
     use crate::{
         app::{
             display::{DisplayPreferences, UiFontFamily, UiFontSize},
