@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.8.1), not an upstream v1.0.0 marker.
+	expected release version (currently v0.9.0), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Bible, Reading Stats and XiaoZhi remain SOON.
 - [ ] Boot without Wi-Fi configuration still reaches usable offline Home.
@@ -89,12 +89,29 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Battery chart gains samples after 15 minutes; last-sleep report and
 	light-sleep share update. Check idle light sleep on battery vs awake USB.
 
-## Weather, network and alarm while asleep (D2)
+## Weather
 
-- [ ] With valid `WIFI.TXT`/`WEATHER.TXT`, Refresh weather starts a Wi-Fi burst,
-	updates weather/Home and returns the radio to idle after work completes.
-- [ ] Inspect weather details and NTP/Clock status; failed/offline refresh
-	keeps the shell responsive and retains any last good result.
+- [ ] With valid `WIFI.TXT`/`WEATHER.TXT`, Weather shows now, the next hours
+	and four days; the bottom line reads `Updated HH:MM · next HH:MM ·
+	Open-Meteo`. After dark, clear hours show a moon.
+- [ ] Select updates now with a Wi-Fi burst; the radio returns to idle after.
+- [ ] Down opens twelve hours, Up returns; hold BOOT returns to Home.
+- [ ] Short BOOT switches °C/°F on both pages; Home, Clock and Environment
+	follow, and the choice survives a reboot (`units=` in `WEATHER.TXT`).
+- [ ] Settings › Weather: change Update every, Units and Show on Home; the
+	file is rewritten and the values survive a reboot. Show on Home No hides
+	the strip temperature and the row value.
+- [ ] Service Off: Weather says it is off, Home shows no weather, and the
+	serial log shows no `weather-fetch` for an interval. Service On updates
+	straight away.
+- [ ] Manual: no automatic `weather-fetch` after boot or an interval; Select
+	on Weather still updates.
+- [ ] Failed/offline update keeps the shell responsive and the last good
+	forecast; the second page shows the last error.
+
+## Network and alarm while asleep (D2)
+
+- [ ] Inspect NTP/Clock status.
 - [ ] Start LAN transfer explicitly, authenticate with its displayed code,
 	upload/download a test file; stop with Select and separately with hold BOOT.
 	Protected paths remain protected; sleep shuts the portal down.

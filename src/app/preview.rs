@@ -29,9 +29,9 @@ use crate::{
         BookFont, BookFontSize, BookFormat, ReaderLocation, ReaderTickOutcome, ReaderUiState,
         ReadingTheme,
     },
-    regional::TemperatureUnit,
     rtc::RtcDateTime,
-    weather::{CurrentConditions, WeatherFetchState},
+    weather::{parse_open_meteo_response, WeatherSnapshot, SAMPLE_RESPONSE},
+    weather_config::{WeatherConfig, SAMPLE_CONFIG},
 };
 
 const SPANISH_SAMPLE: [&str; 2] = [
@@ -224,6 +224,8 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         ("tools", ScreenRoute::Tools),
         ("settings", ScreenRoute::Settings),
         ("weather", ScreenRoute::Weather),
+        ("weather-details", ScreenRoute::WeatherDetails),
+        ("weather-settings", ScreenRoute::WeatherSettings),
         ("voice-notes", ScreenRoute::VoiceNotes),
     ];
     for (name, route) in routes {
@@ -269,48 +271,27 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     sleep_screen.router.navigate_to(ScreenRoute::SleepScreen);
     states.push(("sleep-screen", sleep_screen));
 
+    let mut weather_picker = sample_state();
+    weather_picker
+        .router
+        .navigate_to(ScreenRoute::WeatherSettings);
+    weather_picker.apply(ButtonEvent::Down);
+    weather_picker.apply(ButtonEvent::Select);
+    states.push(("weather-settings-picker", weather_picker));
+
+    let mut weather_off = sample_state();
+    weather_off.router.navigate_to(ScreenRoute::Weather);
+    weather_off.weather_config.as_mut().unwrap().enabled = false;
+    states.push(("weather-off", weather_off));
+
+    let mut weather_large = sample_state();
+    weather_large.display.font_size = UiFontSize::Large;
+    weather_large.router.navigate_to(ScreenRoute::Weather);
+    states.push(("weather-large-font", weather_large));
+
     let mut audio_details = sample_state();
     audio_details.router.navigate_to(ScreenRoute::AudioDetails);
-    states.push(("audio-details", audio_details.clone()));
-    for (name, font_family, font_size) in [
-        (
-            "audio-details-inter-compact",
-            UiFontFamily::Inter,
-            UiFontSize::Compact,
-        ),
-        (
-            "audio-details-inter-standard",
-            UiFontFamily::Inter,
-            UiFontSize::Standard,
-        ),
-        (
-            "audio-details-inter-large",
-            UiFontFamily::Inter,
-            UiFontSize::Large,
-        ),
-        (
-            "audio-details-atkinson-compact",
-            UiFontFamily::AtkinsonHyperlegible,
-            UiFontSize::Compact,
-        ),
-        (
-            "audio-details-atkinson-standard",
-            UiFontFamily::AtkinsonHyperlegible,
-            UiFontSize::Standard,
-        ),
-        (
-            "audio-details-atkinson-large",
-            UiFontFamily::AtkinsonHyperlegible,
-            UiFontSize::Large,
-        ),
-    ] {
-        let mut state = audio_details.clone();
-        state.display = DisplayPreferences {
-            font_family,
-            font_size,
-        };
-        states.push((name, state));
-    }
+    states.push(("audio-details", audio_details));
     states
 }
 
@@ -416,16 +397,11 @@ fn sample_state() -> AppState {
         ..BoardSnapshot::default()
     };
     state.network.wifi_state = WifiConnectionState::Connected;
-    state.regional.temperature_unit = TemperatureUnit::Celsius;
-    state.weather.state = WeatherFetchState::Ready;
-    state.weather.current = Some(CurrentConditions {
-        observed_at: "2026-10-02T13:30".into(),
-        weather_code: 2,
-        temperature_tenths_f: 644,
-        apparent_temperature_tenths_f: 640,
-        humidity_percent: 61,
-        wind_speed_tenths_mph: 86,
-    });
+    let config = WeatherConfig::parse(SAMPLE_CONFIG).unwrap();
+    state.update_weather_snapshot(WeatherSnapshot::provisioned(&config));
+    state.set_weather_config(Some(config));
+    let forecast = parse_open_meteo_response(SAMPLE_RESPONSE).unwrap();
+    state.weather.record_success(forecast);
     state.reader.resume = Some(ReaderLocation {
         path: "/sdcard/RUSTMIX/BOOKS/Cien años de soledad.txt".into(),
         title: "Cien años de soledad".into(),

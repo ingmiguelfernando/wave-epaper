@@ -92,8 +92,9 @@ Rules that keep it stable:
 
   Each light sleep lasts at most 60 s. It is skipped on USB power so flashing
   and the serial console work (VBUS is checked every 5 s).
-- **Wi-Fi bursts.** Wi-Fi is off except for short bursts: weather refresh, NTP
-  every 12 h, manual refresh, file transfer.
+- **Wi-Fi bursts.** Wi-Fi is off except for short bursts: weather updates at
+  the Settings › Weather interval (none when the service is off or manual), a
+  weather update asked for with Select, NTP every 12 h, file transfer.
   - A burst gives up after 20 s without a connection and ends after 90 s.
   - Failures back off from 15 min up to 4 h.
 - **Sleep mode.** Holding the Power key, or the auto-sleep delay from Settings ›
@@ -126,7 +127,7 @@ Rules that keep it stable:
 | Path | Module | Contents |
 |---|---|---|
 | `/RUSTMIX/WIFI.TXT` | `network_config.rs` | SSID, password, time zone, NTP server |
-| `/RUSTMIX/WEATHER.TXT` | `weather_config.rs` | Open-Meteo location, refresh minutes |
+| `/RUSTMIX/WEATHER.TXT` | `weather_config.rs` | Open-Meteo location; service on/off, update interval, units and Show on Home, rewritten by Settings › Weather |
 | `/RUSTMIX/ALARMS.TXT` | `alarm.rs` | Alarms and snooze minutes |
 | `/RUSTMIX/DISPLAY.TXT` | `app/display.rs` | UI font and size |
 | `/RUSTMIX/POWER.TXT` | `power_settings.rs` | Auto-sleep delay, wake keys |

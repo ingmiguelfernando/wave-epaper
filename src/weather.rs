@@ -99,6 +99,7 @@ pub struct CurrentConditions {
     pub apparent_temperature_tenths_f: i16,
     pub humidity_percent: u8,
     pub wind_speed_tenths_mph: u16,
+    pub is_day: bool,
 }
 
 impl CurrentConditions {
@@ -119,6 +120,16 @@ impl CurrentConditions {
         match unit {
             TemperatureUnit::Celsius => format_tenths((tenths_mph * 1609 + 500) / 1000, " km/h"),
             TemperatureUnit::Fahrenheit => format_tenths(tenths_mph, " mph"),
+        }
+    }
+
+    /// Whole km/h or mph, for compact layouts: `12 km/h`.
+    #[must_use]
+    pub fn wind_short_label(&self, unit: TemperatureUnit) -> String {
+        let tenths_mph = i32::from(self.wind_speed_tenths_mph);
+        match unit {
+            TemperatureUnit::Celsius => format!("{} km/h", (tenths_mph * 1609 + 5000) / 10000),
+            TemperatureUnit::Fahrenheit => format!("{} mph", (tenths_mph + 5) / 10),
         }
     }
 
@@ -144,6 +155,12 @@ impl DailyForecast {
         condition_label(self.weather_code)
     }
 
+    /// `Sat` for `2026-10-03`.
+    #[must_use]
+    pub fn weekday_label(&self) -> &'static str {
+        weekday_of(&self.date).unwrap_or("---")
+    }
+
     #[must_use]
     pub fn compact_label(&self) -> String {
         format!(
@@ -158,12 +175,34 @@ impl DailyForecast {
     }
 }
 
+/// One hour of the short-term forecast.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HourlyForecast {
+    /// Provider local time, e.g. `2026-10-03T14:00`.
+    pub time: String,
+    pub weather_code: u16,
+    pub temperature_tenths_f: i16,
+    pub precipitation_probability_percent: Option<u8>,
+    pub is_day: bool,
+}
+
+impl HourlyForecast {
+    /// `14:00`.
+    #[must_use]
+    pub fn hour_label(&self) -> &str {
+        self.time.get(11..16).unwrap_or("--:--")
+    }
+}
+
 /// Successfully parsed provider response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WeatherData {
     pub provider_timezone: String,
     pub current: CurrentConditions,
+    /// Today first.
     pub forecast: Vec<DailyForecast>,
+    /// From the current hour.
+    pub hourly: Vec<HourlyForecast>,
 }
 
 /// Cached rendering snapshot. Failed refreshes retain the last good payload.
@@ -175,6 +214,7 @@ pub struct WeatherSnapshot {
     pub provider_timezone: String,
     pub current: Option<CurrentConditions>,
     pub forecast: Vec<DailyForecast>,
+    pub hourly: Vec<HourlyForecast>,
     pub last_success: Option<String>,
     pub error: Option<String>,
 }
@@ -188,6 +228,7 @@ impl Default for WeatherSnapshot {
             provider_timezone: "--".into(),
             current: None,
             forecast: Vec::new(),
+            hourly: Vec::new(),
             last_success: None,
             error: None,
         }
@@ -198,7 +239,11 @@ impl WeatherSnapshot {
     #[must_use]
     pub fn provisioned(config: &WeatherConfig) -> Self {
         Self {
-            state: WeatherFetchState::WaitingForNetwork,
+            state: if config.enabled {
+                WeatherFetchState::WaitingForNetwork
+            } else {
+                WeatherFetchState::Disabled
+            },
             provider: config.provider.clone(),
             location: config.location.clone(),
             provider_timezone: config.timezone.clone(),
@@ -217,6 +262,7 @@ impl WeatherSnapshot {
         self.provider_timezone = data.provider_timezone;
         self.current = Some(data.current);
         self.forecast = data.forecast;
+        self.hourly = data.hourly;
         self.error = None;
     }
 
@@ -308,6 +354,7 @@ pub fn parse_open_meteo_response(body: &str) -> Result<WeatherData> {
             object_field(current_object, "wind_speed_10m")?,
             "current.wind_speed_10m",
         )?,
+        is_day: parse_u8(object_field(current_object, "is_day")?, "current.is_day")? == 1,
     };
 
     let times = parse_array(object_field(daily_object, "time")?, parse_json_string)?;
@@ -326,8 +373,8 @@ pub fn parse_open_meteo_response(body: &str) -> Result<WeatherData> {
     )?;
 
     let len = times.len();
-    if len == 0 || len > 4 {
-        bail!("Open-Meteo daily forecast must contain 1 to 4 days");
+    if len == 0 || len > 7 {
+        bail!("Open-Meteo daily forecast must contain 1 to 7 days");
     }
     if weather_codes.len() != len
         || highs.len() != len
@@ -351,7 +398,47 @@ pub fn parse_open_meteo_response(body: &str) -> Result<WeatherData> {
         provider_timezone: parse_json_string(object_field(body, "timezone")?)?,
         current,
         forecast,
+        hourly: parse_hourly(object_field(body, "hourly")?)?,
     })
+}
+
+fn parse_hourly(hourly: &str) -> Result<Vec<HourlyForecast>> {
+    let times = parse_array(object_field(hourly, "time")?, parse_json_string)?;
+    let weather_codes = parse_array(object_field(hourly, "weather_code")?, |value| {
+        parse_u16(value, "hourly.weather_code")
+    })?;
+    let temperatures = parse_array(object_field(hourly, "temperature_2m")?, |value| {
+        parse_signed_tenths(value, "hourly.temperature_2m")
+    })?;
+    let precipitation = parse_array(
+        object_field(hourly, "precipitation_probability")?,
+        parse_optional_probability_percent,
+    )?;
+    let is_day = parse_array(object_field(hourly, "is_day")?, |value| {
+        parse_u8(value, "hourly.is_day")
+    })?;
+
+    let len = times.len();
+    if len > 48 {
+        bail!("Open-Meteo hourly forecast must contain at most 48 hours");
+    }
+    if weather_codes.len() != len
+        || temperatures.len() != len
+        || precipitation.len() != len
+        || is_day.len() != len
+    {
+        bail!("Open-Meteo hourly arrays have inconsistent lengths");
+    }
+    let hours = (0..len)
+        .map(|index| HourlyForecast {
+            time: times[index].clone(),
+            weather_code: weather_codes[index],
+            temperature_tenths_f: temperatures[index],
+            precipitation_probability_percent: precipitation[index],
+            is_day: is_day[index] == 1,
+        })
+        .collect();
+    Ok(hours)
 }
 
 #[must_use]
@@ -376,6 +463,37 @@ pub const fn condition_label(code: u16) -> &'static str {
 #[must_use]
 pub fn degrees_label(tenths_f: i16, unit: TemperatureUnit) -> String {
     format_tenths(unit.from_fahrenheit_tenths(tenths_f), unit.suffix())
+}
+
+/// Round a provider Fahrenheit value (tenths) to whole `unit` degrees.
+#[must_use]
+pub fn whole_degrees(tenths_f: i16, unit: TemperatureUnit) -> i32 {
+    let tenths = unit.from_fahrenheit_tenths(tenths_f);
+    if tenths >= 0 {
+        (tenths + 5) / 10
+    } else {
+        (tenths - 5) / 10
+    }
+}
+
+/// `18°`, without the unit letter.
+#[must_use]
+pub fn short_degrees_label(tenths_f: i16, unit: TemperatureUnit) -> String {
+    format!("{}°", whole_degrees(tenths_f, unit))
+}
+
+/// Day name of an ISO `YYYY-MM-DD` date (Sakamoto's method).
+fn weekday_of(date: &str) -> Option<&'static str> {
+    const NAMES: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const OFFSETS: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let mut parts = date.get(..10)?.split('-');
+    let year: i32 = parts.next()?.parse().ok()?;
+    let month: usize = parts.next()?.parse().ok()?;
+    let day: i32 = parts.next()?.parse().ok()?;
+    let offset = *OFFSETS.get(month.checked_sub(1)?)?;
+    let year = if month < 3 { year - 1 } else { year };
+    let index = (year + year / 4 - year / 100 + year / 400 + offset + day).rem_euclid(7);
+    NAMES.get(index as usize).copied()
 }
 
 fn format_tenths(value: i32, suffix: &str) -> String {
@@ -619,7 +737,7 @@ fn parse_optional_probability_percent(value: &str) -> Result<Option<u8>> {
     if value.trim() == "null" {
         return Ok(None);
     }
-    let tenths = parse_decimal_tenths(value, "daily.precipitation_probability_max")?;
+    let tenths = parse_decimal_tenths(value, "precipitation probability")?;
     let rounded = if tenths >= 0 {
         (tenths + 5) / 10
     } else {
@@ -783,19 +901,27 @@ pub mod espidf {
     }
 }
 
+/// An Open-Meteo response as the firmware requests it, for tests and previews.
+#[cfg(test)]
+pub(crate) const SAMPLE_RESPONSE: &str = r#"{
+  "timezone":"Pacific/Auckland",
+  "current":{"time":"2026-10-02T13:30","temperature_2m":64.4,"relative_humidity_2m":61,"apparent_temperature":62.6,"weather_code":2,"wind_speed_10m":7.5,"is_day":1},
+  "hourly":{"time":["2026-10-02T13:00","2026-10-02T14:00","2026-10-02T15:00","2026-10-02T16:00","2026-10-02T17:00","2026-10-02T18:00","2026-10-02T19:00","2026-10-02T20:00","2026-10-02T21:00","2026-10-02T22:00","2026-10-02T23:00","2026-10-03T00:00"],
+    "temperature_2m":[64.4,64.9,65.1,64.4,63.0,61.2,59.9,59.0,57.6,55.4,55.0,54.1],
+    "weather_code":[2,2,3,3,61,61,51,51,1,1,0,0],
+    "precipitation_probability":[10,10,20,40,70,80,50,30,10,5,0,null],
+    "is_day":[1,1,1,1,1,1,1,0,0,0,0,0]},
+  "daily":{"time":["2026-10-02","2026-10-03","2026-10-04","2026-10-05","2026-10-06"],"weather_code":[2,0,61,95,2],"temperature_2m_max":[69.8,73.4,62.6,59.0,66.2],"temperature_2m_min":[51.8,53.6,50.0,48.2,48.2],"precipitation_probability_max":[10,0,80,60,20]}
+}"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
-        condition_label, parse_open_meteo_response, WeatherFetchError, WeatherFetchState,
-        WeatherSnapshot, WEATHER_RETRY_DELAYS_SECONDS, WEATHER_RETRY_LIMIT,
+        condition_label, parse_open_meteo_response, short_degrees_label, weekday_of,
+        WeatherFetchError, WeatherFetchState, WeatherSnapshot, SAMPLE_RESPONSE as SAMPLE,
+        WEATHER_RETRY_DELAYS_SECONDS, WEATHER_RETRY_LIMIT,
     };
     use crate::{regional::TemperatureUnit, weather_config::WeatherConfig};
-
-    const SAMPLE: &str = r#"{
-      "timezone":"America/New_York",
-      "current":{"time":"2026-06-03T16:30","temperature_2m":78.4,"relative_humidity_2m":61,"apparent_temperature":79.7,"weather_code":2,"wind_speed_10m":8.6},
-      "daily":{"time":["2026-06-03","2026-06-04","2026-06-05","2026-06-06"],"weather_code":[2,61,0,95],"temperature_2m_max":[80.1,75.0,82.4,77.3],"temperature_2m_min":[64.2,62.5,65.1,63.8],"precipitation_probability_max":[20,80,5,70]}
-    }"#;
 
     fn config() -> WeatherConfig {
         WeatherConfig::parse("location=Jersey City, NJ\nlatitude=40.7178\nlongitude=-74.0431\n")
@@ -803,18 +929,54 @@ mod tests {
     }
 
     #[test]
-    fn parses_current_conditions_and_four_day_forecast() {
+    fn parses_current_conditions_hours_and_five_days() {
         let data = parse_open_meteo_response(SAMPLE).unwrap();
         let current = &data.current;
         let (celsius, fahrenheit) = (TemperatureUnit::Celsius, TemperatureUnit::Fahrenheit);
-        assert_eq!(current.temperature_label(fahrenheit), "78.4°F");
-        assert_eq!(current.temperature_label(celsius), "25.8°C");
-        assert_eq!(current.apparent_temperature_label(fahrenheit), "79.7°F");
-        assert_eq!(current.wind_label(fahrenheit), "8.6 mph");
-        assert_eq!(current.wind_label(celsius), "13.8 km/h");
+        assert_eq!(current.temperature_label(fahrenheit), "64.4°F");
+        assert_eq!(current.temperature_label(celsius), "18.0°C");
+        assert_eq!(current.apparent_temperature_label(fahrenheit), "62.6°F");
+        assert_eq!(current.wind_label(fahrenheit), "7.5 mph");
+        assert_eq!(current.wind_label(celsius), "12.1 km/h");
+        assert_eq!(current.wind_short_label(celsius), "12 km/h");
+        assert_eq!(current.wind_short_label(fahrenheit), "8 mph");
+        assert!(current.is_day);
         assert_eq!(data.current.condition_label(), "Partly cloudy");
-        assert_eq!(data.forecast.len(), 4);
-        assert_eq!(data.forecast[1].condition_label(), "Rain");
+        assert_eq!(data.forecast.len(), 5);
+        assert_eq!(data.forecast[2].condition_label(), "Rain");
+        assert_eq!(data.forecast[1].weekday_label(), "Sat");
+        assert_eq!(data.hourly.len(), 12);
+        assert_eq!(data.hourly[11].hour_label(), "00:00");
+        assert!(!data.hourly[11].is_day);
+        assert_eq!(data.hourly[11].precipitation_probability_percent, None);
+        assert_eq!(
+            short_degrees_label(data.hourly[5].temperature_tenths_f, celsius),
+            "16°"
+        );
+    }
+
+    #[test]
+    fn weekdays_and_short_degrees() {
+        assert_eq!(weekday_of("2026-10-02"), Some("Fri"));
+        assert_eq!(weekday_of("2024-02-29"), Some("Thu"));
+        assert_eq!(weekday_of("2026-13-01"), None);
+        assert_eq!(short_degrees_label(140, TemperatureUnit::Celsius), "-10°");
+    }
+
+    #[test]
+    fn requires_the_hourly_block() {
+        let start = SAMPLE.find("\"hourly\"").unwrap();
+        let end = SAMPLE.find("\"daily\"").unwrap();
+        let without = format!("{}{}", &SAMPLE[..start], &SAMPLE[end..]);
+        assert!(parse_open_meteo_response(&without).is_err());
+    }
+
+    #[test]
+    fn disabled_configuration_starts_disabled() {
+        let mut config = config();
+        config.enabled = false;
+        let snapshot = WeatherSnapshot::provisioned(&config);
+        assert_eq!(snapshot.state, WeatherFetchState::Disabled);
     }
 
     #[test]
@@ -823,8 +985,9 @@ mod tests {
         snapshot.record_success(parse_open_meteo_response(SAMPLE).unwrap());
         snapshot.record_failure("temporary HTTP error");
         assert_eq!(snapshot.state, WeatherFetchState::Stale);
-        assert_eq!(snapshot.current_summary(), "Partly cloudy  78.4 F");
-        assert_eq!(snapshot.forecast.len(), 4);
+        assert_eq!(snapshot.current_summary(), "Partly cloudy  64.4 F");
+        assert_eq!(snapshot.forecast.len(), 5);
+        assert_eq!(snapshot.hourly.len(), 12);
     }
 
     #[test]
@@ -847,8 +1010,8 @@ mod tests {
         snapshot.record_success(parse_open_meteo_response(SAMPLE).unwrap());
         snapshot.mark_retrying("temporary transport failure");
         assert_eq!(snapshot.state, WeatherFetchState::Retrying);
-        assert_eq!(snapshot.current_summary(), "Partly cloudy  78.4 F");
-        assert_eq!(snapshot.forecast.len(), 4);
+        assert_eq!(snapshot.current_summary(), "Partly cloudy  64.4 F");
+        assert_eq!(snapshot.forecast.len(), 5);
     }
 
     #[test]
@@ -880,7 +1043,7 @@ mod tests {
 
     #[test]
     fn parses_nullable_daily_probability_without_generic_json_tree() {
-        let sample = SAMPLE.replace("[20,80,5,70]", "[20,null,5.6,100]");
+        let sample = SAMPLE.replace("[10,0,80,60,20]", "[10,null,5.6,100,20]");
         let data = parse_open_meteo_response(&sample).unwrap();
         assert_eq!(data.forecast[1].precipitation_probability_percent, None);
         assert_eq!(data.forecast[2].precipitation_probability_percent, Some(6));

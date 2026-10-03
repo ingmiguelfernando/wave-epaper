@@ -3,6 +3,22 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.0 — Weather (Phase 4)
+
+Milestone `e9bffc8`.
+
+- Weather follows the mockup: big icon and temperature, today's high and
+  low, feels like, humidity, wind and rain chips, the next hours, four days
+  and an `Updated · next · Open-Meteo` line. Clear and partly cloudy nights
+  show a moon.
+- Down opens twelve hourly rows with the place, time zone and last error;
+  Select updates now; a short BOOT press switches °C/°F (km/h or mph).
+- Settings › Weather: service On/Off, update interval (30 min to 6 h, or
+  Manual), units and Show on Home, saved in `WEATHER.TXT`. Off makes no
+  weather requests; Manual makes none on its own.
+- Home hides the weather when the service is off or Show on Home is No.
+- The forecast request adds hourly data, `is_day` and five days.
+
 ## v0.8.1 — Delegated tasks (pull request #1)
 
 - D1 (`1773deb`, follow-up `27bd2bf`): Display and Reader preference option

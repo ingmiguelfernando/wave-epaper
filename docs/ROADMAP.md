@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-03, firmware v0.8.1.
+Last updated: 2026-10-03, firmware v0.9.0.
 
 ## Status
 
@@ -21,8 +21,8 @@ Last updated: 2026-10-03, firmware v0.8.1.
 | Phase 1b: idle light sleep, Wi-Fi bursts, IMU and codec off when idle | 0.6.0 | 038269f | Done |
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
-| Phase 3b: sleep screen modes (clock, weather) | 0.9.0 | | Planned |
-| Phase 4: Weather app and Settings › Weather | | | In progress, branch `phase4-weather` |
+| Phase 3b: sleep screen modes (clock, weather) | | | Planned, next |
+| Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | Planned |
 | Phase 6: Games (Sudoku, Tetris) | | | Planned |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | Planned |
@@ -137,7 +137,7 @@ sleeps.
   - starred photos rotate at each sleep;
   - entering sleep stays as fast as with BMPs.
 
-## Phase 3b: sleep screen modes (v0.9.0)
+## Phase 3b: sleep screen modes
 
 Settings › Sleep screen gains a mode list, each with its estimated cost from
 the mockup:
@@ -164,8 +164,8 @@ the mockup:
 
   Do a global refresh every 30 minutes against ghosting. Check the real cost
   with the battery log.
-- **Weather.** Needs weather turned on (Phase 4 setting; until then
-  `WEATHER.TXT` present).
+- **Weather.** Needs the weather service on (`AppState::weather_enabled`,
+  Settings › Weather).
   - While asleep, schedule Wi-Fi bursts at the weather interval and redraw
     after each successful update.
   - Data older than 6 h is labeled "stale".
@@ -173,32 +173,41 @@ the mockup:
 - Acceptance: the battery log over a night roughly matches each mode's
   estimate, with no visible ghosting after hours on the clock.
 
-## Phase 4: Weather app
+## Phase 4: Weather app (v0.9.0)
 
-- **Settings › Weather** (mockup):
-  - Weather service ON or OFF.
+Done in v0.9.0; this section stays as the reference for the Weather code.
+
+- **Settings › Weather** (`screens/weather_settings.rs`), option lists like
+  Settings › Sleep screen:
+  - Weather service On or Off.
   - Update every 30 min, 1 h, 2 h (default), 6 h, or Manual.
-  - Location (from `WEATHER.TXT`; editing it from the Wi-Fi portal comes
-    later).
-  - Units: °C or °F, km/h or mph.
-  - Show on Home: yes or no.
-  - Provider: Open-Meteo, no key.
-- **Settings file.** New `WEATHER.TXT` keys: `enabled=yes|no`,
-  `refresh_minutes=0|30|60|120|360` (0 = manual), `show_on_home=yes|no`,
-  `units=metric|imperial`. Old files keep working.
-- **OFF** means no weather requests at all; NTP bursts continue. Weather is
-  hidden on Home and on sleep screens.
-- **Weather screen.**
-  - Now: icon, temperature, condition, feels like, humidity, wind.
-  - Next 6 hours: time, icon, temperature, rain %.
-  - Four days: day, icon, condition, high and low, rain %.
-  - Footer line: `Updated 13:30 · next 15:30 · Open-Meteo`.
-  - Keys: ▲▼ scroll, ● refresh now, BOOT short press switches °C and °F.
-- **Request.** Add `hourly=temperature_2m,weather_code,precipitation_probability`
-  and `forecast_hours=12`. Keep the bounded hand-written JSON parser in
-  `weather.rs`.
-- **Icons.** Map the WMO code with day and night variants, as in the mockup
-  legend. Current icons are 26 px ASCII art in `widgets/icons.rs`.
+  - Units: °C · km/h or °F · mph.
+  - Show on Home: Yes or No.
+  - Location and provider lines, then a note with the battery cost of the
+    chosen interval. The location stays in `WEATHER.TXT`; editing it from the
+    Wi-Fi portal comes later.
+- **Settings file.** `WEATHER.TXT` keys `enabled=yes|no`,
+  `refresh_minutes=0|15-360` (0 = manual, default 120), `show_on_home=yes|no`,
+  `units=metric|imperial`. Old files keep working. `main.rs` saves the whole
+  file when Settings or BOOT changes a value (`sync_weather_config`).
+- **OFF** means no weather requests at all (and no pending retry); NTP bursts
+  continue. Weather is hidden on Home. Manual means no automatic update, not
+  even at boot.
+- **Weather screen** (`screens/weather.rs`).
+  - Now: 5× icon, seven-segment temperature, condition, today's high and low.
+  - Chips: feels like, humidity, wind (whole km/h or mph), today's rain %.
+  - Next hours: six columns, every second hour from the next one.
+  - Next days: four rows with day, icon, condition, high / low and rain %.
+  - Footer line: `Updated 13:30 · next 15:30 · Open-Meteo`, the next time
+    being the observed time plus the interval.
+  - Down opens the second page: twelve hourly rows, place and time zone, last
+    error. Up returns. Select updates now; BOOT short press switches units.
+- **Request.** `current` adds `is_day`; `hourly=temperature_2m,weather_code,
+  precipitation_probability,is_day` with `forecast_hours=12`;
+  `forecast_days=5`. The hand-written parser in `weather.rs` reads at most 48
+  hours and checks that the arrays have the same length.
+- **Icons.** `weather_icon_at(code, is_day)` adds the moon and the
+  partly-cloudy night icons; `weather_icon(code)` stays for the sleep layouts.
 - **Cost.** About 4 s of Wi-Fi per update, so 2 h is about 2 mAh/day.
 
 ## Phase 5: Bible and Reading Stats

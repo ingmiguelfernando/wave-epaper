@@ -34,9 +34,11 @@ has prepared it once.
 
 Open-Meteo can fail with transport, TLS, timeout or HTTP errors. Bounded
 retries/backoff retain the last good result in memory; a cold boot without a
-successful request can show Weather unavailable. Inspect Weather details for
-the error. Wi-Fi is normally off between bursts and weather is paused during
-sleep-image mode; neither is a continuous-connection guarantee.
+successful request shows "No forecast yet" with the error under it. Once a
+forecast exists, the second Weather page (Down) shows the last error. Wi-Fi
+is normally off between bursts and weather is paused during sleep-image mode;
+neither is a continuous-connection guarantee. The forecast is not saved to the
+SD card, so a reboot starts without one.
 
 ## MCU deep sleep
 

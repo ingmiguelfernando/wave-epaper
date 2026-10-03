@@ -72,8 +72,28 @@ location=Auckland
 latitude=-36.8485
 longitude=174.7633
 timezone=Pacific/Auckland
-refresh_minutes=30
+refresh_minutes=120
 ```
+
+Only `latitude` and `longitude` are required. `location` is the name shown on
+screen (up to 40 bytes); `timezone` uses the same zones as `WIFI.TXT`.
+
+Settings › Weather writes these keys and rewrites the whole file when a
+choice changes, so comments you add are not kept:
+
+```text
+enabled=yes|no
+refresh_minutes=30|60|120|360|0
+units=metric|imperial
+show_on_home=yes|no
+```
+
+- `enabled=no` turns the service off: no weather requests at all, and no
+  weather on Home.
+- `refresh_minutes` accepts 15 to 360, or 0 for manual updates only; the
+  default is 120.
+- `units=imperial` shows °F and mph; `metric` (default) shows °C and km/h.
+- `show_on_home=no` keeps the forecast in the Weather app only.
 
 ## Alarms
 
