@@ -60,6 +60,35 @@ with the main line (Phase 3, Photos). Read this file first, then
 - Hardware facts and the event loop are in `architecture.md`. The board cannot
   be tested from CI, so list what to try on the device in the Status line.
 
+### Tips from the D1 review
+
+- **Pull first.** The D1 review was pushed to `side-tasks` (this file only).
+  Run `git pull --rebase` before you continue.
+- **Choosing the value in use does nothing:** no save, no refresh, no
+  repagination. This holds for every list you add.
+- **Host tests do not compile `src/main.rs`.** Before you remove or rename
+  something, run `git grep -n <name> -- src` and read the `main.rs` hits;
+  otherwise only the firmware build finds them.
+- **Firmware build without `gh`.** Ask the user to start it: GitHub ›
+  Actions › firmware › Run workflow › branch `side-tasks`. Hand a task over
+  only when it is green.
+- **Code shape.** Prefer an enum to a row index (`PowerSetting` is the
+  model), `ALL.get(index)` to `ALL[index % len]`, and one generic helper to
+  several copies of the same match arm.
+- **D2.** No workflow builds with `rustmix-remote-ble`, so the
+  `#[cfg(not(feature = "rustmix-remote-ble"))]` code is what runs today:
+  keep it and drop only the attribute. The workflows call only
+  `scripts/test-host.sh`; still check the remaining scripts before deleting
+  one (this applies to D4 too).
+- **D5 draws only.** Phase 3a adds Settings › Sleep screen
+  (`src/sleep_screen.rs`, route `SleepScreen`) for the photo options. D5
+  does not touch settings, routes or `main.rs`.
+- **Fewer conflicts with Phase 3a.** `phase3-photos` will probably reach
+  `main` first. It changes `state.rs` (`apply`, `open_route`, `back()`),
+  `router.rs`, `menu.rs` (Settings gains "Sleep screen"), `preview.rs`,
+  `screens/mod.rs` and `lib.rs`. In those files put new code next to related
+  code, and do not move, reorder or reformat existing lines.
+
 ## D1: Option lists instead of cycling values
 
 **Why.** Pressing Select on a setting steps to the next value, so reaching a
@@ -126,6 +155,56 @@ panel (open, scroll, apply, cancel), Display changes still reach
 `DISPLAY.TXT`, and layout-sensitive Reader choices still repaginate. Open:
 the Xtensa firmware build still has to run green on this branch
 (`gh` was not logged in on the machine used for this work).
+
+**Review (main developer, 2026-10-03):** good work; merge after the fix
+below. `ci.yml` (378 host tests, fmt, no warnings) and the firmware build
+are green on 1773deb, which closes the open item above. Nothing calls the
+removed functions, `main.rs` included, and the previews match the Power
+picker.
+
+- **Fix before merge: choosing the value in use must do nothing.**
+  - The list opens on the value in use, so pressing Select at once is the
+    natural "keep it".
+  - `ReaderUiState::choose_preference` treats it as a change. Theme and
+    show progress are saved again, and the theme flashes the panel to clear
+    ghosting. Orientation, font size, font and alignment reopen the book
+    through `ReaderLoading` and repaginate it: seconds of waiting and
+    battery on a large EPUB, for nothing.
+  - Return early at the top of `choose_preference`:
+
+    ```rust
+    if index == self.preference_options().1 {
+        self.preferences_picker = None;
+        return false;
+    }
+    ```
+
+  - Add a test: choosing the orientation in use returns `false`, closes the
+    list and leaves the preferences unchanged.
+  - Display needs nothing: `main.rs` only saves `DISPLAY.TXT` when
+    `state.display` changed.
+- **Optional polish**, in the same follow-up commit if it is cheap:
+  - Five arms of `preference_options` and both branches of
+    `DisplayPreferences::options` repeat one pattern. One helper in
+    `widgets/option_list.rs` replaces them:
+
+    ```rust
+    pub fn option_labels<T: Copy + PartialEq>(
+        all: &[T],
+        current: T,
+        label: fn(T) -> &'static str,
+    ) -> (Vec<&'static str>, usize)
+    ```
+
+    Call it as
+    `option_labels(&BookFont::ALL, self.preferences.book_font, BookFont::label)`.
+  - `DisplayPreferences::options` and `choose` take `action: usize`, where 0
+    means font and anything else size. A `DisplaySetting { Font, Size }`
+    enum like `PowerSetting`, mapped once from the row index in
+    `apply_display`, makes every call read clearly.
+  - `ALL[index % len]` hides a wrong index by wrapping. Use
+    `if let Some(&value) = ALL.get(index)`, as `PowerSettings::choose` does.
+- Commit the fix as `D1 fix: ...`; do not amend or force-push the D1 commit.
 
 ## D2: Remove the BLE remote build
 
