@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.8.1: what is implemented, not the future
+This guide describes firmware v0.9.0: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -15,7 +15,7 @@ The wheel has Up, Select and Down keys; there is no touch input.
 |---|---|
 | Up / Down | Move a highlighted row; in a book, previous / next page |
 | Select | Open the highlighted row or run its action |
-| BOOT short | Contextual action only: Calendar agenda, keyboard axis, game axis/cancel, star a photo, or preview the sleep picture |
+| BOOT short | Contextual action only: Calendar agenda, keyboard axis, game axis/cancel, star a photo, preview the sleep picture, or switch °C/°F on Weather |
 | Hold BOOT (at least 900 ms, then release) | Back one level; cancel an open option list before leaving its screen |
 | Power short | Open the display-maintenance menu: Clear ghosting now or Cancel |
 | Hold Power | Enter sleep-image mode; after releasing and waiting for the wake guard, Power wakes it |
@@ -28,9 +28,10 @@ already applied with Select remain applied.
 ## Home
 
 Home shows time, battery, Wi-Fi burst state, date, weather and a Continue
-Reading summary. The summary card is informational: use **Library › Continue
-Reading** to resume. Up/Down wraps through the nine application rows; Select
-opens the highlighted one.
+Reading summary. Settings › Weather can hide the weather from Home. The
+summary card is informational: use **Library › Continue Reading** to resume.
+Up/Down wraps through the nine application rows; Select opens the highlighted
+one.
 
 | Home row | Current behavior |
 |---|---|
@@ -38,15 +39,15 @@ opens the highlighted one.
 | Library | Continue Reading, Books, Bookmarks |
 | Bible | SOON placeholder |
 | Reading Stats | SOON placeholder |
-| Weather | Existing conditions/forecast screen |
+| Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | SD Games catalog |
 | AI | XiaoZhi (SOON) and implemented Voice Notes |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
-| Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power, Sleep screen |
+| Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power, Sleep screen, Weather |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
-Tetris, AI transcription, OTA updates, Weather settings and the clock or
-weather sleep screens are not implemented yet.
+Tetris, AI transcription, OTA updates and the clock or weather sleep screens
+are not implemented yet.
 
 ## Photos
 
@@ -225,14 +226,39 @@ Lua sensor-input path. Threshold controls are diagnostic, not game settings.
 
 ## Weather
 
-Open Home › Weather for current conditions and the existing four-day forecast.
-Up/Down chooses **Refresh weather** or **Weather details**; Select requests a
-refresh or opens details. Hold BOOT returns to Home (or from details to Weather).
-Configure location, coordinates, timezone and refresh interval in
-`/RUSTMIX/WEATHER.TXT`; there is no Weather settings route on this branch.
-Details show provider, last success and error. Refresh uses a Wi-Fi burst;
-failed requests retain the last good in-memory result. No weather updates run
-in sleep-image mode, and the last good result is not a disk cache.
+Open Home › Weather. The first page shows the current conditions, today's
+high and low, feels-like temperature, humidity, wind and chance of rain, every
+second hour for the next twelve hours, and the next four days. The bottom line
+says when the forecast was updated and when the next update is due.
+
+- Down opens the second page: each of the next twelve hours, the place and
+  time zone, and the last error if an update failed. Up returns.
+- Select updates now, using a Wi-Fi burst.
+- A short BOOT press switches between °C with km/h and °F with mph. The
+  choice is saved in `WEATHER.TXT` and also applies to Home, Clock and
+  Environment.
+- Hold BOOT returns to Home.
+
+Clear and partly cloudy nights show a moon. A failed update keeps the last
+good forecast and the bottom line says so. No weather updates run in
+sleep-image mode, and the forecast is kept in memory only, not on the SD card.
+Without `/RUSTMIX/WEATHER.TXT` the screen explains how to add it; see
+[SD-card setup](SD_CARD_SETUP.md#weather).
+
+### Settings › Weather
+
+| Setting | Choices |
+|---|---|
+| Weather service | On or Off. Off makes no weather requests and hides weather on Home |
+| Update every | 30 minutes, 1 hour, 2 hours (default), 6 hours, or Manual (only when you press Select on Weather) |
+| Units | °C · km/h or °F · mph |
+| Show on Home | Yes or No |
+
+Select opens a list, Up/Down moves, Select applies and hold BOOT cancels.
+Turning the service on updates straight away. Choices are saved by rewriting
+`WEATHER.TXT`; the location and coordinates are edited in that file. Each
+update keeps Wi-Fi on for a few seconds, about 0.1–0.2 mAh, so every 2 hours
+costs about 2 mAh a day.
 
 ## Games
 

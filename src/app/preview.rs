@@ -283,6 +283,11 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     weather_off.router.navigate_to(ScreenRoute::Weather);
     weather_off.weather_config.as_mut().unwrap().enabled = false;
     states.push(("weather-off", weather_off));
+
+    let mut weather_large = sample_state();
+    weather_large.display.font_size = UiFontSize::Large;
+    weather_large.router.navigate_to(ScreenRoute::Weather);
+    states.push(("weather-large-font", weather_large));
     states
 }
 

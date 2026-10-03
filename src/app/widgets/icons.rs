@@ -742,7 +742,10 @@ mod tests {
         assert!(core::ptr::eq(weather_icon(2), &PARTLY_CLOUDY));
         assert!(core::ptr::eq(weather_icon(81), &RAIN));
         assert!(core::ptr::eq(weather_icon_at(0, false), &MOON));
-        assert!(core::ptr::eq(weather_icon_at(1, false), &PARTLY_CLOUDY_NIGHT));
+        assert!(core::ptr::eq(
+            weather_icon_at(1, false),
+            &PARTLY_CLOUDY_NIGHT
+        ));
         assert!(core::ptr::eq(weather_icon_at(61, false), &RAIN));
         for icon in [&MOON, &PARTLY_CLOUDY_NIGHT] {
             assert_eq!(icon.height(), ICON_SIZE);

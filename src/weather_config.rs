@@ -94,12 +94,7 @@ pub enum WeatherSetting {
 }
 
 impl WeatherSetting {
-    pub const ALL: [Self; 4] = [
-        Self::Service,
-        Self::Refresh,
-        Self::Units,
-        Self::ShowOnHome,
-    ];
+    pub const ALL: [Self; 4] = [Self::Service, Self::Refresh, Self::Units, Self::ShowOnHome];
 
     #[must_use]
     pub const fn label(self) -> &'static str {

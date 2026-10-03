@@ -134,6 +134,7 @@ fn shown_forecast(state: &AppState) -> Result<(&WeatherConfig, &CurrentCondition
         WeatherFetchState::Fetching => "Getting the forecast...",
         WeatherFetchState::Retrying => "The update failed. Trying again in a moment.",
         WeatherFetchState::Failed => "The update failed. Press SELECT to try again.",
+        _ if config.refresh_minutes == 0 => "Updates are manual. Press SELECT to update now.",
         _ => "Waiting for Wi-Fi. Press SELECT to update now.",
     };
     let missing = ("No forecast yet", waiting);
@@ -437,7 +438,7 @@ fn outline(
 
 #[cfg(test)]
 mod tests {
-    use super::{next_update, render_weather, render_weather_details, updated_line};
+    use super::{next_update, render_weather, render_weather_details, shown_forecast, updated_line};
     use crate::{
         app::{
             display::{DisplayPreferences, UiFontFamily, UiFontSize},
@@ -483,6 +484,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn missing_forecast_says_what_to_do() {
+        let state = AppState::default();
+        let (title, _) = shown_forecast(&state).unwrap_err();
+        assert_eq!(title, "Weather is not set up");
+        let mut manual = set_up();
+        manual.weather_config.as_mut().unwrap().refresh_minutes = 0;
+        let (title, text) = shown_forecast(&manual).unwrap_err();
+        assert_eq!(title, "No forecast yet");
+        assert!(text.starts_with("Updates are manual"));
     }
 
     #[test]

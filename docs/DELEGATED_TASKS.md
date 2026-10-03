@@ -91,6 +91,12 @@ Do differently next time:
   - `src/weather.rs`, `src/weather_config.rs`, `src/app/screens/weather.rs`;
   - `src/app/widgets/icons.rs`;
   - `docs/ROADMAP.md`, `docs/architecture.md`.
+- Phase 4 is on `main` as v0.9.0. Merge `main` into `side-tasks-2` before you
+  open the pull request. What changed for you: `AppState` is no longer `Eq`
+  (`WeatherConfig` holds `f64` coordinates), `weather_icon_at(code, is_day)`
+  adds night icons (`weather_icon(code)` still works for D7), and
+  `CurrentConditions` has an `is_day` field. The files above stay off-limits
+  for this round.
 - Hardware facts and the event loop are in `architecture.md`. The board cannot
   be tested from CI, so list what to try on the device in the Status line.
 
