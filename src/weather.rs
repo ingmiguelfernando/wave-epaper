@@ -4,6 +4,7 @@
 //! wiring lives below `cfg(target_os = "espidf")`.
 
 use crate::{
+    civil_date,
     regional::TemperatureUnit,
     weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
 };
@@ -482,18 +483,19 @@ pub fn short_degrees_label(tenths_f: i16, unit: TemperatureUnit) -> String {
     format!("{}°", whole_degrees(tenths_f, unit))
 }
 
-/// Day name of an ISO `YYYY-MM-DD` date (Sakamoto's method).
+/// Day name of an ISO `YYYY-MM-DD` date.
 fn weekday_of(date: &str) -> Option<&'static str> {
-    const NAMES: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const OFFSETS: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
     let mut parts = date.get(..10)?.split('-');
     let year: i32 = parts.next()?.parse().ok()?;
-    let month: usize = parts.next()?.parse().ok()?;
-    let day: i32 = parts.next()?.parse().ok()?;
-    let offset = *OFFSETS.get(month.checked_sub(1)?)?;
-    let year = if month < 3 { year - 1 } else { year };
-    let index = (year + year / 4 - year / 100 + year / 400 + offset + day).rem_euclid(7);
-    NAMES.get(index as usize).copied()
+    let month: u8 = parts.next()?.parse().ok()?;
+    let day: u8 = parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&month) {
+        return None;
+    }
+    let days = civil_date::days_from_civil(i64::from(year), month, day);
+    civil_date::WEEKDAY_SHORT
+        .get(usize::from(civil_date::weekday(days)))
+        .copied()
 }
 
 fn format_tenths(value: i32, suffix: &str) -> String {

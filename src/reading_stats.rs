@@ -4,6 +4,8 @@ use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{bail, Context, Result};
 
+use crate::civil_date;
+
 pub const READING_STATS_PATH: &str = "/sdcard/RUSTMIX/READER/STATS.TXT";
 const MAX_DAYS: usize = 400;
 const MAX_BOOKS: usize = 200;
@@ -324,42 +326,20 @@ pub fn parse_day(text: &str) -> Result<u32> {
     let year = i64::from(parse_count(fields[0])?);
     let month = parse_count(fields[1])?;
     let day = parse_count(fields[2])?;
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let maximum = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            if leap {
-                29
-            } else {
-                28
-            }
-        }
-        _ => bail!("invalid month"),
-    };
-    if day == 0 || day > maximum {
+    if !(1..=12).contains(&month) {
+        bail!("invalid month");
+    }
+    if day == 0 || day > u32::from(civil_date::days_in_month(year, month as u8)) {
         bail!("invalid day of month");
     }
-    // rtc.rs's private Gregorian algorithm, widened beyond its u16 year range.
-    let year = year - i64::from(month <= 2);
-    let era = year.div_euclid(400);
-    let yoe = year - era * 400;
-    let doy = (153 * ((i64::from(month) + 9) % 12) + 2) / 5 + i64::from(day) - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    u32::try_from(era * 146_097 + doe - 719_468).context("date outside u32 Unix days")
+    // Both fields are in calendar range after the checks above.
+    let days = civil_date::days_from_civil(year, month as u8, day as u8);
+    u32::try_from(days).context("date outside u32 Unix days")
 }
 
 #[must_use]
 pub fn day_label(epoch_day: u32) -> String {
-    let z = i64::from(epoch_day) + 719_468;
-    let era = z / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
+    let (year, month, day) = civil_date::civil_from_days(i64::from(epoch_day));
     format!("{year:04}-{month:02}-{day:02}")
 }
 

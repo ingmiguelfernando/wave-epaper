@@ -5,6 +5,8 @@ use core::fmt::Debug;
 use anyhow::{anyhow, bail, Result};
 use embedded_hal::i2c::I2c;
 
+use crate::civil_date;
+
 /// PCF85063 7-bit I2C address used by the sample firmware.
 pub const PCF85063_ADDRESS: u8 = 0x51;
 const CONTROL_1_REG: u8 = 0x00;
@@ -270,64 +272,20 @@ fn decode_datetime_registers(registers: [u8; 7]) -> Result<RtcDateTime> {
     })
 }
 
-fn shift_date(mut year: u16, mut month: u8, mut day: u8, mut day_delta: i32) -> (u16, u8, u8) {
-    while day_delta > 0 {
-        let days_this_month = days_in_month(year, month);
-        if day < days_this_month {
-            day += 1;
-        } else {
-            day = 1;
-            if month == 12 {
-                month = 1;
-                year += 1;
-            } else {
-                month += 1;
-            }
-        }
-        day_delta -= 1;
-    }
-
-    while day_delta < 0 {
-        if day > 1 {
-            day -= 1;
-        } else {
-            if month == 1 {
-                month = 12;
-                year -= 1;
-            } else {
-                month -= 1;
-            }
-            day = days_in_month(year, month);
-        }
-        day_delta += 1;
-    }
-
-    (year, month, day)
+fn shift_date(year: u16, month: u8, day: u8, day_delta: i32) -> (u16, u8, u8) {
+    let days = days_from_civil(year, month, day) + i64::from(day_delta);
+    let (year, month, day) = civil_date::civil_from_days(days);
+    // The RTC stays in the 2000..=2099 range; saturate instead of wrapping.
+    (u16::try_from(year).unwrap_or(u16::MAX), month, day)
 }
 
 fn days_in_month(year: u16, month: u8) -> u8 {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap_year(year) => 29,
-        2 => 28,
-        _ => 0,
-    }
+    civil_date::days_in_month(i64::from(year), month)
 }
 
-fn is_leap_year(year: u16) -> bool {
-    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-}
-
-/// Days since 1970-01-01 for a Gregorian date (Howard Hinnant's algorithm).
+/// Days since 1970-01-01 for a Gregorian date, delegated to [`civil_date`].
 fn days_from_civil(year: u16, month: u8, day: u8) -> i64 {
-    let month = i64::from(month);
-    let year = i64::from(year) - i64::from(month <= 2);
-    let era = year.div_euclid(400);
-    let year_of_era = year - era * 400;
-    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + i64::from(day) - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    era * 146_097 + day_of_era - 719_468
+    civil_date::days_from_civil(i64::from(year), month, day)
 }
 
 fn decode_bcd(value: u8) -> Result<u8> {

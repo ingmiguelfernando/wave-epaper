@@ -21,6 +21,7 @@ use crate::{
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
+    civil_date,
     network::WifiConnectionState,
     orientation::OrientedFrameBuffer,
     reader::{BookFormat, ReaderLocation},
@@ -370,18 +371,14 @@ fn home_date_label(state: &AppState) -> String {
 }
 
 fn compact_local_date(local: RtcDateTime) -> String {
-    const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let weekday = WEEKDAYS
+    let weekday = civil_date::WEEKDAY_SHORT
         .get(usize::from(local.weekday))
         .copied()
         .unwrap_or("---");
     let month = local
         .month
         .checked_sub(1)
-        .and_then(|index| MONTHS.get(usize::from(index)))
+        .and_then(|index| civil_date::MONTH_SHORT.get(usize::from(index)))
         .copied()
         .unwrap_or("---");
     format!("{weekday}, {month} {}", local.day)

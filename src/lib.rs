@@ -14,6 +14,7 @@ pub mod build_info;
 pub mod buttons;
 pub mod calendar;
 pub mod charset;
+pub mod civil_date;
 pub mod dictionary;
 pub mod dither;
 pub mod environment;

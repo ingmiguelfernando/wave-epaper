@@ -356,7 +356,14 @@ helpers), `weather.rs` (`weekday_of`), `reading_stats.rs` (`parse_day`,
 every month in a leap and a common year, and a round trip across several
 centuries.
 
-**Status:** not started.
+**Status:** done on `side-tasks-3` (2026-10-04). Added `src/civil_date.rs`
+  (Hinnant's algorithm: `days_from_civil`, `civil_from_days`, `weekday` with
+  0 = Sunday, `WEEKDAY_SHORT`/`MONTH_SHORT` and month lengths) with six tests:
+  1970-01-01, the 2000 leap day, Saturday 2026-10-03, every month end of 2024
+  and 2026, century round trips and weekday continuity. `rtc.rs`,
+  `weather.rs`, `reading_stats.rs` and `screens/home.rs` delegate to it;
+  behaviour, error strings and tests unchanged. Invalid month/day values roll
+  over; call sites keep validating. Host tests green (537), checks clean.
 
 ### D17: Boot log markers that match the firmware
 
