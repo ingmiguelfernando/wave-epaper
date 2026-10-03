@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-03, firmware v0.7.0.
+Last updated: 2026-10-03, firmware v0.8.0.
 
 ## Status
 
@@ -20,19 +20,21 @@ Last updated: 2026-10-03, firmware v0.7.0.
 | Phase 1a: light sleep while the sleep picture shows, auto-sleep | 0.5.0 | f78cb18 | Done |
 | Phase 1b: idle light sleep, Wi-Fi bursts, IMU and codec off when idle | 0.6.0 | 038269f | Done |
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
-| Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | | In progress, branch `phase3-photos` |
+| Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
 | Phase 3b: sleep screen modes (clock, weather) | 0.9.0 | | Planned |
 | Phase 4: Weather app and Settings › Weather | | | Planned |
 | Phase 5: Bible and Reading Stats | | | Planned |
 | Phase 6: Games (Sudoku, Tetris) | | | Planned |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | Planned |
 | Phase 8: OTA updates | | | Planned |
-| Delegated tasks D1 to D5 | | | Open, branch `side-tasks` |
+| Delegated tasks D1 to D5 | | | In progress, branch `side-tasks` (D1 done) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
 
 ## Phase 3a: Photos (v0.8.0)
+
+Done in v0.8.0; this section stays as the reference for the Photos code.
 
 Goal: browse photos from the SD card and choose the ones shown while the device
 sleeps.
@@ -52,14 +54,14 @@ sleeps.
   - `key`: 8 hex digits of FNV-1a 32 over `name|size|mtime`.
   - Content: magic `WPC1`, version, source width and height after rotation, a
     144 × 216 thumbnail (1 bit, 18 bytes per row), then two 48,000-byte frames
-    in native panel layout, "fill" and "fit".
+    in native panel layout, "fill" and "whole".
   - About 100 KB per photo. Entries whose photo is gone are deleted during a
     scan.
 - Starred photos: `/RUSTMIX/STARRED.TXT`, one file name per line.
 - Sleep screen settings: `/RUSTMIX/SLEEPSCREEN.TXT`, `key=value` lines:
   - `source`: `starred` (default) or `folder` (the existing `/RUSTMIX/SLEEP/`);
   - `order`: `shuffle` (default) or `in-order`;
-  - `fit`: `fill` (crop, default) or `fit` (whole photo, white bars).
+  - `fit`: `fill` (crop, default) or `whole` (whole photo, white bars).
 
 ### Decoding
 
@@ -70,11 +72,11 @@ sleeps.
 - RGB to grey (77/150/29 weights), area-average resampling to each target,
   Floyd–Steinberg dithering. This is the same dithering as `sleep_images.rs`;
   share the code.
-- Decoding runs on a background worker thread (stack in PSRAM if possible).
-  The main loop stays responsive, receives "photo ready" messages and redraws
-  the visible page. Light sleep is blocked while the worker has work, as for
-  the reader's background work. A 12 MP photo takes about 2 to 5 s the first
-  time.
+- Decoding runs on a background worker thread (`photos/worker.rs`, 48 KB
+  stack) pinned to core 1, so the main loop on core 0 keeps reading the keys.
+  It receives "photo ready" messages and redraws the visible page. Light sleep
+  waits while the worker is busy, so it never stops in the middle of an SD
+  write. A 12 MP photo takes about 2 to 5 s the first time.
 - Nothing is decoded at sleep entry; the sleep screen only reads cached frames.
 
 ### UI
@@ -84,7 +86,7 @@ sleeps.
   - The selected thumbnail has a thick frame; starred ones carry a star badge
     (drawn shape, the fonts have no ★).
   - Status row: `48 photos`, `12 starred`, page `1/8`. Info line:
-    `IMG_0412.jpg · 4032×3024 · Sep 28`.
+    `IMG_0412.jpg · 4032×3024 · Sep 28, 2026`.
   - Keys: ▲▼ previous or next photo, crossing pages; ● opens the viewer; BOOT
     short press stars or unstars; hold BOOT goes back.
   - Thumbnails not ready yet show a placeholder box; the page redraws as they
@@ -98,12 +100,13 @@ sleeps.
 - **Actions.**
   - Add to sleep set, or Remove from sleep set.
   - Use only this photo: unstar the others and star this one.
-  - Info: size, file size, date, cache state.
-  - Delete…: asks again (● delete, BOOT cancel), then removes the file, its
-    cache entry and its star.
+  - Delete photo: asks again (● deletes, hold BOOT cancels), then removes the
+    file, its cache entry and its star once the worker is idle.
+  - The size and date are on the gallery's info line rather than in an action.
 - **Settings › Sleep screen** (new, under Settings): Source, Order and Fit as
   option lists (`widgets/option_list.rs`). BOOT short press previews the next
-  sleep picture until a key is pressed.
+  sleep picture until a key is pressed; the preview does not move the folder's
+  order.
 
 ### Sleep entry
 
@@ -122,7 +125,9 @@ sleeps.
   - star list parse and save;
   - sleep selection (shuffle, in order, skips uncached photos);
   - resampling sizes;
-  - decoding a small committed JPEG fixture, including a rotated one.
+  - decoding small JPEGs built by the tests (`jpeg-encoder`, a dev
+    dependency), including rotated and progressive ones. Image files are not
+    committed.
 - Previews: grid with placeholders and thumbnails, viewer, actions,
   Settings › Sleep screen.
 - On the device:

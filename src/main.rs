@@ -624,7 +624,8 @@ mod firmware {
         info!("rustmix-wave=productivity-category-ready entries=2");
         info!("rustmix-wave=games-category-ready entries=1 status=sd-lua-catalog");
         info!("rustmix-wave=tools-category-ready entries=3");
-        info!("rustmix-wave=settings-category-ready entries=9 display=true");
+        info!("rustmix-wave=settings-category-ready entries=10 display=true");
+        info!("rustmix-wave=photos-ready root={PHOTOS_DIRECTORY} cache={PHOTO_CACHE_DIRECTORY} worker=core1 sleep-source={}", state.sleep_screen.source.marker());
         info!("rustmix-wave=display-settings-ready default-family=inter alternate-family=atkinson-hyperlegible default-size=standard profiles=compact,standard,large persistence={DISPLAY_CONFIG_PATH} scope=all-user-facing-screens");
         info!("rustmix-wave=global-ui-typography-ready default-family=inter alternate-family=atkinson-hyperlegible default-size=standard profiles=compact,standard,large persistence={DISPLAY_CONFIG_PATH} scope=all-user-facing-screens");
         info!("rustmix-wave=boot-button-hierarchical-back-ready gpio=0 active-low=true short-press=contextual-navigation hold-ms={BOOT_BACK_LONG_PRESS_MS} policy=long-press-back");
