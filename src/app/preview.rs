@@ -14,8 +14,9 @@ use super::{
 };
 use super::{
     display::{DisplayPreferences, UiFontFamily},
-    render_sleep_clock, render_sleep_weather, SleepClock, SleepWeather, SleepWeatherDay,
-    SleepWeatherLine,
+    render_sleep_clock, render_sleep_weather,
+    screens::reading_stats::{render_reading_stats, CurrentBook},
+    SleepClock, SleepWeather, SleepWeatherDay, SleepWeatherLine,
 };
 use crate::{
     board_services::BoardSnapshot,
@@ -79,6 +80,14 @@ fn render_screen_previews() {
             "sleep-weather",
             render_sample_sleep_weather(sample_state().display),
         ),
+        (
+            "reading-stats",
+            render_sample_reading_stats(sample_state().display, true),
+        ),
+        (
+            "reading-stats-empty",
+            render_sample_reading_stats(sample_state().display, false),
+        ),
     ];
     for (name, state) in preview_states() {
         let mut frame = FrameBuffer::new_white();
@@ -104,6 +113,14 @@ fn render_screen_previews() {
                     render_sample_sleep_clock(preferences, true),
                 ),
                 ("sleep-weather", render_sample_sleep_weather(preferences)),
+                (
+                    "reading-stats",
+                    render_sample_reading_stats(preferences, true),
+                ),
+                (
+                    "reading-stats-empty",
+                    render_sample_reading_stats(preferences, false),
+                ),
             ] {
                 if let Some(directory) = output.as_deref() {
                     let name = format!("{name}-{}-{}.png", family.marker(), size.marker());
@@ -206,6 +223,34 @@ fn render_sample_sleep_weather(preferences: DisplayPreferences) -> FrameBuffer {
         wake_hint: "Press any key to wake",
     };
     render_sleep_weather(&mut frame, preferences, &weather).unwrap();
+    frame
+}
+
+/// A month of sample reading around 2026-10-03, or an empty history.
+fn render_sample_reading_stats(preferences: DisplayPreferences, with_data: bool) -> FrameBuffer {
+    const TODAY: u32 = 20_729; // 2026-10-03, a Saturday
+    let mut stats = crate::reading_stats::ReadingStats::default();
+    if with_data {
+        for day in 0..84 {
+            let minutes = 6 + (day * 7) % 64;
+            stats.record(
+                TODAY - 83 + day,
+                minutes * 60,
+                minutes / 2,
+                Some("/sdcard/RUSTMIX/BOOKS/Don Quijote.txt"),
+            );
+        }
+        stats.mark_finished("/sdcard/RUSTMIX/BOOKS/Other.txt");
+    }
+    let current = with_data.then(|| CurrentBook {
+        title: "Don Quijote de la Mancha",
+        path: "/sdcard/RUSTMIX/BOOKS/Don Quijote.txt",
+        percent: Some(12),
+    });
+    let mut frame = FrameBuffer::new_white();
+    let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
+    render_reading_stats(&mut display, preferences, &stats, TODAY, current.as_ref()).unwrap();
+    drop(display);
     frame
 }
 

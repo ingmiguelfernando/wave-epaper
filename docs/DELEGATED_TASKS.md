@@ -286,7 +286,18 @@ later.
 **Done when:** both previews look like the mockup at every font family and
 size, and the tests pass.
 
-**Status:** not started.
+**Status:** done on `side-tasks-3` (2026-10-04). Added `best_streak`,
+  `total` and `book` to `reading_stats.rs`, and `screens/reading_stats.rs`
+  with `CurrentBook` and `render_reading_stats` (no route or `main.rs`
+  wiring). Layout follows the mockup: TODAY/STREAK/THIS WEEK tiles,
+  hatched today bar with weekday row, 3-level 12-week heatmap with dotted
+  future cells, year totals in mockup order, current book with the
+  "~31 h left at your pace" line. Percentages use Body size (D6).
+  Previews `reading-stats` and `reading-stats-empty` plus every font
+  family/size variant are in `screen-previews`; compared side by side with
+  the mockup. Host tests (519) and `cargo +stable fmt` pass.
+  Device check: readability on the panel at every UI size; the Reader
+  wiring and week/month/year ranges stay with the main line.
 
 ### D15: Safe SD writes for settings files
 

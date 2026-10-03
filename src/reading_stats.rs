@@ -121,6 +121,51 @@ impl ReadingStats {
         count
     }
 
+    /// Longest run of consecutive retained days with 5 minutes or more.
+    #[must_use]
+    pub fn best_streak(&self) -> u32 {
+        let mut best = 0;
+        let mut run = 0;
+        let mut run_end: Option<u32> = None;
+        for (&day, totals) in &self.days {
+            if totals.seconds < 300 {
+                run = 0;
+                run_end = None;
+                continue;
+            }
+            run = if run_end.is_some_and(|end| end.checked_add(1) == Some(day)) {
+                run + 1
+            } else {
+                1
+            };
+            run_end = Some(day);
+            best = best.max(run);
+        }
+        best
+    }
+
+    /// Sum of the retained days in `[first, last]`, both included.
+    #[must_use]
+    pub fn total(&self, first: u32, last: u32) -> DayStats {
+        let mut sum = DayStats::default();
+        if first > last {
+            return sum;
+        }
+        for totals in self.days.range(first..=last).map(|(_, totals)| totals) {
+            sum.add(totals.seconds, totals.pages);
+        }
+        sum
+    }
+
+    /// Totals recorded against one book path.
+    #[must_use]
+    pub fn book(&self, path: &str) -> Option<DayStats> {
+        self.books
+            .iter()
+            .find(|entry| entry.path == path)
+            .map(|entry| entry.totals)
+    }
+
     /// Finished count covers retained books, not a lifetime counter.
     #[must_use]
     pub fn books_finished(&self) -> usize {
@@ -612,6 +657,97 @@ mod tests {
         assert_eq!(stats.streak(0), 1);
         assert_eq!(stats.streak(1), 2);
         assert_eq!(stats.streak(2), 2);
+    }
+
+    #[test]
+    fn best_streak_finds_the_longest_run_over_retained_days() {
+        let mut stats = ReadingStats::default();
+        assert_eq!(stats.best_streak(), 0);
+        for day in [1, 2, 3, 10, 11, 12, 13, 20] {
+            stats.record(day, 300, 0, None);
+        }
+        stats.record(14, 299, 0, None);
+        assert_eq!(stats.best_streak(), 4);
+        stats.record(14, 1, 0, None);
+        assert_eq!(stats.best_streak(), 5);
+        stats.record(21, 299, 0, None);
+        assert_eq!(stats.best_streak(), 5);
+    }
+
+    #[test]
+    fn best_streak_ignores_short_days_and_keeps_disjoint_runs_apart() {
+        let mut stats = ReadingStats::default();
+        for day in [0, 1, 2, 4, 5] {
+            stats.record(day, 300, 0, None);
+        }
+        stats.record(3, 299, 0, None);
+        assert_eq!(stats.best_streak(), 3);
+        stats.record(3, 1, 0, None);
+        assert_eq!(stats.best_streak(), 6);
+    }
+
+    #[test]
+    fn total_sums_both_inclusive_days_and_ignores_the_rest() {
+        let mut stats = ReadingStats::default();
+        for day in 0..5 {
+            stats.record(day, 60, 1, None);
+        }
+        assert_eq!(
+            stats.total(1, 3),
+            DayStats {
+                seconds: 180,
+                pages: 3
+            }
+        );
+        assert_eq!(stats.total(3, 3), stats.day(3));
+        assert_eq!(stats.total(3, 1), DayStats::default());
+        assert_eq!(stats.total(9, 12), DayStats::default());
+        assert_eq!(
+            stats.total(0, 4),
+            DayStats {
+                seconds: 300,
+                pages: 5
+            }
+        );
+    }
+
+    #[test]
+    fn total_adds_days_without_overflow_for_heavy_but_real_readers() {
+        let mut stats = ReadingStats::default();
+        stats.record(10, 28_800, 600, None);
+        stats.record(11, 28_800, 600, None);
+        assert_eq!(
+            stats.total(10, 11),
+            DayStats {
+                seconds: 57_600,
+                pages: 1200
+            }
+        );
+    }
+
+    #[test]
+    fn book_totals_match_records_and_unknown_paths_return_none() {
+        let mut stats = ReadingStats::default();
+        assert_eq!(stats.book("/a/One.txt"), None);
+        stats.record(1, 60, 2, Some("/a/One.txt"));
+        stats.record(2, 120, 3, Some("/a/One.txt"));
+        stats.record(2, 30, 1, Some("/a/Two.txt"));
+        assert_eq!(
+            stats.book("/a/One.txt"),
+            Some(DayStats {
+                seconds: 180,
+                pages: 5
+            })
+        );
+        assert_eq!(
+            stats.book("/a/Two.txt"),
+            Some(DayStats {
+                seconds: 30,
+                pages: 1
+            })
+        );
+        assert_eq!(stats.book("/a/one.txt"), None);
+        assert_eq!(stats.book(""), None);
     }
 
     #[test]

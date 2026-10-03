@@ -25,6 +25,7 @@ pub mod placeholder;
 pub mod power;
 pub mod power_key;
 pub mod reader;
+pub mod reading_stats;
 pub mod sleep_card;
 pub mod sleep_screens;
 pub mod sleep_settings;
