@@ -12,6 +12,7 @@ use crate::app::typography::{Text, UiTextStyle};
 
 use crate::{
     app::{
+        display::DisplaySetting,
         state::AppState,
         widgets::{
             footer::draw_footer,
@@ -22,14 +23,6 @@ use crate::{
     },
     orientation::OrientedFrameBuffer,
 };
-
-/// Row names of the two Display settings.
-fn action_label(action: usize) -> &'static str {
-    match action {
-        0 => "UI font",
-        _ => "UI size",
-    }
-}
 
 pub fn render_display(
     display: &mut OrientedFrameBuffer<'_>,
@@ -50,9 +43,11 @@ pub fn render_display(
         },
     )?;
     if let Some(highlighted) = state.display_picker {
-        let action = state.display_action_selected;
-        let (options, current) = prefs.options(action);
-        Text::new(action_label(action), Point::new(22, 160), heading).draw(display)?;
+        let Some(&setting) = DisplaySetting::ALL.get(state.display_action_selected) else {
+            return Ok(());
+        };
+        let (options, current) = prefs.options(setting);
+        Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
         draw_option_list(display, state.display, 184, &options, current, highlighted)?;
         draw_footer(
             display,
@@ -66,7 +61,7 @@ pub fn render_display(
     draw_setting_row(
         display,
         202,
-        action_label(0),
+        DisplaySetting::Font.label(),
         prefs.font_family.compact_label(),
         state.display_action_selected == 0,
         body,
@@ -74,7 +69,7 @@ pub fn render_display(
     draw_setting_row(
         display,
         292,
-        action_label(1),
+        DisplaySetting::Size.label(),
         prefs.font_size.label(),
         state.display_action_selected == 1,
         body,
@@ -157,6 +152,22 @@ mod tests {
         assert_eq!(state.display_picker, None);
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
+    }
+
+    #[test]
+    fn current_choice_closes_picker_without_changing_display_preferences() {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Display);
+        for _ in 0..2 {
+            let original = state.display;
+            state.apply(ButtonEvent::Select);
+            assert!(state.display_picker.is_some());
+            state.apply(ButtonEvent::Select);
+            assert_eq!(state.display_picker, None);
+            assert_eq!(state.display, original);
+            assert_eq!(state.active_route(), ScreenRoute::Display);
+            state.apply(ButtonEvent::Down);
+        }
     }
 
     #[test]

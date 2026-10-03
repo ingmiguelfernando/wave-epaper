@@ -14,6 +14,19 @@ use crate::{
 /// First pixel row of the footer rule drawn by `draw_footer`.
 const FOOTER_TOP: i32 = 746;
 
+/// Choice labels and the index of the value in use, defaulting to the first row.
+#[must_use]
+pub fn option_labels<T: Copy + PartialEq>(
+    all: &[T],
+    current: T,
+    label: fn(T) -> &'static str,
+) -> (Vec<&'static str>, usize) {
+    (
+        all.iter().copied().map(label).collect(),
+        all.iter().position(|&value| value == current).unwrap_or(0),
+    )
+}
+
 pub fn draw_option_list(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -41,12 +54,30 @@ pub fn draw_option_list(
 mod tests {
     use embedded_graphics::prelude::Point;
 
-    use super::draw_option_list;
+    use super::{draw_option_list, option_labels};
     use crate::{
         app::display::DisplayPreferences,
         framebuffer::FrameBuffer,
         orientation::{DisplayOrientation, OrientedFrameBuffer},
     };
+
+    #[test]
+    fn labels_preserve_order_and_find_the_current_value() {
+        assert_eq!(
+            option_labels(&[true, false], false, |value| if value {
+                "On"
+            } else {
+                "Off"
+            }),
+            (vec!["On", "Off"], 1)
+        );
+    }
+
+    #[test]
+    fn missing_current_value_and_empty_choices_default_to_zero() {
+        assert_eq!(option_labels(&[false], true, |_| "Off"), (vec!["Off"], 0));
+        assert_eq!(option_labels::<bool>(&[], true, |_| "On"), (vec![], 0));
+    }
 
     #[test]
     fn long_lists_scroll_to_keep_the_highlighted_row_visible() {

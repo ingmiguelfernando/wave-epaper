@@ -26,7 +26,7 @@ use crate::{
 };
 
 use super::{
-    display::DisplayPreferences,
+    display::{DisplayPreferences, DisplaySetting},
     menu::{category_entries, category_index, home_entries, CATEGORY_COUNT},
     router::{ScreenRoute, ScreenRouter},
 };
@@ -34,7 +34,7 @@ use super::{
 /// Number of selectable rows in the playback overview screen.
 pub const AUDIO_ACTION_COUNT: usize = 6;
 /// Number of selectable rows in the Display settings screen.
-pub const DISPLAY_ACTION_COUNT: usize = 2;
+pub const DISPLAY_ACTION_COUNT: usize = DisplaySetting::ALL.len();
 /// Number of selectable rows in the Weather overview screen.
 pub const WEATHER_ACTION_COUNT: usize = 2;
 /// Start/stop portal and provisioning-details rows on the Network screen.
@@ -816,8 +816,10 @@ impl AppState {
     /// Move between the Display rows, or within the option list once Select
     /// opened it. Select in the list applies the highlighted choice.
     fn apply_display(&mut self, event: ButtonEvent) {
-        let action = self.display_action_selected;
-        let (options, current) = self.display.options(action);
+        let Some(&setting) = DisplaySetting::ALL.get(self.display_action_selected) else {
+            return;
+        };
+        let (options, current) = self.display.options(setting);
         if let Some(highlighted) = self.display_picker {
             let count = options.len();
             match event {
@@ -825,7 +827,7 @@ impl AppState {
                 ButtonEvent::Down => self.display_picker = Some((highlighted + 1) % count),
                 ButtonEvent::Select => {
                     self.note_select_press();
-                    self.display.choose(action, highlighted);
+                    self.display.choose(setting, highlighted);
                     self.display_picker = None;
                 }
             }

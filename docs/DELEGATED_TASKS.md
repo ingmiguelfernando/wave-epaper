@@ -156,6 +156,19 @@ panel (open, scroll, apply, cancel), Display changes still reach
 the Xtensa firmware build still has to run green on this branch
 (`gh` was not logged in on the machine used for this work).
 
+**D1 follow-up status (2026-10-03):** implemented locally on `side-tasks`,
+not committed or pushed. Choosing any current Reader value closes the picker
+without saving, requesting ghost clearing, or rebuilding the book. Added the
+shared `option_labels` helper and typed `DisplaySetting::{Font, Size}` API;
+all D1 option choices use checked `.get()` lookups, including On/Off, and
+invalid indices leave preferences unchanged. Removed unused Reader preference
+enum `next`/`previous` methods after checking tracked call sites, including
+`main.rs`; compatibility tests now check `ALL` order and persisted markers.
+Host tests: 386 passed; stable formatting check and `git diff --check` passed.
+No changes to D5 files, previews, module registration, or firmware runtime.
+Still needs: a firmware build for this uncommitted follow-up and panel smoke
+tests; the previously reviewed firmware build does not cover these changes.
+
 **Review (main developer, 2026-10-03):** good work; merge after the fix
 below. `ci.yml` (378 host tests, fmt, no warnings) and the firmware build
 are green on 1773deb, which closes the open item above. Nothing calls the
@@ -205,6 +218,16 @@ picker.
   - `ALL[index % len]` hides a wrong index by wrapping. Use
     `if let Some(&value) = ALL.get(index)`, as `PowerSettings::choose` does.
 - Commit the fix as `D1 fix: ...`; do not amend or force-push the D1 commit.
+
+**Follow-up review results (2026-10-03):** regression tests exercise SELECT
+on all six current preferences with an actual open TXT Reader session,
+including orientation, and verify unchanged session/page/cache state, no
+`ReaderLoading` route, no ghost-clearing request, no persistence event, and
+an untouched preferences-file sentinel. Every supported current value and
+invalid index is also covered, as are helper fallbacks and Display current
+choices. Ordinary UI redraw still closes the picker; no extra preference
+refresh is requested. No host failures or editor errors in the changed files.
+The main developer review above is retained unchanged.
 
 ## D2: Remove the BLE remote build
 

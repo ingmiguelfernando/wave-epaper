@@ -8,6 +8,8 @@ use std::{fs, path::Path};
 
 use anyhow::{bail, Context, Result};
 
+use super::widgets::option_list::option_labels;
+
 /// SD-backed global UI typography preference file.
 pub const DISPLAY_CONFIG_PATH: &str = "/sdcard/RUSTMIX/DISPLAY.TXT";
 
@@ -95,6 +97,24 @@ impl UiFontSize {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DisplaySetting {
+    Font,
+    Size,
+}
+
+impl DisplaySetting {
+    pub const ALL: [Self; 2] = [Self::Font, Self::Size];
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Font => "UI font",
+            Self::Size => "UI size",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DisplayPreferences {
     pub font_family: UiFontFamily,
@@ -102,38 +122,32 @@ pub struct DisplayPreferences {
 }
 
 impl DisplayPreferences {
-    /// Labels of the choices for `action` and the index of the value in use.
-    /// Action 0 is the UI font family, anything else the UI font size.
+    /// Labels of the choices for `setting` and the index of the value in use.
     #[must_use]
-    pub fn options(self, action: usize) -> (Vec<&'static str>, usize) {
-        if action == 0 {
-            (
-                UiFontFamily::ALL
-                    .iter()
-                    .map(|family| family.label())
-                    .collect(),
-                UiFontFamily::ALL
-                    .iter()
-                    .position(|&family| family == self.font_family)
-                    .unwrap_or(0),
-            )
-        } else {
-            (
-                UiFontSize::ALL.iter().map(|size| size.label()).collect(),
-                UiFontSize::ALL
-                    .iter()
-                    .position(|&size| size == self.font_size)
-                    .unwrap_or(0),
-            )
+    pub fn options(self, setting: DisplaySetting) -> (Vec<&'static str>, usize) {
+        match setting {
+            DisplaySetting::Font => {
+                option_labels(&UiFontFamily::ALL, self.font_family, UiFontFamily::label)
+            }
+            DisplaySetting::Size => {
+                option_labels(&UiFontSize::ALL, self.font_size, UiFontSize::label)
+            }
         }
     }
 
-    /// Apply the option-list choice `index` to `action`.
-    pub fn choose(&mut self, action: usize, index: usize) {
-        if action == 0 {
-            self.font_family = UiFontFamily::ALL[index % UiFontFamily::ALL.len()];
-        } else {
-            self.font_size = UiFontSize::ALL[index % UiFontSize::ALL.len()];
+    /// Apply a valid option-list choice to `setting`; invalid indices do nothing.
+    pub fn choose(&mut self, setting: DisplaySetting, index: usize) {
+        match setting {
+            DisplaySetting::Font => {
+                if let Some(&value) = UiFontFamily::ALL.get(index) {
+                    self.font_family = value;
+                }
+            }
+            DisplaySetting::Size => {
+                if let Some(&value) = UiFontSize::ALL.get(index) {
+                    self.font_size = value;
+                }
+            }
         }
     }
 
@@ -205,7 +219,42 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{DisplayPreferences, UiFontFamily, UiFontSize};
+    use super::{DisplayPreferences, DisplaySetting, UiFontFamily, UiFontSize};
+
+    #[test]
+    fn choices_match_labels_and_apply_every_supported_value() {
+        let mut preferences = DisplayPreferences::default();
+        for (index, &value) in UiFontFamily::ALL.iter().enumerate() {
+            preferences.choose(DisplaySetting::Font, index);
+            assert_eq!(preferences.font_family, value);
+            let (labels, current) = preferences.options(DisplaySetting::Font);
+            assert_eq!(current, index);
+            assert_eq!(labels[index], value.label());
+        }
+        for (index, &value) in UiFontSize::ALL.iter().enumerate() {
+            preferences.choose(DisplaySetting::Size, index);
+            assert_eq!(preferences.font_size, value);
+            let (labels, current) = preferences.options(DisplaySetting::Size);
+            assert_eq!(current, index);
+            assert_eq!(labels[index], value.label());
+        }
+    }
+
+    #[test]
+    fn current_and_invalid_choices_leave_preferences_unchanged() {
+        let mut preferences = DisplayPreferences {
+            font_family: UiFontFamily::AtkinsonHyperlegible,
+            font_size: UiFontSize::Large,
+        };
+        let original = preferences;
+        for setting in DisplaySetting::ALL {
+            let (labels, current) = preferences.options(setting);
+            for index in [current, labels.len(), labels.len() + 1, usize::MAX] {
+                preferences.choose(setting, index);
+                assert_eq!(preferences, original);
+            }
+        }
+    }
 
     #[test]
     fn defaults_to_inter_standard() {

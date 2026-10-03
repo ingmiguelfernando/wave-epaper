@@ -13,7 +13,10 @@ use std::{
 };
 
 use crate::{
-    app::{reader_typography::reader_body_style, typography::UiTextStyle},
+    app::{
+        reader_typography::reader_body_style, typography::UiTextStyle,
+        widgets::option_list::option_labels,
+    },
     buttons::ButtonEvent,
     charset::glyph_index,
     epub::{
@@ -276,19 +279,6 @@ impl ReadingTheme {
         }
     }
 
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Classic => Self::HighContrast,
-            Self::HighContrast => Self::Classic,
-        }
-    }
-
-    #[must_use]
-    pub const fn previous(self) -> Self {
-        self.next()
-    }
-
     fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "classic" => Ok(Self::Classic),
@@ -323,19 +313,6 @@ impl ReaderOrientation {
             Self::Portrait => "portrait",
             Self::Landscape => "landscape",
         }
-    }
-
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Portrait => Self::Landscape,
-            Self::Landscape => Self::Portrait,
-        }
-    }
-
-    #[must_use]
-    pub const fn previous(self) -> Self {
-        self.next()
     }
 
     /// Logical screen width of Reader pages in this orientation.
@@ -390,26 +367,6 @@ impl BookFontSize {
         }
     }
 
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Small => Self::Medium,
-            Self::Medium => Self::Large,
-            Self::Large => Self::XLarge,
-            Self::XLarge => Self::Small,
-        }
-    }
-
-    #[must_use]
-    pub const fn previous(self) -> Self {
-        match self {
-            Self::Small => Self::XLarge,
-            Self::Medium => Self::Small,
-            Self::Large => Self::Medium,
-            Self::XLarge => Self::Large,
-        }
-    }
-
     fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "small" => Ok(Self::Small),
@@ -461,26 +418,6 @@ impl BookFont {
         }
     }
 
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Inter => Self::AtkinsonHyperlegible,
-            Self::AtkinsonHyperlegible => Self::Serif,
-            Self::Serif => Self::Literata,
-            Self::Literata => Self::Inter,
-        }
-    }
-
-    #[must_use]
-    pub const fn previous(self) -> Self {
-        match self {
-            Self::Inter => Self::Literata,
-            Self::AtkinsonHyperlegible => Self::Inter,
-            Self::Serif => Self::AtkinsonHyperlegible,
-            Self::Literata => Self::Serif,
-        }
-    }
-
     fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "inter" => Ok(Self::Inter),
@@ -524,26 +461,6 @@ impl ParagraphAlignment {
             Self::Left => "left",
             Self::Center => "center",
             Self::Right => "right",
-        }
-    }
-
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Justified => Self::Left,
-            Self::Left => Self::Center,
-            Self::Center => Self::Right,
-            Self::Right => Self::Justified,
-        }
-    }
-
-    #[must_use]
-    pub const fn previous(self) -> Self {
-        match self {
-            Self::Justified => Self::Right,
-            Self::Left => Self::Justified,
-            Self::Center => Self::Left,
-            Self::Right => Self::Center,
         }
     }
 
@@ -1854,57 +1771,38 @@ impl ReaderUiState {
     #[must_use]
     pub fn preference_options(&self) -> (Vec<&'static str>, usize) {
         match self.selected_preference() {
-            ReadingPreference::ReadingTheme => (
-                ReadingTheme::ALL
-                    .iter()
-                    .map(|value| value.label())
-                    .collect(),
-                ReadingTheme::ALL
-                    .iter()
-                    .position(|&value| value == self.preferences.theme)
-                    .unwrap_or(0),
+            ReadingPreference::ReadingTheme => option_labels(
+                &ReadingTheme::ALL,
+                self.preferences.theme,
+                ReadingTheme::label,
             ),
-            ReadingPreference::Orientation => (
-                ReaderOrientation::ALL
-                    .iter()
-                    .map(|value| value.label())
-                    .collect(),
-                ReaderOrientation::ALL
-                    .iter()
-                    .position(|&value| value == self.preferences.orientation)
-                    .unwrap_or(0),
+            ReadingPreference::Orientation => option_labels(
+                &ReaderOrientation::ALL,
+                self.preferences.orientation,
+                ReaderOrientation::label,
             ),
-            ReadingPreference::BookFontSize => (
-                BookFontSize::ALL
-                    .iter()
-                    .map(|value| value.label())
-                    .collect(),
-                BookFontSize::ALL
-                    .iter()
-                    .position(|&value| value == self.preferences.font_size)
-                    .unwrap_or(0),
+            ReadingPreference::BookFontSize => option_labels(
+                &BookFontSize::ALL,
+                self.preferences.font_size,
+                BookFontSize::label,
             ),
-            ReadingPreference::BookFont => (
-                BookFont::ALL.iter().map(|value| value.label()).collect(),
-                BookFont::ALL
-                    .iter()
-                    .position(|&value| value == self.preferences.book_font)
-                    .unwrap_or(0),
+            ReadingPreference::BookFont => {
+                option_labels(&BookFont::ALL, self.preferences.book_font, BookFont::label)
+            }
+            ReadingPreference::ParagraphAlignment => option_labels(
+                &ParagraphAlignment::ALL,
+                self.preferences.paragraph_alignment,
+                ParagraphAlignment::label,
             ),
-            ReadingPreference::ParagraphAlignment => (
-                ParagraphAlignment::ALL
-                    .iter()
-                    .map(|value| value.label())
-                    .collect(),
-                ParagraphAlignment::ALL
-                    .iter()
-                    .position(|&value| value == self.preferences.paragraph_alignment)
-                    .unwrap_or(0),
-            ),
-            ReadingPreference::ShowProgress => (
-                vec!["On", "Off"],
-                usize::from(!self.preferences.show_progress),
-            ),
+            ReadingPreference::ShowProgress => {
+                option_labels(&[true, false], self.preferences.show_progress, |value| {
+                    if value {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                })
+            }
         }
     }
 
@@ -1916,12 +1814,20 @@ impl ReaderUiState {
     /// Apply one option-list choice to the highlighted preference and close
     /// the list. Redraw-only settings persist immediately in place.
     /// Layout-sensitive settings persist immediately and request a staged
-    /// current-page rebuild.
+    /// current-page rebuild. Current values only close the list; invalid
+    /// indices do nothing.
     #[must_use]
     pub fn choose_preference(&mut self, index: usize) -> bool {
+        if index == self.preference_options().1 {
+            self.preferences_picker = None;
+            return false;
+        }
         let layout_sensitive = match self.selected_preference() {
             ReadingPreference::ReadingTheme => {
-                self.preferences.theme = ReadingTheme::ALL[index % ReadingTheme::ALL.len()];
+                let Some(&value) = ReadingTheme::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.theme = value;
                 self.last_message =
                     Some(format!("Reading theme: {}", self.preferences.theme.label()));
                 self.persist_preferences_best_effort();
@@ -1929,8 +1835,10 @@ impl ReaderUiState {
                 false
             }
             ReadingPreference::Orientation => {
-                self.preferences.orientation =
-                    ReaderOrientation::ALL[index % ReaderOrientation::ALL.len()];
+                let Some(&value) = ReaderOrientation::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.orientation = value;
                 self.last_message = Some(format!(
                     "Orientation: {}",
                     self.preferences.orientation.label()
@@ -1938,7 +1846,10 @@ impl ReaderUiState {
                 true
             }
             ReadingPreference::BookFontSize => {
-                self.preferences.font_size = BookFontSize::ALL[index % BookFontSize::ALL.len()];
+                let Some(&value) = BookFontSize::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.font_size = value;
                 self.last_message = Some(format!(
                     "Book font size: {}",
                     self.preferences.font_size.label()
@@ -1946,14 +1857,19 @@ impl ReaderUiState {
                 true
             }
             ReadingPreference::BookFont => {
-                self.preferences.book_font = BookFont::ALL[index % BookFont::ALL.len()];
+                let Some(&value) = BookFont::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.book_font = value;
                 self.last_message =
                     Some(format!("Book font: {}", self.preferences.book_font.label()));
                 true
             }
             ReadingPreference::ParagraphAlignment => {
-                self.preferences.paragraph_alignment =
-                    ParagraphAlignment::ALL[index % ParagraphAlignment::ALL.len()];
+                let Some(&value) = ParagraphAlignment::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.paragraph_alignment = value;
                 self.last_message = Some(format!(
                     "Paragraph alignment: {}",
                     self.preferences.paragraph_alignment.label()
@@ -1961,7 +1877,10 @@ impl ReaderUiState {
                 true
             }
             ReadingPreference::ShowProgress => {
-                self.preferences.show_progress = index == 0;
+                let Some(&value) = [true, false].get(index) else {
+                    return false;
+                };
+                self.preferences.show_progress = value;
                 self.last_message = Some(format!(
                     "Show progress: {}",
                     if self.preferences.show_progress {
@@ -3527,7 +3446,11 @@ mod tests {
         READER_BOOKMARKS_FILE, READER_POSITIONS_FILE, READER_PREFS_FILE, READER_RECENT_FILE,
         READER_STATE_FILE,
     };
-    use crate::{buttons::ButtonEvent, hyphenation::Language};
+    use crate::{
+        app::{AppState, ScreenRoute},
+        buttons::ButtonEvent,
+        hyphenation::Language,
+    };
 
     fn temp_dir(name: &str) -> PathBuf {
         let root =
@@ -3782,23 +3705,29 @@ mod tests {
     }
 
     #[test]
-    fn reader_font_cycle_preserves_legacy_keys_and_adds_literata() {
+    fn reader_font_choices_preserve_legacy_keys_and_include_literata() {
         assert_eq!(
             BookFont::AtkinsonHyperlegible.marker(),
             "atkinson-hyperlegible"
         );
         assert_eq!(BookFont::Serif.marker(), "serif");
         assert_eq!(BookFont::Literata.marker(), "literata");
-        assert_eq!(BookFont::Inter.next(), BookFont::AtkinsonHyperlegible);
-        assert_eq!(BookFont::AtkinsonHyperlegible.next(), BookFont::Serif);
-        assert_eq!(BookFont::Serif.next(), BookFont::Literata);
-        assert_eq!(BookFont::Literata.next(), BookFont::Inter);
-        assert_eq!(BookFont::Inter.previous(), BookFont::Literata);
-        assert_eq!(BookFont::parse("literata").unwrap(), BookFont::Literata);
+        assert_eq!(
+            BookFont::ALL,
+            [
+                BookFont::Inter,
+                BookFont::AtkinsonHyperlegible,
+                BookFont::Serif,
+                BookFont::Literata
+            ]
+        );
+        for value in BookFont::ALL {
+            assert_eq!(BookFont::parse(value.marker()).unwrap(), value);
+        }
     }
 
     #[test]
-    fn parses_serializes_and_cycles_reader_preferences() {
+    fn parses_and_serializes_reader_preferences() {
         let parsed = ReaderPreferences::parse(
             "version=1\ntheme=high-contrast\norientation=landscape\nfont_size=xlarge\nbook_font=serif\nparagraph_alignment=right\nshow_progress=false\n",
         )
@@ -3812,6 +3741,100 @@ mod tests {
         assert!(parsed.serialized().contains("font_size=xlarge"));
         assert!(parsed.serialized().contains("book_font=serif"));
         assert!(parsed.serialized().contains("paragraph_alignment=right"));
+    }
+
+    #[test]
+    fn preference_choice_arrays_preserve_order_and_persisted_markers() {
+        macro_rules! check_choices {
+            ($kind:ident, [$($value:ident),+]) => {
+                assert_eq!($kind::ALL, [$($kind::$value),+]);
+                for value in $kind::ALL {
+                    assert_eq!($kind::parse(value.marker()).unwrap(), value);
+                    assert!(!value.label().is_empty());
+                }
+            };
+        }
+        check_choices!(ReadingTheme, [Classic, HighContrast]);
+        check_choices!(ReaderOrientation, [Portrait, Landscape]);
+        check_choices!(BookFontSize, [Small, Medium, Large, XLarge]);
+        check_choices!(ParagraphAlignment, [Justified, Left, Center, Right]);
+    }
+
+    #[test]
+    fn current_preferences_close_picker_without_rebuilding_an_open_book_or_saving() {
+        let root = temp_dir("current-prefs-books");
+        let state_root = temp_dir("current-prefs-state");
+        fs::write(root.join("Book.txt"), "hello world ".repeat(800)).unwrap();
+        let mut reader = ReaderUiState::with_roots(
+            root.to_string_lossy().into_owned(),
+            state_root.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 1;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
+        reader.next_page();
+        assert!(reader.session.as_ref().unwrap().current_page > 0);
+        let prefs_path = state_root.join(READER_PREFS_FILE);
+        // A save replaces this sentinel even when the preferences are unchanged.
+        fs::write(&prefs_path, "unchanged preferences sentinel").unwrap();
+        let _ = reader.take_persistence_event();
+        let mut state = AppState::default();
+        state.reader = reader;
+        state.router.navigate_to(ScreenRoute::ReaderPreferences);
+        state.reader.begin_preferences_edit();
+        for selected in 0..ReadingPreference::ALL.len() {
+            state.reader.preferences_selected = selected;
+            state.apply(ButtonEvent::Select);
+            let mut expected = state.reader.clone();
+            expected.preferences_picker = None;
+            state.apply(ButtonEvent::Select);
+            assert_eq!(state.active_route(), ScreenRoute::ReaderPreferences);
+            assert_eq!(state.reader, expected);
+            assert!(state.reader.session.is_some());
+            assert_eq!(state.reader.loading_stage(), None);
+            assert!(!state.take_reader_clear_ghost_request());
+            assert_eq!(state.reader.take_persistence_event(), None);
+            assert_eq!(
+                fs::read_to_string(&prefs_path).unwrap(),
+                "unchanged preferences sentinel"
+            );
+            assert!(!state_root.join("PREFS.BAK").exists());
+            assert!(!state_root.join("PREFS.TMP").exists());
+        }
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(state_root).unwrap();
+    }
+
+    #[test]
+    fn every_current_value_and_invalid_preference_index_has_no_side_effects() {
+        let state_root = temp_dir("invalid-prefs-state");
+        let mut reader = ReaderUiState::with_roots(
+            "unused-books-root",
+            state_root.to_string_lossy().into_owned(),
+        );
+        for selected in 0..ReadingPreference::ALL.len() {
+            reader.preferences_selected = selected;
+            let count = reader.preference_options().0.len();
+            for choice in 0..count {
+                let _ = reader.choose_preference(choice);
+                let _ = reader.take_clear_ghost_request();
+                let _ = reader.take_persistence_event();
+                assert_eq!(reader.preference_options().1, choice);
+                reader.open_preference_picker();
+                let mut expected = reader.clone();
+                expected.preferences_picker = None;
+                assert!(!reader.choose_preference(choice));
+                assert_eq!(reader, expected);
+                for invalid in [count, count + 1, usize::MAX] {
+                    reader.open_preference_picker();
+                    let expected = reader.clone();
+                    assert!(!reader.choose_preference(invalid));
+                    assert_eq!(reader, expected);
+                }
+            }
+        }
+        fs::remove_dir_all(state_root).unwrap();
     }
 
     #[test]
