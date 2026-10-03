@@ -119,7 +119,7 @@ impl LuaAppManifest {
             return Err("manifest input list exceeds 8 entries".into());
         }
         for input in &self.input {
-            if !matches!(input.as_str(), "rotary" | "select" | "back" | "imu") {
+            if !matches!(input.as_str(), "rotary" | "select" | "back") {
                 return Err(format!("unsupported manifest input capability: {input}"));
             }
         }
@@ -222,6 +222,15 @@ mod tests {
         assert_eq!(manifest.id, "hello_grid");
         assert_eq!(manifest.kind, LuaAppKind::Game);
         assert_eq!(manifest.entry, "MAIN.LUA");
+    }
+
+    #[test]
+    fn rejects_sensor_input_capability() {
+        let error = LuaAppManifest::parse(
+            "id=\"sensor_game\"\nname=\"Sensor Game\"\nkind=\"game\"\ninput=[\"imu\"]\n",
+        )
+        .unwrap_err();
+        assert_eq!(error, "unsupported manifest input capability: imu");
     }
 
     #[test]

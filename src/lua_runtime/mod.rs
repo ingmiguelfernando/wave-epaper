@@ -1,8 +1,7 @@
 //! SD Lua runtime foundation with a Rust-owned native canvas.
 //!
-//! v0.18.6 preserves the static `ui.*` subset and adds bounded Sudoku,
-//! Minesweeper, Tilt Maze, Motion 2048 and Sokoban Tilt bridges. Mutable game
-//! state, motion latching and panel ownership remain in Rust; unrestricted Lua
+//! Preserves the static `ui.*` subset and bounded Sudoku and Minesweeper
+//! bridges. Mutable game state and panel ownership remain in Rust; unrestricted Lua
 //! VM callbacks stay deferred.
 
 use std::path::PathBuf;
@@ -13,7 +12,6 @@ use crate::{
         canvas::NativeGameCanvas,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
     },
-    imu_events::ImuDetectedEvent,
 };
 
 pub mod bootstrap;
@@ -236,54 +234,6 @@ impl LuaRuntimeUiState {
                     result.detail_marker(),
                     result.completed(),
                     result.dirty_regions_len(),
-                ));
-                true
-            }
-            Ok(None) => false,
-            Err((id, error)) => {
-                self.push_diagnostic(format!(
-                    "rustmix-wave=lua-runtime-error id={id} error={}",
-                    sanitize_marker(&error)
-                ));
-                self.error = Some(error);
-                false
-            }
-        }
-    }
-
-    #[must_use]
-    pub fn needs_imu_events(&self) -> bool {
-        self.session
-            .as_ref()
-            .is_some_and(|session| session.event_bridge.needs_imu_events())
-    }
-
-    pub fn apply_game_motion_event(&mut self, event: ImuDetectedEvent) -> bool {
-        let outcome = {
-            let Some(session) = self.session.as_mut() else {
-                return false;
-            };
-            match session
-                .event_bridge
-                .apply_motion_event(event, &mut session.canvas)
-            {
-                Ok(Some(result)) => {
-                    session.refresh_plan = GameRefreshPolicy::plan(
-                        session.canvas.dirty(),
-                        RefreshTrigger::ScriptFrame,
-                    );
-                    Ok(Some((session.entry.manifest.id.clone(), result)))
-                }
-                Ok(None) => Ok(None),
-                Err(error) => Err((session.entry.manifest.id.clone(), error)),
-            }
-        };
-        match outcome {
-            Ok(Some((id, result))) => {
-                self.push_diagnostic(format!(
-                    "rustmix-wave=lua-motion-event-bridge id={id} bridge={} outcome={} row={} column={} mode={} axis={} {} completed={} dirty-regions={} refresh=partial-fullscreen transport=existing-fullscreen-partial",
-                    result.bridge_marker(), result.reason(), result.row() + 1, result.column() + 1,
-                    result.mode_marker(), result.axis_marker(), result.detail_marker(), result.completed(), result.dirty_regions_len(),
                 ));
                 true
             }

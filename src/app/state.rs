@@ -624,16 +624,6 @@ impl AppState {
             && self.lua_runtime.apply_game_boot_short_press()
     }
 
-    #[must_use]
-    pub fn lua_game_needs_imu_events(&self) -> bool {
-        self.router.current() == ScreenRoute::LuaGame && self.lua_runtime.needs_imu_events()
-    }
-
-    pub fn apply_lua_game_motion_event(&mut self, event: ImuDetectedEvent) -> bool {
-        self.router.current() == ScreenRoute::LuaGame
-            && self.lua_runtime.apply_game_motion_event(event)
-    }
-
     pub fn refresh_lua_app_catalog(&mut self, mounted: bool) {
         self.lua_runtime.refresh_catalog(mounted);
     }
@@ -1350,6 +1340,79 @@ mod tests {
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::LuaApps);
         assert!(state.lua_runtime.catalog.warning.is_some());
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Games);
+    }
+
+    #[test]
+    fn games_catalog_opens_remaining_real_samples_and_routes_button_input() {
+        use crate::{games::canvas::DrawCommand, lua_runtime::manifest::LuaAppKind};
+
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS");
+        let mut state = open_from_home(ScreenRoute::Games);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::LuaApps);
+        state.lua_runtime.refresh_catalog_from_root(root, true);
+        assert!(state.lua_runtime.catalog.is_available());
+        assert_eq!(
+            state
+                .lua_runtime
+                .catalog
+                .entries
+                .iter()
+                .filter(|entry| entry.manifest.kind == LuaAppKind::Game)
+                .map(|entry| entry.manifest.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Hello Grid", "Minesweeper", "Sudoku"]
+        );
+
+        for (id, bridge, reason) in [
+            ("hello_grid", "static", None),
+            ("minesweeper", "minesweeper", Some("action-enter")),
+            ("sudoku", "sudoku", Some("edit-enter")),
+        ] {
+            for _ in 0..state.lua_runtime.catalog.entries.len() {
+                if state.lua_runtime.selected_entry().unwrap().manifest.id == id {
+                    break;
+                }
+                state.apply(ButtonEvent::Down);
+            }
+            assert_eq!(state.lua_runtime.selected_entry().unwrap().manifest.id, id);
+            state.apply(ButtonEvent::Select);
+            assert_eq!(state.active_route(), ScreenRoute::LuaGame);
+            assert!(state.lua_runtime.error.is_none());
+            let session = state.lua_runtime.session.as_ref().unwrap();
+            assert_eq!(session.entry.manifest.id, id);
+            assert_eq!(session.event_bridge.marker(), bridge);
+            assert!(session.source_bytes > 0);
+            assert!(!session.canvas.commands().is_empty());
+            assert!(session.canvas.refresh_requested());
+            if reason.is_none() {
+                assert!(session
+                    .canvas
+                    .commands()
+                    .iter()
+                    .any(|command| { matches!(command, DrawCommand::Grid { .. }) }));
+            }
+            state.take_lua_runtime_diagnostics();
+            state.apply(ButtonEvent::Select);
+            assert_eq!(state.active_route(), ScreenRoute::LuaGame);
+            let diagnostics = state.take_lua_runtime_diagnostics();
+            if let Some(reason) = reason {
+                assert!(diagnostics.iter().any(|line| {
+                    line.contains(&format!("bridge={bridge}"))
+                        && line.contains(&format!("outcome={reason}"))
+                }));
+                assert!(state.apply_lua_game_boot_short_press());
+            } else {
+                assert!(diagnostics.is_empty());
+                assert!(!state.apply_lua_game_boot_short_press());
+            }
+            state.back();
+            assert_eq!(state.active_route(), ScreenRoute::LuaApps);
+            assert!(state.lua_runtime.session.is_none());
+        }
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Games);
     }

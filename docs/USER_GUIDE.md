@@ -247,7 +247,7 @@ The internal `VOICE###.WAV` filename does not change.
 
 Select **SD Lua Apps** to open the SD-loaded catalog. Rotate to choose a game, SELECT to open it, and hold BOOT to return.
 
-Lua scripts declare bounded app behavior, but native Rust owns game state, rendering, dirty regions, sensors, and panel refresh policy.
+Lua scripts declare bounded app behavior, but native Rust owns game state, rendering, dirty regions, and panel refresh policy. The IMU runs only on the Motion diagnostic screens.
 
 ### Hello Grid
 
@@ -280,24 +280,6 @@ Minesweeper uses a native beginner board with first-reveal safety, flags, flood 
 | BOOT short | Toggle axis or cancel action mode |
 | SELECT | Reveal or flag according to the current action |
 | BOOT long | Return to catalog |
-
-### Tilt Maze
-
-<img src="../screenshots/tilt-maze.jpg" width="360" alt="Tilt Maze">
-
-Tilt Maze uses debounced planar tilt events from the QMI8658 IMU. Tilt the device to move the player through the maze. SELECT resets the level; hold BOOT to return.
-
-### Motion 2048
-
-<img src="../screenshots/motion20248.jpg" width="360" alt="Motion 2048">
-
-Motion 2048 maps debounced tilt events to board swipes. Tilt the device to slide and merge tiles. SELECT resets the board; hold BOOT to return.
-
-### Sokoban Tilt
-
-<img src="../screenshots/sobokan-tilt.jpg" width="360" alt="Sokoban Tilt">
-
-Sokoban Tilt maps debounced tilt events to player movement and crate pushes. Tilt the device to navigate the puzzle. SELECT resets the level; hold BOOT to return.
 
 ## 5. Tools
 
@@ -525,9 +507,6 @@ Every supplied screenshot is stored in the repository so the guide and README ca
 | [hello-grid.jpg](../screenshots/hello-grid.jpg) | Hello Grid |
 | [sudoku.jpg](../screenshots/sudoku.jpg) | Sudoku |
 | [minesweeper.jpg](../screenshots/minesweeper.jpg) | Minesweeper |
-| [tilt-maze.jpg](../screenshots/tilt-maze.jpg) | Tilt Maze |
-| [motion20248.jpg](../screenshots/motion20248.jpg) | Motion 2048 |
-| [sobokan-tilt.jpg](../screenshots/sobokan-tilt.jpg) | Sokoban Tilt |
 | [tools.jpg](../screenshots/tools.jpg) | Tools category |
 | [directory-listing.jpg](../screenshots/directory-listing.jpg) | File Browser root |
 | [files-listing.jpg](../screenshots/files-listing.jpg) | File Browser directory listing |

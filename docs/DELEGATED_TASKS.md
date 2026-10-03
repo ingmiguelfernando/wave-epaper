@@ -327,7 +327,41 @@ IMU should only run on the Motion diagnostic screens.
 - The Games list still opens Sudoku, Minesweeper and Hello Grid (add a test).
 - Host tests, fmt and the firmware build pass.
 
-**Status:** not started.
+**Status:** D3 implemented on `side-tasks` (2026-10-03), pending firmware
+validation. Removed
+the three game registrations and native bridges, Lua motion dispatch and
+IMU input capability. `main.rs` samples events only on `MotionEvents`;
+Motion/Details power and diagnostics remain unchanged. Removed game entries
+from the generic installer, User Guide and SD tree. Added a Games-route test
+that scans the real sample manifests and opens Hello Grid, Minesweeper and
+Sudoku through the worker/native bootstrap, exercises SELECT/BOOT and back,
+and a manifest test rejecting sensor input.
+
+Checks: `./scripts/test-host.sh` passed (378 tests),
+`cargo +stable fmt --all -- --check`, `git diff --check` and
+`bash -n scripts/install-sd-examples.sh` passed; editor error checks found no
+errors in changed files. Reviewed runtime references including `main.rs`,
+manifest/catalog schemas, workflow/script callers and the final diff.
+No protected files, dependencies, Python files or versions changed.
+
+Removed all 12 obsolete files:
+`src/games/{motion_2048,sokoban_tilt,tilt_maze}.rs`,
+`examples/sd-card/RUSTMIX/APPS/{M2048,SOKOBAN,TILTMAZE}/{APP.TOM,MAIN.LUA}`,
+and `scripts/install-{motion-2048,sokoban-tilt,tilt-maze}-sd-sample.sh`.
+Reference scans preserve the diagnostic exceptions below.
+
+Remaining reference exceptions beyond CHANGELOG and this task document:
+diagnostic tilt events in `src/imu_events.rs`, `src/app/screens/motion.rs`,
+`src/app/state.rs`, `src/main.rs` and the User Guide's Motion event list;
+the manifest rejection test deliberately names the removed input capability.
+README's removal note, upstream `RELEASE_NOTES-v1.0.0.md`, the architecture's
+old IMU-games statement and protected ROADMAP text are left for the planned
+documentation follow-up. Protected ROADMAP text remains unchanged.
+Firmware validation is pending. Device needs: open and use
+all three remaining samples, SELECT/short BOOT/hold BOOT, Motion/Details live
+readings, MotionEvents tilt/shake/rotate/level and threshold/reset controls,
+and IMU off outside diagnostics including Games. Handover requires a green
+Xtensa firmware build; physical checks remain with the owner.
 
 ## D4: Documentation refresh
 

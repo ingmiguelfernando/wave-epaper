@@ -8,8 +8,5 @@
 pub mod canvas;
 pub mod dirty_regions;
 pub mod minesweeper;
-pub mod motion_2048;
 pub mod refresh_policy;
-pub mod sokoban_tilt;
 pub mod sudoku;
-pub mod tilt_maze;

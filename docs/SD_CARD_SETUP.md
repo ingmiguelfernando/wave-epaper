@@ -20,9 +20,6 @@ Use a FAT-formatted SD card. Rustmix Wave mounts it at `/sdcard` and expects the
     HGRID/
     SUDOKU/
     MINES/
-    TILTMAZE/
-    M2048/
-    SOKOBAN/
     DICT/
       INDEX.TXT
       DATA/*.JSN

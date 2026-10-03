@@ -600,7 +600,7 @@ mod firmware {
         info!("rustmix-wave=reader-epub-chapter-aware-presentation-ready page-label=chapter,page-of-total bookmarks=chapter,page-of-total library-title=opf-metadata fallback=fat-filename txt-path=preserved");
         info!("rustmix-wave=reader-epub-watchdog-memory-pressure-repair-ready index-yield-every-pages=4 index-yield-ms=1 session-release=before-book-open layout-rebuild=move-document toc-jump=no-document-clone parser-worker-stack-bytes=65536 title-worker-stack-bytes=32768");
         info!("rustmix-wave=reader-eink-font-pack-ready fonts=inter,atkinson-hyperlegible,serif,literata atkinson-source=atkinson-hyperlegible-next-medium literata-source=literata-medium glyphs=latin-1 persisted-keys=serif,atkinson-hyperlegible cache-fingerprint=book-font epub-repagination=layout-rebuild bookmarks=byte-offset txt-epub-aligned=true");
-        info!("rustmix-wave=lua-runtime-foundation-ready mode=bootstrap-static,event-bridge root={LUA_APPS_DIRECTORY} manifest=APP.TOM entry=MAIN.LUA script-max-bytes=65536 vm-callbacks=sudoku,minesweeper,tilt-maze,motion-2048,sokoban-tilt-bounded-native");
+        info!("rustmix-wave=lua-runtime-foundation-ready mode=bootstrap-static,event-bridge root={LUA_APPS_DIRECTORY} manifest=APP.TOM entry=MAIN.LUA script-max-bytes=65536 vm-callbacks=sudoku,minesweeper-bounded-native");
         info!("rustmix-wave=lua-native-dirty-region-canvas-ready commands=256 text-bytes=160 dirty-regions={MAX_DIRTY_REGIONS} partial-limit={PANEL_PARTIAL_REFRESH_LIMIT} transport=existing-fullscreen-partial panel-api=rust-owned");
         info!("rustmix-wave=panel-refresh-coordinator-ready partial-limit={PANEL_PARTIAL_REFRESH_LIMIT} transport=existing-fullscreen-partial state=main-loop-owned lua-route-global-refresh=false");
         info!("rustmix-wave=runtime-worker-boundary-ready workers=weather-fetch,lua-loader policy=short-lived-named-stack panel-spi=main-task-only");
@@ -609,13 +609,9 @@ mod firmware {
         info!("rustmix-wave=lua-sudoku-boot-axis-navigation-ready short-press=boot nav=axis-toggle edit=cancel default-axis=horizontal long-press=hierarchical-back dirty=status-or-cell refresh=shared-panel-coordinator");
         info!("rustmix-wave=lua-sudoku-boot-mode-ux-repair-ready nav=boot-short-axis-toggle edit=boot-short-cancel long-press=hierarchical-back dirty=axis-status-or-edit-cell-status refresh=shared-panel-coordinator");
         info!("rustmix-wave=lua-minesweeper-event-bridge-ready sample=MINES board=beginner-9x9 mines=10 first-reveal=safe input=up,down,select,boot-short-context action=reveal,flag dirty=old-cell,new-cell,status-or-board refresh=shared-panel-coordinator transport=existing-fullscreen-partial panel-api=rust-owned");
-        info!("rustmix-wave=imu-event-bridge-ready events=tilt,shake,rotate,level sampling=motion-events-or-motion-game sample-ms={IMU_EVENT_SAMPLE_INTERVAL_MS} diagnostics=thresholds,debounce,counters redraw=event-or-{IMU_EVENT_SCREEN_REFRESH_SECONDS}s-heartbeat raw-i2c=rust-owned lua-api=none");
+        info!("rustmix-wave=imu-event-bridge-ready events=tilt,shake,rotate,level sampling=motion-events-only sample-ms={IMU_EVENT_SAMPLE_INTERVAL_MS} diagnostics=thresholds,debounce,counters redraw=event-or-{IMU_EVENT_SCREEN_REFRESH_SECONDS}s-heartbeat raw-i2c=rust-owned lua-api=none");
         info!("rustmix-wave=imu-event-thresholds tilt-mg={} shake-delta-mg={} rotate-dps={} level-tolerance-mg={} debounce-ms={}", state.imu_events.thresholds.tilt_enter_mg, state.imu_events.thresholds.shake_delta_mg, state.imu_events.thresholds.rotate_dps, state.imu_events.thresholds.level_tolerance_mg, state.imu_events.thresholds.debounce_ms);
         info!("rustmix-wave=imu-event-discrete-latching-ready tilt=release-to-neutral rotate=release-to-neutral level=edge-only shake=cooldown raw-i2c=rust-owned");
-        info!("rustmix-wave=lua-tilt-maze-event-bridge-ready sample=TILTMAZE board=9x9 motion=debounced-tilt-only dirty=old-cell,new-cell,status-or-board refresh=shared-panel-coordinator transport=existing-fullscreen-partial panel-api=rust-owned");
-        info!("rustmix-wave=lua-tilt-maze-portrait-axis-repair-ready logical=portrait mapping=raw:+x->down,-x->up,+y->left,-y->right diagnostics=logical-direction,raw-axis");
-        info!("rustmix-wave=lua-motion-2048-event-bridge-ready sample=M2048 board=4x4 motion=debounced-tilt-swipe dirty=board,status refresh=shared-panel-coordinator transport=existing-fullscreen-partial panel-api=rust-owned");
-        info!("rustmix-wave=lua-sokoban-tilt-event-bridge-ready sample=SOKOBAN board=9x9 motion=debounced-tilt-only dirty=old-cell,new-cell,status-or-board refresh=shared-panel-coordinator transport=existing-fullscreen-partial panel-api=rust-owned");
         info!("rustmix-wave=weather-fetch-stack-isolation-ready worker=weather-fetch stack-bytes=65536 main-task-stack-bytes=16384 response-max-bytes=8192 state=heap-boxed policy=short-lived-worker-join");
         info!("rustmix-wave=wifi-transfer-web-portal-ready activation=settings-network-explicit-toggle auto-start=false root={WIFI_TRANSFER_ROOT} transport=http-lan-only token=required server-stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES} main-task-stack-bytes=16384 upload=streamed-atomic-tmp fat83=true protected-config=true inactivity-seconds={WIFI_TRANSFER_INACTIVITY_SECONDS}");
         log_runtime_memory("boot-complete");
@@ -1482,10 +1478,9 @@ mod firmware {
                 last_reader_tick = Instant::now();
             }
 
-            // The IMU only runs on the motion screens and in motion games.
+            // The IMU only runs on the motion diagnostic screens.
             let route = state.active_route();
-            let imu_sampling =
-                route == ScreenRoute::MotionEvents || state.lua_game_needs_imu_events();
+            let imu_sampling = route == ScreenRoute::MotionEvents;
             let motion_screen = matches!(route, ScreenRoute::Motion | ScreenRoute::MotionDetails);
             let imu_wanted = !sleep_mode.is_sleeping() && (imu_sampling || motion_screen);
             if imu_wanted != imu_enabled {
@@ -1500,8 +1495,7 @@ mod firmware {
 
             if !sleep_mode.is_sleeping()
                 && state.panel_awake
-                && (state.active_route() == ScreenRoute::MotionEvents
-                    || state.lua_game_needs_imu_events())
+                && imu_sampling
                 && last_imu_event_sample.elapsed()
                     >= Duration::from_millis(IMU_EVENT_SAMPLE_INTERVAL_MS)
             {
@@ -1512,16 +1506,11 @@ mod firmware {
                         if let Some(event) = event {
                             info!("rustmix-wave=imu-event type={} detail={} at-ms={} samples={} counts=tilt:{},shake:{},rotate:{},level:{} thresholds=tilt:{}mg,shake:{}mg,rotate:{}dps,level:{}mg,debounce:{}ms", event.kind.marker(), event.kind.detail_marker(), event.at_ms, state.imu_events.samples, state.imu_events.counters.tilt, state.imu_events.counters.shake, state.imu_events.counters.rotate, state.imu_events.counters.level, state.imu_events.thresholds.tilt_enter_mg, state.imu_events.thresholds.shake_delta_mg, state.imu_events.thresholds.rotate_dps, state.imu_events.thresholds.level_tolerance_mg, state.imu_events.thresholds.debounce_ms);
                         }
-                        let game_motion_changed =
-                            event.is_some_and(|event| state.apply_lua_game_motion_event(event));
-                        if game_motion_changed {
-                            log_lua_runtime_events(&mut state);
-                        }
                         let diagnostic_refresh = state.active_route() == ScreenRoute::MotionEvents
                             && (event.is_some()
                                 || last_imu_event_screen_refresh.elapsed()
                                     >= Duration::from_secs(IMU_EVENT_SCREEN_REFRESH_SECONDS));
-                        if game_motion_changed || diagnostic_refresh {
+                        if diagnostic_refresh {
                             refresh_screen(
                                 &mut panel,
                                 &mut frame,
