@@ -3,7 +3,7 @@
 
 use core::convert::Infallible;
 
-use embedded_graphics::prelude::{Drawable, Point};
+use embedded_graphics::prelude::Point;
 
 use crate::{
     app::{

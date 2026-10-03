@@ -217,19 +217,28 @@ impl ReadingStats {
         text
     }
 
+    /// Falls back to the `.BAK` copy left by a save interrupted between renames.
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("read reading stats {}", path.display()))?;
+        let backup = path.with_extension("BAK");
+        let source = if !path.exists() && backup.is_file() {
+            backup.as_path()
+        } else {
+            path
+        };
+        let text = fs::read_to_string(source)
+            .with_context(|| format!("read reading stats {}", source.display()))?;
         Self::parse(&text)
     }
 
-    /// Never unlink the original: a filesystem refusing replacement returns an error.
+    /// FAT cannot rename onto an existing file, so the old file waits as `.BAK`
+    /// until the new one is in place, as in the Reader's state files.
     pub fn save_to_path(&mut self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
         let temporary = path.with_extension("TMP");
-        if temporary == path {
-            bail!("reading stats destination must differ from its TMP path");
+        let backup = path.with_extension("BAK");
+        if temporary == path || backup == path {
+            bail!("reading stats destination must differ from its TMP and BAK paths");
         }
         let saved = (|| -> std::io::Result<()> {
             let mut file = fs::OpenOptions::new()
@@ -239,7 +248,19 @@ impl ReadingStats {
             file.write_all(self.serialized().as_bytes())?;
             file.sync_all()?;
             drop(file);
-            fs::rename(&temporary, path)
+            let _ = fs::remove_file(&backup);
+            let replacing = path.is_file();
+            if replacing {
+                fs::rename(path, &backup)?;
+            }
+            if let Err(error) = fs::rename(&temporary, path) {
+                if replacing {
+                    let _ = fs::rename(&backup, path);
+                }
+                return Err(error);
+            }
+            let _ = fs::remove_file(&backup);
+            Ok(())
         })();
         if saved.is_err() {
             let _ = fs::remove_file(&temporary);
@@ -267,6 +288,107 @@ impl ReadingStats {
         if self.books.len() > MAX_BOOKS {
             self.books.remove(0);
         }
+    }
+}
+
+fn valid_book(path: &str) -> bool {
+    !path.trim().is_empty()
+        && !path
+            .chars()
+            .any(|ch| ch.is_control() || "|<>:\"?*".contains(ch))
+}
+
+fn parse_count(text: &str) -> Result<u32> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        bail!("invalid unsigned count");
+    }
+    text.parse().context("count exceeds u32")
+}
+
+/// Parse a Gregorian Unix date; expanded years support the entire u32 day range.
+pub fn parse_day(text: &str) -> Result<u32> {
+    let fields: Vec<_> = text.split('-').collect();
+    if fields.len() != 3 || fields[0].len() < 4 || fields[1].len() != 2 || fields[2].len() != 2 {
+        bail!("date must be YYYY-MM-DD");
+    }
+    let year = i64::from(parse_count(fields[0])?);
+    let month = parse_count(fields[1])?;
+    let day = parse_count(fields[2])?;
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let maximum = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
+        _ => bail!("invalid month"),
+    };
+    if day == 0 || day > maximum {
+        bail!("invalid day of month");
+    }
+    // rtc.rs's private Gregorian algorithm, widened beyond its u16 year range.
+    let year = year - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let yoe = year - era * 400;
+    let doy = (153 * ((i64::from(month) + 9) % 12) + 2) / 5 + i64::from(day) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    u32::try_from(era * 146_097 + doe - 719_468).context("date outside u32 Unix days")
+}
+
+#[must_use]
+pub fn day_label(epoch_day: u32) -> String {
+    let z = i64::from(epoch_day) + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ReadingClock {
+    last_key: Option<u64>,
+    cursor: u64,
+    pending_ms: u64,
+}
+
+impl ReadingClock {
+    /// Regressing timestamps are ignored; expired eligible time is kept before restart.
+    pub fn on_key(&mut self, now_ms: u64) {
+        if self.last_key.is_some() && now_ms < self.cursor {
+            return;
+        }
+        self.accrue(now_ms);
+        self.last_key = Some(now_ms);
+        self.cursor = now_ms;
+    }
+
+    /// Fractions and any seconds beyond u32::MAX remain available for the next call.
+    pub fn take_seconds(&mut self, now_ms: u64) -> u32 {
+        self.accrue(now_ms);
+        let seconds = (self.pending_ms / 1_000).min(u64::from(u32::MAX)) as u32;
+        self.pending_ms -= u64::from(seconds) * 1_000;
+        seconds
+    }
+
+    fn accrue(&mut self, now_ms: u64) {
+        let Some(key) = self.last_key else { return };
+        if now_ms < self.cursor {
+            return;
+        }
+        let end = now_ms.min(key.saturating_add(GRACE_MS));
+        self.pending_ms = self
+            .pending_ms
+            .saturating_add(end.saturating_sub(self.cursor));
+        self.cursor = now_ms;
     }
 }
 
@@ -702,6 +824,21 @@ mod tests {
     }
 
     #[test]
+    fn replacing_goes_through_a_backup_that_load_falls_back_to() {
+        let root = TempRoot::new();
+        let path = root.stats_path();
+        let mut stats = ReadingStats::default();
+        stats.record(0, 60, 1, None);
+        stats.save_to_path(&path).unwrap();
+        stats.record(1, 60, 1, None);
+        stats.save_to_path(&path).unwrap();
+        assert!(!path.with_extension("BAK").exists());
+        // A save interrupted between its two renames leaves only the backup.
+        fs::rename(&path, path.with_extension("BAK")).unwrap();
+        assert_eq!(ReadingStats::load_from_path(&path).unwrap(), stats);
+    }
+
+    #[test]
     fn filesystem_load_reports_missing_invalid_utf8_and_malformed_files() {
         let root = TempRoot::new();
         let path = root.stats_path();
@@ -914,106 +1051,5 @@ mod tests {
         assert_eq!(clock.take_seconds(0), 2);
         assert_eq!(clock.take_seconds(0), 0);
         assert_eq!(clock.pending_ms, 999);
-    }
-}
-
-fn valid_book(path: &str) -> bool {
-    !path.trim().is_empty()
-        && !path
-            .chars()
-            .any(|ch| ch.is_control() || "|<>:\"?*".contains(ch))
-}
-
-fn parse_count(text: &str) -> Result<u32> {
-    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
-        bail!("invalid unsigned count");
-    }
-    text.parse().context("count exceeds u32")
-}
-
-/// Parse a Gregorian Unix date; expanded years support the entire u32 day range.
-pub fn parse_day(text: &str) -> Result<u32> {
-    let fields: Vec<_> = text.split('-').collect();
-    if fields.len() != 3 || fields[0].len() < 4 || fields[1].len() != 2 || fields[2].len() != 2 {
-        bail!("date must be YYYY-MM-DD");
-    }
-    let year = i64::from(parse_count(fields[0])?);
-    let month = parse_count(fields[1])?;
-    let day = parse_count(fields[2])?;
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let maximum = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            if leap {
-                29
-            } else {
-                28
-            }
-        }
-        _ => bail!("invalid month"),
-    };
-    if day == 0 || day > maximum {
-        bail!("invalid day of month");
-    }
-    // rtc.rs's private Gregorian algorithm, widened beyond its u16 year range.
-    let year = year - i64::from(month <= 2);
-    let era = year.div_euclid(400);
-    let yoe = year - era * 400;
-    let doy = (153 * ((i64::from(month) + 9) % 12) + 2) / 5 + i64::from(day) - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    u32::try_from(era * 146_097 + doe - 719_468).context("date outside u32 Unix days")
-}
-
-#[must_use]
-pub fn day_label(epoch_day: u32) -> String {
-    let z = i64::from(epoch_day) + 719_468;
-    let era = z / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{year:04}-{month:02}-{day:02}")
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ReadingClock {
-    last_key: Option<u64>,
-    cursor: u64,
-    pending_ms: u64,
-}
-
-impl ReadingClock {
-    /// Regressing timestamps are ignored; expired eligible time is kept before restart.
-    pub fn on_key(&mut self, now_ms: u64) {
-        if self.last_key.is_some() && now_ms < self.cursor {
-            return;
-        }
-        self.accrue(now_ms);
-        self.last_key = Some(now_ms);
-        self.cursor = now_ms;
-    }
-
-    /// Fractions and any seconds beyond u32::MAX remain available for the next call.
-    pub fn take_seconds(&mut self, now_ms: u64) -> u32 {
-        self.accrue(now_ms);
-        let seconds = (self.pending_ms / 1_000).min(u64::from(u32::MAX)) as u32;
-        self.pending_ms -= u64::from(seconds) * 1_000;
-        seconds
-    }
-
-    fn accrue(&mut self, now_ms: u64) {
-        let Some(key) = self.last_key else { return };
-        if now_ms < self.cursor {
-            return;
-        }
-        let end = now_ms.min(key.saturating_add(GRACE_MS));
-        self.pending_ms = self
-            .pending_ms
-            .saturating_add(end.saturating_sub(self.cursor));
-        self.cursor = now_ms;
     }
 }

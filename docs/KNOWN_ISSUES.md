@@ -1,16 +1,15 @@
 # Wave known issues
 
-Firmware v0.8.1. This is not a list of promised mockup features. See
+Firmware v0.9.1. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
 
-The `%` sign has been observed looking broken at the small Detail font size
-on the sleep card, and in the rain row of the weather sleep layout preview. The [roadmap backlog](ROADMAP.md#backlog) records the
-Inter 11–12 px atlas as the investigation target, not a confirmed root cause.
-Compare both interface families and all three sizes on the actual panel;
-do not infer a battery-reading failure from the glyph. No font fix is included
-in D4.
+In Inter at the Standard size, the Detail strike (12 px) draws `%` without its
+slash. Inter Compact and Large and every Atkinson size are fine. Task D6 found
+no `fonts.toml` setting that fixes it without changing other glyphs, so
+screens show percentages in Body size instead (sleep card battery, weather
+rain chances). Do not infer a battery-reading failure from the glyph.
 
 ## USB flashing and disappearing serial port
 
@@ -63,11 +62,6 @@ do not arm RTC alarms; U.S. holiday rows are read-only.
 
 ## Inherited diagnostic wording
 
-The unused upstream ELF release helpers are not part of Wave's merged-image
-workflow. Their retirement is pending the deletions listed in D9's Status in
-[delegated tasks](DELEGATED_TASKS.md#d9-retire-the-upstream-release-helpers).
-Use the README build and flashing instructions instead.
-
-Some boot log readiness strings also describe old category counts or an
-ELF-only release policy. Use current menus, the guide and the README flashing
-instructions, not those legacy strings. Correcting runtime text is outside D4.
+Some boot log readiness strings describe old category counts or an ELF-only
+release policy. Use current menus, the guide and the README flashing
+instructions, not those legacy strings.
