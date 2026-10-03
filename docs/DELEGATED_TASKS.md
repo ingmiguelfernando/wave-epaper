@@ -280,7 +280,14 @@ builds and tests the data layer only: no UI, routes or `main.rs`.
 boundaries and the last chapter, a BOM, the daily rotation, and
 `translations` on a temporary directory.
 
-**Status:** not started.
+**Status:** implemented locally on `side-tasks-2` at `dec9ee4` (2026-10-03).
+  Added `bible.rs` and local library registration; no UI/runtime integration.
+  BOOKS and verse-list parsers validate fields/ranges with physical line errors;
+  chapter reads retain only the target and stop after one validated boundary.
+  Translation discovery is sorted; load paths reject component traversal.
+  Host tests: 438 pass (31 new on macOS); Linux-only non-UTF-8 fixture added.
+  Stable fmt, editor errors and diff checks pass; existing Drawable warning remains.
+  Firmware/device checks pending: SD UTF-8/final chapter reads after Phase 5 wiring.
 
 ### D11: Reading stats module (library only)
 

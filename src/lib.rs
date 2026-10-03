@@ -8,6 +8,7 @@ pub mod alarm;
 pub mod app;
 pub mod audio;
 pub mod battery_log;
+pub mod bible;
 pub mod board_services;
 pub mod build_info;
 pub mod buttons;
