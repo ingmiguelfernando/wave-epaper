@@ -195,7 +195,16 @@ cells block moves; the kicks; one to four cleared rows with their scores and
 the level; each piece once per bag; the same seed gives the same pieces; the
 ghost; game over at spawn; Drop locks at once.
 
-**Status:** not started.
+**Status:** Done on `side-tasks-3` (library only).
+  Added `src/games/tetris.rs` (10 x 20 board, SRS-like rotations with the
+  0/−1/+1/−2/+2 column kicks, 7-bag fed by an in-module xorshift32) and
+  registered it in `src/games/mod.rs`. Queries for drawing: `cell`,
+  `active_cells`, `ghost_cells`, `next`, `score`, `lines`, `level`, `is_over`;
+  `GRAVITY_MS = 1000` for the future Classic timer in `main.rs`.
+  Checks: `./scripts/test-host.sh` green (488 old + 12 new tests),
+  `cargo +stable fmt --all -- --check` and `git diff --check` clean.
+  Device: nothing to test yet, the engine draws nothing; it ships with D13.
+  Left open: nothing.
 
 ### D13: Tetris Zen as an SD app
 
