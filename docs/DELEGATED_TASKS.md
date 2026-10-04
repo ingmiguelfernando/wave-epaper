@@ -388,7 +388,16 @@ diagnostic wording).
 **Done when:** no boot marker names a removed feature or a wrong count, and
 the firmware build is green. Device check: the serial log at boot.
 
-**Status:** not started.
+**Status:** done on `side-tasks-3` (2026-10-04); firmware build pending.
+  Removed 88 static `rustmix-wave=*-ready` info lines from the boot block of
+  `main.rs` (they restated designs or named old counts, BLE-era wording and
+  feature histories) and the imports only they used. Kept every marker that
+  reports a boot result (config loaded, SD mounted, codec found, panel
+  ready, regional profile, voice-notes catalog) and the live IMU/motion
+  logs. Nothing in `scripts/`, `.github/` or `docs/` reads the removed
+  markers (`git grep`). Removed Known Issues › Inherited diagnostic wording.
+  No Xtensa toolchain here: host tests (538), fmt and diff checks pass, the
+  firmware build and the serial log at boot are for CI and the device.
 
 ## Round 2 tasks (done in v0.9.1)
 

@@ -54,14 +54,11 @@ mod firmware {
         },
         calendar::{
             create_personal_event, delete_personal_event, update_personal_event, CalendarUiRequest,
-            CALENDAR_EVENTS_FILE, CALENDAR_ROOT, CALENDAR_US_EVENTS_FILE,
+            CALENDAR_ROOT,
         },
-        dictionary::{DICTIONARY_ROOT, DICTIONARY_SHARD_MAX_BYTES},
         epaper::Epaper397,
         framebuffer::FrameBuffer,
-        games::dirty_regions::MAX_DIRTY_REGIONS,
         imu_events::IMU_EVENT_SAMPLE_INTERVAL_MS,
-        lua_runtime::{catalog::LUA_APPS_DIRECTORY, loader::LUA_LOADER_WORKER_STACK_BYTES},
         network::{
             espidf::NetworkRuntime, NetworkLogFingerprint, NetworkSnapshot, WifiConnectionState,
         },
@@ -113,8 +110,7 @@ mod firmware {
         weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
         wifi_transfer::{
             espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
-            WifiTransferUiRequest, WIFI_TRANSFER_INACTIVITY_SECONDS, WIFI_TRANSFER_ROOT,
-            WIFI_TRANSFER_SERVER_STACK_BYTES,
+            WifiTransferUiRequest, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
         },
     };
 
@@ -552,100 +548,8 @@ mod firmware {
         let mut voice_playback: Option<VoicePlaybackSession> = None;
         let mut voice_stereo_buffer = vec![0_u8; VOICE_PCM_STEREO_CAPTURE_BYTES];
         let mut voice_mono_buffer = vec![0_u8; VOICE_PCM_MONO_CHUNK_BYTES];
-        info!("rustmix-wave=open-meteo-weather-forecast-ready");
-        info!("rustmix-wave=open-meteo-fixed-point-json-parser-ready");
-        info!("rustmix-wave=open-meteo-whitespace-parser-repair-ready");
-        info!("rustmix-wave=rtc-alarm-scheduling-ui-ready");
-        info!("rustmix-wave=es8311-audio-diagnostics-audible-alarm-ready");
-        info!("rustmix-wave=es8311-pindriver-output-mode-repair-ready");
-        info!("rustmix-wave=es8311-i2s-data-route-repair-ready");
-        info!("rustmix-wave=es8311-waveshare-codec-profile-repair-ready");
-        info!(
-            "rustmix-wave=wifi-monitor-log-quieting-ready policy=state-change-or-heartbeat heartbeat-seconds={NETWORK_LOG_HEARTBEAT_SECONDS} rssi-immediate=false"
-        );
-        info!("rustmix-wave=rtc-alarm-int-readiness-ready gpio={RTC_ALARM_INTERRUPT_GPIO} active-low=true");
-        info!("rustmix-wave=power-key-sleep-image-mode-ready path={SLEEP_IMAGE_DIRECTORY} format=native-800x480-1bpp-bmp mcu-sleep=light");
-        info!("rustmix-wave=power-key-short-menu-long-sleep-ready short-press=display-maintenance-menu long-press=sleep-image wake=power-key menu-action=manual-global-refresh");
-        info!("rustmix-wave=release-flash-workflow-safety-ready docs=consolidated workflow=ci release-artifact=elf supported-flash=espflash-flash factory-image=deferred");
-        info!("rustmix-wave=text-editor-layout-alignment-ready voice-title-editor=shared-grid-keyboard calendar-editor-status=compact-date keyboard=boot-hv-axis footer=width-safe");
-        info!("rustmix-wave=sleep-image-directory-classification-fix-ready policy=fat-metadata-fallback");
-        info!("rustmix-wave=network-suspended-sleep-image-mode-ready wifi=stop-on-sleep sntp=paused weather=paused mcu-sleep=light");
-        info!("rustmix-wave=power-plan-ready wifi=bursts idle-light-sleep=battery-only imu=on-demand codec=suspend-when-idle");
-        info!("rustmix-wave=random-sleep-image-selection-ready source=esp-random policy=avoid-immediate-repeat-when-multiple");
-        info!("rustmix-wave=main-category-navigation-ready categories=5");
-        info!("rustmix-wave=reader-category-ready entries=3");
-        info!("rustmix-wave=productivity-category-ready entries=2");
-        info!("rustmix-wave=games-category-ready entries=1 status=sd-lua-catalog");
-        info!("rustmix-wave=tools-category-ready entries=3");
-        info!("rustmix-wave=settings-category-ready entries=10 display=true");
-        info!("rustmix-wave=photos-ready root={PHOTOS_DIRECTORY} cache={PHOTO_CACHE_DIRECTORY} worker=core1 sleep-source={}", state.sleep_screen.source.marker());
-        info!("rustmix-wave=display-settings-ready default-family=inter alternate-family=atkinson-hyperlegible default-size=standard profiles=compact,standard,large persistence={DISPLAY_CONFIG_PATH} scope=all-user-facing-screens");
-        info!("rustmix-wave=global-ui-typography-ready default-family=inter alternate-family=atkinson-hyperlegible default-size=standard profiles=compact,standard,large persistence={DISPLAY_CONFIG_PATH} scope=all-user-facing-screens");
-        info!("rustmix-wave=boot-button-hierarchical-back-ready gpio=0 active-low=true short-press=contextual-navigation hold-ms={BOOT_BACK_LONG_PRESS_MS} policy=long-press-back");
-        info!("rustmix-wave=category-back-row-removal-ready policy=boot-long-press");
-        info!("rustmix-wave=global-typography-scale-increase-ready shift=two-raster-steps settings-page-size=6 display-copy=compact default-family=inter default-size=standard");
-        info!("rustmix-wave=secondary-screen-readability-reflow-ready detail-role=technical-tokens-only pagination=device-info-3-pages details=weather,audio,rtc,environment,motion,network synthetic-back-rows=removed");
-        info!("rustmix-wave=weather-fetch-resilience-ready retries=3 backoff-seconds=2,5,15 cache=last-known-good-in-memory retryable=tls-eof,http-connect,timeout,http-429,http-500,http-502,http-503,http-504");
-        info!("rustmix-wave=home-dashboard-redesign-ready header=simplified-dark date-time-row=true summary-strip=weather,battery,wifi cards=high-contrast footer=fixed categories=5 developer-notes=removed");
-        info!("rustmix-wave=calendar-foundation-ready mode=read-only monthly-view=true selected-day-summary=true range=2000-2099");
-        info!(
-            "rustmix-wave=calendar-local-date-ready timezone=regional-profile source=rtc-localized"
-        );
-        info!("rustmix-wave=calendar-navigation-ready modes=day,month select=toggle-mode boot-short=agenda back=boot-long-press");
-        info!("rustmix-wave=calendar-us-events-daily-agenda-ready root={CALENDAR_ROOT} personal={CALENDAR_EVENTS_FILE} us={CALENDAR_US_EVENTS_FILE} hindu=excluded markers=month-grid agenda=scrollable details=personal-editor missing-files=safe alarms=separate");
-        info!("rustmix-wave=calendar-personal-event-editor-ready writable=EVENTS.TXT temp=EVENTS.TMP backup=EVENTS.BAK operations=create,edit,delete us-holidays=read-only keyboard=boot-hv-axis alarms=separate");
-        info!("rustmix-wave=power-key-sleep-entry-wake-guard-ready source=axp2101-pek minimum-quiet-ms={POWER_KEY_WAKE_GUARD_QUIET_MS} policy=suppress-stale-until-quiet-window");
-        info!("rustmix-wave=unit-converter-foundation-ready categories=length,mass,temperature,volume mode=offline fixed-point=true precision=thousandths");
-        info!("rustmix-wave=unit-converter-navigation-ready fields=category,from-unit,value,to-unit,step-size back=boot-long-press");
-        info!("rustmix-wave=unit-converter-host-tests-ready coverage=length,mass,temperature,volume,bounds");
-        info!("rustmix-wave=reader-library-txt-foundation-ready path=/sdcard/RUSTMIX/BOOKS formats=txt,epub encoding=utf8,bom,windows-1252 opening=staged-first-page-first cache=ram-nearby-pages");
-        info!("rustmix-wave=reader-state-persistence-ready path=/sdcard/RUSTMIX/READER files=STATE.TXT,POSITS.TXT,RECENT.TXT,MARKS.TXT cache=CACHE atomic-replace=tmp-primary-backup fallback=corrupt-record-safe");
-        info!("rustmix-wave=reader-bookmarks-ready add-remove=true list=true recent=true continue-reading=true cache-fingerprint=path,size,modified,format,layout");
-        info!("rustmix-wave=reader-loading-ui-ready stages=open,encoding,resume,first-page,cache cancel=boot-long-press refresh=coarse-stage-boundaries");
-        info!("rustmix-wave=reader-options-shell-ready toc=none-for-txt,list-for-epub bookmarks=persistent clear-ghosting=manual-global-refresh");
-        info!("rustmix-wave=reader-ux-repair-ready menu=continue,library,bookmarks-ready normalization=utf8-punctuation,latin1,underscore-emphasis byte-offsets=preserved");
-        info!("rustmix-wave=reader-preferences-ready path=/sdcard/RUSTMIX/READER/PREFS.TXT theme=classic,high-contrast orientation=portrait,landscape font-size=small,medium,large,xlarge book-font=inter,atkinson-hyperlegible,serif,literata paragraph-alignment=justified,left,center,right show-progress=on,off atomic-replace=tmp-primary-backup");
-        info!("rustmix-wave=reader-high-contrast-layout-ready viewport=shared border=outside-text top-padding=true clip=right,bottom theme-change=redraw-only ghost-refresh=global-base");
-        info!("rustmix-wave=reader-txt-emphasis-cleanup-ready multiline-gutenberg=true word-internal-underscores=preserved repeated-separators=preserved byte-offsets=preserved");
-        info!("rustmix-wave=reader-per-book-resume-ready path=/sdcard/RUSTMIX/READER/POSITS.TXT records=64 fingerprint=path,size,modified,format atomic-replace=tmp-primary-backup routes=continue,books,files,bookmark");
-        info!("rustmix-wave=reader-controls-alignment-ready navigation=up-down-move-select-activate preferences=up-down-move-select-change back=boot-long-press");
-        info!("rustmix-wave=reader-options-split-ready actions=bookmark,toc,preferences,clear-ghosting,library,home editor=theme,orientation,font-size,font,paragraph-alignment,show-progress");
-        info!("rustmix-wave=reader-preferences-settings-navigation-ready move=up-down change=select back=boot-long-press persistence=immediate rows=theme,orientation,font-size,font,paragraph-alignment,show-progress");
-        info!("rustmix-wave=reader-fat83-persistence-ready positions=POSITS.TXT legacy-read=POSITIONS.TXT cache-basename=8hex extensions=CCH,TMP,BAK atomic-replace=true");
-        info!("rustmix-wave=reader-fat83-runtime-ready positions-write=POSITS.TXT legacy-read=POSITIONS.TXT cache-write=8hex-no-prefix extensions=CCH,TMP,BAK duplicate-degraded-log=suppressed");
-        info!("rustmix-wave=reader-bookmark-page-labels-ready anchor=byte-offset display=page-number layout-aware=true fallback=stored-page");
-        info!("rustmix-wave=library-bookmark-tab-rendering-ready status=saved-marks source=MARKS.TXT rows=title,page-number anchors=byte-offset page-label=layout-aware-fallback-stored books-files=txt-open preserved=true");
-        info!("rustmix-wave=reader-epub-reflowable-foundation-ready archive=zip-central-directory compression=stored,deflate package=container-xml,opf spine=xhtml reflow=bounded-utf8 cache=ram-nearby-pages");
-        info!("rustmix-wave=reader-epub-toc-ready sources=epub3-nav,epub2-ncx,fallback-spine route=reader-toc selection=byte-offset");
-        info!("rustmix-wave=reader-epub-parser-stack-isolation-ready worker=epub-parser stack-bytes=65536 main-task-stack-bytes=16384 policy=short-lived-worker-join");
-        info!("rustmix-wave=reader-epub-chapter-aware-presentation-ready page-label=chapter,page-of-total bookmarks=chapter,page-of-total library-title=opf-metadata fallback=fat-filename txt-path=preserved");
-        info!("rustmix-wave=reader-epub-watchdog-memory-pressure-repair-ready index-yield-every-pages=4 index-yield-ms=1 session-release=before-book-open layout-rebuild=move-document toc-jump=no-document-clone parser-worker-stack-bytes=65536 title-worker-stack-bytes=32768");
-        info!("rustmix-wave=reader-eink-font-pack-ready fonts=inter,atkinson-hyperlegible,serif,literata atkinson-source=atkinson-hyperlegible-next-medium literata-source=literata-medium glyphs=latin-1 persisted-keys=serif,atkinson-hyperlegible cache-fingerprint=book-font epub-repagination=layout-rebuild bookmarks=byte-offset txt-epub-aligned=true");
-        info!("rustmix-wave=lua-runtime-foundation-ready mode=bootstrap-static,event-bridge root={LUA_APPS_DIRECTORY} manifest=APP.TOM entry=MAIN.LUA script-max-bytes=65536 vm-callbacks=sudoku,minesweeper-bounded-native");
-        info!("rustmix-wave=lua-native-dirty-region-canvas-ready commands=256 text-bytes=160 dirty-regions={MAX_DIRTY_REGIONS} partial-limit={PANEL_PARTIAL_REFRESH_LIMIT} transport=existing-fullscreen-partial panel-api=rust-owned");
-        info!("rustmix-wave=panel-refresh-coordinator-ready partial-limit={PANEL_PARTIAL_REFRESH_LIMIT} transport=existing-fullscreen-partial state=main-loop-owned lua-route-global-refresh=false");
-        info!("rustmix-wave=runtime-worker-boundary-ready workers=weather-fetch,lua-loader policy=short-lived-named-stack panel-spi=main-task-only");
-        info!("rustmix-wave=lua-loader-stack-isolation-ready worker=lua-loader stack-bytes={LUA_LOADER_WORKER_STACK_BYTES} main-task-stack-bytes=16384 policy=short-lived-worker-join");
-        info!("rustmix-wave=lua-sudoku-event-bridge-ready sample=SUDOKU input=up,down,select,boot-short-context board=native dirty=old-cell,new-cell,status refresh=shared-panel-coordinator transport=existing-fullscreen-partial panel-api=rust-owned");
-        info!("rustmix-wave=lua-sudoku-boot-axis-navigation-ready short-press=boot nav=axis-toggle edit=cancel default-axis=horizontal long-press=hierarchical-back dirty=status-or-cell refresh=shared-panel-coordinator");
-        info!("rustmix-wave=lua-sudoku-boot-mode-ux-repair-ready nav=boot-short-axis-toggle edit=boot-short-cancel long-press=hierarchical-back dirty=axis-status-or-edit-cell-status refresh=shared-panel-coordinator");
-        info!("rustmix-wave=lua-minesweeper-event-bridge-ready sample=MINES board=beginner-9x9 mines=10 first-reveal=safe input=up,down,select,boot-short-context action=reveal,flag dirty=old-cell,new-cell,status-or-board refresh=shared-panel-coordinator transport=existing-fullscreen-partial panel-api=rust-owned");
-        info!("rustmix-wave=imu-event-bridge-ready events=tilt,shake,rotate,level sampling=motion-events-only sample-ms={IMU_EVENT_SAMPLE_INTERVAL_MS} diagnostics=thresholds,debounce,counters redraw=event-or-{IMU_EVENT_SCREEN_REFRESH_SECONDS}s-heartbeat raw-i2c=rust-owned lua-api=none");
         info!("rustmix-wave=imu-event-thresholds tilt-mg={} shake-delta-mg={} rotate-dps={} level-tolerance-mg={} debounce-ms={}", state.imu_events.thresholds.tilt_enter_mg, state.imu_events.thresholds.shake_delta_mg, state.imu_events.thresholds.rotate_dps, state.imu_events.thresholds.level_tolerance_mg, state.imu_events.thresholds.debounce_ms);
-        info!("rustmix-wave=imu-event-discrete-latching-ready tilt=release-to-neutral rotate=release-to-neutral level=edge-only shake=cooldown raw-i2c=rust-owned");
-        info!("rustmix-wave=weather-fetch-stack-isolation-ready worker=weather-fetch stack-bytes=65536 main-task-stack-bytes=16384 response-max-bytes=8192 state=heap-boxed policy=short-lived-worker-join");
-        info!("rustmix-wave=wifi-transfer-web-portal-ready activation=settings-network-explicit-toggle auto-start=false root={WIFI_TRANSFER_ROOT} transport=http-lan-only token=required server-stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES} main-task-stack-bytes=16384 upload=streamed-atomic-tmp fat83=true protected-config=true inactivity-seconds={WIFI_TRANSFER_INACTIVITY_SECONDS}");
         log_runtime_memory("boot-complete");
-        info!("rustmix-wave=hierarchical-router-ready policy=category-subcategory-feature-details");
-        info!("rustmix-wave=wifi-transfer-lifecycle-ready state=off-until-settings-network-toggle server=temporary-http-task sd-root=/sdcard/RUSTMIX stop=switch-off,back,sleep,wifi-loss,inactivity");
-        info!("rustmix-wave=wifi-transfer-immediate-start-redraw-repair-ready dispatch=ordinary-button-event-before-refresh snapshot=ready-url-code refresh=single-normal-partial");
-        info!("rustmix-wave=voice-notes-foundation-ready root={VOICE_NOTES_ROOT} format=wav-pcm16-mono-16khz storage=streamed-tmp-rename capture=cooperative-bounded-i2s-rx chunk-bytes={VOICE_PCM_MONO_CHUNK_BYTES} main-task-stack-bytes=16384 audio-owner=native");
-        info!("rustmix-wave=voice-notes-microphone-gain-ready profiles=low,normal,high,boost default=high multipliers=1x,2x,3x,4x clipping=per-recording-saturated-sample-count wav-format=unchanged");
-        info!("rustmix-wave=voice-notes-fat-metadata-catalog-repair-ready policy=stat-metadata-final-classification overwrite=refuse-existing-target");
-        info!("rustmix-wave=voice-notes-catalog-scrolling-saved-wav-playback-ready visible-rows=6 format=wav-pcm16-mono-16khz playback=bounded-sd-stream mono-to-stereo=true volume=existing-codec-setting audio-owner=native stale-tmp-cleanup=boot alarms=interrupt");
-        info!("rustmix-wave=voice-notes-organizer-controls-export-ready gain-persistence=SETTINGS.TXT metadata=META.TXT titles=friendly-sidecar filenames=fat83-wav recording-date-time=rtc-local storage=esp-vfs-fat-info delete-confirmation=true pause-resume=rx-discard export=wifi-transfer-shortcut");
-        info!("rustmix-wave=offline-dictionary-x4-pack-native-foundation-ready root={DICTIONARY_ROOT} index=INDEX.TXT shards=DATA/*.JSN shard-max-bytes={DICTIONARY_SHARD_MAX_BYTES} lookup=exact-prefix-fallback wildcard=true ui=native-rust");
-        info!("rustmix-wave=dictionary-keyboard-boot-axis-navigation-ready short-press=boot toggle=horizontal,vertical default-axis=horizontal selected-key=preserved long-press=hierarchical-back helper=keyboard-grid-navigation");
         info!(
             "rustmix-wave=voice-notes-catalog status=completed notes={} root={VOICE_NOTES_ROOT}",
             state.voice_notes.notes.len()
