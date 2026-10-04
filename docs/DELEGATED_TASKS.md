@@ -243,8 +243,12 @@ firmware build is green. Device check: play a game from Games › SD Games.
   bounded by `MAX_DIRTY_REGIONS`, full refresh every 20 locks.
   `tetris.init('zen', seed)` added to `event_bridge.rs`; the `TETRIS/` sample
   app and a `tetris` preview are in place; the User Guide lists Tetris Zen.
-  Deviation: the atlas lacks `▲▼●`, so the footer uses the house wording
-  `UP/DOWN move  SELECT rotate  BOOT drop` instead of the mockup's glyphs.
+  Mockup pass: black status bar (`Tetris · Zen` / `Level N`), 3 px board
+  frame, ringed blocks, hatched active piece, dashed ghost, Next/Score/
+  Lines/Best/Mode column and key-chip footer, via new `Inverse` text and
+  `paper_rect`/`paper_line` canvas commands. Deviation: the atlas lacks
+  `▲▼●`, so the chips read `UP/DOWN`, `SELECT`, `BOOT`. Locked-block rings
+  go per cell, per run or not at all to stay under 256 commands.
   Checks: host tests green (507), fmt and diff checks clean; preview reviewed.
   Device: play from Games › SD Games and confirm refresh cadence.
   Left open: nothing.

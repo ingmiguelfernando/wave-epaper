@@ -11,7 +11,7 @@ use embedded_graphics::{
 use crate::{
     app::{
         state::AppState,
-        typography::{Text, UiTextStyle},
+        typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
             footer::draw_footer,
             header::draw_header,
@@ -218,6 +218,30 @@ fn draw_command(
                     .draw(display)?;
             }
         }
+        DrawCommand::PaperRect {
+            x,
+            y,
+            width,
+            height,
+            filled,
+        } => {
+            let style = if *filled {
+                PrimitiveStyle::with_fill(BinaryColor::Off)
+            } else {
+                PrimitiveStyle::with_stroke(BinaryColor::Off, 2)
+            };
+            Rectangle::new(
+                Point::new(*x, *y),
+                Size::new((*width).max(0) as u32, (*height).max(0) as u32),
+            )
+            .into_styled(style)
+            .draw(display)?;
+        }
+        DrawCommand::PaperLine { x1, y1, x2, y2 } => {
+            Line::new(Point::new(*x1, *y1), Point::new(*x2, *y2))
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 3))
+                .draw(display)?;
+        }
     }
     Ok(())
 }
@@ -227,6 +251,7 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
         CanvasTextStyle::Body => state.display.body_style(),
         CanvasTextStyle::Heading => state.display.heading_style(),
         CanvasTextStyle::Detail => state.display.detail_style(),
+        CanvasTextStyle::Inverse => state.display.text_style(UiTextRole::Body, BinaryColor::Off),
     }
 }
 

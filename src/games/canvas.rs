@@ -10,6 +10,8 @@ pub enum CanvasTextStyle {
     Body,
     Heading,
     Detail,
+    /// Paper-colored text for the black status bar and key chips.
+    Inverse,
 }
 
 impl CanvasTextStyle {
@@ -19,6 +21,7 @@ impl CanvasTextStyle {
             "body" => Some(Self::Body),
             "heading" => Some(Self::Heading),
             "detail" => Some(Self::Detail),
+            "inverse" => Some(Self::Inverse),
             _ => None,
         }
     }
@@ -53,6 +56,22 @@ pub enum DrawCommand {
         rows: u8,
         cell_width: i32,
         cell_height: i32,
+    },
+    /// Paper-colored rectangle: `filled` is a solid erase/paint, otherwise a
+    /// 2 px ring like the mockup's block outlines.
+    PaperRect {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        filled: bool,
+    },
+    /// Paper-colored 3 px diagonal line, for the hatched active piece.
+    PaperLine {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
     },
 }
 
@@ -188,6 +207,43 @@ impl NativeGameCanvas {
         self.dirty.invalidate(rect);
     }
 
+    /// Paper-colored rectangle: filled paint, or a 2 px ring when hollow.
+    pub fn paper_rect(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        filled: bool,
+    ) -> Result<(), String> {
+        self.validate_rect(DirtyRect::new(x, y, width, height))?;
+        self.push(DrawCommand::PaperRect {
+            x,
+            y,
+            width,
+            height,
+            filled,
+        })?;
+        self.dirty.invalidate(DirtyRect::new(x, y, width, height));
+        Ok(())
+    }
+
+    /// Paper-colored thick diagonal, for hatch fills on locked-in pieces.
+    pub fn paper_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<(), String> {
+        self.validate_point(x1, y1)?;
+        self.validate_point(x2, y2)?;
+        self.push(DrawCommand::PaperLine { x1, y1, x2, y2 })?;
+        let left = x1.min(x2);
+        let top = y1.min(y2);
+        self.dirty.invalidate(DirtyRect::new(
+            left,
+            top,
+            (x1.max(x2) - left + 1).max(1),
+            (y1.max(y2) - top + 1).max(1),
+        ));
+        Ok(())
+    }
+
     pub fn request_refresh(&mut self) {
         self.refresh_requested = true;
     }
@@ -244,5 +300,27 @@ mod tests {
     fn canvas_rejects_out_of_bounds_commands() {
         let mut canvas = NativeGameCanvas::default();
         assert!(canvas.rect(470, 20, 20, 20, false).is_err());
+    }
+
+    #[test]
+    fn paper_commands_are_bounded_and_dirty() {
+        let mut canvas = NativeGameCanvas::default();
+        canvas.paper_rect(20, 20, 30, 30, true).unwrap();
+        canvas.paper_line(20, 20, 40, 40).unwrap();
+        assert!(matches!(
+            canvas.commands()[0],
+            DrawCommand::PaperRect { filled: true, .. }
+        ));
+        assert!(matches!(
+            canvas.commands()[1],
+            DrawCommand::PaperLine { .. }
+        ));
+        assert!(!canvas.dirty().is_empty());
+        assert!(canvas.paper_rect(470, 20, 20, 20, false).is_err());
+        assert!(canvas.paper_line(0, 0, 500, 10).is_err());
+        assert_eq!(
+            CanvasTextStyle::parse("inverse"),
+            Some(CanvasTextStyle::Inverse)
+        );
     }
 }

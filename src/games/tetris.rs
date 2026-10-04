@@ -384,33 +384,40 @@ fn piece_cells(piece: TetrisPiece, rotation: u8) -> [(u8, u8); 4] {
 }
 
 pub const TETRIS_CELL: i32 = 30;
-pub const TETRIS_BOARD_X: i32 = 16;
-pub const TETRIS_BOARD_Y: i32 = 84;
+/// Top-left cell origin inside the 3 px mockup frame.
+pub const TETRIS_BOARD_X: i32 = 19;
+pub const TETRIS_BOARD_Y: i32 = 59;
 /// Locked pieces between full-frame refreshes that clear ghosting.
 pub const TETRIS_REFRESH_LOCKS: u32 = 20;
 
-const TETRIS_FOOTER: &str = "UP/DOWN move  SELECT rotate  BOOT drop";
+const TETRIS_BAR_HEIGHT: i32 = 44;
+const TETRIS_FOOTER_Y: i32 = 752;
+/// Average advance used to place right-aligned text and key chips.
+const TETRIS_CHAR_WIDTH: i32 = 11;
+/// Ring commands allowed on locked blocks; keeps the frame under the limit.
+const TETRIS_RING_BUDGET: usize = 120;
 const TETRIS_SIDE_X: i32 = 336;
 const TETRIS_NEXT_X: i32 = 336;
-const TETRIS_NEXT_Y: i32 = 132;
-const TETRIS_NEXT_CELL: i32 = 20;
+const TETRIS_NEXT_Y: i32 = 78;
+const TETRIS_NEXT_CELL: i32 = 24;
 const TETRIS_NEXT_COLUMNS: usize = 4;
 const TETRIS_NEXT_ROWS: usize = 2;
 const TETRIS_BOARD_RECT: DirtyRect = DirtyRect::new(
-    TETRIS_BOARD_X,
-    TETRIS_BOARD_Y,
-    TETRIS_WIDTH as i32 * TETRIS_CELL + 1,
-    TETRIS_HEIGHT as i32 * TETRIS_CELL + 1,
+    16,
+    56,
+    TETRIS_WIDTH as i32 * TETRIS_CELL + 6,
+    TETRIS_HEIGHT as i32 * TETRIS_CELL + 6,
 );
 const TETRIS_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
-const TETRIS_SIDE_RECT: DirtyRect = DirtyRect::new(TETRIS_SIDE_X, 92, 144, 480);
+const TETRIS_BAR_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, TETRIS_BAR_HEIGHT);
+const TETRIS_SIDE_RECT: DirtyRect = DirtyRect::new(TETRIS_SIDE_X, 56, 128, 430);
 const TETRIS_NEXT_RECT: DirtyRect = DirtyRect::new(
     TETRIS_NEXT_X,
     TETRIS_NEXT_Y,
-    TETRIS_NEXT_COLUMNS as i32 * TETRIS_NEXT_CELL + 4,
-    TETRIS_NEXT_ROWS as i32 * TETRIS_NEXT_CELL + 4,
+    TETRIS_NEXT_COLUMNS as i32 * TETRIS_NEXT_CELL,
+    TETRIS_NEXT_ROWS as i32 * TETRIS_NEXT_CELL,
 );
-const TETRIS_STATUS_RECT: DirtyRect = DirtyRect::new(16, 688, 448, 40);
+const TETRIS_STATUS_RECT: DirtyRect = DirtyRect::new(TETRIS_SIDE_X, 336, 128, 110);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TetrisEventResult {
@@ -586,10 +593,10 @@ impl TetrisApp {
                     return vec![TETRIS_FULL_RECT];
                 }
                 if reason == "game-over" {
-                    return vec![TETRIS_BOARD_RECT, TETRIS_SIDE_RECT, TETRIS_STATUS_RECT];
+                    return vec![TETRIS_BOARD_RECT, TETRIS_SIDE_RECT];
                 }
                 if self.game.lines() > *old_lines {
-                    return vec![TETRIS_BOARD_RECT, TETRIS_SIDE_RECT];
+                    return vec![TETRIS_BOARD_RECT, TETRIS_SIDE_RECT, TETRIS_BAR_RECT];
                 }
                 let active = self.game.active_cells();
                 let ghost = self.game.ghost_cells();
@@ -605,145 +612,212 @@ impl TetrisApp {
 
     fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         canvas.clear_frame();
-        canvas.text(24, 64, "Tetris · Zen".into(), CanvasTextStyle::Heading)?;
+        canvas.rect(0, 0, GAME_CANVAS_WIDTH, TETRIS_BAR_HEIGHT, true)?;
+        canvas.text(16, 30, "Tetris · Zen".into(), CanvasTextStyle::Inverse)?;
+        let level = format!("Level {}", self.game.level());
+        let level_x = GAME_CANVAS_WIDTH - 16 - level.len() as i32 * TETRIS_CHAR_WIDTH;
+        canvas.text(level_x, 30, level, CanvasTextStyle::Inverse)?;
+
         canvas.rect(
             TETRIS_BOARD_RECT.x,
             TETRIS_BOARD_RECT.y,
             TETRIS_BOARD_RECT.width,
             TETRIS_BOARD_RECT.height,
-            false,
+            true,
         )?;
+        canvas.paper_rect(
+            TETRIS_BOARD_X,
+            TETRIS_BOARD_Y,
+            TETRIS_WIDTH as i32 * TETRIS_CELL,
+            TETRIS_HEIGHT as i32 * TETRIS_CELL,
+            true,
+        )?;
+        self.draw_locked(canvas)?;
+        if !self.game.is_over() {
+            let active = self.game.active_cells();
+            for (column, row) in active {
+                draw_hatched_cell(canvas, column, row)?;
+            }
+            let ghost = self.game.ghost_cells();
+            if ghost != active {
+                for (column, row) in ghost {
+                    draw_ghost_cell(canvas, column, row)?;
+                }
+            }
+        }
+
+        canvas.text(TETRIS_SIDE_X, 68, "NEXT".into(), CanvasTextStyle::Detail)?;
+        let next =
+            piece_cells(self.game.next(), 0).map(|(column, row)| (column as i32, row as i32));
+        for (column, row) in next {
+            let x = TETRIS_NEXT_X + column * TETRIS_NEXT_CELL;
+            let y = TETRIS_NEXT_Y + row * TETRIS_NEXT_CELL;
+            draw_block(canvas, x, y, TETRIS_NEXT_CELL)?;
+        }
+        for (label, label_y, value) in [
+            ("SCORE", 153, grouped(self.game.score())),
+            ("LINES", 219, self.game.lines().to_string()),
+            ("BEST", 285, grouped(self.best)),
+        ] {
+            canvas.text(
+                TETRIS_SIDE_X,
+                label_y,
+                label.into(),
+                CanvasTextStyle::Detail,
+            )?;
+            canvas.text(TETRIS_SIDE_X, label_y + 30, value, CanvasTextStyle::Heading)?;
+        }
+        canvas.text(TETRIS_SIDE_X, 351, "MODE".into(), CanvasTextStyle::Detail)?;
+        if self.game.is_over() {
+            canvas.text(
+                TETRIS_SIDE_X,
+                379,
+                "Game over".into(),
+                CanvasTextStyle::Body,
+            )?;
+            canvas.text(
+                TETRIS_SIDE_X,
+                403,
+                format!("Score {}", grouped(self.game.score())),
+                CanvasTextStyle::Detail,
+            )?;
+            canvas.text(
+                TETRIS_SIDE_X,
+                424,
+                "SELECT: new".into(),
+                CanvasTextStyle::Detail,
+            )?;
+        } else {
+            canvas.text(TETRIS_SIDE_X, 379, "Zen".into(), CanvasTextStyle::Body)?;
+            for (index, line) in ["No gravity: the", "piece moves only", "when you press."]
+                .into_iter()
+                .enumerate()
+            {
+                canvas.text(
+                    TETRIS_SIDE_X,
+                    403 + index as i32 * 21,
+                    line.into(),
+                    CanvasTextStyle::Detail,
+                )?;
+            }
+        }
+
+        canvas.rect(0, TETRIS_FOOTER_Y, GAME_CANVAS_WIDTH, 3, true)?;
+        let mut x = 14;
+        for (key, action) in [("UP/DOWN", "move"), ("SELECT", "rotate"), ("BOOT", "drop")] {
+            let chip = key.len() as i32 * TETRIS_CHAR_WIDTH + 12;
+            canvas.rect(x, TETRIS_FOOTER_Y + 11, chip, 26, true)?;
+            canvas.text(
+                x + 6,
+                TETRIS_FOOTER_Y + 31,
+                key.into(),
+                CanvasTextStyle::Inverse,
+            )?;
+            let label_x = x + chip + 6;
+            canvas.text(
+                label_x,
+                TETRIS_FOOTER_Y + 31,
+                action.into(),
+                CanvasTextStyle::Detail,
+            )?;
+            x = label_x + action.len() as i32 * TETRIS_CHAR_WIDTH + 18;
+        }
+        Ok(())
+    }
+
+    /// Locked blocks: one rectangle per row run, then the paper rings. Rings
+    /// go on every cell while the command budget allows, on every run next,
+    /// and are dropped on the busiest boards.
+    fn draw_locked(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        let mut runs = Vec::new();
         for row in 0..TETRIS_HEIGHT {
             for (start, end) in filled_runs(
                 |column, row| self.game.cell(column, row).is_some(),
                 row,
                 TETRIS_WIDTH,
             ) {
-                fill_run(
-                    canvas,
-                    TETRIS_BOARD_X,
-                    TETRIS_BOARD_Y,
-                    TETRIS_CELL,
-                    row,
-                    start,
-                    end,
-                )?;
+                runs.push((row, start, end));
             }
         }
-        let active = self.game.active_cells();
-        let ghost = self.game.ghost_cells();
-        if !self.game.is_over() {
-            for row in 0..TETRIS_HEIGHT {
-                for (start, end) in filled_runs(
-                    |column, row| cells_contain(&active, column, row),
-                    row,
-                    TETRIS_WIDTH,
-                ) {
-                    fill_run(
-                        canvas,
-                        TETRIS_BOARD_X,
-                        TETRIS_BOARD_Y,
-                        TETRIS_CELL,
-                        row,
-                        start,
-                        end,
-                    )?;
-                    canvas.rect(
-                        TETRIS_BOARD_X + start as i32 * TETRIS_CELL,
-                        TETRIS_BOARD_Y + row as i32 * TETRIS_CELL,
-                        (end - start + 1) as i32 * TETRIS_CELL,
-                        TETRIS_CELL,
-                        false,
-                    )?;
-                }
-            }
-            if ghost != active {
-                for row in 0..TETRIS_HEIGHT {
-                    for (start, end) in filled_runs(
-                        |column, row| cells_contain(&ghost, column, row),
-                        row,
-                        TETRIS_WIDTH,
-                    ) {
-                        dotted_rect(
-                            canvas,
-                            DirtyRect::new(
-                                TETRIS_BOARD_X + start as i32 * TETRIS_CELL,
-                                TETRIS_BOARD_Y + row as i32 * TETRIS_CELL,
-                                (end - start + 1) as i32 * TETRIS_CELL,
-                                TETRIS_CELL,
-                            ),
-                        )?;
-                    }
-                }
-            }
+        let cells: usize = runs.iter().map(|(_, start, end)| end - start + 1).sum();
+        for (row, start, end) in &runs {
+            canvas.rect(
+                TETRIS_BOARD_X + *start as i32 * TETRIS_CELL,
+                TETRIS_BOARD_Y + *row as i32 * TETRIS_CELL,
+                (end - start + 1) as i32 * TETRIS_CELL,
+                TETRIS_CELL,
+                true,
+            )?;
         }
-        canvas.text(TETRIS_SIDE_X, 120, "NEXT".into(), CanvasTextStyle::Detail)?;
-        canvas.rect(
-            TETRIS_NEXT_RECT.x,
-            TETRIS_NEXT_RECT.y,
-            TETRIS_NEXT_RECT.width,
-            TETRIS_NEXT_RECT.height,
-            false,
-        )?;
-        let next =
-            piece_cells(self.game.next(), 0).map(|(column, row)| (column as usize, row as usize));
-        for row in 0..TETRIS_NEXT_ROWS {
-            for (start, end) in filled_runs(
-                |column, row| cells_contain(&next, column, row),
-                row,
-                TETRIS_NEXT_COLUMNS,
-            ) {
-                fill_run(
-                    canvas,
-                    TETRIS_NEXT_X + 2,
-                    TETRIS_NEXT_Y + 2,
-                    TETRIS_NEXT_CELL,
-                    row,
-                    start,
-                    end,
-                )?;
-            }
-        }
-        canvas.text(TETRIS_SIDE_X, 236, "SCORE".into(), CanvasTextStyle::Detail)?;
-        canvas.text(
-            TETRIS_SIDE_X,
-            268,
-            grouped(self.game.score()),
-            CanvasTextStyle::Heading,
-        )?;
-        canvas.text(TETRIS_SIDE_X, 326, "LINES".into(), CanvasTextStyle::Detail)?;
-        canvas.text(
-            TETRIS_SIDE_X,
-            358,
-            self.game.lines().to_string(),
-            CanvasTextStyle::Heading,
-        )?;
-        canvas.text(TETRIS_SIDE_X, 416, "LEVEL".into(), CanvasTextStyle::Detail)?;
-        canvas.text(
-            TETRIS_SIDE_X,
-            448,
-            self.game.level().to_string(),
-            CanvasTextStyle::Heading,
-        )?;
-        canvas.text(TETRIS_SIDE_X, 506, "BEST".into(), CanvasTextStyle::Detail)?;
-        canvas.text(
-            TETRIS_SIDE_X,
-            538,
-            grouped(self.best),
-            CanvasTextStyle::Heading,
-        )?;
-        let status = if self.game.is_over() {
-            format!(
-                "Game over  Score {}  SELECT starts a new game",
-                grouped(self.game.score())
+        let ring = |canvas: &mut NativeGameCanvas, row: usize, start: usize, end: usize| {
+            canvas.paper_rect(
+                TETRIS_BOARD_X + start as i32 * TETRIS_CELL + 5,
+                TETRIS_BOARD_Y + row as i32 * TETRIS_CELL + 5,
+                (end - start + 1) as i32 * TETRIS_CELL - 10,
+                TETRIS_CELL - 10,
+                false,
             )
-        } else {
-            "No gravity: the piece moves only when you press.".into()
         };
-        canvas.text(24, 716, status, CanvasTextStyle::Detail)?;
-        canvas.text(24, 742, TETRIS_FOOTER.into(), CanvasTextStyle::Detail)?;
+        if runs.len() + cells <= TETRIS_RING_BUDGET {
+            for (row, start, end) in &runs {
+                for column in *start..=*end {
+                    ring(canvas, *row, column, column)?;
+                }
+            }
+        } else if runs.len() * 2 <= TETRIS_RING_BUDGET {
+            for (row, start, end) in &runs {
+                ring(canvas, *row, *start, *end)?;
+            }
+        }
         Ok(())
     }
+}
+
+/// A solid block with the mockup's paper ring, `size` px wide.
+fn draw_block(canvas: &mut NativeGameCanvas, x: i32, y: i32, size: i32) -> Result<(), String> {
+    canvas.rect(x, y, size, size, true)?;
+    canvas.paper_rect(x + 5, y + 5, size - 10, size - 10, false)
+}
+
+/// Active piece: ink frame around diagonal stripes.
+fn draw_hatched_cell(
+    canvas: &mut NativeGameCanvas,
+    column: usize,
+    row: usize,
+) -> Result<(), String> {
+    let x = TETRIS_BOARD_X + column as i32 * TETRIS_CELL;
+    let y = TETRIS_BOARD_Y + row as i32 * TETRIS_CELL;
+    canvas.rect(x, y, TETRIS_CELL, TETRIS_CELL, true)?;
+    let inner = TETRIS_CELL - 6;
+    let (left, top) = (x + 3, y + 3);
+    let mut offset = 4;
+    while offset < 2 * inner - 4 {
+        let (x1, y1, x2, y2) = if offset < inner {
+            (left + offset, top, left, top + offset)
+        } else {
+            let shift = offset - inner + 1;
+            (left + inner - 1, top + shift, left + shift, top + inner - 1)
+        };
+        canvas.paper_line(x1, y1, x2, y2)?;
+        offset += 8;
+    }
+    Ok(())
+}
+
+/// Ghost: a dashed 2 px outline inset 5 px, as in the mockup.
+fn draw_ghost_cell(canvas: &mut NativeGameCanvas, column: usize, row: usize) -> Result<(), String> {
+    let x = TETRIS_BOARD_X + column as i32 * TETRIS_CELL + 5;
+    let y = TETRIS_BOARD_Y + row as i32 * TETRIS_CELL + 5;
+    let side = TETRIS_CELL - 10;
+    for dash in [0, 8, 16] {
+        canvas.rect(x + dash, y, 4, 2, true)?;
+        canvas.rect(x + dash, y + side - 2, 4, 2, true)?;
+    }
+    for dash in [6, 14] {
+        canvas.rect(x, y + dash, 2, 4, true)?;
+        canvas.rect(x + side - 2, y + dash, 2, 4, true)?;
+    }
+    Ok(())
 }
 
 /// Inclusive (start, end) runs of filled cells in one row.
@@ -766,46 +840,6 @@ fn filled_runs(
         runs.push((start, column - 1));
     }
     runs
-}
-
-/// One filled rectangle per row run, inset so runs read as separate blocks.
-fn fill_run(
-    canvas: &mut NativeGameCanvas,
-    origin_x: i32,
-    origin_y: i32,
-    cell: i32,
-    row: usize,
-    start: usize,
-    end: usize,
-) -> Result<(), String> {
-    canvas.rect(
-        origin_x + start as i32 * cell + 2,
-        origin_y + row as i32 * cell + 2,
-        (end - start + 1) as i32 * cell - 4,
-        cell - 4,
-        true,
-    )
-}
-
-/// Dotted outline: 3 px dots on a 6 px pitch around `rect`.
-fn dotted_rect(canvas: &mut NativeGameCanvas, rect: DirtyRect) -> Result<(), String> {
-    let mut x = rect.x;
-    while x + 3 <= rect.right() {
-        canvas.rect(x, rect.y, 3, 3, true)?;
-        canvas.rect(x, rect.bottom() - 3, 3, 3, true)?;
-        x += 6;
-    }
-    let mut y = rect.y + 6;
-    while y + 3 <= rect.bottom() - 6 {
-        canvas.rect(rect.x, y, 3, 3, true)?;
-        canvas.rect(rect.right() - 3, y, 3, 3, true)?;
-        y += 6;
-    }
-    Ok(())
-}
-
-fn cells_contain(cells: &[(usize, usize); 4], column: usize, row: usize) -> bool {
-    cells.contains(&(column, row))
 }
 
 fn cells_rect(cells: &[(usize, usize); 4]) -> DirtyRect {
@@ -1178,10 +1212,10 @@ mod tests {
         assert!(canvas.commands().iter().any(|command| matches!(
             command,
             DrawCommand::Rect {
-                x: 18,
-                y: 656,
-                width: 296,
-                height: 26,
+                x: 19,
+                y: 629,
+                width: 300,
+                height: 30,
                 filled: true
             }
         )));
@@ -1248,7 +1282,7 @@ mod tests {
         assert_eq!(over.score, 100);
         assert!(canvas.commands().iter().any(|command| matches!(
             command,
-            DrawCommand::Text { text, .. } if text.starts_with("Game over  Score 100")
+            DrawCommand::Text { text, .. } if text == "Score 100"
         )));
 
         let ignored = app
