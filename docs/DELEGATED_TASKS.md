@@ -246,9 +246,10 @@ firmware build is green. Device check: play a game from Games › SD Games.
   Mockup pass: black status bar (`Tetris · Zen` / `Level N`), 3 px board
   frame, ringed blocks, hatched active piece, dashed ghost, Next/Score/
   Lines/Best/Mode column and key-chip footer, via new `Inverse` text and
-  `paper_rect`/`paper_line` canvas commands. Deviation: the atlas lacks
-  `▲▼●`, so the chips read `UP/DOWN`, `SELECT`, `BOOT`. Locked-block rings
-  go per cell, per run or not at all to stay under 256 commands.
+  `paper_rect`/`paper_line` canvas commands. The footer is the shared
+  key-cap widget (`draw_key_hints`) with real ▲▼/●/BOOT caps, drawn by
+  `render_lua_game` per app; the canvas leaves that band empty. Locked-block
+  rings go per cell, per run or not at all to stay under 256 commands.
   Checks: host tests green (507), fmt and diff checks clean; preview reviewed.
   Device: play from Games › SD Games and confirm refresh cadence.
   Left open: nothing.

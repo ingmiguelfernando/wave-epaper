@@ -15,6 +15,7 @@ use crate::{
         widgets::{
             footer::draw_footer,
             header::draw_header,
+            key_hints::{draw_key_hints, KeyCap},
             status_row::{draw_status_row, StatusRow},
         },
     },
@@ -123,7 +124,34 @@ pub fn render_lua_game(
     for command in session.canvas.commands() {
         draw_command(display, state, command)?;
     }
+    draw_key_hints(
+        display,
+        state.display,
+        game_key_hints(&session.entry.manifest.name),
+    )?;
     Ok(())
+}
+
+/// Mockup-style key chips for one game; other apps fall back to a BOOT hint.
+fn game_key_hints(app_name: &str) -> &'static [(KeyCap, &'static str)] {
+    match app_name {
+        "Tetris" => &[
+            (KeyCap::UpDown, "move"),
+            (KeyCap::Select, "rotate"),
+            (KeyCap::Boot, "drop"),
+        ],
+        "Sudoku" => &[
+            (KeyCap::UpDown, "move"),
+            (KeyCap::Select, "edit"),
+            (KeyCap::Boot, "axis / cancel"),
+        ],
+        "Minesweeper" => &[
+            (KeyCap::UpDown, "move"),
+            (KeyCap::Select, "action"),
+            (KeyCap::Boot, "axis / cancel"),
+        ],
+        _ => &[(KeyCap::Boot, "hold: back")],
+    }
 }
 
 pub fn render_lua_error(

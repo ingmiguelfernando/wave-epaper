@@ -391,8 +391,7 @@ pub const TETRIS_BOARD_Y: i32 = 59;
 pub const TETRIS_REFRESH_LOCKS: u32 = 20;
 
 const TETRIS_BAR_HEIGHT: i32 = 44;
-const TETRIS_FOOTER_Y: i32 = 752;
-/// Average advance used to place right-aligned text and key chips.
+/// Average advance used to place right-aligned status-bar text.
 const TETRIS_CHAR_WIDTH: i32 = 11;
 /// Ring commands allowed on locked blocks; keeps the frame under the limit.
 const TETRIS_RING_BUDGET: usize = 120;
@@ -702,26 +701,8 @@ impl TetrisApp {
             }
         }
 
-        canvas.rect(0, TETRIS_FOOTER_Y, GAME_CANVAS_WIDTH, 3, true)?;
-        let mut x = 14;
-        for (key, action) in [("UP/DOWN", "move"), ("SELECT", "rotate"), ("BOOT", "drop")] {
-            let chip = key.len() as i32 * TETRIS_CHAR_WIDTH + 12;
-            canvas.rect(x, TETRIS_FOOTER_Y + 11, chip, 26, true)?;
-            canvas.text(
-                x + 6,
-                TETRIS_FOOTER_Y + 31,
-                key.into(),
-                CanvasTextStyle::Inverse,
-            )?;
-            let label_x = x + chip + 6;
-            canvas.text(
-                label_x,
-                TETRIS_FOOTER_Y + 31,
-                action.into(),
-                CanvasTextStyle::Detail,
-            )?;
-            x = label_x + action.len() as i32 * TETRIS_CHAR_WIDTH + 18;
-        }
+        // The key-hint bar is drawn by the screen renderer with the shared
+        // key-cap widget, so the canvas leaves that band untouched.
         Ok(())
     }
 
