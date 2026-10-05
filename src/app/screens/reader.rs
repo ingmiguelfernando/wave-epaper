@@ -14,7 +14,9 @@ use crate::{
         state::AppState,
         typography::{Text, TextBounds, UiTextRole},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{
+                draw_bottom_bar, KeyCap, BACK_HINTS, CHANGE_HINTS, CHOOSE_HINTS, OPEN_HINTS,
+            },
             header::draw_header,
             option_list::draw_option_list,
             status_row::{draw_status_row, StatusRow},
@@ -26,6 +28,25 @@ use crate::{
         ReadingPreference, ReadingTheme, READER_BODY_INSET,
     },
 };
+
+const RESUME_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "resume"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const LIBRARY_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "open / tab"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const LOADING_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "hold: cancel")];
+
+const MENU_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "activate"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 pub fn render_continue_reading(
     display: &mut OrientedFrameBuffer<'_>,
@@ -82,7 +103,7 @@ pub fn render_continue_reading(
         )
         .draw(display)?;
     }
-    draw_footer(display, state.display, "SELECT RESUME  HOLD BOOT BACK")
+    draw_bottom_bar(display, state.display, &RESUME_HINTS)
 }
 
 pub fn render_library(
@@ -148,11 +169,7 @@ pub fn render_library(
         )
         .draw(display)?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  SELECT OPEN/TAB  HOLD BOOT BACK",
-    )
+    draw_bottom_bar(display, state.display, &LIBRARY_HINTS)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -287,7 +304,7 @@ pub fn render_bookmarks(
             )?;
         }
     }
-    draw_footer(display, state.display, "MOVE  SELECT OPEN  HOLD BOOT BACK")
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)
 }
 
 pub fn render_loading(
@@ -316,7 +333,7 @@ pub fn render_loading(
         body,
     )
     .draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT CANCEL")
+    draw_bottom_bar(display, state.display, &LOADING_HINTS)
 }
 
 pub fn render_page(
@@ -559,11 +576,7 @@ pub fn render_options(
             "",
         )?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  SELECT ACTIVATE  HOLD BOOT BACK",
-    )
+    draw_bottom_bar(display, state.display, &MENU_HINTS)
 }
 
 pub fn render_preferences(
@@ -586,11 +599,7 @@ pub fn render_preferences(
         )
         .draw(display)?;
         draw_option_list(display, state.display, 184, &options, current, highlighted)?;
-        draw_footer(
-            display,
-            state.display,
-            "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
-        )?;
+        draw_bottom_bar(display, state.display, &CHOOSE_HINTS)?;
         return Ok(());
     }
     for (index, preference) in ReadingPreference::ALL.iter().copied().enumerate() {
@@ -615,11 +624,7 @@ pub fn render_preferences(
             "",
         )?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN MOVE  SELECT CHANGE  HOLD BOOT BACK",
-    )
+    draw_bottom_bar(display, state.display, &CHANGE_HINTS)
 }
 
 pub fn render_toc(
@@ -659,7 +664,7 @@ pub fn render_toc(
             body,
         )
         .draw(display)?;
-        return draw_footer(display, state.display, "HOLD BOOT BACK");
+        return draw_bottom_bar(display, state.display, &BACK_HINTS);
     }
 
     draw_status_row(
@@ -684,7 +689,7 @@ pub fn render_toc(
             &(entry.spine_index + 1).to_string(),
         )?;
     }
-    draw_footer(display, state.display, "MOVE  SELECT OPEN  HOLD BOOT BACK")
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)
 }
 
 /// Runs of one Reader line with the x where each is drawn. A justified line

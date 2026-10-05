@@ -8,7 +8,7 @@ use crate::buttons::ButtonEvent;
 
 use super::{
     canvas::{CanvasTextStyle, NativeGameCanvas},
-    dirty_regions::DirtyRect,
+    dirty_regions::{DirtyRect, GAME_BOTTOM_BAR_RECT},
 };
 
 pub const MINESWEEPER_COLUMNS: usize = 9;
@@ -247,6 +247,7 @@ impl MinesweeperGame {
         canvas: &mut NativeGameCanvas,
     ) -> Result<MinesweeperEventResult, String> {
         let old_cursor = self.cursor;
+        let old_mode = self.mode;
         let reason = if self.outcome.completed() {
             self.status = format!("Game {}  Hold BOOT back", self.outcome.marker());
             "game-finished"
@@ -258,7 +259,10 @@ impl MinesweeperGame {
         };
         self.render_commands(canvas)?;
         canvas.reset_dirty_regions();
-        let dirty_regions = self.dirty_regions_for(reason, old_cursor);
+        let mut dirty_regions = self.dirty_regions_for(reason, old_cursor);
+        if self.mode != old_mode {
+            dirty_regions.push(GAME_BOTTOM_BAR_RECT);
+        }
         for rect in &dirty_regions {
             canvas.invalidate_rect(*rect);
         }
@@ -293,7 +297,11 @@ impl MinesweeperGame {
         let dirty_regions = if reason == "axis-toggle" {
             vec![MINESWEEPER_STATUS_RECT]
         } else {
-            vec![cell_rect(self.cursor), MINESWEEPER_STATUS_RECT]
+            vec![
+                cell_rect(self.cursor),
+                MINESWEEPER_STATUS_RECT,
+                GAME_BOTTOM_BAR_RECT,
+            ]
         };
         for rect in &dirty_regions {
             canvas.invalidate_rect(*rect);
@@ -551,11 +559,6 @@ impl MinesweeperGame {
             format!("SAFE LEFT {}  {}", self.safe_left(), self.status),
             CanvasTextStyle::Detail,
         )?;
-        let footer = match self.mode {
-            MinesweeperMode::Navigate => "BOOT short axis  SELECT action",
-            MinesweeperMode::Action => "UP/DOWN action  BOOT short cancel",
-        };
-        canvas.text(24, 742, footer.to_string(), CanvasTextStyle::Detail)?;
         canvas.request_refresh();
         Ok(())
     }
@@ -677,12 +680,15 @@ mod tests {
         let axis = game.apply_boot_short_press_and_render(&mut canvas).unwrap();
         assert_eq!(axis.reason, "axis-toggle");
         assert_eq!(axis.axis, MinesweeperMovementAxis::Vertical);
-        game.apply_button_and_render(ButtonEvent::Select, &mut canvas)
+        let action = game
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
             .unwrap();
         assert_eq!(game.mode(), MinesweeperMode::Action);
+        assert!(action.dirty_regions.contains(&super::GAME_BOTTOM_BAR_RECT));
         let cancel = game.apply_boot_short_press_and_render(&mut canvas).unwrap();
         assert_eq!(cancel.reason, "action-cancel");
         assert_eq!(game.mode(), MinesweeperMode::Navigate);
+        assert!(cancel.dirty_regions.contains(&super::GAME_BOTTOM_BAR_RECT));
     }
 
     #[test]

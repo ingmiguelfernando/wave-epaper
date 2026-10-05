@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, RUN_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -68,7 +68,7 @@ pub fn render_power_key_menu(
     Text::new("Long Power press", Point::new(44, 546), heading).draw(display)?;
     Text::new("Enter sleep-image mode", Point::new(44, 580), body).draw(display)?;
 
-    draw_footer(display, state.display, "MOVE  SELECT RUN  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &RUN_HINTS)?;
     Ok(())
 }
 

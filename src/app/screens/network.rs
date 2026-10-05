@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, OPEN_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -21,6 +21,11 @@ use crate::{
     network::NetworkSnapshot,
     orientation::OrientedFrameBuffer,
 };
+
+const STOP_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "stop"),
+    (KeyCap::Boot, "hold: stop + back"),
+];
 
 pub fn render_network(
     display: &mut OrientedFrameBuffer<'_>,
@@ -73,11 +78,7 @@ pub fn render_network(
         state.network_action_selected == 1,
         body,
     )?;
-    draw_footer(
-        display,
-        state.display,
-        "UP DOWN MOVE  SELECT OPEN  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)?;
     Ok(())
 }
 
@@ -121,7 +122,7 @@ pub fn render_wifi_transfer(
     }
 
     draw_action(display, 640, "Stop and return", true, body)?;
-    draw_footer(display, state.display, "SELECT STOP  HOLD BOOT STOP + BACK")?;
+    draw_bottom_bar(display, state.display, &STOP_HINTS)?;
     Ok(())
 }
 
@@ -175,7 +176,7 @@ pub fn render_network_details(
 
     Text::new("Last error", Point::new(22, 588), heading).draw(display)?;
     Text::new(error, Point::new(22, 628), detail).draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
 

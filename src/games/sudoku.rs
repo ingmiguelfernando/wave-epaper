@@ -8,7 +8,7 @@ use crate::buttons::ButtonEvent;
 
 use super::{
     canvas::{CanvasTextStyle, NativeGameCanvas},
-    dirty_regions::DirtyRect,
+    dirty_regions::{DirtyRect, GAME_BOTTOM_BAR_RECT},
 };
 
 pub const SUDOKU_CELL_COUNT: usize = 81;
@@ -173,6 +173,7 @@ impl SudokuGame {
         canvas: &mut NativeGameCanvas,
     ) -> Result<SudokuEventResult, String> {
         let old_cursor = self.cursor;
+        let old_mode = self.mode;
         let reason = match self.mode {
             SudokuMode::Navigate => self.apply_navigation_button(event),
             SudokuMode::Edit => self.apply_edit_button(event),
@@ -185,6 +186,9 @@ impl SudokuGame {
             SUDOKU_STATUS_RECT,
         ];
         dirty_regions.dedup();
+        if self.mode != old_mode {
+            dirty_regions.push(GAME_BOTTOM_BAR_RECT);
+        }
         for rect in &dirty_regions {
             canvas.invalidate_rect(*rect);
         }
@@ -228,7 +232,11 @@ impl SudokuGame {
         canvas.reset_dirty_regions();
         let dirty_regions = match reason {
             "axis-toggle" => vec![SUDOKU_STATUS_RECT],
-            _ => vec![cell_rect(self.cursor), SUDOKU_STATUS_RECT],
+            _ => vec![
+                cell_rect(self.cursor),
+                SUDOKU_STATUS_RECT,
+                GAME_BOTTOM_BAR_RECT,
+            ],
         };
         for rect in &dirty_regions {
             canvas.invalidate_rect(*rect);
@@ -404,11 +412,6 @@ impl SudokuGame {
             CanvasTextStyle::Body,
         )?;
         canvas.text(24, 690, self.status.clone(), CanvasTextStyle::Detail)?;
-        let footer = match self.mode {
-            SudokuMode::Navigate => "BOOT short axis  Hold BOOT back",
-            SudokuMode::Edit => "BOOT short cancel  SELECT save",
-        };
-        canvas.text(24, 742, footer.to_string(), CanvasTextStyle::Detail)?;
         canvas.request_refresh();
         Ok(())
     }
@@ -581,16 +584,19 @@ mod tests {
         game.render_initial(&mut canvas).unwrap();
         game.apply_boot_short_press_and_render(&mut canvas).unwrap();
         assert_eq!(game.movement_axis(), SudokuMovementAxis::Vertical);
-        game.apply_button_and_render(ButtonEvent::Select, &mut canvas)
+        let entered = game
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
             .unwrap();
         assert_eq!(game.mode(), SudokuMode::Edit);
+        assert!(entered.dirty_regions.contains(&super::GAME_BOTTOM_BAR_RECT));
         game.apply_button_and_render(ButtonEvent::Down, &mut canvas)
             .unwrap();
         let canceled = game.apply_boot_short_press_and_render(&mut canvas).unwrap();
         assert_eq!(canceled.reason, "edit-cancel");
         assert_eq!(canceled.mode, SudokuMode::Navigate);
         assert_eq!(canceled.axis, SudokuMovementAxis::Vertical);
-        assert_eq!(canceled.dirty_regions.len(), 2);
+        assert_eq!(canceled.dirty_regions.len(), 3);
+        assert!(canceled.dirty_regions.contains(&super::GAME_BOTTOM_BAR_RECT));
     }
 
     #[test]

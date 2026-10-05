@@ -13,13 +13,18 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
 };
+
+const DETAILS_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "details"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// Draw temperature and humidity from the onboard SHTC3.
 pub fn render_environment(
@@ -65,7 +70,7 @@ pub fn render_environment(
     Text::new(&humidity, Point::new(42, 466), large).draw(display)?;
 
     draw_action(display, 640, "Sensor details", body)?;
-    draw_footer(display, state.display, "SELECT DETAILS  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &DETAILS_HINTS)?;
     Ok(())
 }
 
@@ -117,7 +122,7 @@ pub fn render_environment_details(
         body,
     )
     .draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
 

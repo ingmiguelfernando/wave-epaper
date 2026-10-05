@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::Text,
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KEYBOARD_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -98,11 +98,7 @@ pub fn render_dictionary(
     }
 
     draw_keyboard(display, dictionary, body, heading)?;
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN MOVE  BOOT H/V  SELECT  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &KEYBOARD_HINTS)?;
     Ok(())
 }
 

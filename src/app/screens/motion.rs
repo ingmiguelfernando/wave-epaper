@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -22,6 +22,17 @@ use crate::{
     imu_events::{ImuEventBridge, IMU_EVENT_CONTROL_COUNT},
     orientation::OrientedFrameBuffer,
 };
+
+const EVENTS_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "events"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const CONTROLS_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "row"),
+    (KeyCap::Select, "change"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// Draw QMI8658 accelerometer and gyroscope readings.
 pub fn render_motion(
@@ -78,7 +89,7 @@ pub fn render_motion(
     }
 
     draw_action(display, 640, "Motion event bridge", body)?;
-    draw_footer(display, state.display, "SELECT EVENTS  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &EVENTS_HINTS)?;
     Ok(())
 }
 
@@ -146,11 +157,7 @@ pub fn render_motion_events(
             body,
         )?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN ROW SELECT CHANGE HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &CONTROLS_HINTS)?;
     Ok(())
 }
 
@@ -245,7 +252,7 @@ pub fn render_motion_details(
         detail,
     )
     .draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
 

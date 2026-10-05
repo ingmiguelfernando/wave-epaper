@@ -15,7 +15,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap},
             header::draw_header,
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             status_row::{draw_status_row, StatusRow},
@@ -27,6 +27,23 @@ use crate::{
         ui::{PhotoAction, PhotoStatus},
     },
 };
+
+const GRID_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "view"),
+    (KeyCap::Boot, "star"),
+];
+
+const ACTION_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "choose"),
+    (KeyCap::Select, "apply"),
+    (KeyCap::Boot, "hold: close"),
+];
+
+const DELETE_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "delete"),
+    (KeyCap::Boot, "hold: cancel"),
+];
 
 const COLUMNS: [i32; 3] = [12, 168, 324];
 const ROWS: [i32; 2] = [134, 390];
@@ -68,7 +85,7 @@ pub fn render_photos(
             Text::new(&info, Point::new(12, 690), body).draw(display)?;
         }
     }
-    draw_footer(display, state.display, "MOVE  SELECT VIEW  BOOT STAR")?;
+    draw_bottom_bar(display, state.display, &GRID_HINTS)?;
     Ok(())
 }
 
@@ -270,11 +287,7 @@ fn draw_actions(
         let top = PANEL_TOP + 70 + index as i32 * LIST_ROW_HEIGHT;
         draw_list_row(display, state.display, top, row)?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  SELECT APPLY  HOLD BOOT CLOSE",
-    )?;
+    draw_bottom_bar(display, state.display, &ACTION_HINTS)?;
     Ok(())
 }
 
@@ -291,7 +304,7 @@ fn draw_delete_confirmation(
     Text::new(&question, Point::new(22, top + 50), heading).draw(display)?;
     let note = "The file is removed from the SD card.";
     Text::new(note, Point::new(22, top + 90), body).draw(display)?;
-    draw_footer(display, state.display, "SELECT DELETE  HOLD BOOT CANCEL")?;
+    draw_bottom_bar(display, state.display, &DELETE_HINTS)?;
     Ok(())
 }
 

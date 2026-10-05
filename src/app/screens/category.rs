@@ -7,19 +7,13 @@ use crate::{
         menu::{category_entries, CATEGORY_PAGE_SIZE},
         state::AppState,
         widgets::{
-            key_hints::{draw_key_hints, KeyCap},
+            bottom_bar::{draw_bottom_bar, OPEN_HINTS},
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
     orientation::OrientedFrameBuffer,
 };
-
-const CATEGORY_HINTS: [(KeyCap, &str); 3] = [
-    (KeyCap::UpDown, "move"),
-    (KeyCap::Select, "open"),
-    (KeyCap::Boot, "hold: back"),
-];
 
 pub fn render_category(
     display: &mut OrientedFrameBuffer<'_>,
@@ -49,5 +43,5 @@ pub fn render_category(
         let top = STATUS_BAR_HEIGHT + offset as i32 * LIST_ROW_HEIGHT;
         draw_list_row(display, state.display, top, row)?;
     }
-    draw_key_hints(display, state.display, &CATEGORY_HINTS)
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)
 }

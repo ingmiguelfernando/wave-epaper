@@ -366,11 +366,6 @@ impl DisplayPreferences {
     pub const fn navigation_style(self) -> UiTextStyle {
         self.heading_style()
     }
-
-    #[must_use]
-    pub const fn footer_style(self) -> UiTextStyle {
-        self.body_style()
-    }
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, KEYBOARD_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -37,8 +37,28 @@ const AGENDA_RANGE_BASELINE: i32 = 266;
 const AGENDA_FIRST_ROW_TOP: i32 = 300;
 const AGENDA_ROW_STEP: i32 = 60;
 const AGENDA_ROW_HEIGHT: u32 = 54;
-const AGENDA_FOOTER_HINT: &str = "MOVE  SELECT OPEN  BOOT ADD  HOLD BACK";
-const CALENDAR_EDITOR_FOOTER_HINT: &str = "MOVE  BOOT H/V  SELECT KEY  HOLD BACK";
+const MONTH_HINTS: [(KeyCap, &str); 4] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "mode"),
+    (KeyCap::Boot, "agenda"),
+    (KeyCap::Boot, "hold: back"),
+];
+const AGENDA_HINTS: [(KeyCap, &str); 4] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "open"),
+    (KeyCap::Boot, "add"),
+    (KeyCap::Boot, "hold: back"),
+];
+const EVENT_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "action"),
+    (KeyCap::Boot, "hold: back"),
+];
+const DELETE_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "choose"),
+    (KeyCap::Boot, "hold: back"),
+];
 const WEEKDAY_LABELS: [&str; 7] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const MONTH_LABELS: [&str; 12] = [
     "January",
@@ -143,11 +163,7 @@ pub fn render_calendar(
     )
     .draw(display)?;
 
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN MOVE  SELECT MODE  BOOT AGENDA  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &MONTH_HINTS)?;
     Ok(())
 }
 
@@ -220,7 +236,7 @@ pub fn render_calendar_agenda(
         }
     }
 
-    draw_footer(display, state.display, AGENDA_FOOTER_HINT)?;
+    draw_bottom_bar(display, state.display, &AGENDA_HINTS)?;
     Ok(())
 }
 
@@ -246,7 +262,7 @@ pub fn render_calendar_event_details(
             state.display.body_style(),
         )
         .draw(display)?;
-        draw_footer(display, state.display, "HOLD BOOT BACK")?;
+        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
         return Ok(());
     };
 
@@ -321,11 +337,7 @@ pub fn render_calendar_event_details(
             state.display.detail_style(),
         )
         .draw(display)?;
-        draw_footer(
-            display,
-            state.display,
-            "UP/DOWN MOVE  SELECT ACTION  HOLD BOOT BACK",
-        )?;
+        draw_bottom_bar(display, state.display, &EVENT_HINTS)?;
     } else {
         Text::new(
             "U.S. pack entries remain read-only.",
@@ -333,7 +345,7 @@ pub fn render_calendar_event_details(
             state.display.body_style(),
         )
         .draw(display)?;
-        draw_footer(display, state.display, "HOLD BOOT BACK")?;
+        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     }
     Ok(())
 }
@@ -351,7 +363,7 @@ pub fn render_calendar_event_editor(
             state.display.body_style(),
         )
         .draw(display)?;
-        draw_footer(display, state.display, "HOLD BOOT BACK")?;
+        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
         return Ok(());
     };
     let date = calendar_editor_status_date_label(editor.date);
@@ -397,7 +409,7 @@ pub fn render_calendar_event_editor(
     )
     .draw(display)?;
     draw_editor_keyboard(display, state)?;
-    draw_footer(display, state.display, CALENDAR_EDITOR_FOOTER_HINT)?;
+    draw_bottom_bar(display, state.display, &KEYBOARD_HINTS)?;
     Ok(())
 }
 
@@ -446,11 +458,7 @@ pub fn render_calendar_delete_confirmation(
             index == state.calendar.delete_confirmation_selected,
         )?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN MOVE  SELECT  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &DELETE_HINTS)?;
     Ok(())
 }
 
@@ -738,11 +746,11 @@ fn selected_date_label(date: CalendarDate) -> String {
 mod tests {
     use super::{
         agenda_event_count_label, agenda_visible_range_label, calendar_editor_status_date_label,
-        month_label, selected_date_label, AGENDA_FIRST_ROW_TOP, AGENDA_FOOTER_HINT,
-        AGENDA_RANGE_BASELINE, AGENDA_ROW_HEIGHT, AGENDA_ROW_STEP, CALENDAR_EDITOR_FOOTER_HINT,
+        month_label, selected_date_label, AGENDA_FIRST_ROW_TOP, AGENDA_RANGE_BASELINE,
+        AGENDA_ROW_HEIGHT, AGENDA_ROW_STEP,
     };
     use crate::{
-        app::AppState,
+        app::{widgets::bottom_bar::BOTTOM_BAR_TOP, AppState},
         calendar::{CalendarDate, CALENDAR_AGENDA_VISIBLE_ROWS},
         framebuffer::FrameBuffer,
         orientation::OrientedFrameBuffer,
@@ -766,15 +774,10 @@ mod tests {
     }
 
     #[test]
-    fn editor_status_date_and_footer_fit_the_shared_status_strip() {
+    fn editor_status_date_fits_the_shared_status_strip() {
         let date = CalendarDate::new(2026, 6, 6).unwrap();
         assert_eq!(calendar_editor_status_date_label(date), "2026-06-06");
         assert!(calendar_editor_status_date_label(date).chars().count() <= 10);
-        assert_eq!(
-            CALENDAR_EDITOR_FOOTER_HINT,
-            "MOVE  BOOT H/V  SELECT KEY  HOLD BACK"
-        );
-        assert!(CALENDAR_EDITOR_FOOTER_HINT.chars().count() <= 40);
     }
 
     #[test]
@@ -788,12 +791,6 @@ mod tests {
         let last_row_bottom = AGENDA_FIRST_ROW_TOP
             + (CALENDAR_AGENDA_VISIBLE_ROWS as i32 - 1) * AGENDA_ROW_STEP
             + AGENDA_ROW_HEIGHT as i32;
-        assert!(last_row_bottom < 746);
-    }
-
-    #[test]
-    fn agenda_footer_hint_is_compact_for_the_e_paper_width() {
-        assert_eq!(AGENDA_FOOTER_HINT, "MOVE  SELECT OPEN  BOOT ADD  HOLD BACK");
-        assert!(AGENDA_FOOTER_HINT.chars().count() <= 40);
+        assert!(last_row_bottom < BOTTOM_BAR_TOP);
     }
 }

@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -21,6 +21,12 @@ use crate::{
     orientation::OrientedFrameBuffer,
     unit_converter::{format_milli, ConversionResult, ConverterField},
 };
+
+const CONVERTER_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "change"),
+    (KeyCap::Select, "next field"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// Render the interactive offline converter screen.
 pub fn render_unit_converter(
@@ -98,11 +104,7 @@ pub fn render_unit_converter(
     Text::new("RESULT", Point::new(42, 560), body).draw(display)?;
     Text::new(&result, Point::new(42, 624), state.display.large_style()).draw(display)?;
 
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN  SELECT NEXT  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &CONVERTER_HINTS)?;
     Ok(())
 }
 

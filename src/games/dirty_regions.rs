@@ -6,6 +6,9 @@ pub const GAME_CANVAS_WIDTH: i32 = 480;
 pub const GAME_CANVAS_HEIGHT: i32 = 800;
 /// Maximum dirty regions retained for one script frame.
 pub const MAX_DIRTY_REGIONS: usize = 4;
+/// The app's bottom bar under every game; a game invalidates it when its key
+/// hints change.
+pub const GAME_BOTTOM_BAR_RECT: DirtyRect = DirtyRect::new(0, 752, GAME_CANVAS_WIDTH, 48);
 
 /// One half-open logical rectangle.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

@@ -14,7 +14,7 @@ use crate::{
     app::{
         state::AppState,
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, OPEN_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -22,6 +22,11 @@ use crate::{
     orientation::OrientedFrameBuffer,
     storage::{FilePreview, StorageSnapshot},
 };
+
+const PREVIEW_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "close"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// Draw the read-only SDMMC browser or the bounded text-preview panel.
 pub fn render_files(
@@ -97,7 +102,7 @@ pub fn render_files(
         Text::new(&entry.size_label(), Point::new(382, top + 32), detail).draw(display)?;
     }
 
-    draw_footer(display, state.display, "MOVE  SELECT OPEN  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)?;
     Ok(())
 }
 
@@ -154,7 +159,7 @@ fn render_preview(
         Text::new(line, Point::new(34, 238 + (index as i32 * 24)), detail).draw(display)?;
     }
 
-    draw_footer(display, state.display, "SELECT CLOSE  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &PREVIEW_HINTS)?;
     Ok(())
 }
 

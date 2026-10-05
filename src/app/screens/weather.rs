@@ -15,7 +15,7 @@ use crate::{
         typography::{Text, UiTextStyle},
         widgets::{
             big_digits::{big_text_width, draw_big_text},
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS},
             header::draw_header,
             icons::{weather_icon_at, ICON_SIZE},
         },
@@ -42,8 +42,15 @@ const DAYS_TOP: i32 = 482;
 const DAY_HEIGHT: i32 = 52;
 const HOUR_ROWS_TOP: i32 = 106;
 const HOUR_ROW_HEIGHT: i32 = 42;
-const FOOTER: &str = "DOWN MORE  SELECT REFRESH  BOOT \u{b0}C/\u{b0}F";
-const DETAILS_FOOTER: &str = "UP BACK  SELECT REFRESH  BOOT \u{b0}C/\u{b0}F";
+const FORECAST_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "scroll"),
+    (KeyCap::Select, "refresh"),
+    (KeyCap::Boot, "\u{b0}C / \u{b0}F"),
+];
+const REFRESH_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "refresh"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// A title and what to do, shown instead of a forecast.
 type Missing = (&'static str, &'static str);
@@ -77,7 +84,7 @@ pub fn render_weather(
     let updated = detail.fit(&updated_line(state, config), RIGHT - LEFT);
     let baseline = DAYS_TOP + 4 * DAY_HEIGHT + 26;
     Text::new(&updated, Point::new(LEFT + 4, baseline), detail).draw(display)?;
-    draw_footer(display, state.display, FOOTER)
+    draw_bottom_bar(display, state.display, &FORECAST_HINTS)
 }
 
 /// The second page: the next twelve hours and where the forecast comes from.
@@ -121,7 +128,7 @@ pub fn render_weather_details(
         Text::new(&text, Point::new(LEFT + 4, baseline), detail).draw(display)?;
         baseline += i32::from(detail.line_height()) + 6;
     }
-    draw_footer(display, state.display, DETAILS_FOOTER)
+    draw_bottom_bar(display, state.display, &FORECAST_HINTS)
 }
 
 /// The configuration and current conditions, or why there are none.
@@ -152,12 +159,12 @@ fn draw_missing(
     let mut baseline = draw_paragraph(display, preferences.heading_style(), title, 150)?;
     baseline = draw_paragraph(display, preferences.body_style(), text, baseline + 8)?;
     if !state.weather_enabled() {
-        return draw_footer(display, preferences, "HOLD BOOT BACK");
+        return draw_bottom_bar(display, preferences, &BACK_HINTS);
     }
     if let Some(error) = state.weather.error.as_deref() {
         draw_paragraph(display, preferences.detail_style(), error, baseline + 8)?;
     }
-    draw_footer(display, preferences, "SELECT REFRESH  HOLD BOOT BACK")
+    draw_bottom_bar(display, preferences, &REFRESH_HINTS)
 }
 
 /// Wrap `text` across the screen from `baseline`; returns the baseline of

@@ -15,7 +15,7 @@ use crate::{
         display::DisplaySetting,
         state::AppState,
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, CHANGE_HINTS, CHOOSE_HINTS},
             header::draw_header,
             option_list::draw_option_list,
             status_row::{draw_status_row, StatusRow},
@@ -49,11 +49,7 @@ pub fn render_display(
         let (options, current) = prefs.options(setting);
         Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
         draw_option_list(display, state.display, 184, &options, current, highlighted)?;
-        draw_footer(
-            display,
-            state.display,
-            "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
-        )?;
+        draw_bottom_bar(display, state.display, &CHOOSE_HINTS)?;
         return Ok(());
     }
     Text::new("Display preferences", Point::new(22, 160), heading).draw(display)?;
@@ -88,11 +84,7 @@ pub fn render_display(
     )
     .draw(display)?;
 
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  SELECT CHANGE  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &CHANGE_HINTS)?;
     Ok(())
 }
 

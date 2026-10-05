@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -21,6 +21,8 @@ use crate::{
     build_info::{FIRMWARE_VERSION, PRODUCT_NAME},
     orientation::OrientedFrameBuffer,
 };
+
+const NEXT_HINTS: [(KeyCap, &str); 2] = [(KeyCap::Select, "next"), (KeyCap::Boot, "hold: back")];
 
 /// Page 1/3: product firmware and display contract.
 pub fn render_device_info(
@@ -61,7 +63,7 @@ pub fn render_device_info(
     line(display, 540, "Partial chain", &partials, body)?;
 
     draw_action(display, 640, "Board services", body)?;
-    draw_footer(display, state.display, "SELECT NEXT  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &NEXT_HINTS)?;
     Ok(())
 }
 
@@ -107,7 +109,7 @@ pub fn render_device_info_board(
     .draw(display)?;
 
     draw_action(display, 640, "Runtime services", body)?;
-    draw_footer(display, state.display, "SELECT NEXT  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &NEXT_HINTS)?;
     Ok(())
 }
 
@@ -156,7 +158,7 @@ pub fn render_device_info_runtime(
         detail,
     )
     .draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
 

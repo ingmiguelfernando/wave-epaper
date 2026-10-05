@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, BACK_HINTS, RUN_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -75,11 +75,7 @@ pub fn render_audio(
             body,
         )?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN  SELECT RUN  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &RUN_HINTS)?;
     Ok(())
 }
 
@@ -150,7 +146,7 @@ pub fn render_audio_details(
         detail,
     )
     .draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
 

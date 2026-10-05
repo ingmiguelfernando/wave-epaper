@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, CHANGE_HINTS, CHOOSE_HINTS},
             header::draw_header,
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             option_list::draw_option_list,
@@ -97,11 +97,7 @@ fn draw_overview(
     Text::new("Sleep", Point::new(22, 566), heading).draw(display)?;
     info_line(display, 608, "Last sleep", &last_sleep, body)?;
     info_line(display, 648, "Light sleep", &light_sleep, body)?;
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  SELECT CHANGE  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &CHANGE_HINTS)?;
     Ok(())
 }
 
@@ -149,11 +145,7 @@ fn draw_picker(
     let heading = state.display.heading_style();
     Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
     draw_option_list(display, state.display, 184, &options, current, highlighted)?;
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
-    )?;
+    draw_bottom_bar(display, state.display, &CHOOSE_HINTS)?;
     Ok(())
 }
 

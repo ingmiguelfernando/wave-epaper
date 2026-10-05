@@ -13,20 +13,47 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, OPEN_HINTS},
             header::draw_header,
-            key_hints::{draw_key_hints, KeyCap},
             status_row::{draw_status_row, StatusRow},
         },
     },
-    games::canvas::{CanvasTextStyle, DrawCommand},
+    games::{
+        canvas::{CanvasTextStyle, DrawCommand},
+        minesweeper::MinesweeperMode,
+        sudoku::SudokuMode,
+    },
     lua_runtime::{event_bridge::LuaEventBridge, LUA_CATALOG_PAGE_SIZE},
     orientation::OrientedFrameBuffer,
 };
 
-/// Sudoku and Minesweeper draw their own footer on the canvas, so only Tetris
-/// leaves the bottom band to the shared key caps.
-const TETRIS_KEY_HINTS: [(KeyCap, &str); 3] = [
+const SUDOKU_HINTS: [(KeyCap, &str); 4] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "edit"),
+    (KeyCap::Boot, "H/V"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const SUDOKU_EDIT_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "number"),
+    (KeyCap::Select, "save"),
+    (KeyCap::Boot, "cancel"),
+];
+
+const MINESWEEPER_HINTS: [(KeyCap, &str); 4] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "action"),
+    (KeyCap::Boot, "H/V"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const MINESWEEPER_ACTION_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "action"),
+    (KeyCap::Select, "apply"),
+    (KeyCap::Boot, "cancel"),
+];
+
+const TETRIS_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "move"),
     (KeyCap::Select, "rotate"),
     (KeyCap::Boot, "drop"),
@@ -114,12 +141,7 @@ pub fn render_lua_apps(
         }
     }
 
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN MOVE  SELECT OPEN  HOLD BOOT BACK",
-    )?;
-    Ok(())
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)
 }
 
 pub fn render_lua_game(
@@ -132,10 +154,23 @@ pub fn render_lua_game(
     for command in session.canvas.commands() {
         draw_command(display, state, command)?;
     }
-    if matches!(session.event_bridge, LuaEventBridge::Tetris(_)) {
-        draw_key_hints(display, state.display, &TETRIS_KEY_HINTS)?;
+    draw_bottom_bar(display, state.display, game_hints(&session.event_bridge))
+}
+
+/// Hints for the game's current mode; game canvases leave the bar band free.
+fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
+    match bridge {
+        LuaEventBridge::Static => &BACK_HINTS,
+        LuaEventBridge::Sudoku(game) => match game.mode() {
+            SudokuMode::Navigate => &SUDOKU_HINTS,
+            SudokuMode::Edit => &SUDOKU_EDIT_HINTS,
+        },
+        LuaEventBridge::Minesweeper(game) => match game.mode() {
+            MinesweeperMode::Navigate => &MINESWEEPER_HINTS,
+            MinesweeperMode::Action => &MINESWEEPER_ACTION_HINTS,
+        },
+        LuaEventBridge::Tetris(_) => &TETRIS_HINTS,
     }
-    Ok(())
 }
 
 pub fn render_lua_error(
@@ -169,8 +204,7 @@ pub fn render_lua_error(
     )
     .draw(display)?;
     Text::new("Hold BOOT to return.", Point::new(44, 430), body).draw(display)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
-    Ok(())
+    draw_bottom_bar(display, state.display, &BACK_HINTS)
 }
 
 fn draw_command(

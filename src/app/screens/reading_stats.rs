@@ -14,7 +14,10 @@ use crate::{
     app::{
         display::DisplayPreferences,
         typography::{Text, TextBounds, UiTextStyle},
-        widgets::{footer::draw_footer, header::draw_header},
+        widgets::{
+            bottom_bar::{draw_bottom_bar, BACK_HINTS},
+            header::draw_header,
+        },
     },
     civil_date,
     orientation::OrientedFrameBuffer,
@@ -45,7 +48,7 @@ pub fn render_reading_stats(
     if let Some(current) = current {
         draw_current_book(display, preferences, stats, current)?;
     }
-    draw_footer(display, preferences, "HOLD BOOT BACK")
+    draw_bottom_bar(display, preferences, &BACK_HINTS)
 }
 
 fn draw_tiles(
@@ -529,8 +532,8 @@ mod tests {
         let frame = render(&ReadingStats::default(), None, UiFontSize::Standard);
         // Header band (logical y 20) maps to native (y, 479 - x).
         assert_eq!(frame.is_black(Point::new(20, 479 - 240)), Some(true));
-        // Footer rule at logical y 746.
-        assert_eq!(frame.is_black(Point::new(746, 479 - 240)), Some(true));
+        // Bottom bar rule at logical y 752.
+        assert_eq!(frame.is_black(Point::new(752, 479 - 240)), Some(true));
     }
 
     #[test]

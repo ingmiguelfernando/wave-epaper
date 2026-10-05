@@ -6,13 +6,13 @@ use core::convert::Infallible;
 use crate::{
     app::{
         display::DisplayPreferences,
-        widgets::list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
+        widgets::{
+            bottom_bar::BOTTOM_BAR_TOP,
+            list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
+        },
     },
     orientation::OrientedFrameBuffer,
 };
-
-/// First pixel row of the footer rule drawn by `draw_footer`.
-const FOOTER_TOP: i32 = 746;
 
 /// Choice labels and the index of the value in use, defaulting to the first row.
 #[must_use]
@@ -35,7 +35,7 @@ pub fn draw_option_list(
     current: usize,
     highlighted: usize,
 ) -> Result<(), Infallible> {
-    let visible = ((FOOTER_TOP - top) / LIST_ROW_HEIGHT).max(1) as usize;
+    let visible = ((BOTTOM_BAR_TOP - top) / LIST_ROW_HEIGHT).max(1) as usize;
     let first = highlighted.saturating_sub(visible - 1);
     for (index, option) in options.iter().enumerate().skip(first).take(visible) {
         let row = ListRow {
@@ -87,7 +87,7 @@ mod tests {
         let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
         draw_option_list(&mut display, preferences, 184, &options, 0, 9).unwrap();
         drop(display);
-        // Seven rows fit above the footer; the highlighted last row is the
+        // Seven rows fit above the bottom bar; the highlighted last row is the
         // seventh and fills its band (logical y 616..688) with black.
         assert_eq!(frame.is_black(Point::new(650, 479 - 240)), Some(true));
         assert_eq!(frame.is_black(Point::new(200, 479 - 240)), Some(false));

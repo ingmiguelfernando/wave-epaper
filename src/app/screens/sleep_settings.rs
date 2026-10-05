@@ -10,7 +10,7 @@ use crate::{
         state::AppState,
         typography::Text,
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, CHOOSE_HINTS},
             header::draw_header,
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             option_list::draw_option_list,
@@ -22,6 +22,12 @@ use crate::{
 };
 
 const ROWS_TOP: i32 = 184;
+
+const LIST_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "change"),
+    (KeyCap::Boot, "preview"),
+];
 
 pub fn render_sleep_settings(
     display: &mut OrientedFrameBuffer<'_>,
@@ -49,11 +55,7 @@ pub fn render_sleep_settings(
         let (options, current) = settings.options(setting);
         Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
         draw_option_list(display, state.display, 184, &options, current, highlighted)?;
-        draw_footer(
-            display,
-            state.display,
-            "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
-        )?;
+        draw_bottom_bar(display, state.display, &CHOOSE_HINTS)?;
         return Ok(());
     }
 
@@ -89,7 +91,7 @@ pub fn render_sleep_settings(
         Text::new(&line, Point::new(22, baseline), body).draw(display)?;
         baseline += i32::from(body.line_height()) + 4;
     }
-    draw_footer(display, state.display, "MOVE  SELECT CHANGE  BOOT PREVIEW")?;
+    draw_bottom_bar(display, state.display, &LIST_HINTS)?;
     Ok(())
 }
 

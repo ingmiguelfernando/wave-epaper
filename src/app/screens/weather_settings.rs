@@ -14,7 +14,7 @@ use crate::{
         state::AppState,
         typography::Text,
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, BACK_HINTS, CHANGE_HINTS, CHOOSE_HINTS},
             header::draw_header,
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             option_list::draw_option_list,
@@ -42,7 +42,7 @@ pub fn render_weather_settings(
         let heading = preferences.heading_style();
         let baseline = draw_paragraph(display, heading, "Weather is not set up", 150)?;
         draw_paragraph(display, preferences.body_style(), NOT_SET_UP, baseline + 8)?;
-        return draw_footer(display, preferences, "HOLD BOOT BACK");
+        return draw_bottom_bar(display, preferences, &BACK_HINTS);
     };
     let place = preferences.body_style().fit(&config.location, 170);
     draw_status_row(
@@ -60,11 +60,7 @@ pub fn render_weather_settings(
         let (options, current) = config.options(setting);
         Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
         draw_option_list(display, preferences, 184, &options, current, highlighted)?;
-        return draw_footer(
-            display,
-            preferences,
-            "MOVE  SELECT CHOOSE  HOLD BOOT CANCEL",
-        );
+        return draw_bottom_bar(display, preferences, &CHOOSE_HINTS);
     }
 
     Text::new("Forecast", Point::new(22, 160), heading).draw(display)?;
@@ -89,7 +85,7 @@ pub fn render_weather_settings(
         baseline += i32::from(body.line_height()) + 4;
     }
     draw_infobox(display, state, &battery_note(config), baseline + 6)?;
-    draw_footer(display, preferences, "MOVE  SELECT CHANGE  HOLD BOOT BACK")
+    draw_bottom_bar(display, preferences, &CHANGE_HINTS)
 }
 
 fn subtitle(setting: WeatherSetting) -> &'static str {

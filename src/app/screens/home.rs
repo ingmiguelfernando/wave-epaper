@@ -15,8 +15,8 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextRole},
         widgets::{
+            bottom_bar::{draw_bottom_bar, KeyCap},
             icons::{self, Icon, ICON_SIZE},
-            key_hints::{draw_key_hints, KeyCap},
             list_row::draw_selection_marker,
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
@@ -59,7 +59,7 @@ pub fn render_home(
         let top = ROWS_TOP + index as i32 * ROW_PITCH;
         draw_home_row(display, state, top, entry, state.home_selected == index)?;
     }
-    draw_key_hints(display, state.display, &HOME_HINTS)
+    draw_bottom_bar(display, state.display, &HOME_HINTS)
 }
 
 fn draw_home_status_bar(

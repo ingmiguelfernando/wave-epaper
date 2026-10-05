@@ -13,13 +13,18 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
 };
+
+const DETAILS_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::Select, "details"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// Draw the user-facing RTC overview.
 pub fn render_clock(
@@ -77,7 +82,7 @@ pub fn render_clock(
     }
 
     draw_action(display, 642, "RTC details", body)?;
-    draw_footer(display, state.display, "SELECT DETAILS  HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &DETAILS_HINTS)?;
     Ok(())
 }
 
@@ -150,7 +155,7 @@ pub fn render_clock_details(
     Text::new("Refresh policy", Point::new(22, 568), heading).draw(display)?;
     line(display, 614, "Live refresh", "30 seconds", body)?;
     line(display, 654, "Idle sleep", "60 seconds", body)?;
-    draw_footer(display, state.display, "HOLD BOOT BACK")?;
+    draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
 

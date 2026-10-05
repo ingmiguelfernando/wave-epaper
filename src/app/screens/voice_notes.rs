@@ -13,7 +13,9 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{
+                draw_bottom_bar, KeyCap, BACK_HINTS, KEYBOARD_HINTS, OPEN_HINTS, RUN_HINTS,
+            },
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -22,6 +24,13 @@ use crate::{
     voice_note_metadata::format_storage_bytes,
     voice_notes::{format_duration, VoiceNotesMode, VOICE_TITLE_EDITOR_KEY_ROWS},
 };
+
+const DELETE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "move"), (KeyCap::Select, "confirm")];
+
+const RECORDING_HINTS: [(KeyCap, &str); 2] = [
+    (KeyCap::UpDown, "pause / resume"),
+    (KeyCap::Select, "stop + save"),
+];
 
 pub fn render_voice_notes(
     display: &mut OrientedFrameBuffer<'_>,
@@ -82,11 +91,7 @@ pub fn render_voice_notes(
     if let Some(error) = voice.error.as_deref() {
         Text::new(error, Point::new(22, 686), state.display.detail_style()).draw(display)?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP DOWN MOVE  SELECT OPEN  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &OPEN_HINTS)?;
     Ok(())
 }
 
@@ -112,7 +117,7 @@ pub fn render_voice_note_details(
     )?;
     let Some(note) = state.voice_notes.selected_note() else {
         Text::new("No saved note selected.", Point::new(22, 232), detail).draw(display)?;
-        draw_footer(display, state.display, "HOLD BOOT BACK")?;
+        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
         return Ok(());
     };
     if state.voice_notes.delete_confirmation {
@@ -216,11 +221,7 @@ pub fn render_voice_note_details(
     } else if let Some(error) = state.voice_notes.error.as_deref() {
         Text::new(error, Point::new(22, 682), detail).draw(display)?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP DOWN MOVE  SELECT RUN  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &RUN_HINTS)?;
     Ok(())
 }
 
@@ -267,11 +268,7 @@ fn render_voice_note_title_editor(
     )
     .draw(display)?;
     draw_voice_title_keyboard(display, state)?;
-    draw_footer(
-        display,
-        state.display,
-        "MOVE  BOOT H/V  SELECT KEY  HOLD BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &KEYBOARD_HINTS)?;
     Ok(())
 }
 
@@ -340,7 +337,7 @@ fn render_voice_note_delete_confirmation(
         state.voice_notes.delete_confirm_selected == 1,
         body,
     )?;
-    draw_footer(display, state.display, "UP DOWN MOVE  SELECT CONFIRM")?;
+    draw_bottom_bar(display, state.display, &DELETE_HINTS)?;
     Ok(())
 }
 
@@ -449,11 +446,7 @@ pub fn render_voice_note_recording(
                 .draw(display)?;
         }
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP DOWN PAUSE / RESUME  SELECT STOP + SAVE",
-    )?;
+    draw_bottom_bar(display, state.display, &RECORDING_HINTS)?;
     Ok(())
 }
 

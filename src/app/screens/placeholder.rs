@@ -10,7 +10,7 @@ use crate::{
         state::AppState,
         typography::Text,
         widgets::{
-            key_hints::{draw_key_hints, KeyCap},
+            bottom_bar::{draw_bottom_bar, BACK_HINTS},
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_RIGHT},
         },
     },
@@ -36,7 +36,7 @@ pub fn render_placeholder(
         Text::new(&line, Point::new(LEFT, baseline), body).draw(display)?;
         baseline += i32::from(body.line_height()) + 6;
     }
-    draw_key_hints(display, state.display, &[(KeyCap::Boot, "hold: back")])
+    draw_bottom_bar(display, state.display, &BACK_HINTS)
 }
 
 fn description(route: ScreenRoute) -> &'static str {

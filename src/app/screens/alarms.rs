@@ -14,13 +14,25 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            footer::draw_footer,
+            bottom_bar::{draw_bottom_bar, KeyCap, RUN_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
 };
+
+const EDITOR_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "change"),
+    (KeyCap::Select, "next"),
+    (KeyCap::Boot, "back"),
+];
+
+const LIST_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "edit"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 pub fn render_alarms(
     display: &mut OrientedFrameBuffer<'_>,
@@ -59,11 +71,7 @@ pub fn render_alarms(
             body,
         )
         .draw(display)?;
-        draw_footer(
-            display,
-            state.display,
-            "UP/DOWN  SELECT RUN  HOLD BOOT BACK",
-        )?;
+        draw_bottom_bar(display, state.display, &RUN_HINTS)?;
         return Ok(());
     }
 
@@ -131,11 +139,7 @@ pub fn render_alarms(
             body,
         )
         .draw(display)?;
-        draw_footer(
-            display,
-            state.display,
-            "UP/DOWN CHANGE  SELECT NEXT  BOOT BACK",
-        )?;
+        draw_bottom_bar(display, state.display, &EDITOR_HINTS)?;
         return Ok(());
     }
 
@@ -166,11 +170,7 @@ pub fn render_alarms(
     if let Some(error) = alarms.error.as_deref() {
         Text::new(&format!("Last error: {error}"), Point::new(22, 674), body).draw(display)?;
     }
-    draw_footer(
-        display,
-        state.display,
-        "UP/DOWN  SELECT EDIT  HOLD BOOT BACK",
-    )?;
+    draw_bottom_bar(display, state.display, &LIST_HINTS)?;
     Ok(())
 }
 
