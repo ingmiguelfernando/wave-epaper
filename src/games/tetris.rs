@@ -371,13 +371,14 @@ const fn spawn_column(piece: TetrisPiece) -> i32 {
     }
 }
 
-/// Cells of one rotation state, rotated clockwise inside the bounding box.
+/// Cells of one rotation state, turned clockwise on screen inside the bounding
+/// box: (column, row) becomes (size - 1 - row, column).
 fn piece_cells(piece: TetrisPiece, rotation: u8) -> [(u8, u8); 4] {
     let size = box_size(piece);
     let mut cells = spawn_cells(piece);
     for _ in 0..(rotation % 4) {
         for cell in cells.iter_mut() {
-            *cell = (cell.1, size - 1 - cell.0);
+            *cell = (size - 1 - cell.1, cell.0);
         }
     }
     cells
@@ -948,7 +949,7 @@ mod tests {
         set_active(&mut game, TetrisPiece::T, 0, 3, 10);
         game.board[12][4] = Some(TetrisPiece::S);
         assert!(game.apply(TetrisAction::Rotate));
-        assert_eq!(game.active_cells(), [(2, 11), (3, 12), (3, 11), (3, 10)]);
+        assert_eq!(game.active_cells(), [(4, 11), (3, 10), (3, 11), (3, 12)]);
 
         // kicks 0, -1 and +1 are blocked, -2 reaches a free column
         let mut game = TetrisGame::new(TetrisMode::Zen, 1);
@@ -957,7 +958,7 @@ mod tests {
             game.board[12][column] = Some(TetrisPiece::S);
         }
         assert!(game.apply(TetrisAction::Rotate));
-        assert_eq!(game.active_cells(), [(1, 11), (2, 12), (2, 11), (2, 10)]);
+        assert_eq!(game.active_cells(), [(3, 11), (2, 10), (2, 11), (2, 12)]);
 
         // kicks 0 to -2 are blocked, +2 reaches a free column
         let mut game = TetrisGame::new(TetrisMode::Zen, 1);
@@ -966,7 +967,7 @@ mod tests {
             game.board[12][column] = Some(TetrisPiece::S);
         }
         assert!(game.apply(TetrisAction::Rotate));
-        assert_eq!(game.active_cells(), [(5, 11), (6, 12), (6, 11), (6, 10)]);
+        assert_eq!(game.active_cells(), [(7, 11), (6, 10), (6, 11), (6, 12)]);
     }
 
     #[test]

@@ -19,9 +19,10 @@ use std::{
 /// Steps of `atomic_replace_text` in `reader.rs`: write and sync `PATH.TMP`;
 /// move the old file to `PATH.BAK`; rename `.TMP` into place; delete `.BAK`.
 /// When the final rename fails, the `.BAK` copy returns to its original name
-/// and the error is returned. Stale `.TMP` and `.BAK` siblings of older saves
-/// are removed first, and `.TMP` is cleaned up after a failure. `path` must
-/// differ from its own `.TMP` and `.BAK` paths.
+/// and the error is returned. A `.BAK` left as the only copy by an interrupted
+/// save is renamed back first; other stale `.TMP` and `.BAK` siblings are
+/// removed, and `.TMP` is cleaned up after a failure. `path` must differ from
+/// its own `.TMP` and `.BAK` paths.
 pub fn replace(path: &Path, text: &str) -> io::Result<()> {
     replace_with(path, text, |from, to| fs::rename(from, to))
 }
@@ -58,6 +59,9 @@ where
     };
     let saved = (|| -> io::Result<()> {
         let _ = fs::remove_file(&temporary);
+        if !path.exists() && backup.is_file() {
+            rename(&backup, path).map_err(|error| step_error("restore", &backup, error))?;
+        }
         let _ = fs::remove_file(&backup);
         write_and_sync(&temporary, text).map_err(|error| step_error("write", &temporary, error))?;
         let replacing = path.is_file();
@@ -100,48 +104,11 @@ fn step_error(step: &str, path: &Path, error: io::Error) -> io::Error {
 }
 
 #[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-#[cfg(test)]
-struct TempRoot(PathBuf);
-
-#[cfg(test)]
-impl TempRoot {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "wave-sd-file-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-#[cfg(test)]
-impl Drop for TempRoot {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-/// Existing `.TMP` and `.BAK` siblings of `path`, for cleanup assertions.
-#[cfg(test)]
-fn leftovers(path: &Path) -> Vec<PathBuf> {
-    [path.with_extension("TMP"), path.with_extension("BAK")]
-        .into_iter()
-        .filter(|sibling| sibling.exists())
-        .collect()
-}
-
-#[cfg(test)]
 mod tests {
-    use std::cell::Cell;
+    use std::{
+        cell::Cell,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     use super::*;
     use crate::{
@@ -152,6 +119,39 @@ mod tests {
         reading_stats::ReadingStats,
         weather_config::WeatherConfig,
     };
+
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "wave-sd-file-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Existing `.TMP` and `.BAK` siblings of `path`, for cleanup assertions.
+    fn leftovers(path: &Path) -> Vec<PathBuf> {
+        [path.with_extension("TMP"), path.with_extension("BAK")]
+            .into_iter()
+            .filter(|sibling| sibling.exists())
+            .collect()
+    }
 
     #[test]
     fn replace_creates_a_new_file_and_leaves_no_tmp_or_bak() {
@@ -238,6 +238,32 @@ mod tests {
         assert!(replace_with(&path, "new", fail_replace).is_err());
         assert_eq!(calls.get(), 3); // backup, failed replace, restore
         assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        assert!(leftovers(&path).is_empty());
+    }
+
+    #[test]
+    fn a_lone_bak_from_an_interrupted_save_is_restored_before_cleanup() {
+        let root = TempRoot::new();
+        let path = root.path("SETTINGS.TXT");
+        // An earlier save stopped between its renames: only `.BAK` is left.
+        fs::write(path.with_extension("BAK"), "original").unwrap();
+        let calls = Cell::new(0);
+        let fail_replace = |from: &Path, to: &Path| {
+            calls.set(calls.get() + 1);
+            if calls.get() == 3 {
+                Err(io::Error::other("injected replace failure"))
+            } else {
+                fs::rename(from, to)
+            }
+        };
+        assert!(replace_with(&path, "new", fail_replace).is_err());
+        assert_eq!(calls.get(), 4); // restore, backup, failed replace, restore
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        assert!(leftovers(&path).is_empty());
+
+        fs::rename(&path, path.with_extension("BAK")).unwrap();
+        replace(&path, "new").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
         assert!(leftovers(&path).is_empty());
     }
 

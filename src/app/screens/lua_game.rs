@@ -20,9 +20,17 @@ use crate::{
         },
     },
     games::canvas::{CanvasTextStyle, DrawCommand},
-    lua_runtime::LUA_CATALOG_PAGE_SIZE,
+    lua_runtime::{event_bridge::LuaEventBridge, LUA_CATALOG_PAGE_SIZE},
     orientation::OrientedFrameBuffer,
 };
+
+/// Sudoku and Minesweeper draw their own footer on the canvas, so only Tetris
+/// leaves the bottom band to the shared key caps.
+const TETRIS_KEY_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "rotate"),
+    (KeyCap::Boot, "drop"),
+];
 
 pub fn render_lua_apps(
     display: &mut OrientedFrameBuffer<'_>,
@@ -124,34 +132,10 @@ pub fn render_lua_game(
     for command in session.canvas.commands() {
         draw_command(display, state, command)?;
     }
-    draw_key_hints(
-        display,
-        state.display,
-        game_key_hints(&session.entry.manifest.name),
-    )?;
-    Ok(())
-}
-
-/// Mockup-style key chips for one game; other apps fall back to a BOOT hint.
-fn game_key_hints(app_name: &str) -> &'static [(KeyCap, &'static str)] {
-    match app_name {
-        "Tetris" => &[
-            (KeyCap::UpDown, "move"),
-            (KeyCap::Select, "rotate"),
-            (KeyCap::Boot, "drop"),
-        ],
-        "Sudoku" => &[
-            (KeyCap::UpDown, "move"),
-            (KeyCap::Select, "edit"),
-            (KeyCap::Boot, "axis / cancel"),
-        ],
-        "Minesweeper" => &[
-            (KeyCap::UpDown, "move"),
-            (KeyCap::Select, "action"),
-            (KeyCap::Boot, "axis / cancel"),
-        ],
-        _ => &[(KeyCap::Boot, "hold: back")],
+    if matches!(session.event_bridge, LuaEventBridge::Tetris(_)) {
+        draw_key_hints(display, state.display, &TETRIS_KEY_HINTS)?;
     }
+    Ok(())
 }
 
 pub fn render_lua_error(

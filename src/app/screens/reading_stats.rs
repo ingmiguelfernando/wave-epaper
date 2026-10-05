@@ -16,8 +16,9 @@ use crate::{
         typography::{Text, TextBounds, UiTextStyle},
         widgets::{footer::draw_footer, header::draw_header},
     },
+    civil_date,
     orientation::OrientedFrameBuffer,
-    reading_stats::{day_label, parse_day, ReadingStats},
+    reading_stats::ReadingStats,
 };
 
 /// The book open in the Reader, drawn as the last summary block.
@@ -179,7 +180,7 @@ fn draw_heatmap_and_year(
     stats: &ReadingStats,
     today: u32,
 ) -> Result<(), Infallible> {
-    let year = day_label(today)[..4].to_string();
+    let (year, _, _) = civil_date::civil_from_days(i64::from(today));
     fit_line(
         display,
         "LAST 12 WEEKS",
@@ -197,7 +198,7 @@ fn draw_heatmap_and_year(
     const CELL: i32 = 16;
     const GAP: i32 = 3;
     let monday = monday_of(today);
-    let first_week = monday - 11 * 7;
+    let first_week = monday.saturating_sub(11 * 7);
     for column in 0..12_i32 {
         for row in 0..7_i32 {
             let day = first_week + (column * 7 + row) as u32;
@@ -235,8 +236,14 @@ fn draw_heatmap_and_year(
         u64::from(year_total.pages) * 3600 / u64::from(year_total.seconds)
     };
     // Mockup order: books first, then pages, reading and pace.
+    let finished = stats.books_finished();
+    let books_label = if finished == 1 {
+        "book finished"
+    } else {
+        "books finished"
+    };
     let rows = [
-        (stats.books_finished().to_string(), "books finished"),
+        (finished.to_string(), books_label),
         (grouped(year_total.pages), "pages"),
         (format!("{hours} h"), "reading"),
         (rate.to_string(), "pages / hour"),
@@ -392,29 +399,25 @@ fn grouped(value: u32) -> String {
     out
 }
 
-/// "+18% vs last", "even", or "vs last" before any previous reading exists.
+/// "+18% vs last"; blank until last week has some reading.
 fn change_label(this_week: u32, last_week: u32) -> String {
     if last_week == 0 {
-        return "vs last".to_string();
+        return String::new();
     }
     let change = (i64::from(this_week) - i64::from(last_week)) * 100 / i64::from(last_week);
     format!("{change:+}% vs last")
 }
 
-/// First day of `today`'s calendar year, via the tested date parser.
+/// First day of `today`'s calendar year.
 fn first_of_year(today: u32) -> u32 {
-    let label = day_label(today);
-    parse_day(&format!("{}-01-01", &label[..4])).unwrap_or(today)
-}
-
-/// 0 is Sunday; 1970-01-01 was a Thursday.
-fn weekday_index(epoch_day: u32) -> usize {
-    ((epoch_day as u64 + 4) % 7) as usize
+    let (year, _, _) = civil_date::civil_from_days(i64::from(today));
+    u32::try_from(civil_date::days_from_civil(year, 1, 1)).unwrap_or(0)
 }
 
 /// Monday of `epoch_day`'s week, the mockup's first bar and heatmap column.
 fn monday_of(epoch_day: u32) -> u32 {
-    epoch_day - ((weekday_index(epoch_day) + 6) % 7) as u32
+    let since_monday = (u32::from(civil_date::weekday(i64::from(epoch_day))) + 6) % 7;
+    epoch_day.saturating_sub(since_monday)
 }
 
 fn fit_line(
@@ -580,6 +583,16 @@ mod tests {
         assert_eq!(grouped(7), "7");
         assert_eq!(grouped(1_234_567), "1,234,567");
         assert_eq!(change_label(118, 100), "+18% vs last");
-        assert_eq!(change_label(0, 0), "vs last");
+        assert_eq!(change_label(25, 0), "");
+    }
+
+    #[test]
+    fn weeks_start_on_monday_and_years_on_january_first() {
+        // 2026-10-03 is a Saturday; its Monday is 2026-09-28.
+        assert_eq!(monday_of(TODAY), TODAY - 5);
+        assert_eq!(monday_of(TODAY - 5), TODAY - 5);
+        assert_eq!(first_of_year(TODAY), 20_454);
+        // An unset clock near the epoch saturates instead of underflowing.
+        assert_eq!(monday_of(0), 0);
     }
 }
