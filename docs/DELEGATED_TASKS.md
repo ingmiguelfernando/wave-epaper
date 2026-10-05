@@ -4,95 +4,86 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
-## Round 2 result (2026-10-03)
+## Round 3 result (2026-10-05)
 
-Pull request #2 (D6 to D11) was reviewed, merged into `main` and released as
-v0.9.1. D7, D8 and D9 went in as they were; D10 and D11 are solid libraries
-with thorough tests, and D6 stopped correctly when no setting fixed the glyph.
-The `side-tasks-2` branch is deleted; round 3 is in "Round 3 tasks" below.
+Pull request #3 (D12 to D17) was reviewed, merged into `main` and released as
+v0.9.2 (milestone `tetris-zen`). A strong round: Tetris follows the mockup
+with bounded partial refreshes, `sd_file` and `civil_date` remove real
+duplication, and the boot log lost 88 stale lines without changing behaviour.
+The `side-tasks-3` branch is deleted; round 4 is in "Round 4 tasks" below.
 
 What the main developer changed at merge time:
 
-- Merged `main` (v0.9.0, Weather). The only conflict was "both sides added"
-  in `preview_states()`. Kept one `audio-details` preview instead of seven;
-  the fit test already covers every font.
-- D11: `save_to_path` renamed `STATS.TMP` over `STATS.TXT`. FAT refuses that
-  once the file exists (FatFs `f_rename` returns `FR_EXIST`), so every save
-  after the first would have failed on the device. The old file now moves to
-  `STATS.BAK` first, as in the Reader's state files, and `load_from_path`
-  falls back to the backup. The helpers also moved above the test module.
-- Known Issues: dropped the "retirement pending" note (D9 already deleted
-  the scripts) and rewrote the `%` entry with D6's findings.
+- **One bottom bar for every screen.** D13 drew the key caps under every SD
+  app, so Sudoku and Minesweeper showed two footers: their own canvas text at
+  y 742 and the caps. `widgets/key_hints.rs` became `widgets/bottom_bar.rs`,
+  every screen (games included) now ends with `draw_bottom_bar`, and the old
+  `draw_footer` text widget is gone. See Rules › Bottom bar.
+- D13: games are told apart by their `LuaEventBridge` variant, not by the
+  `APP.TOM` name, which anyone can edit on the card.
+- D13: `scripts/install-sd-examples.sh` and SD_CARD_SETUP did not include
+  `APPS/TETRIS`, so the installer left Tetris off the card.
+- D12: Rotate turned counter-clockwise; the spec says clockwise. `(c, r)` now
+  becomes `(size - 1 - r, c)`, and the kick tests follow.
+- D14: "1 books finished" is now "1 book finished"; "vs last" alone stays
+  blank until there is a previous week; weeks and years come from
+  `civil_date` (D16 landed after D14); week starts saturate, since an unset
+  clock gives day 0.
+- D15: the next save deleted a `.BAK` that was the only copy left by an
+  interrupted save. `replace` now renames it back first. The test helpers
+  moved into `mod tests`.
 
 Verdict per task:
 
-- **D6:** blocked, as allowed; findings in Known Issues and the backlog.
-- **D7:** done; close to the mockup at every font family and size.
-- **D8:** done.
-- **D9:** done; nothing refers to the removed scripts.
-- **D10:** done; path traversal is rejected and chapter reads stay bounded.
-- **D11:** done after the save fix above.
+- **D12:** done after the rotation fix; a clean engine with good tests.
+- **D13:** done after the footer and installer fixes; close to the mockup.
+- **D14:** done; close to the mockup at every font family and size.
+- **D15:** done; the injectable rename makes the failure tests convincing.
+- **D16:** done.
+- **D17:** done; only markers and the imports they used were removed.
 
 Do differently next time:
 
-- Check what the device's filesystem allows, not only the host: FAT cannot
-  rename onto an existing file. Copy a pattern already proven on the device
-  (`atomic_replace_text` in `reader.rs`).
-- Keep production code above `#[cfg(test)] mod tests`.
-- Size tests to real ranges: reading time never reaches `u32::MAX` seconds,
-  and dates past year 9999 add code without value.
-- A test that compares a constant with its own literal proves nothing; test
-  behaviour such as fit or rendering.
-- Status lines: about eight lines, and no local `/tmp` paths, which nobody
-  else can open. Evidence goes in the pull request.
-- Write docs for the state after the merge: "retirement is pending" was
-  false once the same pull request deleted the scripts.
+- A change to a shared draw path (`render_lua_game` draws every SD app)
+  needs a look at every screen that goes through it, not only yours.
+- Do not key behaviour on text from the SD card; match on types.
+- Pin directions in tests. "Four turns return to the start" passes in both
+  directions; draw one turn on paper and assert its cells.
+- When a later task adds a shared module (`civil_date`, `sd_file`), go back
+  and use it in the earlier tasks of the same round.
+- A new SD sample needs its lines in `install-sd-examples.sh` and
+  SD_CARD_SETUP.
+- Labels: singular and plural ("1 book"), and no half labels when the number
+  is missing.
+- Power safety: walk through two interruptions in a row, not only one.
+- Write the pull request description: per task what changed, the checks, the
+  previews to look at and the device checks. Pull request #3 had none.
+- Remove "firmware build pending" from a Status once the build is green.
 
-## Round 1 result (2026-10-03)
-
-Pull request #1 (D1 to D5) was reviewed, merged into `main` and released as
-v0.8.1. The work was careful, well tested and well documented. The
-`side-tasks` branch is deleted; round 2 is in "Round 2 tasks" below.
-
-What the main developer did at merge time:
-
-- Merged `main` (v0.8.0, Photos) into the branch. Every conflict was "both
-  sides added": `AppState::back()` (the Display and Reader pickers next to the
-  Sleep screen preview and the photo viewer), `preview_states()`,
-  `screens/mod.rs`, the IMU comment in `main.rs` and `architecture.md`.
-- Updated the docs for Photos, which they still described as SOON: the User
-  Guide (Photos and Settings › Sleep screen), Known Issues, the smoke test,
-  CHANGELOG (v0.8.0 and v0.8.1), the README backlog and the ROADMAP.
-- Bumped the version to 0.8.1, milestone `option-lists`.
-
-Verdict per task:
-
-- **D1:** done, review fix included; the same-value tests are thorough.
-- **D2 and D3:** done; the reference scans and the Games test pass.
-- **D4:** done; the guides are practical and accurate.
-- **D5:** done as specified. Polish against the mockup is round 2 task D7:
-  - the clock has large gaps (rule at y 470, details at y 622), where the
-    mockup keeps them close;
-  - the weather line is not centered as one group;
-  - the weather screen lacks the rule above the three days;
-  - the rain row uses the Detail size, where `%` is broken.
-
-Do differently next time:
+## Lessons from rounds 1 and 2
 
 - Write docs for `main` as it will be after the merge, not "on this branch";
   if another branch changes the same feature, say so in the Status line.
-- Keep each Status to about eight lines: what changed, the checks, what to
-  test on the device. Logs and evidence go in the pull request description.
-- Indent Markdown continuation lines with two spaces, not tabs.
 - Compare previews with the mockup side by side; spacing is part of "looks
   like the mockup".
+- Check what the device allows, not only the host: FAT cannot rename onto an
+  existing file. Copy a pattern already proven on the device.
+- Keep production code above `#[cfg(test)] mod tests`, and test helpers
+  inside it.
+- Size tests to real ranges. A test that compares a constant with its own
+  literal proves nothing; test behaviour such as fit or rendering.
+- Status lines: about eight lines, no local `/tmp` paths. Logs and evidence
+  go in the pull request description.
+- Indent Markdown continuation lines with two spaces, not tabs.
 
 ## How to work
 
 - **Branch.** Each round of tasks gets its own branch from the latest `main`
-  (round 3: `side-tasks-3`), with one commit per task (`D12: ...`). Push often.
-- **Pull request.** When done, open a pull request to `main`. Do not merge
-  it; the main developer reviews it, resolves any conflicts and merges.
+  (round 4: `side-tasks-4`), with one commit per task (`D18: ...`). Push often.
+- **Pull request.** When done, open a pull request to `main` with a
+  description: per task what changed, the checks, the previews to look at and
+  the device checks. Do not merge it; the main developer reviews it, resolves
+  any conflicts and merges.
 - **Report.** Update the **Status** line of each task below in your branch:
   what changed, what needs a test on the device, and anything left open.
 - **Order.** As listed in the round. Each task stands alone, so skip a task
@@ -115,7 +106,7 @@ Do differently next time:
 ### Rules
 
 - English everywhere: UI text, code, comments, commits, docs. The device UI is
-  terse (`MOVE  SELECT CHANGE  HOLD BOOT BACK`).
+  terse (bottom bar labels such as `move`, `change`, `hold: back`).
 - Follow the existing patterns; the closest reference is named in each task.
   No new dependencies unless a task says so.
 - Do not bump the version (Cargo.toml, sdkconfig.defaults, build_info.rs); the
@@ -125,6 +116,16 @@ Do differently next time:
 - Logic changes come with host tests. UI changes come with a preview: add an
   entry at the end of `preview_states()` in `src/app/preview.rs`, then check
   the PNG in the `screen-previews` artifact.
+- **Bottom bar.** Every screen ends with
+  `draw_bottom_bar(display, preferences, &HINTS)` from
+  `widgets/bottom_bar.rs`. Use a shared set (`BACK_HINTS`, `OPEN_HINTS`,
+  `RUN_HINTS`, `CHANGE_HINTS`, `CHOOSE_HINTS`, `KEYBOARD_HINTS`) or a local
+  `const` of `(KeyCap, "label")` pairs: lowercase labels, and `hold: ` for a
+  long BOOT press. Content stays above `BOTTOM_BAR_TOP` (752). Never draw
+  footer text yourself.
+- **SD games** leave y 752 and below free. `game_hints` in
+  `screens/lua_game.rs` picks the hints for the game's mode, and the game
+  adds `GAME_BOTTOM_BAR_RECT` to its dirty regions when the mode changes.
 - The main line works on a phase at the same time. Each round lists the files
   that phase changes; keep edits to them small, and leave alone the ones it
   marks off-limits.
@@ -144,14 +145,21 @@ Do differently next time:
 - **Code shape.** Prefer an enum to a row index (`PowerSetting` is the
   model), `ALL.get(index)` to `ALL[index % len]`, and one generic helper to
   several copies of the same match arm.
-- **SD files.** Replace a file with `.TMP` then `.BAK` renames, as
-  `atomic_replace_text` in `reader.rs` does; FAT cannot rename onto an
+- **SD files.** Settings files go through `sd_file::replace` and
+  `sd_file::read_to_string` (`.TMP` then `.BAK`); FAT cannot rename onto an
   existing file.
+- **Shared modules.** Dates: `civil_date`. Look for a helper before writing
+  one: Tetris and Reading Stats each grew a private `grouped()` for thousands
+  separators, so a third user should move it to a shared place.
+- **rustfmt** (CI is the judge): an array whose items fit in 60 characters
+  stays on one line, after a break at `=` when the line would pass 100;
+  wider arrays go one item per line. `a.field.method(..)` chains break past
+  60 characters.
 
-## Round 3 tasks
+## Round 4 tasks
 
-Branch `side-tasks-3` from the latest `main` (v0.9.1); pull request title
-`Side tasks 3`. Order: D12, D13, D14, D15, D16, D17.
+Branch `side-tasks-4` from the latest `main` (v0.9.2); pull request title
+`Side tasks 4`. Order: D18, D19, D20, D21, D22, D23. D22 and D23 use D21.
 
 The main line builds Phase 3b (sleep screen modes) at the same time.
 
@@ -162,6 +170,171 @@ The main line builds Phase 3b (sleep screen modes) at the same time.
   `src/app/router.rs`, `src/app/menu.rs`, `src/app/mod.rs`,
   `src/app/preview.rs`, `src/app/screens/home.rs`, `src/lib.rs`,
   `README.md`, `Cargo.toml`.
+
+### D18: Sudoku three-step entry
+
+**Why.** Phase 6, mockup "Sudoku": choose a row, then a cell, then a number.
+It reads without instructions, so it replaces Sudoku's H/V axis mode
+(Minesweeper keeps its own).
+
+**Change** (`src/games/sudoku.rs`, `game_hints` in `screens/lua_game.rs`):
+
+- **Row:** ▲▼ moves the row highlight and wraps, skipping rows with no
+  editable cell; ● confirms.
+- **Cell:** ▲▼ moves between the row's editable cells (givens are skipped);
+  ● confirms.
+- **Number:** ▲▼ walks 1 to 9 and ⌫ (erase); ● places it and returns to Cell
+  in the same row.
+- Short BOOT goes back one step and does nothing in Row; hold BOOT still
+  leaves the game.
+- Draw as in the mockup: the strip `1 · ROW ▸ 2 · CELL ▸ 3 · NUMBER` with the
+  current step inverted, the number strip `1 … 9 ⌫` with the choice inverted,
+  and `Row 5 · Col 3 · options: 2 · 6 · 9` (numbers not yet in that row,
+  column or box).
+- Bottom bar per step: Row `▲▼ row ● choose BOOT hold: back`, Cell
+  `▲▼ cell ● choose BOOT back`, Number `▲▼ number ● place BOOT back`. Expose
+  the step with a public method and refresh `GAME_BOTTOM_BAR_RECT` when it
+  changes.
+- Keep the conflict and completion checks, `MAX_GAME_DRAW_COMMANDS` and
+  `MAX_DIRTY_REGIONS`. The title stays `Sudoku`; the timer and difficulty
+  come with Phase 6.
+- Update the Sudoku rows of the User Guide and the smoke test.
+
+**Tests:** each step's keys, skipped givens and rows, options, erase, BOOT
+back from each step, completion, and the command and region limits.
+**Previews:** `sudoku-row` and `sudoku-number`, built like `tetris`.
+
+### D19: Keep the Tetris best score
+
+**Why.** Best lives in memory and is lost when Tetris closes. Phase 6 shows
+best scores in the Games hub.
+
+**Change.**
+
+- New `src/games/records.rs`: `GameRecords { tetris_zen: u32 }` in
+  `/sdcard/RUSTMIX/GAMES/RECORDS.TXT`, `key=value` lines under a header
+  comment like `POWER.TXT`, read and written through `sd_file`. A missing
+  file means no records; unknown keys are ignored.
+- `TetrisApp::set_best(u32)` and `best()`.
+- Wiring, kept small: load the records at boot with the other settings; set
+  the best when a Tetris session opens; when it closes (hold BOOT) with a
+  higher best, mark the records changed so `main.rs` saves them once, like
+  `take_starred_changed()` for starred photos. Never save per piece: every SD
+  write costs battery.
+
+**Tests:** round trip, missing and malformed files, one save after a new
+best, no save after a lower score. **Device check:** score, leave and reopen
+(Best shows it), then reboot (still there).
+
+### D20: Bible book and chapter pickers (drawing and state only)
+
+**Why.** Phase 5, mockup "Bible: elegir libro". The main line adds the
+routes, the reading view and the wiring later.
+
+**Change.**
+
+- New `src/bible_nav.rs`: the picker state over `Vec<BibleBook>`.
+  - Eight sections by book number: Pentateuch 1–5, History 6–17, Poetry &
+    Wisdom 18–22, Major Prophets 23–27, Minor Prophets 28–39, Gospels & Acts
+    40–44, Paul's Letters 45–57, General Letters & Revelation 58–66; tabs
+    `PEN HIS POE MAJ MIN GOS PAU REV`. Books missing from `BOOKS.TXT` and
+    empty sections are skipped.
+  - Books: ▲▼ moves within the section, short BOOT jumps to the next section
+    (wrapping), ● opens the chapter grid.
+  - Chapters: ▲▼ moves one chapter, short BOOT moves ten, ● returns
+    `Open { book, chapter }`; `back()` returns to the books.
+- New `src/app/screens/bible.rs`, following the mockup:
+  - books: header `Go to · Book` with the translation code,
+    `Old Testament · section 3 of 8`, the section name, the tab strip with
+    the current tab inverted, rows `Job` … `42 ch.`, the line
+    `Next section (BOOT): Major Prophets · Isaías, …` fitted to the width,
+    and the bar `▲▼ book ● chapter BOOT section`;
+  - chapters: the book name, a grid of chapter numbers with the current one
+    inverted, paged when it does not fit, and the bar
+    `▲▼ chapter ● read BOOT +10`.
+- A `#[cfg(test)]` sample `BOOKS.TXT` with the 66 Reina-Valera names, like
+  `SAMPLE_CONFIG` in `weather_config.rs`. No route and no `main.rs` changes.
+
+**Tests:** sections and skipped books, section wrap, chapter moves and wrap,
+the Open outcome, fit at every font family and size. **Previews:**
+`bible-books` and `bible-chapters` (Psalms, 150 chapters).
+
+### D21: A small JSON reader
+
+**Why.** Phase 7 talks JSON to OpenAI-compatible APIs and to XiaoZhi. Wave has
+no JSON dependency, and the Xtensa backend cannot reliably build serde's
+float visitor, so `weather.rs`, `dictionary.rs` and `wifi_transfer.rs` each
+hand-roll pieces.
+
+**Change.**
+
+- New `src/json_lite.rs`:
+  - `parse(text) -> Result<JsonValue>` with `Null`, `Bool`, `Number(String)`,
+    `String`, `Array` and `Object(Vec<(String, JsonValue)>)`. Numbers stay
+    text; `as_i64()` parses integers on demand, and nothing parses floats.
+  - `get(key)`, `index(i)`, `as_str()`, `as_bool()` and `as_i64()`.
+  - `escape(text) -> String` for requests: quotes, backslash and control
+    characters escaped, other Unicode kept.
+  - `\uXXXX` escapes including surrogate pairs; lone surrogates are errors.
+  - Limits: 64 KiB of input and nesting depth 32; errors give the byte
+    offset.
+- Leave the three hand-rolled parsers as they are; list in the Status which
+  of their helpers could move to `json_lite` later.
+
+**Tests:** every value type, nesting, escapes both ways with Spanish text and
+an emoji, the limits, malformed input (trailing comma, unterminated string,
+bad escape).
+
+### D22: OpenAI-compatible requests and responses (library only)
+
+**Why.** Voice Notes v2 (ROADMAP › Phase 7) transcribes with
+`POST /audio/transcriptions` and summarizes with `POST /chat/completions`.
+This task builds and reads the messages; Phase 7 adds HTTPS, keys and
+screens.
+
+**Change.** New `src/ai_client.rs`, with no network access and no keys:
+
+- `transcription_request(model, language, wav, boundary)` returns the
+  `multipart/form-data` content type and body: `model`, `language`,
+  `response_format=json` and `file` (`note.wav`, `audio/wav`).
+- `parse_transcription(json)`: the `text` field.
+- `summary_request(model, transcript)`: chat JSON whose system prompt asks
+  for a title line, then a short summary in the transcript's language;
+  `temperature` 0.2 and a `max_tokens` limit.
+- `parse_chat_completion(json)`: `choices[0].message.content`; then
+  `split_title(content)` returns a title of at most 40 characters and the
+  summary.
+- `api_error(status, json)`: the provider's `error.message` when present.
+
+**Tests:** a byte-exact multipart body for a tiny WAV, a transcript with
+quotes and accents, success and error responses taken from the Groq and
+OpenRouter documentation, title splitting.
+
+### D23: XiaoZhi messages (library only)
+
+**Why.** XiaoZhi voice chat is the largest Phase 7 item. xiaozhi-esp32 needs
+ESP-IDF 6, so Wave ports its documented protocol to Rust. This task models
+the messages; Phase 7 adds WebSocket, Opus and the screens.
+
+**Change.** New `src/xiaozhi/` with `protocol.rs`, from the WebSocket protocol
+document of the xiaozhi-esp32 repository (`docs/websocket.md`) and its
+`main/protocols/protocol.h`. Name the commit you read in the module doc.
+
+- Device to server: `hello` (version, `websocket` transport, Opus 16 kHz mono
+  60 ms), `listen` (`start`, `stop`, `detect`; modes `auto`, `manual`,
+  `realtime`), `abort`, and `mcp` with the JSON-RPC payload passed through.
+- Server to device: `hello` (session id, audio parameters), `stt`, `llm`
+  (emotion, text), `tts` (`start`, `stop`, `sentence_start` with text),
+  `mcp`, and `Unknown(type)` for anything else.
+- Binary audio frames: the versioned headers (type, timestamp, payload size),
+  encoded and decoded with size checks.
+
+**Tests:** each message both ways against the document's examples, the frame
+headers, malformed and unknown input.
+
+## Round 3 tasks (done in v0.9.2)
+
+Kept as the reference for the code they added.
 
 ### D12: Tetris engine (library only)
 
@@ -195,16 +368,8 @@ cells block moves; the kicks; one to four cleared rows with their scores and
 the level; each piece once per bag; the same seed gives the same pieces; the
 ghost; game over at spawn; Drop locks at once.
 
-**Status:** Done on `side-tasks-3` (library only).
-  Added `src/games/tetris.rs` (10 x 20 board, SRS-like rotations with the
-  0/−1/+1/−2/+2 column kicks, 7-bag fed by an in-module xorshift32) and
-  registered it in `src/games/mod.rs`. Queries for drawing: `cell`,
-  `active_cells`, `ghost_cells`, `next`, `score`, `lines`, `level`, `is_over`;
-  `GRAVITY_MS = 1000` for the future Classic timer in `main.rs`.
-  Checks: `./scripts/test-host.sh` green (488 old + 12 new tests),
-  `cargo +stable fmt --all -- --check` and `git diff --check` clean.
-  Device: nothing to test yet, the engine draws nothing; it ships with D13.
-  Left open: nothing.
+**Status:** done in v0.9.2 (`132a16f`). At merge, Rotate was made clockwise
+  (the engine turned counter-clockwise) and the kick tests updated.
 
 ### D13: Tetris Zen as an SD app
 
@@ -237,22 +402,9 @@ in `main.rs` and stays with the main line.
 mapping, the command limit on a nearly full board and the dirty regions; the
 firmware build is green. Device check: play a game from Games › SD Games.
 
-**Status:** done on `side-tasks-3`; firmware build pending.
-  `TetrisApp` draws through `NativeGameCanvas` like Minesweeper: run-of-cells
-  rectangles, dotted ghost, Next/Score/Lines/Level/Best panel, dirty regions
-  bounded by `MAX_DIRTY_REGIONS`, full refresh every 20 locks.
-  `tetris.init('zen', seed)` added to `event_bridge.rs`; the `TETRIS/` sample
-  app and a `tetris` preview are in place; the User Guide lists Tetris Zen.
-  Mockup pass: black status bar (`Tetris · Zen` / `Level N`), 3 px board
-  frame, ringed blocks, hatched active piece, dashed ghost, Next/Score/
-  Lines/Best/Mode column and key-chip footer, via new `Inverse` text and
-  `paper_rect`/`paper_line` canvas commands. The footer is the shared
-  key-cap widget (`draw_key_hints`) with real ▲▼/●/BOOT caps, drawn by
-  `render_lua_game` per app; the canvas leaves that band empty. Locked-block
-  rings go per cell, per run or not at all to stay under 256 commands.
-  Checks: host tests green (507), fmt and diff checks clean; preview reviewed.
-  Device: play from Games › SD Games and confirm refresh cadence.
-  Left open: nothing.
+**Status:** done in v0.9.2 (`53877be`, `7809768`, `cf9b1e2`). At merge, the
+  key caps became the shared bottom bar of every screen, and the SD
+  installer copies `APPS/TETRIS`. Device check: play from Games › SD Games.
 
 ### D14: Reading Stats screen (drawing only)
 
@@ -291,18 +443,9 @@ later.
 **Done when:** both previews look like the mockup at every font family and
 size, and the tests pass.
 
-**Status:** done on `side-tasks-3` (2026-10-04). Added `best_streak`,
-  `total` and `book` to `reading_stats.rs`, and `screens/reading_stats.rs`
-  with `CurrentBook` and `render_reading_stats` (no route or `main.rs`
-  wiring). Layout follows the mockup: TODAY/STREAK/THIS WEEK tiles,
-  hatched today bar with weekday row, 3-level 12-week heatmap with dotted
-  future cells, year totals in mockup order, current book with the
-  "~31 h left at your pace" line. Percentages use Body size (D6).
-  Previews `reading-stats` and `reading-stats-empty` plus every font
-  family/size variant are in `screen-previews`; compared side by side with
-  the mockup. Host tests (519) and `cargo +stable fmt` pass.
-  Device check: readability on the panel at every UI size; the Reader
-  wiring and week/month/year ranges stay with the main line.
+**Status:** done in v0.9.2 (`fbbad98`). At merge: "1 book finished", a blank
+  change label without a previous week, and `civil_date` for weeks and
+  years. The route and Reader wiring come with Phase 5.
 
 ### D15: Safe SD writes for settings files
 
@@ -331,16 +474,9 @@ The Reader already replaces its files safely.
 **Tests:** create; replace leaving no `.TMP` or `.BAK`; the `.BAK` fallback;
 a failed rename keeps the original; one round trip per settings file.
 
-**Status:** done on `side-tasks-3` (2026-10-04). Added `src/sd_file.rs` with
-  `replace` (the `atomic_replace_text` steps: write `.TMP`, old to `.BAK`,
-  rename in, delete; restores `.BAK` when the last rename fails) and
-  `read_to_string` with the `.BAK` fallback. `weather_config`,
-  `power_settings`, `app/display`, `battery_log`, `photos` (starred) and
-  `reading_stats` save and load through it; `reading_stats` dropped its own
-  swap and its save tests assert no leftover `.TMP`/`.BAK`. Host tests green
-  (531) with 12 new helper tests, fmt and diff checks clean. Device: change
-  each settings file from its screen and pull the power mid-save; boot must
-  recover from `.BAK`.
+**Status:** done in v0.9.2 (`075e512`). At merge, a `.BAK` left as the only
+  copy is renamed back before the cleanup. Device check: pull the power
+  right after a settings change; the next boot keeps the old or new value.
 
 ### D16: One module for calendar dates
 
@@ -361,14 +497,7 @@ helpers), `weather.rs` (`weekday_of`), `reading_stats.rs` (`parse_day`,
 every month in a leap and a common year, and a round trip across several
 centuries.
 
-**Status:** done on `side-tasks-3` (2026-10-04). Added `src/civil_date.rs`
-  (Hinnant's algorithm: `days_from_civil`, `civil_from_days`, `weekday` with
-  0 = Sunday, `WEEKDAY_SHORT`/`MONTH_SHORT` and month lengths) with six tests:
-  1970-01-01, the 2000 leap day, Saturday 2026-10-03, every month end of 2024
-  and 2026, century round trips and weekday continuity. `rtc.rs`,
-  `weather.rs`, `reading_stats.rs` and `screens/home.rs` delegate to it;
-  behaviour, error strings and tests unchanged. Invalid month/day values roll
-  over; call sites keep validating. Host tests green (537), checks clean.
+**Status:** done in v0.9.2 (`4624eba`).
 
 ### D17: Boot log markers that match the firmware
 
@@ -389,16 +518,7 @@ diagnostic wording).
 **Done when:** no boot marker names a removed feature or a wrong count, and
 the firmware build is green. Device check: the serial log at boot.
 
-**Status:** done on `side-tasks-3` (2026-10-04); firmware build pending.
-  Removed 88 static `rustmix-wave=*-ready` info lines from the boot block of
-  `main.rs` (they restated designs or named old counts, BLE-era wording and
-  feature histories) and the imports only they used. Kept every marker that
-  reports a boot result (config loaded, SD mounted, codec found, panel
-  ready, regional profile, voice-notes catalog) and the live IMU/motion
-  logs. Nothing in `scripts/`, `.github/` or `docs/` reads the removed
-  markers (`git grep`). Removed Known Issues › Inherited diagnostic wording.
-  No Xtensa toolchain here: host tests (538), fmt and diff checks pass, the
-  firmware build and the serial log at boot are for CI and the device.
+**Status:** done in v0.9.2 (`248826b`). Device check: the serial log at boot.
 
 ## Round 2 tasks (done in v0.9.1)
 

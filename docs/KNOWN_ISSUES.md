@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.9.1. This is not a list of promised mockup features. See
+Firmware v0.9.2. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size

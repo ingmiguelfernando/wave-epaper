@@ -32,8 +32,8 @@ work are in [ROADMAP.md](ROADMAP.md).
   - `menu.rs`: Home and category entries.
   - `screens/`: one renderer per route, plus the sleep card and the clock and
     weather sleep layouts (`sleep_card.rs`, `sleep_screens.rs`).
-  - `widgets/`: header, status row, list row, option list, footer, icons, big
-    seven-segment digits.
+  - `widgets/`: header, status row, list row, option list, bottom bar, icons,
+    big seven-segment digits.
   - `typography/`: bitmap fonts and `UiTextStyle` (`text_width`, `wrap`, `fit`).
   - `preview.rs`: host-only PNG previews of the screens (CI artifact
     `screen-previews`).
@@ -55,8 +55,12 @@ work are in [ROADMAP.md](ROADMAP.md).
   route. `PanelRefreshCoordinator` chooses partial or global refreshes (global
   after a run of partials, after waking, or on request). Refreshes block until
   BUSY clears.
-- Common layout: header at the top, status row below it, content from y ≈ 150,
-  footer rule at y 746 with its text baseline at 782.
+- Common layout: header at the top, status row below it, content from y ≈ 150
+  down to the bottom bar at y 752 (`BOTTOM_BAR_TOP`).
+- Bottom bar: every screen ends with `draw_bottom_bar` (key caps and short
+  labels, `widgets/bottom_bar.rs`), using a shared hint set when one fits.
+  SD games leave that band free; the app draws the bar for the game's mode,
+  and a game invalidates `GAME_BOTTOM_BAR_RECT` when its mode changes.
 
 ## Event loop
 

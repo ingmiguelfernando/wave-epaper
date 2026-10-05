@@ -21,9 +21,12 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.9.1), not an upstream v1.0.0 marker.
+	expected release version (currently v0.9.2), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Bible, Reading Stats and XiaoZhi remain SOON.
+- [ ] Every screen ends with the same bottom bar of key caps, and its labels
+	match what the keys do. At Large size in both font families nothing is
+	cut off at the right edge.
 - [ ] Boot without Wi-Fi configuration still reaches usable offline Home.
 
 ## Books and Display (D1)
@@ -109,6 +112,16 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Failed/offline update keeps the shell responsive and the last good
 	forecast; the second page shows the last error.
 
+## Settings files (D15)
+
+- [ ] Change Display, Power and Weather settings and star a photo, then
+	reboot: every value survives, and `RUSTMIX/` holds no `.TMP` or `.BAK`
+	files afterwards.
+- [ ] Pull the power right after a settings change (repeat a few times):
+	the next boot keeps either the old or the new value, never defaults.
+- [ ] The serial log at boot has no `rustmix-wave=*-ready` design markers,
+	only results such as SD mounted or codec found (D17).
+
 ## Network and alarm while asleep (D2)
 
 - [ ] Inspect NTP/Clock status.
@@ -124,13 +137,17 @@ light sleep. Restore the owner's original preferences afterward.
 
 ## Remaining games and diagnostics (D3)
 
-- [ ] Install current examples; Games › SD Games lists Hello Grid, Sudoku and
-	Minesweeper without the removed sensor-controlled samples.
+- [ ] Install current examples; Games › SD Games lists Hello Grid, Sudoku,
+	Minesweeper and Tetris without the removed sensor-controlled samples.
 - [ ] Hello Grid draws its static canvas; hold BOOT returns to the catalog.
 - [ ] Sudoku: Up/Down movement, short BOOT H/V toggle, Select edit, candidate
-	choice, commit, short BOOT cancel and hold BOOT exit.
+	choice, commit, short BOOT cancel and hold BOOT exit. The bottom bar
+	switches between move/edit and number/save/cancel right away.
 - [ ] Minesweeper: movement/axis toggle, Reveal/Flag action choice, cancel,
-	first-reveal safety and hold BOOT exit.
+	first-reveal safety and hold BOOT exit. The bottom bar follows the mode.
+- [ ] Tetris Zen: Up/Down move, Select rotates clockwise, short BOOT drops;
+	the bottom bar reads move, rotate, drop; no ghosting builds up (full
+	refresh every 20 pieces); game over, Select restarts, hold BOOT exits.
 - [ ] Move the board during games: no sensor-driven movement; IMU stays off
 	outside Motion diagnostics (use runtime logs/power evidence).
 - [ ] Motion and Motion details show live readings; Motion Events reports
@@ -157,6 +174,6 @@ light sleep. Restore the owner's original preferences afterward.
 	icons and wake/battery footer are readable. A hardware render harness may
 	check panel clarity separately; ordinary firmware cannot select these modes.
 
-Do not mark clock/weather sleep refresh scheduling, Tetris or other
+Do not mark clock/weather sleep refresh scheduling, Tetris Classic or other
 planned features as passed. Record failures/open checks in
 [delegated task status](DELEGATED_TASKS.md) and the release handover.

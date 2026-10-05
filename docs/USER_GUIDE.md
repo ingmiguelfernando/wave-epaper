@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.9.1: what is implemented, not the future
+This guide describes firmware v0.9.2: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -21,9 +21,10 @@ The wheel has Up, Select and Down keys; there is no touch input.
 | Hold Power | Enter sleep-image mode; after releasing and waiting for the wake guard, Power wakes it |
 
 Wheel actions are processed after release; holding a wheel key does not repeat.
-Follow the footer for screen-specific actions. A short BOOT press is not a
-general Back key. On editors, holding BOOT cancels unsaved text; settings
-already applied with Select remain applied.
+The bar at the bottom of each screen shows its keys: ▲▼ is the wheel, ● is
+Select, and a BOOT label that starts with `hold:` needs a long press. A short
+BOOT press is not a general Back key. On editors, holding BOOT cancels unsaved
+text; settings already applied with Select remain applied.
 
 ## Home
 
@@ -46,8 +47,8 @@ one.
 | Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power, Sleep screen, Weather |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
-Tetris, AI transcription, OTA updates and the clock or weather sleep screens
-are not implemented yet.
+Tetris Classic, AI transcription, OTA updates and the clock or weather sleep
+screens are not implemented yet.
 
 ## Photos
 
@@ -272,7 +273,7 @@ IMU-controlled games or BLE remote page-turner in this build.
 | Hello Grid | Static canvas demonstration; wheel/Select have no game action; hold BOOT exits |
 | Sudoku | Up/Down moves along the active H/V axis; short BOOT switches axis. Select enters edit mode; Up/Down chooses a candidate; Select commits; short BOOT cancels editing |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
-| Tetris Zen | Up moves left, Down right, Select rotates, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game |
+| Tetris Zen | Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game |
 
 These are button-driven samples. The Sudoku three-step redesign and Tetris
 Classic gravity belong to Phase 6. A missing/invalid SD app reports an error;

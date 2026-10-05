@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-03, firmware v0.9.1.
+Last updated: 2026-10-04, firmware v0.9.2.
 
 ## Status
 
@@ -29,7 +29,9 @@ Last updated: 2026-10-03, firmware v0.9.1.
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
-| Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | | | Ready, branch `side-tasks-3` |
+| Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | 0.9.2 | PR #3 | Done, waiting for device test |
+| Shared bottom bar (key caps) on every screen, games included | 0.9.2 | 4574cfc | Done, waiting for device test |
+| Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | | | Ready, branch `side-tasks-4` |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -211,8 +213,10 @@ Done in v0.9.0; this section stays as the reference for the Weather code.
 ## Phase 5: Bible and Reading Stats
 
 The data layers are done (v0.9.1, tasks D10 and D11): `bible.rs` and
-`reading_stats.rs`. This phase adds the screens and wires them up; save
-reading stats in batches (`has_unsaved`), since each save rewrites the file.
+`reading_stats.rs`. The Reading Stats screen is drawn (v0.9.2, D14), and
+delegated task D20 draws the Bible book and chapter pickers. This phase adds
+the reading view, the routes and the wiring; save reading stats in batches
+(`has_unsaved`), since each save rewrites the file.
 
 ### Bible
 
@@ -222,8 +226,11 @@ reading stats in batches (`has_unsaved`), since each save rewrites the file.
   - One UTF-8 file per book, `NN.TXT`, with lines
     `chapter:verse<TAB>text`.
   - Only this format is documented; conversion happens on a computer.
-- **Navigation.** Home › Bible → Old or New Testament (BOOT short press) →
-  book → chapter grid → reading view.
+- **Navigation.** Home › Bible → book picker → chapter grid → reading view.
+  - The book picker follows the mockup "Go to · Book": eight sections
+    (Pentateuch, History, Poetry & Wisdom, Major Prophets, Minor Prophets,
+    Gospels & Acts, Paul's Letters, General Letters & Revelation). BOOT jumps
+    to the next section, ▲▼ moves through its books, ● opens the chapters.
   - The reading view uses the Reader typography and pagination, with small
     verse numbers.
   - The last position is remembered, and Home shows it (for example `Sal 23`).
@@ -238,20 +245,23 @@ reading stats in batches (`has_unsaved`), since each save rewrites the file.
   (`date,seconds,pages`) plus per-book totals. Writes are batched every few
   minutes and before sleep.
 - **Screen.** Today, a bar chart of this week (like the battery chart), the
-  streak (days with at least 5 minutes) and books finished. Delegated task
-  D14 draws it; this phase adds the route and the Reader wiring.
+  streak (days with at least 5 minutes) and books finished. Drawn in v0.9.2
+  (D14); this phase adds the route and the Reader wiring.
+  - "Books finished" counts every retained finished book, because
+    `STATS.TXT` keeps no finish date. Store one to count per year.
 - Home shows `5-day streak`, and the Continue reading card shows
   `12% · 25 min today`.
 
 ## Phase 6: Games
 
 - **Sudoku** (`src/games/sudoku.rs`, SD app `SUDOKU`).
-  - Add the three-step entry from the mockup: row, then cell, then number.
-  - Also a timer, auto-save, best time per difficulty and a three-level
-    difficulty choice.
-- **Tetris** (new native engine). Delegated tasks D12 (rules) and D13 (Zen as
-  an SD app); this phase adds Classic gravity, which needs a timer in
-  `main.rs`, and saves the best score.
+  - The three-step entry from the mockup (row, then cell, then number) is
+    delegated task D18.
+  - This phase adds a timer, auto-save, best time per difficulty and a
+    three-level difficulty choice.
+- **Tetris** (native engine). Zen ships in v0.9.2 (D12, D13); D19 keeps the
+  best score in `RECORDS.TXT`. This phase adds Classic gravity, which needs a
+  timer in `main.rs`.
   - Board: 10 × 20.
   - Modes: Zen (no gravity; pieces move only when a key is pressed) and Classic
     (slow gravity, at least 1 s per step).
@@ -280,8 +290,12 @@ reading stats in batches (`has_unsaved`), since each save rewrites the file.
 - **API keys.** Typed in the Wi-Fi portal and stored encrypted in NVS. Never
   written to the SD card, never shown again.
 - **XiaoZhi** voice chat (WebSocket and Opus streaming, device tools such as
-  reading a Bible verse) is the largest item. Look at reusing the
-  xiaozhi-esp32 implementation as an ESP-IDF component.
+  reading a Bible verse) is the largest item. xiaozhi-esp32 now needs ESP-IDF
+  6.0.1 or later (Wave uses 5.5.1), so port its documented WebSocket protocol
+  to Rust and use Opus through an ESP-IDF component.
+- **Delegated groundwork.** D21 (a small JSON reader), D22 (OpenAI-compatible
+  requests and responses) and D23 (XiaoZhi messages) are libraries without
+  network access; this phase adds HTTPS, WebSocket and the screens.
 
 ## Phase 8: OTA updates
 

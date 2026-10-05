@@ -3,6 +3,30 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.2 — Tetris Zen, shared bottom bar and delegated tasks (pull request #3)
+
+- Every screen ends with the same bottom bar: key caps and short labels as in
+  the mockup, replacing the old uppercase footer text. Labels drop to the
+  Detail size when they would not fit. SD games get the bar too, with hints
+  for the game's mode; Sudoku and Minesweeper no longer draw their own
+  footer, and Sudoku's hints now refresh when the mode changes.
+- D12 (`132a16f`): `games/tetris.rs`, the Tetris rules: 10 × 20 board, 7-bag,
+  wall kicks, line scores and levels. At merge, Rotate was made clockwise as
+  specified.
+- D13 (`53877be`, `7809768`, `cf9b1e2`): Tetris Zen as an SD app
+  (`APPS/TETRIS`): no gravity, ▲▼ move, ● rotate, BOOT drops. Next piece,
+  ghost, score, lines and best, drawn like the mockup with bounded partial
+  refreshes and a full refresh every 20 pieces. At merge, the SD installer
+  learned to copy the app.
+- D14 (`fbbad98`): the Reading Stats screen (tiles, minutes per day, 12-week
+  heatmap, year totals, current book). Drawn in previews only; Phase 5 adds
+  the route.
+- D15 (`075e512`): `sd_file.rs` writes settings files through `.TMP` and
+  `.BAK`, so a power cut cannot leave them empty. At merge, a `.BAK` left as
+  the only copy is restored before the next save.
+- D16 (`4624eba`): `civil_date.rs`, one module for calendar dates.
+- D17 (`248826b`): 88 stale `rustmix-wave=*-ready` boot log lines removed.
+
 ## v0.9.1 — Delegated tasks (pull request #2)
 
 - D6 (`b1fa110`): the `%` glyph at Inter Standard Detail cannot be fixed from
