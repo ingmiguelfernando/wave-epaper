@@ -896,8 +896,13 @@ mod tests {
     /// Clears the bottom row with a vertical I in its leftmost column.
     fn clear_bottom_row(game: &mut TetrisGame) {
         fill_row_except(game, TETRIS_HEIGHT - 1, 0);
-        set_active(game, TetrisPiece::I, 1, -1, 16);
+        set_vertical_i_in_column_zero(game);
         assert!(game.apply(TetrisAction::Drop));
+    }
+
+    /// One clockwise turn puts the I in box column 2, so the box starts at -2.
+    fn set_vertical_i_in_column_zero(game: &mut TetrisGame) {
+        set_active(game, TetrisPiece::I, 1, -2, 16);
     }
 
     #[test]
@@ -989,7 +994,7 @@ mod tests {
             for row in (TETRIS_HEIGHT - cleared)..TETRIS_HEIGHT {
                 fill_row_except(&mut game, row, 0);
             }
-            set_active(&mut game, TetrisPiece::I, 1, -1, 16);
+            set_vertical_i_in_column_zero(&mut game);
             assert!(game.apply(TetrisAction::Drop));
             assert_eq!(game.lines(), cleared as u32, "cleared {cleared} rows");
             assert_eq!(game.score(), [100, 300, 500, 800][cleared - 1]);
@@ -1249,7 +1254,7 @@ mod tests {
         let mut canvas = NativeGameCanvas::default();
         app.render_initial(&mut canvas).unwrap();
         fill_row_except(&mut app.game, TETRIS_HEIGHT - 1, 0);
-        set_active(&mut app.game, TetrisPiece::I, 1, -1, 16);
+        set_vertical_i_in_column_zero(&mut app.game);
         assert!(app.game.apply(TetrisAction::Drop));
         assert_eq!(app.game.score(), 100);
 
