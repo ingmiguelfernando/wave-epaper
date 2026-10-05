@@ -1713,7 +1713,7 @@ mod tests {
         for (id, bridge, reason) in [
             ("hello_grid", "static", None),
             ("minesweeper", "minesweeper", Some("action-enter")),
-            ("sudoku", "sudoku", Some("edit-enter")),
+            ("sudoku", "sudoku", Some("cell-enter")),
             ("tetris", "tetris", Some("rotate")),
         ] {
             for _ in 0..state.lua_runtime.catalog.entries.len() {

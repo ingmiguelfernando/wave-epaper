@@ -140,9 +140,11 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Install current examples; Games › SD Games lists Hello Grid, Sudoku,
 	Minesweeper and Tetris without the removed sensor-controlled samples.
 - [ ] Hello Grid draws its static canvas; hold BOOT returns to the catalog.
-- [ ] Sudoku: Up/Down movement, short BOOT H/V toggle, Select edit, candidate
-	choice, commit, short BOOT cancel and hold BOOT exit. The bottom bar
-	switches between move/edit and number/save/cancel right away.
+- [ ] Sudoku three-step entry: ▲▼ row (given rows skipped), Select confirms;
+        ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase,
+        Select places. Short BOOT goes back one step; the step strip and the
+        bottom bar follow each step; a conflict keeps the number step and
+        hold BOOT exits.
 - [ ] Minesweeper: movement/axis toggle, Reveal/Flag action choice, cancel,
 	first-reveal safety and hold BOOT exit. The bottom bar follows the mode.
 - [ ] Tetris Zen: Up/Down move, Select rotates clockwise, short BOOT drops;

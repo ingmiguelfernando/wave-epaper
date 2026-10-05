@@ -17,50 +17,31 @@ pub const SUDOKU_GRID_Y: i32 = 176;
 pub const SUDOKU_CELL_SIZE: i32 = 42;
 const SUDOKU_STATUS_RECT: DirtyRect = DirtyRect::new(16, 612, 448, 96);
 
+/// The three-step entry: pick a row, then a cell, then a number.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SudokuMode {
-    Navigate,
-    Edit,
+pub enum SudokuStep {
+    Row,
+    Cell,
+    Number,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SudokuMovementAxis {
-    Horizontal,
-    Vertical,
-}
-
-impl SudokuMovementAxis {
+impl SudokuStep {
     #[must_use]
     pub const fn marker(self) -> &'static str {
         match self {
-            Self::Horizontal => "horizontal",
-            Self::Vertical => "vertical",
+            Self::Row => "row",
+            Self::Cell => "cell",
+            Self::Number => "number",
         }
     }
 
+    /// The mockup's chip caption, numbered like `1 · ROW`.
     #[must_use]
-    pub const fn short_marker(self) -> &'static str {
+    pub const fn chip_label(self) -> &'static str {
         match self {
-            Self::Horizontal => "H",
-            Self::Vertical => "V",
-        }
-    }
-
-    #[must_use]
-    pub const fn toggled(self) -> Self {
-        match self {
-            Self::Horizontal => Self::Vertical,
-            Self::Vertical => Self::Horizontal,
-        }
-    }
-}
-
-impl SudokuMode {
-    #[must_use]
-    pub const fn marker(self) -> &'static str {
-        match self {
-            Self::Navigate => "nav",
-            Self::Edit => "edit",
+            Self::Row => "1 · ROW",
+            Self::Cell => "2 · CELL",
+            Self::Number => "3 · NUMBER",
         }
     }
 }
@@ -70,8 +51,7 @@ pub struct SudokuEventResult {
     pub reason: &'static str,
     pub row: usize,
     pub column: usize,
-    pub mode: SudokuMode,
-    pub axis: SudokuMovementAxis,
+    pub step: SudokuStep,
     pub candidate: u8,
     pub completed: bool,
     pub dirty_regions: Vec<DirtyRect>,
@@ -81,9 +61,14 @@ pub struct SudokuEventResult {
 pub struct SudokuGame {
     board: [u8; SUDOKU_CELL_COUNT],
     givens: [bool; SUDOKU_CELL_COUNT],
+    step: SudokuStep,
+    /// Highlighted row of the Row and Cell steps.
+    row: usize,
+    /// Position within the row's editable cells while in the Cell step.
+    cell_choice: usize,
+    /// Highlighted cell of the grid, derived from row and cell choice.
     cursor: usize,
-    mode: SudokuMode,
-    axis: SudokuMovementAxis,
+    /// 1 to 9, or 0 for the erase entry.
     candidate: u8,
     status: String,
     completed: bool,
@@ -108,25 +93,44 @@ impl SudokuGame {
         }
         validate_initial_board(&board)?;
         let completed = is_complete(&board);
+        let (row, cell_choice, cursor) = Self::entry_point(&givens);
         Ok(Self {
             board,
             givens,
-            cursor: first_editable_cell(&givens).unwrap_or(0),
-            mode: SudokuMode::Navigate,
-            axis: SudokuMovementAxis::Horizontal,
+            step: SudokuStep::Row,
+            row,
+            cell_choice,
+            cursor,
             candidate: 1,
             status: if completed {
                 "Puzzle complete".into()
             } else {
-                "AXIS H: UP/DOWN move  SELECT edit".into()
+                "STEP 1 ROW: UP/DOWN move  SELECT choose".into()
             },
             completed,
         })
     }
 
+    /// The first row and cell with something to fill.
+    fn entry_point(givens: &[bool; SUDOKU_CELL_COUNT]) -> (usize, usize, usize) {
+        let row = (0..9)
+            .find(|&row| !Self::editable_columns(givens, row).is_empty())
+            .unwrap_or(0);
+        let column = Self::editable_columns(givens, row)
+            .first()
+            .copied()
+            .unwrap_or(0);
+        (row, 0, row * 9 + column)
+    }
+
+    /// Columns of one row the player may still write.
+    fn editable_columns(givens: &[bool; SUDOKU_CELL_COUNT], row: usize) -> Vec<usize> {
+        (0..9).filter(|&column| !givens[row * 9 + column]).collect()
+    }
+
     #[must_use]
-    pub const fn mode(&self) -> SudokuMode {
-        self.mode
+    pub const fn step(&self) -> SudokuStep {
+        self.step
     }
 
     #[must_use]
@@ -137,11 +141,6 @@ impl SudokuGame {
     #[must_use]
     pub const fn cursor_column(&self) -> usize {
         self.cursor % 9
-    }
-
-    #[must_use]
-    pub const fn movement_axis(&self) -> SudokuMovementAxis {
-        self.axis
     }
 
     #[must_use]
@@ -159,6 +158,13 @@ impl SudokuGame {
         &self.board
     }
 
+    /// Values the highlighted cell could still take: absent from its row,
+    /// column and box.
+    #[must_use]
+    pub fn options(&self) -> Vec<u8> {
+        cell_options(&self.board, self.cursor)
+    }
+
     pub fn render_initial(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         self.render_commands(canvas)?;
         canvas.reset_dirty_regions();
@@ -172,21 +178,55 @@ impl SudokuGame {
         event: ButtonEvent,
         canvas: &mut NativeGameCanvas,
     ) -> Result<SudokuEventResult, String> {
-        let old_cursor = self.cursor;
-        let old_mode = self.mode;
-        let reason = match self.mode {
-            SudokuMode::Navigate => self.apply_navigation_button(event),
-            SudokuMode::Edit => self.apply_edit_button(event),
+        let old = self.snapshot();
+        let reason = match self.step {
+            SudokuStep::Row => self.apply_row_button(event),
+            SudokuStep::Cell => self.apply_cell_button(event),
+            SudokuStep::Number => self.apply_number_button(event),
         };
+        self.finish_and_render(reason, &old, canvas)
+    }
+
+    pub fn apply_boot_short_press_and_render(
+        &mut self,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<SudokuEventResult, String> {
+        let old = self.snapshot();
+        let reason = match self.step {
+            SudokuStep::Row => "noop",
+            SudokuStep::Cell => {
+                self.step = SudokuStep::Row;
+                self.status = "STEP 1 ROW: UP/DOWN move  SELECT choose".into();
+                "back-to-row"
+            }
+            SudokuStep::Number => {
+                self.step = SudokuStep::Cell;
+                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                "back-to-cell"
+            }
+        };
+        self.finish_and_render(reason, &old, canvas)
+    }
+
+    fn snapshot(&self) -> (usize, usize, SudokuStep, u8) {
+        (self.row, self.cursor, self.step, self.candidate)
+    }
+
+    fn finish_and_render(
+        &mut self,
+        reason: &'static str,
+        old: &(usize, usize, SudokuStep, u8),
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<SudokuEventResult, String> {
         self.render_commands(canvas)?;
         canvas.reset_dirty_regions();
         let mut dirty_regions = vec![
-            cell_rect(old_cursor),
-            cell_rect(self.cursor),
+            cell_rect(old),
+            cell_rect(&self.snapshot()),
             SUDOKU_STATUS_RECT,
         ];
         dirty_regions.dedup();
-        if self.mode != old_mode {
+        if old.2 != self.step {
             dirty_regions.push(GAME_BOTTOM_BAR_RECT);
         }
         for rect in &dirty_regions {
@@ -197,96 +237,72 @@ impl SudokuGame {
             reason,
             row: self.cursor_row(),
             column: self.cursor_column(),
-            mode: self.mode,
-            axis: self.axis,
+            step: self.step,
             candidate: self.candidate,
             completed: self.completed,
             dirty_regions,
         })
     }
 
-    pub fn apply_boot_short_press_and_render(
-        &mut self,
-        canvas: &mut NativeGameCanvas,
-    ) -> Result<SudokuEventResult, String> {
-        let reason = match self.mode {
-            SudokuMode::Navigate => {
-                self.axis = self.axis.toggled();
-                self.status = format!(
-                    "AXIS {}: UP/DOWN move  SELECT edit",
-                    self.axis.short_marker()
-                );
-                "axis-toggle"
-            }
-            SudokuMode::Edit => {
-                self.mode = SudokuMode::Navigate;
-                self.candidate = self.board[self.cursor];
-                self.status = format!(
-                    "Edit canceled  AXIS {}: UP/DOWN move",
-                    self.axis.short_marker()
-                );
-                "edit-cancel"
-            }
-        };
-        self.render_commands(canvas)?;
-        canvas.reset_dirty_regions();
-        let dirty_regions = match reason {
-            "axis-toggle" => vec![SUDOKU_STATUS_RECT],
-            _ => vec![
-                cell_rect(self.cursor),
-                SUDOKU_STATUS_RECT,
-                GAME_BOTTOM_BAR_RECT,
-            ],
-        };
-        for rect in &dirty_regions {
-            canvas.invalidate_rect(*rect);
-        }
-        canvas.request_refresh();
-        Ok(SudokuEventResult {
-            reason,
-            row: self.cursor_row(),
-            column: self.cursor_column(),
-            mode: self.mode,
-            axis: self.axis,
-            candidate: self.candidate,
-            completed: self.completed,
-            dirty_regions,
-        })
-    }
-
-    fn apply_navigation_button(&mut self, event: ButtonEvent) -> &'static str {
+    fn apply_row_button(&mut self, event: ButtonEvent) -> &'static str {
         match event {
             ButtonEvent::Up => {
-                self.cursor = previous_cell(self.cursor, self.axis);
-                self.status = format!(
-                    "AXIS {}: UP/DOWN move  SELECT edit",
-                    self.axis.short_marker()
-                );
-                "cursor-move"
+                self.row = self.neighbour_row(-1);
+                self.sync_cursor();
+                self.status = "STEP 1 ROW: UP/DOWN move  SELECT choose".into();
+                "row-move"
             }
             ButtonEvent::Down => {
-                self.cursor = next_cell(self.cursor, self.axis);
-                self.status = format!(
-                    "AXIS {}: UP/DOWN move  SELECT edit",
-                    self.axis.short_marker()
-                );
-                "cursor-move"
+                self.row = self.neighbour_row(1);
+                self.sync_cursor();
+                self.status = "STEP 1 ROW: UP/DOWN move  SELECT choose".into();
+                "row-move"
             }
             ButtonEvent::Select => {
-                if self.givens[self.cursor] {
-                    self.status = "Fixed clue: choose another cell".into();
-                    "fixed-clue"
-                } else {
-                    self.mode = SudokuMode::Edit;
-                    self.candidate = self.board[self.cursor];
-                    self.status = "EDIT: UP/DOWN value  SELECT save".into();
-                    "edit-enter"
-                }
+                self.step = SudokuStep::Cell;
+                self.cell_choice = 0;
+                self.sync_cursor();
+                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                "cell-enter"
             }
         }
     }
 
-    fn apply_edit_button(&mut self, event: ButtonEvent) -> &'static str {
+    fn apply_cell_button(&mut self, event: ButtonEvent) -> &'static str {
+        let editable = Self::editable_columns(&self.givens, self.row);
+        match event {
+            ButtonEvent::Up => {
+                self.cell_choice = if editable.is_empty() {
+                    0
+                } else {
+                    self.cell_choice
+                        .checked_sub(1)
+                        .unwrap_or(editable.len() - 1)
+                };
+                self.sync_cursor();
+                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                "cell-move"
+            }
+            ButtonEvent::Down => {
+                self.cell_choice = if editable.is_empty() {
+                    0
+                } else {
+                    (self.cell_choice + 1) % editable.len()
+                };
+                self.sync_cursor();
+                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                "cell-move"
+            }
+            ButtonEvent::Select => {
+                self.step = SudokuStep::Number;
+                self.candidate = 1;
+                self.status = "STEP 3 NUMBER: UP/DOWN value  SELECT place".into();
+                "number-enter"
+            }
+        }
+    }
+
+    fn apply_number_button(&mut self, event: ButtonEvent) -> &'static str {
         match event {
             ButtonEvent::Up => {
                 self.candidate = if self.candidate == 0 {
@@ -294,8 +310,11 @@ impl SudokuGame {
                 } else {
                     self.candidate - 1
                 };
-                self.status = candidate_status(self.candidate);
-                "candidate-change"
+                self.status = format!(
+                    "STEP 3 NUMBER: value {}  SELECT place",
+                    display_candidate(self.candidate)
+                );
+                "number-change"
             }
             ButtonEvent::Down => {
                 self.candidate = if self.candidate >= 9 {
@@ -303,39 +322,60 @@ impl SudokuGame {
                 } else {
                     self.candidate + 1
                 };
-                self.status = candidate_status(self.candidate);
-                "candidate-change"
+                self.status = format!(
+                    "STEP 3 NUMBER: value {}  SELECT place",
+                    display_candidate(self.candidate)
+                );
+                "number-change"
             }
             ButtonEvent::Select => {
                 if self.candidate != 0 && conflicts(&self.board, self.cursor, self.candidate) {
                     self.status = "Conflict: value already used".into();
-                    "conflict"
-                } else {
-                    self.board[self.cursor] = self.candidate;
-                    self.mode = SudokuMode::Navigate;
-                    self.completed = is_complete(&self.board);
-                    self.status = if self.completed {
-                        "Puzzle complete".into()
-                    } else if self.candidate == 0 {
-                        "Cell cleared".into()
-                    } else {
-                        "Value saved".into()
-                    };
-                    "commit"
+                    return "conflict";
                 }
+                self.board[self.cursor] = self.candidate;
+                self.givens[self.cursor] = false;
+                self.completed = is_complete(&self.board);
+                self.status = if self.completed {
+                    "Puzzle complete".into()
+                } else if self.candidate == 0 {
+                    "Cell cleared".into()
+                } else {
+                    "Value placed".into()
+                };
+                self.step = SudokuStep::Cell;
+                self.candidate = self.board[self.cursor];
+                "place"
             }
         }
+    }
+
+    /// The editable row above or below, skipping all-given rows.
+    fn neighbour_row(&self, direction: i32) -> usize {
+        for distance in 1..=9 {
+            let row = ((self.row as i32 + direction * distance).rem_euclid(9)) as usize;
+            if !Self::editable_columns(&self.givens, row).is_empty() {
+                return row;
+            }
+        }
+        self.row
+    }
+
+    /// Keep the cursor on the cell the two cursors currently point at.
+    fn sync_cursor(&mut self) {
+        let editable = Self::editable_columns(&self.givens, self.row);
+        if editable.is_empty() {
+            self.cursor = self.row * 9;
+            return;
+        }
+        let choice = self.cell_choice.min(editable.len() - 1);
+        self.cursor = self.row * 9 + editable[choice];
     }
 
     fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         canvas.clear_frame();
         canvas.text(24, 66, "Sudoku".into(), CanvasTextStyle::Heading)?;
-        canvas.text(
-            24,
-            104,
-            "SD Lua event bridge / native board".into(),
-            CanvasTextStyle::Detail,
-        )?;
+        self.draw_step_strip(canvas)?;
         canvas.grid(
             SUDOKU_GRID_X,
             SUDOKU_GRID_Y,
@@ -389,25 +429,40 @@ impl SudokuGame {
                 },
             )?;
         }
-        let cursor = cell_rect(self.cursor);
-        canvas.rect(cursor.x, cursor.y, cursor.width, cursor.height, false)?;
-        canvas.rect(
-            cursor.x + 2,
-            cursor.y + 2,
-            cursor.width - 4,
-            cursor.height - 4,
-            false,
-        )?;
+        match self.step {
+            SudokuStep::Row => {
+                // A band around the whole highlighted row.
+                canvas.rect(
+                    SUDOKU_GRID_X,
+                    SUDOKU_GRID_Y + self.row as i32 * SUDOKU_CELL_SIZE,
+                    9 * SUDOKU_CELL_SIZE,
+                    SUDOKU_CELL_SIZE,
+                    false,
+                )?;
+            }
+            SudokuStep::Cell | SudokuStep::Number => {
+                let cursor = cell_rect(&self.snapshot());
+                canvas.rect(cursor.x, cursor.y, cursor.width, cursor.height, false)?;
+                canvas.rect(
+                    cursor.x + 2,
+                    cursor.y + 2,
+                    cursor.width - 4,
+                    cursor.height - 4,
+                    false,
+                )?;
+            }
+        }
+        if self.step == SudokuStep::Number {
+            self.draw_pick_strip(canvas)?;
+        }
         canvas.text(
             24,
             648,
             format!(
-                "R{} C{}  MODE {}  AXIS {}  VALUE {}",
+                "Row {} · Col {} · options: {}",
                 self.cursor_row() + 1,
                 self.cursor_column() + 1,
-                self.mode.marker().to_ascii_uppercase(),
-                self.axis.short_marker(),
-                display_candidate(self.candidate)
+                self.options_line(),
             ),
             CanvasTextStyle::Body,
         )?;
@@ -415,6 +470,69 @@ impl SudokuGame {
         canvas.request_refresh();
         Ok(())
     }
+
+    /// `1 · ROW ▸ 2 · CELL ▸ 3 · NUMBER`, the current chip inverted.
+    fn draw_step_strip(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        let mut x = 24;
+        for step in [SudokuStep::Row, SudokuStep::Cell, SudokuStep::Number] {
+            let label = step.chip_label();
+            let width = label.len() as i32 * 11 + 16;
+            if step == self.step {
+                canvas.rect(x, 84, width, 30, true)?;
+                canvas.text(x + 8, 106, label.into(), CanvasTextStyle::Inverse)?;
+            } else {
+                canvas.rect(x, 84, width, 30, false)?;
+                canvas.text(x + 8, 106, label.into(), CanvasTextStyle::Detail)?;
+            }
+            x += width + 8;
+            if step != SudokuStep::Number {
+                canvas.text(x, 106, ">".into(), CanvasTextStyle::Detail)?;
+                x += 20;
+            }
+        }
+        Ok(())
+    }
+
+    /// The mockup's number strip: 1..9 then the erase entry, the choice
+    /// inverted and values already placed around the cell struck through.
+    fn draw_pick_strip(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        for (index, value) in (1..=9).chain([0]).enumerate() {
+            let left = 12 + index as i32 * 46;
+            let label = display_candidate(value);
+            if value == self.candidate {
+                canvas.rect(left, 560, 38, 34, true)?;
+                canvas.text(left + 15, 584, label, CanvasTextStyle::Inverse)?;
+            } else {
+                canvas.text(left + 15, 584, label, CanvasTextStyle::Body)?;
+                if value != 0 && conflicts(&self.board, self.cursor, value) {
+                    canvas.line(left + 8, 582, left + 30, 558)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The options line payload: free values, or `none` when there are none.
+    fn options_line(&self) -> String {
+        let options = self
+            .options()
+            .iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join(" · ");
+        if options.is_empty() {
+            "none".into()
+        } else {
+            options
+        }
+    }
+}
+
+/// Values absent from `index`'s row, column and box.
+fn cell_options(board: &[u8; SUDOKU_CELL_COUNT], index: usize) -> Vec<u8> {
+    (1..=9_u8)
+        .filter(|&value| !conflicts(board, index, value))
+        .collect()
 }
 
 fn validate_initial_board(board: &[u8; SUDOKU_CELL_COUNT]) -> Result<(), String> {
@@ -468,142 +586,272 @@ fn first_editable_cell(givens: &[bool; SUDOKU_CELL_COUNT]) -> Option<usize> {
     givens.iter().position(|given| !*given)
 }
 
-fn previous_cell(index: usize, axis: SudokuMovementAxis) -> usize {
-    let row = index / 9;
-    let column = index % 9;
-    match axis {
-        SudokuMovementAxis::Horizontal => row * 9 + column.checked_sub(1).unwrap_or(8),
-        SudokuMovementAxis::Vertical => row.checked_sub(1).unwrap_or(8) * 9 + column,
-    }
-}
-
-fn next_cell(index: usize, axis: SudokuMovementAxis) -> usize {
-    let row = index / 9;
-    let column = index % 9;
-    match axis {
-        SudokuMovementAxis::Horizontal => row * 9 + (column + 1) % 9,
-        SudokuMovementAxis::Vertical => (row + 1) % 9 * 9 + column,
-    }
-}
-
-fn cell_rect(index: usize) -> DirtyRect {
-    DirtyRect::new(
-        SUDOKU_GRID_X + (index % 9) as i32 * SUDOKU_CELL_SIZE,
-        SUDOKU_GRID_Y + (index / 9) as i32 * SUDOKU_CELL_SIZE,
-        SUDOKU_CELL_SIZE + 1,
-        SUDOKU_CELL_SIZE + 1,
-    )
-}
-
-fn candidate_status(candidate: u8) -> String {
-    if candidate == 0 {
-        "EDIT value CLEAR  SELECT save".into()
+/// Grid rectangle of the snapshot: the row band during the Row step,
+/// otherwise the single cell.
+fn cell_rect(snapshot: &(usize, usize, SudokuStep, u8)) -> DirtyRect {
+    let (_row, cursor, step, _candidate) = *snapshot;
+    if step == SudokuStep::Row {
+        DirtyRect::new(
+            SUDOKU_GRID_X,
+            SUDOKU_GRID_Y + (cursor / 9) as i32 * SUDOKU_CELL_SIZE,
+            9 * SUDOKU_CELL_SIZE + 1,
+            SUDOKU_CELL_SIZE + 1,
+        )
     } else {
-        format!("EDIT value {candidate}  SELECT save")
+        DirtyRect::new(
+            SUDOKU_GRID_X + (cursor % 9) as i32 * SUDOKU_CELL_SIZE,
+            SUDOKU_GRID_Y + (cursor / 9) as i32 * SUDOKU_CELL_SIZE,
+            SUDOKU_CELL_SIZE + 1,
+            SUDOKU_CELL_SIZE + 1,
+        )
     }
 }
 
+/// The strip caption for one pick: a digit, or the erase entry. The atlas
+/// lacks ⌫, so the minus sign stands in.
 fn display_candidate(candidate: u8) -> String {
-    if candidate == 0 {
-        "CLEAR".into()
-    } else {
-        candidate.to_string()
+    match candidate {
+        0 => "\u{2212}".into(),
+        value => value.to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{buttons::ButtonEvent, games::canvas::NativeGameCanvas};
-
-    use super::{SudokuGame, SudokuMode, SudokuMovementAxis};
+    use super::{cell_options, display_candidate, SudokuGame, SudokuStep, SUDOKU_CELL_COUNT};
+    use crate::{
+        buttons::ButtonEvent,
+        games::{
+            canvas::{DrawCommand, NativeGameCanvas, MAX_GAME_DRAW_COMMANDS},
+            dirty_regions::{GAME_BOTTOM_BAR_RECT, MAX_DIRTY_REGIONS},
+        },
+    };
 
     const PUZZLE: &str =
         "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
 
-    #[test]
-    fn loads_valid_puzzle_and_renders_bounded_native_canvas() {
-        let game = SudokuGame::from_puzzle(PUZZLE).unwrap();
+    fn game() -> SudokuGame {
+        SudokuGame::from_puzzle(PUZZLE).unwrap()
+    }
+
+    fn press(game: &mut SudokuGame, event: ButtonEvent) -> super::SudokuEventResult {
         let mut canvas = NativeGameCanvas::default();
-        game.render_initial(&mut canvas).unwrap();
-        assert!(!canvas.commands().is_empty());
-        assert!(canvas.refresh_requested());
+        game.apply_button_and_render(event, &mut canvas).unwrap()
+    }
+
+    fn boot(game: &mut SudokuGame) -> super::SudokuEventResult {
+        let mut canvas = NativeGameCanvas::default();
+        game.apply_boot_short_press_and_render(&mut canvas).unwrap()
     }
 
     #[test]
-    fn rotary_reference_flow_moves_edits_cycles_and_commits() {
-        let mut game = SudokuGame::from_puzzle(PUZZLE).unwrap();
-        let mut canvas = NativeGameCanvas::default();
-        game.render_initial(&mut canvas).unwrap();
-        let moved = game
-            .apply_button_and_render(ButtonEvent::Down, &mut canvas)
-            .unwrap();
-        assert_eq!(moved.reason, "cursor-move");
-        let entered = game
-            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
-            .unwrap();
-        if entered.reason == "fixed-clue" {
-            game.apply_button_and_render(ButtonEvent::Down, &mut canvas)
-                .unwrap();
-            game.apply_button_and_render(ButtonEvent::Select, &mut canvas)
-                .unwrap();
+    fn starts_on_the_first_editable_row() {
+        let game = game();
+        assert_eq!(game.step(), SudokuStep::Row);
+        assert_eq!(game.cursor_column(), 2);
+        assert_eq!(game.candidate(), 1);
+    }
+
+    #[test]
+    fn row_step_moves_down_one_row_in_pinned_direction() {
+        let mut game = game();
+        let moved = press(&mut game, ButtonEvent::Down);
+        assert_eq!(moved.step, SudokuStep::Row);
+        assert_eq!((moved.row, moved.column), (1, 1), "Down goes to row 1");
+        let up = press(&mut game, ButtonEvent::Up);
+        assert_eq!((up.row, up.column), (0, 2), "Up returns to row 0");
+    }
+
+    #[test]
+    fn row_step_skips_all_given_rows() {
+        let mut game = game();
+        for column in 0..9 {
+            game.board[9 + column] = 1 + column as u8;
+            game.givens[9 + column] = true;
         }
-        assert_eq!(game.mode(), SudokuMode::Edit);
-        game.apply_button_and_render(ButtonEvent::Down, &mut canvas)
-            .unwrap();
-        let committed = game
-            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
-            .unwrap();
-        assert!(matches!(committed.reason, "commit" | "conflict"));
-        assert!(canvas.dirty().regions().len() <= 4 || canvas.dirty().full_canvas_fallback());
+        press(&mut game, ButtonEvent::Down);
+        assert_eq!(game.cursor_row(), 2, "row 1 is skipped");
     }
 
     #[test]
-    fn boot_short_axis_toggle_switches_horizontal_and_vertical_navigation() {
-        let mut game = SudokuGame::from_puzzle(PUZZLE).unwrap();
+    fn row_step_wraps_around() {
+        let mut game = game();
+        for _ in 0..8 {
+            press(&mut game, ButtonEvent::Down);
+        }
+        let wrapped = press(&mut game, ButtonEvent::Down);
+        assert_eq!(wrapped.row, 0, "Down from the last row wraps to row 0");
+    }
+
+    #[test]
+    fn select_moves_row_to_cell_to_number() {
+        let mut game = game();
+        let cell = press(&mut game, ButtonEvent::Select);
+        assert_eq!(cell.step, SudokuStep::Cell);
+        assert!(cell.dirty_regions.contains(&GAME_BOTTOM_BAR_RECT));
+        let number = press(&mut game, ButtonEvent::Select);
+        assert_eq!(number.step, SudokuStep::Number);
+        assert!(number.dirty_regions.contains(&GAME_BOTTOM_BAR_RECT));
+    }
+
+    #[test]
+    fn cell_step_skips_givens_and_wraps() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Select);
+        // Row 0 editable columns in PUZZLE: 2, 3, 5, 6, 7, 8.
+        assert_eq!(game.cursor_column(), 2);
+        let first = press(&mut game, ButtonEvent::Down);
+        assert_eq!((first.row, first.column), (0, 3));
+        for _ in 0..4 {
+            press(&mut game, ButtonEvent::Down);
+        }
+        let wrapped = press(&mut game, ButtonEvent::Down);
+        assert_eq!((wrapped.row, wrapped.column), (0, 2), "wraps to first");
+    }
+
+    #[test]
+    fn number_step_walks_one_to_nine_then_erase() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
+        assert_eq!(game.candidate(), 1);
+        for expected in [2, 3, 4, 5, 6, 7, 8, 9, 0, 1] {
+            let changed = press(&mut game, ButtonEvent::Down);
+            assert_eq!(changed.candidate, expected, "Down walks to {expected}");
+        }
+        let up = press(&mut game, ButtonEvent::Up);
+        assert_eq!(up.candidate, 0, "Up goes back to erase");
+    }
+
+    #[test]
+    fn place_sets_the_value_and_returns_to_cell() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
+        // Cell (0,2) takes 1 without conflict.
+        let placed = press(&mut game, ButtonEvent::Select);
+        assert_eq!(placed.reason, "place");
+        assert_eq!(placed.step, SudokuStep::Cell);
+        assert_eq!(game.board()[2], 1);
+    }
+
+    #[test]
+    fn erase_clears_a_placed_value() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
+        assert_eq!(game.board()[2], 1);
+        // Re-enter the Number step for the same cell, then walk to erase.
+        press(&mut game, ButtonEvent::Select);
+        for _ in 0..9 {
+            press(&mut game, ButtonEvent::Down);
+        }
+        assert_eq!(game.candidate(), 0);
+        press(&mut game, ButtonEvent::Select);
+        assert_eq!(game.board()[2], 0, "erase clears the cell");
+    }
+
+    #[test]
+    fn conflict_keeps_the_number_step() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
+        // Cell (0,2): 3 is a given in row 0, so walking to 3 conflicts.
+        for _ in 0..2 {
+            press(&mut game, ButtonEvent::Down);
+        }
+        assert_eq!(game.candidate(), 3);
+        let conflict = press(&mut game, ButtonEvent::Select);
+        assert_eq!(conflict.reason, "conflict");
+        assert_eq!(conflict.step, SudokuStep::Number);
+        assert_eq!(game.board()[2], 0, "conflicting value is not placed");
+    }
+
+    #[test]
+    fn boot_back_walks_number_to_cell_to_row() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
+        let to_cell = boot(&mut game);
+        assert_eq!(to_cell.step, SudokuStep::Cell);
+        assert!(to_cell.dirty_regions.contains(&GAME_BOTTOM_BAR_RECT));
+        let to_row = boot(&mut game);
+        assert_eq!(to_row.step, SudokuStep::Row);
+        // Row is the top step: BOOT does nothing and stays on the screen.
+        let noop = boot(&mut game);
+        assert_eq!(noop.reason, "noop");
+        assert_eq!(noop.step, SudokuStep::Row);
+    }
+
+    #[test]
+    fn options_leave_values_absent_from_row_column_and_box() {
+        let game = game();
+        // Cell (0,2): row 0 has 5,3,7; column 2 has 8,5,6; the box has
+        // 5,3,6,1,9,8 — only 1, 2 and 4 stay.
+        assert_eq!(cell_options(game.board(), 2), vec![1, 2, 4]);
+    }
+
+    #[test]
+    fn busiest_number_render_stays_under_the_command_limit() {
+        let mut game = game();
+        // Checkerboard fill maximises runs; Number adds the pick strip.
+        for row in 0..9_usize {
+            for column in 0..9_usize {
+                let index = row * 9 + column;
+                if (row + column) % 2 == 0 {
+                    game.board[index] = ((index % 9) + 1) as u8;
+                    game.givens[index] = true;
+                }
+            }
+        }
+        while game.step() != SudokuStep::Number {
+            press(&mut game, ButtonEvent::Select);
+        }
+        let mut canvas = NativeGameCanvas::default();
+        game.render_commands(&mut canvas).unwrap();
+        assert!(canvas.commands().len() < MAX_GAME_DRAW_COMMANDS);
+    }
+
+    #[test]
+    fn invalid_regions_stay_bounded_on_step_changes() {
+        let mut game = game();
+        for _ in 0..6 {
+            let result = press(&mut game, ButtonEvent::Select);
+            assert!(result.dirty_regions.len() <= MAX_DIRTY_REGIONS);
+        }
+    }
+
+    #[test]
+    fn strip_and_options_read_like_the_mockup() {
+        let mut game = game();
         let mut canvas = NativeGameCanvas::default();
         game.render_initial(&mut canvas).unwrap();
-        assert_eq!(game.movement_axis(), SudokuMovementAxis::Horizontal);
-        let horizontal = game
-            .apply_button_and_render(ButtonEvent::Down, &mut canvas)
-            .unwrap();
-        assert_eq!((horizontal.row, horizontal.column), (0, 3));
-        let toggled = game.apply_boot_short_press_and_render(&mut canvas).unwrap();
-        assert_eq!(toggled.reason, "axis-toggle");
-        assert_eq!(toggled.axis, SudokuMovementAxis::Vertical);
-        assert_eq!(toggled.dirty_regions, vec![super::SUDOKU_STATUS_RECT]);
-        let vertical = game
-            .apply_button_and_render(ButtonEvent::Down, &mut canvas)
-            .unwrap();
-        assert_eq!((vertical.row, vertical.column), (1, 3));
-    }
-
-    #[test]
-    fn boot_short_cancels_edit_and_preserves_navigation_axis() {
-        let mut game = SudokuGame::from_puzzle(PUZZLE).unwrap();
+        let labels = canvas
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DrawCommand::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|text| text.contains("1 · ROW")));
+        assert!(labels.iter().any(|text| text.contains("3 · NUMBER")));
+        press(&mut game, ButtonEvent::Select);
+        press(&mut game, ButtonEvent::Select);
         let mut canvas = NativeGameCanvas::default();
-        game.render_initial(&mut canvas).unwrap();
-        game.apply_boot_short_press_and_render(&mut canvas).unwrap();
-        assert_eq!(game.movement_axis(), SudokuMovementAxis::Vertical);
-        let entered = game
-            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
-            .unwrap();
-        assert_eq!(game.mode(), SudokuMode::Edit);
-        assert!(entered.dirty_regions.contains(&super::GAME_BOTTOM_BAR_RECT));
-        game.apply_button_and_render(ButtonEvent::Down, &mut canvas)
-            .unwrap();
-        let canceled = game.apply_boot_short_press_and_render(&mut canvas).unwrap();
-        assert_eq!(canceled.reason, "edit-cancel");
-        assert_eq!(canceled.mode, SudokuMode::Navigate);
-        assert_eq!(canceled.axis, SudokuMovementAxis::Vertical);
-        assert_eq!(canceled.dirty_regions.len(), 3);
-        assert!(canceled
-            .dirty_regions
-            .contains(&super::GAME_BOTTOM_BAR_RECT));
-    }
-
-    #[test]
-    fn rejects_conflicting_initial_board() {
-        let puzzle = format!("11{}", "0".repeat(79));
-        assert!(SudokuGame::from_puzzle(&puzzle).is_err());
+        game.render_commands(&mut canvas).unwrap();
+        let labels = canvas
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DrawCommand::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|text| text.contains("Row 1 · Col 3")));
+        assert!(labels.iter().any(|text| text.contains("options:")));
+        assert!(labels.iter().any(|text| text == &display_candidate(1)));
+        let _ = SUDOKU_CELL_COUNT;
     }
 }

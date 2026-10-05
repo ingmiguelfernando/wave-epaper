@@ -271,12 +271,12 @@ IMU-controlled games or BLE remote page-turner in this build.
 | Sample | Controls |
 |---|---|
 | Hello Grid | Static canvas demonstration; wheel/Select have no game action; hold BOOT exits |
-| Sudoku | Up/Down moves along the active H/V axis; short BOOT switches axis. Select enters edit mode; Up/Down chooses a candidate; Select commits; short BOOT cancels editing |
+| Sudoku | Three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase, ● place. Short BOOT goes back one step. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
 | Tetris Zen | Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game |
 
-These are button-driven samples. The Sudoku three-step redesign and Tetris
-Classic gravity belong to Phase 6. A missing/invalid SD app reports an error;
+These are button-driven samples. Tetris Classic gravity belongs to Phase 6. A
+missing/invalid SD app reports an error;
 hold BOOT returns to the catalog.
 
 ## AI › Voice Notes

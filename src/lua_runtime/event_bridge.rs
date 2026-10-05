@@ -57,7 +57,7 @@ impl LuaGameEventResult {
     #[must_use]
     pub const fn mode_marker(&self) -> &'static str {
         match self {
-            Self::Sudoku(r) => r.mode.marker(),
+            Self::Sudoku(r) => r.step.marker(),
             Self::Minesweeper(r) => r.mode.marker(),
             Self::Tetris(r) => r.mode.marker(),
         }
@@ -65,7 +65,8 @@ impl LuaGameEventResult {
     #[must_use]
     pub const fn axis_marker(&self) -> &'static str {
         match self {
-            Self::Sudoku(r) => r.axis.marker(),
+            // Sudoku's former axis log slot now carries the entry step.
+            Self::Sudoku(r) => r.step.marker(),
             Self::Minesweeper(r) => r.axis.marker(),
             Self::Tetris(_) => "none",
         }
@@ -345,7 +346,7 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .reason(),
-            "cursor-move"
+            "row-move"
         );
     }
     #[test]

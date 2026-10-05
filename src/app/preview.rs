@@ -348,6 +348,16 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     tetris.lua_runtime.session = Some(tetris_sample_session());
     tetris.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("tetris", tetris));
+
+    let mut sudoku_row = sample_state();
+    sudoku_row.lua_runtime.session = Some(sudoku_sample_session(0));
+    sudoku_row.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("sudoku-row", sudoku_row));
+
+    let mut sudoku_number = sample_state();
+    sudoku_number.lua_runtime.session = Some(sudoku_sample_session(2));
+    sudoku_number.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("sudoku-number", sudoku_number));
     states
 }
 
@@ -379,6 +389,41 @@ fn tetris_sample_session() -> LuaAppSession {
             manifest: LuaAppManifest {
                 id: "tetris".into(),
                 name: "Tetris".into(),
+                kind: LuaAppKind::Game,
+                entry: "MAIN.LUA".into(),
+                version: "1.0".into(),
+                input: vec![],
+            },
+        },
+        source_bytes: source.len(),
+        canvas,
+        refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
+        event_bridge,
+    }
+}
+
+/// The Sudoku sample a step or two into the three-step entry.
+fn sudoku_sample_session(step_downs: usize) -> LuaAppSession {
+    let puzzle =
+        "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
+    let source = format!("sudoku.init(\"{puzzle}\")");
+    let mut canvas = NativeGameCanvas::default();
+    let mut event_bridge = LuaEventBridge::load(&source, &mut canvas).unwrap();
+    event_bridge
+        .apply_button(ButtonEvent::Down, &mut canvas)
+        .unwrap();
+    for _ in 0..step_downs {
+        event_bridge
+            .apply_button(ButtonEvent::Select, &mut canvas)
+            .unwrap();
+    }
+    LuaAppSession {
+        entry: LuaAppEntry {
+            directory_name: "SUDOKU".into(),
+            directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS/SUDOKU"),
+            manifest: LuaAppManifest {
+                id: "sudoku".into(),
+                name: "Sudoku".into(),
                 kind: LuaAppKind::Game,
                 entry: "MAIN.LUA".into(),
                 version: "1.0".into(),

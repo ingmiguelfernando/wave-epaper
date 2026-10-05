@@ -21,23 +21,28 @@ use crate::{
     games::{
         canvas::{CanvasTextStyle, DrawCommand},
         minesweeper::MinesweeperMode,
-        sudoku::SudokuMode,
+        sudoku::SudokuStep,
     },
     lua_runtime::{event_bridge::LuaEventBridge, LUA_CATALOG_PAGE_SIZE},
     orientation::OrientedFrameBuffer,
 };
 
-const SUDOKU_HINTS: [(KeyCap, &str); 4] = [
-    (KeyCap::UpDown, "move"),
-    (KeyCap::Select, "edit"),
-    (KeyCap::Boot, "H/V"),
+const SUDOKU_ROW_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "row"),
+    (KeyCap::Select, "choose"),
     (KeyCap::Boot, "hold: back"),
 ];
 
-const SUDOKU_EDIT_HINTS: [(KeyCap, &str); 3] = [
+const SUDOKU_CELL_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "cell"),
+    (KeyCap::Select, "choose"),
+    (KeyCap::Boot, "back"),
+];
+
+const SUDOKU_NUMBER_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "number"),
-    (KeyCap::Select, "save"),
-    (KeyCap::Boot, "cancel"),
+    (KeyCap::Select, "place"),
+    (KeyCap::Boot, "back"),
 ];
 
 const MINESWEEPER_HINTS: [(KeyCap, &str); 4] = [
@@ -161,9 +166,10 @@ pub fn render_lua_game(
 fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
     match bridge {
         LuaEventBridge::Static => &BACK_HINTS,
-        LuaEventBridge::Sudoku(game) => match game.mode() {
-            SudokuMode::Navigate => &SUDOKU_HINTS,
-            SudokuMode::Edit => &SUDOKU_EDIT_HINTS,
+        LuaEventBridge::Sudoku(game) => match game.step() {
+            SudokuStep::Row => &SUDOKU_ROW_HINTS,
+            SudokuStep::Cell => &SUDOKU_CELL_HINTS,
+            SudokuStep::Number => &SUDOKU_NUMBER_HINTS,
         },
         LuaEventBridge::Minesweeper(game) => match game.mode() {
             MinesweeperMode::Navigate => &MINESWEEPER_HINTS,

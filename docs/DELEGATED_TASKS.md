@@ -204,6 +204,16 @@ It reads without instructions, so it replaces Sudoku's H/V axis mode
 back from each step, completion, and the command and region limits.
 **Previews:** `sudoku-row` and `sudoku-number`, built like `tetris`.
 
+**Status:** done on `side-tasks-4` (2026-10-05). Sudoku now enters through
+  Row ▸ Cell ▸ Number: ▲▼ wraps, givens and all-given rows are skipped,
+  ● confirms, placing returns to Cell, short BOOT goes back one step and
+  does nothing on Row. The step strip, pick strip (struck values, erase as
+  −), and the `Row n · Col n · options:` line follow the mockup; the bottom
+  bar and `GAME_BOTTOM_BAR_RECT` switch per step. Bridge logs carry the
+  step in the former axis slot. Tests: 551 pass (14 new), fmt clean.
+  Previews `sudoku-row` and `sudoku-number` match the mockup layout.
+  Device: play a game through all three steps and BOOT back.
+
 ### D19: Keep the Tetris best score
 
 **Why.** Best lives in memory and is lost when Tetris closes. Phase 6 shows
