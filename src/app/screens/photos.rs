@@ -40,10 +40,8 @@ const ACTION_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Boot, "hold: close"),
 ];
 
-const DELETE_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "delete"),
-    (KeyCap::Boot, "hold: cancel"),
-];
+const DELETE_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "delete"), (KeyCap::Boot, "hold: cancel")];
 
 const COLUMNS: [i32; 3] = [12, 168, 324];
 const ROWS: [i32; 2] = [134, 390];

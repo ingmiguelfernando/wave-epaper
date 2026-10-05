@@ -47,10 +47,8 @@ const FORECAST_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Select, "refresh"),
     (KeyCap::Boot, "\u{b0}C / \u{b0}F"),
 ];
-const REFRESH_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "refresh"),
-    (KeyCap::Boot, "hold: back"),
-];
+const REFRESH_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "refresh"), (KeyCap::Boot, "hold: back")];
 
 /// A title and what to do, shown instead of a forecast.
 type Missing = (&'static str, &'static str);

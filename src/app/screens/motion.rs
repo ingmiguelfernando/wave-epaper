@@ -23,10 +23,8 @@ use crate::{
     orientation::OrientedFrameBuffer,
 };
 
-const EVENTS_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "events"),
-    (KeyCap::Boot, "hold: back"),
-];
+const EVENTS_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "events"), (KeyCap::Boot, "hold: back")];
 
 const CONTROLS_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "row"),

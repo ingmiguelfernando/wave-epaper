@@ -596,7 +596,9 @@ mod tests {
         assert_eq!(canceled.mode, SudokuMode::Navigate);
         assert_eq!(canceled.axis, SudokuMovementAxis::Vertical);
         assert_eq!(canceled.dirty_regions.len(), 3);
-        assert!(canceled.dirty_regions.contains(&super::GAME_BOTTOM_BAR_RECT));
+        assert!(canceled
+            .dirty_regions
+            .contains(&super::GAME_BOTTOM_BAR_RECT));
     }
 
     #[test]

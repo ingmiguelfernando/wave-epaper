@@ -29,10 +29,8 @@ use crate::{
     },
 };
 
-const RESUME_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "resume"),
-    (KeyCap::Boot, "hold: back"),
-];
+const RESUME_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "resume"), (KeyCap::Boot, "hold: back")];
 
 const LIBRARY_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "move"),

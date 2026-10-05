@@ -23,10 +23,8 @@ use crate::{
     storage::{FilePreview, StorageSnapshot},
 };
 
-const PREVIEW_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "close"),
-    (KeyCap::Boot, "hold: back"),
-];
+const PREVIEW_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "close"), (KeyCap::Boot, "hold: back")];
 
 /// Draw the read-only SDMMC browser or the bounded text-preview panel.
 pub fn render_files(

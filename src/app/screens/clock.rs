@@ -21,10 +21,8 @@ use crate::{
     orientation::OrientedFrameBuffer,
 };
 
-const DETAILS_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "details"),
-    (KeyCap::Boot, "hold: back"),
-];
+const DETAILS_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "details"), (KeyCap::Boot, "hold: back")];
 
 /// Draw the user-facing RTC overview.
 pub fn render_clock(
