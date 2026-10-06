@@ -4,6 +4,7 @@
 //! widgets and protocol helpers can be unit-tested on the host. ESP-IDF wiring
 //! remains isolated in `main.rs`.
 
+pub mod ai_client;
 pub mod alarm;
 pub mod app;
 pub mod audio;
