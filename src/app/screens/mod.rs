@@ -8,6 +8,7 @@ use super::{router::ScreenRoute, state::AppState};
 
 pub mod alarms;
 pub mod audio;
+pub mod bible;
 pub mod calendar;
 pub mod category;
 pub mod clock;

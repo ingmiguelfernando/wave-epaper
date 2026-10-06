@@ -279,6 +279,21 @@ routes, the reading view and the wiring later.
 the Open outcome, fit at every font family and size. **Previews:**
 `bible-books` and `bible-chapters` (Psalms, 150 chapters).
 
+**Status:** done on `side-tasks-4` (2026-10-06). Added `bible_nav.rs`
+(eight sections by book number, tabs `PEN HIS POE MAJ MIN GOS PAU REV`,
+skips books missing from `BOOKS.TXT` and empty sections, short BOOT jumps
+to the next populated section, ▲▼ wraps, ● returns `Open { book, chapter }`,
+`back()` returns) and `screens/bible.rs` (mockup layout: `Go to · Book`
++ translation, `Old/New Testament · section n of 8`, section name, tab
+strip with the current tab inverted, Spanish rows `Salmos · 150 ch.`,
+next-section line, and the chapter grid with the current cell inverted,
+6 rows of 8). Sample `BOOKS.TXT` with the 66 Reina-Valera names shared by
+both test modules. Host tests: 565 pass, fmt clean. Previews
+`bible-books` and `bible-chapters` match the mockup. No routes, no
+`main.rs` changes. Device check comes with the Phase 5 wiring; the
+SD-format decision (the card's proven `index.tsv`/`.idx` from folloup
+versus `BOOKS.TXT`) belongs to the main line.
+
 ### D21: A small JSON reader
 
 **Why.** Phase 7 talks JSON to OpenAI-compatible APIs and to XiaoZhi. Wave has

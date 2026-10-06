@@ -18,6 +18,7 @@ use super::{
     screens::reading_stats::{render_reading_stats, CurrentBook},
     SleepClock, SleepWeather, SleepWeatherDay, SleepWeatherLine,
 };
+use crate::bible_nav::BibleNav;
 use crate::{
     board_services::BoardSnapshot,
     buttons::ButtonEvent,
@@ -87,6 +88,14 @@ fn render_screen_previews() {
         (
             "reading-stats-empty",
             render_sample_reading_stats(sample_state().display, false),
+        ),
+        (
+            "bible-books",
+            render_sample_bible(false, sample_state().display),
+        ),
+        (
+            "bible-chapters",
+            render_sample_bible(true, sample_state().display),
         ),
     ];
     for (name, state) in preview_states() {
@@ -359,6 +368,24 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     sudoku_number.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("sudoku-number", sudoku_number));
     states
+}
+
+/// The Bible picker previews: the books list and Psalms' chapter grid.
+fn render_sample_bible(with_chapters: bool, preferences: DisplayPreferences) -> FrameBuffer {
+    let books = crate::bible::parse_books(&crate::bible_nav::sample_books_txt()).unwrap();
+    let mut nav = BibleNav::new(books);
+    if with_chapters {
+        nav.next_section_cyclic();
+        nav.next_section_cyclic();
+        nav.move_book(1);
+        nav.open_chapters();
+    }
+    let mut frame = FrameBuffer::new_white();
+    let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
+    crate::app::screens::bible::render_bible_nav(&mut display, preferences, "RVR1960", &nav)
+        .unwrap();
+    drop(display);
+    frame
 }
 
 /// A Zen Tetris game a few drops in, drawn through the native SD game canvas.
