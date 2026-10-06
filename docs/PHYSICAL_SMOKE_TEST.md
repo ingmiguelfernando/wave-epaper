@@ -148,8 +148,10 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Minesweeper: movement/axis toggle, Reveal/Flag action choice, cancel,
 	first-reveal safety and hold BOOT exit. The bottom bar follows the mode.
 - [ ] Tetris Zen: Up/Down move, Select rotates clockwise, short BOOT drops;
-	the bottom bar reads move, rotate, drop; no ghosting builds up (full
-	refresh every 20 pieces); game over, Select restarts, hold BOOT exits.
+        the bottom bar reads move, rotate, drop; no ghosting builds up (full
+        refresh every 20 pieces); game over, Select restarts, hold BOOT exits.
+        Best: beat the saved score, leave, reopen (Best shows it), reboot
+        (still there); a lower score writes nothing (one log save).
 - [ ] Move the board during games: no sensor-driven movement; IMU stays off
 	outside Motion diagnostics (use runtime logs/power evidence).
 - [ ] Motion and Motion details show live readings; Motion Events reports

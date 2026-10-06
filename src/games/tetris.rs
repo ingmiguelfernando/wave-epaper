@@ -464,6 +464,11 @@ impl TetrisApp {
         self.best
     }
 
+    /// Seed the in-memory best from the saved records when a session opens.
+    pub fn set_best(&mut self, best: u32) {
+        self.best = self.best.max(best);
+    }
+
     #[must_use]
     pub const fn locks(&self) -> u32 {
         self.locks

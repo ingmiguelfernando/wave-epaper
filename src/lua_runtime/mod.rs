@@ -10,7 +10,9 @@ use crate::{
     buttons::ButtonEvent,
     games::{
         canvas::NativeGameCanvas,
+        records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
+        tetris::TetrisMode,
     },
 };
 
@@ -43,6 +45,9 @@ pub struct LuaRuntimeUiState {
     pub session: Option<LuaAppSession>,
     pub error: Option<String>,
     diagnostics: Vec<String>,
+    /// Best scores loaded at boot; `true` while a closed game raised one.
+    pub records: GameRecords,
+    records_changed: bool,
 }
 
 impl Default for LuaRuntimeUiState {
@@ -53,6 +58,8 @@ impl Default for LuaRuntimeUiState {
             session: None,
             error: None,
             diagnostics: Vec::new(),
+            records: GameRecords::default(),
+            records_changed: false,
         }
     }
 }
@@ -122,7 +129,11 @@ impl LuaRuntimeUiState {
         ));
         let entry_id = entry.manifest.id.clone();
         match self.open_entry(entry) {
-            Ok(session) => {
+            Ok(mut session) => {
+                // A Tetris session picks up the saved best when it opens.
+                if let LuaEventBridge::Tetris(app) = &mut session.event_bridge {
+                    app.set_best(self.records.tetris_zen);
+                }
                 let regions = session.canvas.dirty().regions().len();
                 let command_count = session.canvas.commands().len();
                 self.push_diagnostic(format!(
@@ -251,12 +262,21 @@ impl LuaRuntimeUiState {
 
     pub fn close_session(&mut self) {
         if let Some(session) = self.session.take() {
+            if let LuaEventBridge::Tetris(app) = &session.event_bridge {
+                // The changed flag makes main.rs save once, not per piece.
+                self.records_changed |= self.records.observe_tetris_zen(app.best());
+            }
             self.push_diagnostic(format!(
                 "rustmix-wave=lua-app-close id={} status=released",
                 session.entry.manifest.id
             ));
         }
         self.error = None;
+    }
+
+    /// Take the changed flag after the records were saved.
+    pub fn take_records_changed(&mut self) -> bool {
+        std::mem::take(&mut self.records_changed)
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<String> {
@@ -295,7 +315,8 @@ mod tests {
 
     use crate::buttons::ButtonEvent;
 
-    use super::LuaRuntimeUiState;
+    use super::{event_bridge::LuaEventBridge, manifest, LuaAppSession, LuaRuntimeUiState};
+    use crate::games::{canvas::NativeGameCanvas, refresh_policy::GameRefreshPlan};
 
     fn temp_directory() -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -326,5 +347,57 @@ mod tests {
         assert!(runtime.session.is_some());
         assert!(!runtime.take_diagnostics().is_empty());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn tetris_sessions_seed_the_saved_best_and_close_marks_one_save() {
+        // The open path seeds the best; drive it through a real catalog.
+        let root = temp_directory();
+        let app = root.join("TETRIS");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("APP.TOM"),
+            "id=\"tetris\"\nname=\"Tetris\"\nkind=\"game\"\nentry=\"MAIN.LUA\"\n",
+        )
+        .unwrap();
+        std::fs::write(app.join("MAIN.LUA"), "tetris.init('zen', 7)\n").unwrap();
+        let mut runtime = LuaRuntimeUiState::default();
+        runtime.records.tetris_zen = 500;
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        assert!(runtime.session.is_some());
+        if let LuaEventBridge::Tetris(app) = &runtime.session.as_ref().unwrap().event_bridge {
+            assert_eq!(app.best(), 500, "opening seeds the saved best");
+        }
+        // A zero-score close saves nothing.
+        runtime.close_session();
+        assert!(!runtime.take_records_changed(), "a zero best saves nothing");
+        assert_eq!(runtime.records.tetris_zen, 500);
+
+        // A session that ends above the saved best marks exactly one save.
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        if let LuaEventBridge::Tetris(app) = &mut runtime.session.as_mut().unwrap().event_bridge {
+            app.set_best(9001);
+        }
+        runtime.close_session();
+        assert!(runtime.take_records_changed(), "a new best marks one save");
+        assert_eq!(runtime.records.tetris_zen, 9001);
+        assert!(!runtime.take_records_changed(), "the flag clears after use");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn manifest_test_entry(id: &str) -> manifest::LuaAppEntry {
+        manifest::LuaAppEntry {
+            directory_name: id.to_ascii_uppercase(),
+            directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS"),
+            manifest: manifest::LuaAppManifest {
+                id: id.into(),
+                name: "Test".into(),
+                kind: manifest::LuaAppKind::Game,
+                entry: "MAIN.LUA".into(),
+                version: "1.0".into(),
+                input: vec![],
+            },
+        }
     }
 }

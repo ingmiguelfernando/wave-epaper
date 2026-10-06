@@ -58,6 +58,7 @@ mod firmware {
         },
         epaper::Epaper397,
         framebuffer::FrameBuffer,
+        games::records::{GameRecords, RECORDS_PATH},
         imu_events::IMU_EVENT_SAMPLE_INTERVAL_MS,
         network::{
             espidf::NetworkRuntime, NetworkLogFingerprint, NetworkSnapshot, WifiConnectionState,
@@ -390,6 +391,11 @@ mod firmware {
                 Ok(settings) => state.sleep_screen = settings,
                 Err(error) => info!("rustmix-wave=sleep-screen status=default error={error:#}"),
             }
+            state.lua_runtime.records = GameRecords::load_from_path(RECORDS_PATH);
+            info!(
+                "rustmix-wave=game-records status=ready tetris-zen={}",
+                state.lua_runtime.records.tetris_zen
+            );
         }
         state.photos.fit = state.sleep_screen.fit;
         let reader_persistence = state.reader.load_persistent_state();
@@ -1451,6 +1457,15 @@ mod firmware {
                         state.photos.starred.len()
                     ),
                     Err(error) => warn!("rustmix-wave=starred-photos-write error={error:#}"),
+                }
+            }
+            if state.lua_runtime.take_records_changed() {
+                match state.lua_runtime.records.save_to_path(RECORDS_PATH) {
+                    Ok(()) => info!(
+                        "rustmix-wave=game-records-write status=saved tetris-zen={}",
+                        state.lua_runtime.records.tetris_zen
+                    ),
+                    Err(error) => warn!("rustmix-wave=game-records-write error={error:#}"),
                 }
             }
             if photos_changed && photos_open && state.panel_awake {

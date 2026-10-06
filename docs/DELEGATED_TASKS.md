@@ -236,6 +236,16 @@ best scores in the Games hub.
 best, no save after a lower score. **Device check:** score, leave and reopen
 (Best shows it), then reboot (still there).
 
+**Status:** done on `side-tasks-4` (2026-10-06). Added `games/records.rs`
+  (`RECORDS.TXT` as `key=value` under a header comment, through `sd_file`),
+  `TetrisApp::set_best`, and the wiring: `main.rs` loads the records at
+  boot, opening Tetris seeds the saved best, and closing marks the change
+  via `LuaRuntimeUiState::take_records_changed` so `main.rs` saves once.
+  Tests: 557 pass (7 new: format round trip, unknown keys, malformed files,
+  missing file defaults, observe saves once, SD round trip, and the
+  open/close flow). Guide and smoke test updated. Device: beat the best,
+  reopen and reboot; check one save in the log.
+
 ### D20: Bible book and chapter pickers (drawing and state only)
 
 **Why.** Phase 5, mockup "Bible: elegir libro". The main line adds the
