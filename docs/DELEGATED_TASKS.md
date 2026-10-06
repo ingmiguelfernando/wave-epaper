@@ -375,6 +375,14 @@ document of the xiaozhi-esp32 repository (`docs/websocket.md`) and its
 **Tests:** each message both ways against the document's examples, the frame
 headers, malformed and unknown input.
 
+**Status:** done on `side-tasks-4` (2026-10-06). `xiaozhi/protocol.rs`
+models hello/listen/abort/mcp for the device side and hello/stt/llm/tts/mcp
+for the server side, with `Unknown(type)` for anything else, and the v2/v3
+binary frame headers encoded and decoded with size checks. JSON-RPC payloads
+pass through compact re-serialization. Tests (eight new) cover every message
+against the document examples, both frame versions, malformed and unknown
+input. Host tests green (586); fmt clean. Device: none (host library).
+
 ## Round 3 tasks (done in v0.9.2)
 
 Kept as the reference for the code they added.
