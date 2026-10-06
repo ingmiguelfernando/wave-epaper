@@ -26,6 +26,7 @@ pub mod games;
 pub mod hyphenation;
 pub mod imu;
 pub mod imu_events;
+pub mod json_lite;
 pub mod keyboard_navigation;
 pub mod lua_runtime;
 pub mod network;

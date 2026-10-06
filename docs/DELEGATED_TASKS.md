@@ -320,6 +320,14 @@ hand-roll pieces.
 an emoji, the limits, malformed input (trailing comma, unterminated string,
 bad escape).
 
+**Status:** done on `side-tasks-4` (2026-10-06). `json_lite.rs` parses all
+six value types with numbers kept as text (`as_i64` on demand), escapes both
+ways (`\uXXXX` with surrogate pairs, lone surrogates rejected), 64 KiB and
+depth-32 limits, and byte-offset errors. Host tests green (572, nine new);
+fmt clean. No existing parsers touched; candidates to migrate later:
+`weather.rs` hand-rolled fields, `dictionary.rs` pack index,
+`wifi_transfer.rs` portal JSON. Device: none (host library).
+
 ### D22: OpenAI-compatible requests and responses (library only)
 
 **Why.** Voice Notes v2 (ROADMAP › Phase 7) transcribes with
