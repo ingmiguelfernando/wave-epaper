@@ -152,7 +152,9 @@ impl BibleNav {
     /// Names of the books section `cursor` offers.
     #[must_use]
     pub fn next_section_books(&self, cursor: usize) -> Vec<String> {
-        self.books_in(cursor).map(|book| book.name.clone()).collect()
+        self.books_in(cursor)
+            .map(|book| book.name.clone())
+            .collect()
     }
 
     /// Books of section `cursor` that exist on the card.
