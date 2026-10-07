@@ -45,7 +45,8 @@ sleeps.
 
 ### Files
 
-- Photos: `/PHOTOS/` at the SD root. Sub-folders are ignored. Up to 500 files
+- Photos: `/RUSTMIX/PHOTOS/` since v0.9.4 (`/PHOTOS/` at the SD root before).
+  Sub-folders are ignored. Up to 500 files
   are listed, newest file date first.
 - Formats: JPEG (`.jpg`, `.jpeg`). Baseline JPEGs of any size; progressive
   JPEGs up to 1 megapixel, because a progressive decode keeps every coefficient

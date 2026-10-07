@@ -61,7 +61,7 @@ pub fn render_photos(
     let starred = format!("{} starred", photos.starred_count());
     let page = format!("{}/{}", photos.page() + 1, photos.page_count());
 
-    draw_header(display, state.display, "PHOTOS", "/PHOTOS ON THE SD CARD")?;
+    draw_header(display, state.display, "PHOTOS", "/RUSTMIX/PHOTOS ON THE SD CARD")?;
     draw_status_row(
         display,
         state.display,

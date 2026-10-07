@@ -166,7 +166,7 @@ impl PhotosUiState {
         self.jobs_changed = true;
     }
 
-    /// The folder as it appears on the card, e.g. `/PHOTOS`.
+    /// The folder as it appears on the card, e.g. `/RUSTMIX/PHOTOS`.
     fn folder_label(&self) -> String {
         let path = self.photos_directory.to_string_lossy();
         path.strip_prefix("/sdcard").unwrap_or(&path).to_string()

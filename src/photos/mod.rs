@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 
 use crate::ntp::utc_from_unix_seconds;
 
-pub const PHOTOS_DIRECTORY: &str = "/sdcard/PHOTOS";
+pub const PHOTOS_DIRECTORY: &str = "/sdcard/RUSTMIX/PHOTOS";
 pub const PHOTO_CACHE_DIRECTORY: &str = "/sdcard/RUSTMIX/CACHE/PHOTOS";
 pub const STARRED_PATH: &str = "/sdcard/RUSTMIX/STARRED.TXT";
 /// Most photos listed; the newest are kept.

@@ -23,11 +23,10 @@ Use the merged Wave `.bin` at `0x0`, as described in
 
 ## Photos
 
-Photos go to `/PHOTOS` at the card root, which the Wi-Fi transfer portal
-cannot reach (it only serves `/RUSTMIX`): copy them with a computer.
-Progressive JPEGs over 1 megapixel are refused with a message; save them as
-standard (baseline) JPEGs. A starred photo shows at sleep only after Photos
-has prepared it once.
+Photos go to `/RUSTMIX/PHOTOS` (the root `/PHOTOS` of v0.8.0 to v0.9.3 is no
+longer read). Progressive JPEGs over 1 megapixel are refused with a message;
+save them as standard (baseline) JPEGs. A starred photo shows at sleep only
+after Photos has prepared it once.
 
 ## Weather provider reliability
 

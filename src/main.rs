@@ -47,7 +47,7 @@ mod firmware {
             AUDIO_SAMPLE_RATE_HZ, DEFAULT_AUDIO_VOLUME_PERCENT,
         },
         battery_log::{BatteryLog, BATTERY_LOG_PATH, SAMPLE_MINUTES},
-        board_services::{BoardServices, BoardSnapshot},
+        board_services::{reset_reason_label, BoardServices, BoardSnapshot},
         build_info::{FIRMWARE_VERSION, PRODUCT_SLUG, UI_SHELL_MILESTONE},
         buttons::{
             BootButtonEvent, ButtonEvent, Buttons, LongPressBackButton, BOOT_BACK_LONG_PRESS_MS,
@@ -378,6 +378,8 @@ mod firmware {
         sync_panel_refresh_diagnostics(&mut state, &panel_refresh);
         state.display = display_preferences;
         state.power = power_preferences;
+        state.reset_reason = reset_reason_label(unsafe { sys::esp_reset_reason() });
+        info!("rustmix-wave=reset-reason last-restart={}", state.reset_reason);
         if _mounted_sd.is_some() {
             match BatteryLog::load_from_path(BATTERY_LOG_PATH) {
                 Ok(log) => state.battery_log = log,
@@ -490,18 +492,20 @@ mod firmware {
             init.imu_revision
                 .map_or_else(|| "unavailable".into(), |value| format!("0x{value:02X}"))
         );
-        let mut power_key_available = match board_services.initialize_power_key_events() {
-            Ok(()) => {
-                info!("rustmix-wave=power-key status=ready source=axp2101-pek events=short-menu,long-sleep poll-ms={POWER_KEY_POLL_MS}");
-                true
+        let mut power_key_retry_at: Option<Instant> = None;
+        match board_services.initialize_power_key_events() {
+            Ok(previous_ms) => {
+                state.power_key.succeeded();
+                info!("rustmix-wave=power-key status=ready source=axp2101-pek events=short-menu,long-sleep poll-ms={POWER_KEY_POLL_MS} long-press-ms=1000 previous-long-press-ms={previous_ms}");
             }
             Err(error) => {
+                let pause = state.power_key.failed(format!("{error:#}"));
+                power_key_retry_at = Some(Instant::now() + Duration::from_millis(pause));
                 warn!(
-                    "rustmix-wave=power-key status=unavailable source=axp2101-pek error={error:#}"
+                    "rustmix-wave=power-key status=unavailable source=axp2101-pek retry-ms={pause} error={error:#}"
                 );
-                false
             }
-        };
+        }
         state.update_board_snapshot(board_services.read_snapshot(&mut service_delay));
         log_board_snapshot(state.board, state.regional);
         if let Some(rtc) = state.board.rtc {
@@ -1057,15 +1061,36 @@ mod firmware {
                 }
             }
 
+            if power_key_retry_at.is_some_and(|at| Instant::now() >= at) {
+                match board_services.initialize_power_key_events() {
+                    Ok(_) => {
+                        state.power_key.succeeded();
+                        power_key_retry_at = None;
+                        info!(
+                            "rustmix-wave=power-key status=ready source=axp2101-pek errors={}",
+                            state.power_key.errors()
+                        );
+                    }
+                    Err(error) => {
+                        let pause = state.power_key.failed(format!("{error:#}"));
+                        power_key_retry_at = Some(Instant::now() + Duration::from_millis(pause));
+                        warn!("rustmix-wave=power-key status=retrying source=axp2101-pek retry-ms={pause} error={error:#}");
+                    }
+                }
+                last_power_key_poll = Instant::now();
+            }
+
             let auto_sleep = state.power.auto_sleep.delay();
-            let auto_sleep_due = power_key_available
+            // Without the Power key, only sleep when another key can wake.
+            let can_wake = state.power_key.is_ready() || state.power.wake_keys == WakeKeys::AnyKey;
+            let auto_sleep_due = can_wake
                 && !sleep_mode.is_sleeping()
                 && auto_sleep.is_some_and(|delay| last_activity.elapsed() >= delay)
                 && state.alarms.active.is_none()
                 && voice_recording.is_none()
                 && voice_playback.is_none()
                 && wifi_transfer_server.is_none();
-            let power_key_poll_due = power_key_available
+            let power_key_poll_due = state.power_key.is_ready()
                 && last_power_key_poll.elapsed() >= Duration::from_millis(POWER_KEY_POLL_MS);
             if auto_sleep_due || power_key_poll_due {
                 // Idle auto-sleep takes the same path as holding the Power key.
@@ -1105,12 +1130,25 @@ mod firmware {
                                 );
                             } else {
                                 state.open_power_key_menu();
+                                // The panel powers down after a minute idle.
+                                let woke_from_sleep = !state.panel_awake;
+                                if woke_from_sleep {
+                                    panel.initialize()?;
+                                    state.panel_awake = true;
+                                    panel_refresh
+                                        .reset_after_external_global(PanelGlobalReason::AfterWake);
+                                    sync_panel_refresh_diagnostics(&mut state, &panel_refresh);
+                                }
                                 refresh_screen(
                                     &mut panel,
                                     &mut frame,
                                     &mut state,
                                     &mut panel_refresh,
-                                    RefreshRequest::Normal,
+                                    if woke_from_sleep {
+                                        RefreshRequest::ForceGlobalAfterWake
+                                    } else {
+                                        RefreshRequest::Normal
+                                    },
                                 )?;
                                 info!(
                                     "rustmix-wave=power-key-menu outcome=opened return-route={}",
@@ -1230,8 +1268,9 @@ mod firmware {
                     }
                     Ok(None) => {}
                     Err(error) => {
-                        power_key_available = false;
-                        warn!("rustmix-wave=power-key status=unavailable source=axp2101-pek error={error:#}");
+                        let pause = state.power_key.failed(format!("{error:#}"));
+                        power_key_retry_at = Some(Instant::now() + Duration::from_millis(pause));
+                        warn!("rustmix-wave=power-key status=unavailable source=axp2101-pek retry-ms={pause} error={error:#}");
                     }
                 }
                 last_power_key_poll = Instant::now();
@@ -1928,8 +1967,9 @@ mod firmware {
                         .panel_awake
                         .then(|| time_left(last_activity, PANEL_IDLE_SLEEP_SECONDS)),
                     auto_sleep
-                        .filter(|_| power_key_available)
+                        .filter(|_| can_wake)
                         .map(|delay| delay.saturating_sub(last_activity.elapsed())),
+                    power_key_retry_at.map(|at| at.saturating_duration_since(now)),
                     live_status.then(|| time_left(last_status_refresh, live_refresh_seconds)),
                     alarm_polling.then(|| time_left(last_alarm_poll, ALARM_POLL_SECONDS)),
                     network_runtime.has_radio().then_some(burst_due),

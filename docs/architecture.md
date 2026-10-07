@@ -140,7 +140,7 @@ Rules that keep it stable:
 | `/RUSTMIX/READER/` | `reader.rs` | Positions, recent books, bookmarks, preferences, page cache |
 | `/RUSTMIX/SLEEP/` | `sleep_images.rs` | Sleep pictures (BMP) |
 | `/RUSTMIX/SLEEPSCREEN.TXT` | `sleep_screen.rs` | Sleep picture source, order and fit |
-| `/PHOTOS/` | `photos/` | JPEG photos for Photos and the sleep screen |
+| `/RUSTMIX/PHOTOS/` | `photos/` | JPEG photos for Photos and the sleep screen |
 | `/RUSTMIX/STARRED.TXT` | `photos/mod.rs` | Starred photo names |
 | `/RUSTMIX/CACHE/PHOTOS/` | `photos/cache.rs` | Per photo: thumbnail and two screen frames (`.PIC`) |
 | `/RUSTMIX/VOICE/` | `voice_notes.rs` | Voice notes (WAV) and their settings |

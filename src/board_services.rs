@@ -187,8 +187,9 @@ where
         Ok(asserted)
     }
 
-    /// Enable PMIC short-menu and long-sleep Power-key event polling.
-    pub fn initialize_power_key_events(&mut self) -> anyhow::Result<()> {
+    /// Enable PMIC short-menu and long-sleep Power-key event polling. Returns
+    /// the long-press time the PMIC had before, in milliseconds.
+    pub fn initialize_power_key_events(&mut self) -> anyhow::Result<u16> {
         self.power.initialize_power_key_events()
     }
 
@@ -268,9 +269,28 @@ where
     }
 }
 
+/// Why the chip last restarted, from ESP-IDF's `esp_reset_reason_t` value.
+/// An error that ends the event loop also restarts through a panic.
+#[must_use]
+pub const fn reset_reason_label(reason: u32) -> &'static str {
+    match reason {
+        1 => "Power on",
+        2 => "Reset pin",
+        3 => "Restart",
+        4 => "Crash",
+        5..=7 => "Watchdog",
+        8 => "Deep sleep",
+        9 => "Brownout",
+        11 => "USB",
+        14 => "Power glitch",
+        15 => "CPU lockup",
+        _ => "Unknown",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::BoardSnapshot;
+    use super::{reset_reason_label, BoardSnapshot};
     use crate::{
         environment::EnvironmentReading,
         imu::{Axis3Tenths, DominantAxis, ImuReading},
@@ -278,6 +298,15 @@ mod tests {
         regional::{RegionalPreferences, TemperatureUnit},
         rtc::RtcDateTime,
     };
+
+    #[test]
+    fn reset_reasons_read_as_words() {
+        assert_eq!(reset_reason_label(1), "Power on");
+        assert_eq!(reset_reason_label(4), "Crash");
+        assert_eq!(reset_reason_label(6), "Watchdog");
+        assert_eq!(reset_reason_label(9), "Brownout");
+        assert_eq!(reset_reason_label(42), "Unknown");
+    }
 
     #[test]
     fn unavailable_snapshot_renders_placeholders() {

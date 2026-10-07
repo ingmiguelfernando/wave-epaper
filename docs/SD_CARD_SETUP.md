@@ -3,8 +3,6 @@
 Use a FAT-formatted SD card. Wave mounts it at `/sdcard` and expects the following product tree:
 
 ```text
-/PHOTOS/
-  *.JPG
 /RUSTMIX/
   WIFI.TXT
   WEATHER.TXT
@@ -14,6 +12,8 @@ Use a FAT-formatted SD card. Wave mounts it at `/sdcard` and expects the followi
   BATTERY.TXT
   STARRED.TXT
   SLEEPSCREEN.TXT
+  PHOTOS/
+    *.JPG
   CACHE/
     PHOTOS/
   BOOKS/
@@ -156,10 +156,10 @@ Install bundled samples:
 
 ## Photos
 
-Copy JPEG photos (`.jpg`, `.jpeg`) into `/PHOTOS` at the root of the card,
-next to `RUSTMIX` rather than inside it. Use a computer: the Wi-Fi file
-transfer only reaches `/RUSTMIX`. Sub-folders are ignored, and up to 500
-photos are listed, newest first.
+Copy JPEG photos (`.jpg`, `.jpeg`) into `/RUSTMIX/PHOTOS`, with a computer
+or the Wi-Fi file transfer. Sub-folders are ignored, and up to 500 photos
+are listed, newest first. Until v0.9.3 the folder was `/PHOTOS` at the card
+root; move photos from there.
 
 - Standard (baseline) JPEGs of any size work. Progressive JPEGs work up to 1
   megapixel; save larger ones as standard JPEGs.

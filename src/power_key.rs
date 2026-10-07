@@ -108,6 +108,68 @@ impl PowerKeyEvent {
     }
 }
 
+/// First pause before the Power-key setup is written again after an error.
+pub const POWER_KEY_RETRY_FIRST_MS: u64 = 1_000;
+/// Longest pause between setup attempts.
+pub const POWER_KEY_RETRY_MAX_MS: u64 = 30_000;
+
+/// Whether the PMIC answers Power-key polls. An I2C error never turns the key
+/// off for good: polling pauses, then the event setup is written again.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PowerKeyLink {
+    ready: bool,
+    failures_in_row: u32,
+    errors: u32,
+    last_error: Option<String>,
+}
+
+impl PowerKeyLink {
+    /// The event setup worked.
+    pub fn succeeded(&mut self) {
+        self.ready = true;
+        self.failures_in_row = 0;
+    }
+
+    /// The event setup or a poll failed. Returns the pause in milliseconds
+    /// before the next setup attempt: 1 s, doubling up to 30 s.
+    pub fn failed(&mut self, error: impl Into<String>) -> u64 {
+        self.ready = false;
+        self.failures_in_row = self.failures_in_row.saturating_add(1);
+        self.errors = self.errors.saturating_add(1);
+        self.last_error = Some(error.into());
+        let doublings = (self.failures_in_row - 1).min(5);
+        (POWER_KEY_RETRY_FIRST_MS << doublings).min(POWER_KEY_RETRY_MAX_MS)
+    }
+
+    #[must_use]
+    pub const fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    /// Errors since boot, recovered ones included.
+    #[must_use]
+    pub const fn errors(&self) -> u32 {
+        self.errors
+    }
+
+    #[must_use]
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
+    }
+
+    /// For Device info, for example `Ready` or `Ready, 2 errors`.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match (self.ready, self.errors) {
+            (true, 0) => "Ready".into(),
+            (true, 1) => "Ready, 1 error".into(),
+            (true, errors) => format!("Ready, {errors} errors"),
+            (false, 0) => "Not checked".into(),
+            (false, _) => "Not answering".into(),
+        }
+    }
+}
+
 /// Interpret one AXP2101 `INTSTS2` byte. Long press wins when both sticky bits
 /// are present so one held Power action cannot open the short-press menu first.
 #[must_use]
@@ -124,10 +186,38 @@ pub const fn power_key_event_from_irq_status(status2: u8) -> Option<PowerKeyEven
 #[cfg(test)]
 mod tests {
     use super::{
-        power_key_event_from_irq_status, PowerKeyEvent, SleepWakeGuard, SleepWakeGuardDecision,
-        POWER_KEY_EVENT_MASK, POWER_KEY_LONG_PRESS_MASK, POWER_KEY_SHORT_PRESS_MASK,
-        POWER_KEY_WAKE_GUARD_QUIET_MS,
+        power_key_event_from_irq_status, PowerKeyEvent, PowerKeyLink, SleepWakeGuard,
+        SleepWakeGuardDecision, POWER_KEY_EVENT_MASK, POWER_KEY_LONG_PRESS_MASK,
+        POWER_KEY_SHORT_PRESS_MASK, POWER_KEY_WAKE_GUARD_QUIET_MS,
     };
+
+    #[test]
+    fn errors_pause_polling_and_retry_with_growing_pauses() {
+        let mut link = PowerKeyLink::default();
+        assert_eq!(link.label(), "Not checked");
+        assert_eq!(link.failed("AXP2101 read 0x49 failed"), 1_000);
+        assert!(!link.is_ready());
+        assert_eq!(link.label(), "Not answering");
+        let pauses: Vec<u64> = (0..6).map(|_| link.failed("timeout")).collect();
+        assert_eq!(pauses, [2_000, 4_000, 8_000, 16_000, 30_000, 30_000]);
+        link.succeeded();
+        assert!(link.is_ready());
+        assert_eq!(link.label(), "Ready, 7 errors");
+        assert_eq!(link.last_error(), Some("timeout"));
+        // A new failure after a recovery starts again at the first pause.
+        assert_eq!(link.failed("again"), 1_000);
+    }
+
+    #[test]
+    fn a_link_without_errors_reads_ready() {
+        let mut link = PowerKeyLink::default();
+        link.succeeded();
+        assert_eq!((link.label().as_str(), link.errors()), ("Ready", 0));
+        assert_eq!(link.last_error(), None);
+        let _ = link.failed("bus busy");
+        link.succeeded();
+        assert_eq!(link.label(), "Ready, 1 error");
+    }
 
     #[test]
     fn decodes_short_and_long_axp2101_power_key_bits_with_long_priority() {

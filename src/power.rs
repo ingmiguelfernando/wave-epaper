@@ -29,6 +29,10 @@ const INTEN3: u8 = 0x42;
 const INTSTS1: u8 = 0x48;
 const INTSTS2: u8 = 0x49;
 const INTSTS3: u8 = 0x4A;
+/// IRQLEVEL (long press), OFFLEVEL and ONLEVEL times of the POWERON key.
+const PWRON_KEY_TIMING: u8 = 0x27;
+/// IRQLEVEL bits: 0 = 1 s, 1 = 1.5 s, 2 = 2 s, 3 = 2.5 s.
+const LONG_PRESS_TIME_MASK: u8 = 0x30;
 const ALDO3_ENABLE_BIT: u8 = 1 << 2;
 const ALDO3_MIN_MV: u16 = 500;
 const ALDO3_MAX_MV: u16 = 3500;
@@ -117,19 +121,24 @@ where
         self.update_bits(ADC_CHANNEL_CTRL, 1 << 0, true)
     }
 
-    /// Enable AXP2101 short- and long-press Power-key reporting and clear any
-    /// stale status before the event loop starts. Every other interrupt is
-    /// disabled: the PMIC interrupt line wakes the chip from light sleep, so
-    /// USB or battery events would wake it too.
-    pub fn initialize_power_key_events(&mut self) -> Result<()> {
+    /// Enable AXP2101 short- and long-press Power-key reporting with a one
+    /// second long press, and clear any stale status before the event loop
+    /// starts. Every other interrupt is disabled: the PMIC interrupt line wakes
+    /// the chip from light sleep, so USB or battery events would wake it too.
+    /// Returns the long-press time the PMIC had before, in milliseconds.
+    pub fn initialize_power_key_events(&mut self) -> Result<u16> {
         self.verify_present()?;
+        let timing = self.read_register(PWRON_KEY_TIMING)?;
+        if timing & LONG_PRESS_TIME_MASK != 0 {
+            self.write_register(PWRON_KEY_TIMING, timing & !LONG_PRESS_TIME_MASK)?;
+        }
         self.write_register(INTEN1, 0)?;
         self.write_register(INTEN2, POWER_KEY_EVENT_MASK)?;
         self.write_register(INTEN3, 0)?;
         for status in [INTSTS1, INTSTS2, INTSTS3] {
             self.write_register(status, 0xFF)?;
         }
-        Ok(())
+        Ok(long_press_ms(timing))
     }
 
     /// Read and clear one latched AXP2101 Power-key event. Long press takes
@@ -198,6 +207,10 @@ fn decode_battery_voltage_mv(high: u8, low: u8) -> u16 {
     (u16::from(high & 0x1F) << 8) | u16::from(low)
 }
 
+fn long_press_ms(timing: u8) -> u16 {
+    1_000 + 500 * u16::from((timing & LONG_PRESS_TIME_MASK) >> 4)
+}
+
 fn encode_aldo3_voltage_mv(millivolts: u16) -> Result<u8> {
     if !(ALDO3_MIN_MV..=ALDO3_MAX_MV).contains(&millivolts) {
         bail!("ALDO3 voltage {millivolts} mV is outside the supported range");
@@ -211,11 +224,20 @@ fn encode_aldo3_voltage_mv(millivolts: u16) -> Result<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_battery_voltage_mv, encode_aldo3_voltage_mv};
+    use super::{decode_battery_voltage_mv, encode_aldo3_voltage_mv, long_press_ms};
 
     #[test]
     fn decodes_reference_battery_voltage_registers() {
         assert_eq!(decode_battery_voltage_mv(0x0F, 0x8C), 3_980);
+    }
+
+    #[test]
+    fn reads_the_long_press_time_from_irqlevel_bits_only() {
+        let times = [0x00, 0x10, 0x20, 0x30].map(long_press_ms);
+        assert_eq!(times, [1_000, 1_500, 2_000, 2_500]);
+        // OFFLEVEL and ONLEVEL bits around them do not count.
+        assert_eq!(long_press_ms(0x3F), 2_500);
+        assert_eq!(long_press_ms(0xCF), 1_000);
     }
 
     #[test]

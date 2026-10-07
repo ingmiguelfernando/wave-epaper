@@ -15,6 +15,7 @@ use crate::{
     network::NetworkSnapshot,
     orientation::DisplayOrientation,
     photos::ui::PhotosUiState,
+    power_key::PowerKeyLink,
     power_key_menu::{PowerKeyMenuOutcome, PowerKeyMenuUiState},
     power_settings::{PowerPreferences, PowerSetting},
     reader::{ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
@@ -137,6 +138,10 @@ pub struct AppState {
     pub power_key_menu: PowerKeyMenuUiState,
     power_key_menu_return_route: ScreenRoute,
     power_key_manual_refresh_requested: bool,
+    /// Whether the PMIC answers Power-key polls; main.rs retries after errors.
+    pub power_key: PowerKeyLink,
+    /// Why the chip last restarted, for Device info.
+    pub reset_reason: &'static str,
     weather_refresh_requested: bool,
     /// Auto-sleep delay and wake keys; main.rs saves changes to POWER.TXT.
     pub power: PowerPreferences,
@@ -193,6 +198,8 @@ impl Default for AppState {
             power_key_menu: PowerKeyMenuUiState::default(),
             power_key_menu_return_route: ScreenRoute::Home,
             power_key_manual_refresh_requested: false,
+            power_key: PowerKeyLink::default(),
+            reset_reason: "Unknown",
             weather_refresh_requested: false,
             power: PowerPreferences::default(),
             power_ui: PowerUiState::default(),

@@ -49,7 +49,7 @@ before tests; never remove the card while writes are active.
 ## Photos and sleep screen
 
 - [ ] Copy a few phone JPEGs (one 12 MP, one portrait) and one progressive
-	JPEG into `/PHOTOS`. Open Photos: thumbnails appear one by one while the
+	JPEG into `/RUSTMIX/PHOTOS`. Open Photos: thumbnails appear one by one while the
 	keys stay responsive; the progressive file shows its reason.
 - [ ] Photos are upright in the viewer; Up/Down change photo with a full
 	refresh; hold BOOT returns to the gallery without a ghost of the photo.
@@ -76,8 +76,12 @@ light sleep. Restore the owner's original preferences afterward.
 	persistence after reboot. Restore the intended delay (default 10 min).
 - [ ] Short Power opens maintenance, Cancel returns without sleep, and
 	Clear ghosting now performs a full refresh and restores the prior route.
-- [ ] Hold Power from a Reader page, release and wait for the guard: sleep
-	picture appears, no immediate false wake, network/portal stop.
+- [ ] Leave a screen alone for over a minute (the panel powers down), then
+	press Power briefly: the menu still appears. Device Info page 3 shows
+	`Power key: Ready`.
+- [ ] Hold Power from a Reader page for about a second, release and wait for
+	the guard: sleep picture appears, no immediate false wake, network/portal
+	stop.
 - [ ] Wake with Power and confirm previous route/page is restored.
 - [ ] With Any key, repeat sleep/wake separately using Up, Down, Select and
 	BOOT. The wake press must not also change page or activate an action.

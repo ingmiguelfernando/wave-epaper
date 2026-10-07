@@ -36,7 +36,7 @@ one.
 
 | Home row | Current behavior |
 |---|---|
-| Photos | Gallery of the JPEG photos in `/PHOTOS`; see [Photos](#photos) |
+| Photos | Gallery of the JPEG photos in `/RUSTMIX/PHOTOS`; see [Photos](#photos) |
 | Library | Continue Reading, Books, Bookmarks |
 | Bible | SOON placeholder |
 | Reading Stats | SOON placeholder |
@@ -52,8 +52,8 @@ screens are not implemented yet.
 
 ## Photos
 
-Copy JPEG photos into `/PHOTOS` at the root of the SD card, next to
-`RUSTMIX` (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
+Copy JPEG photos into `/RUSTMIX/PHOTOS` on the SD card, with a computer or
+the Wi-Fi file transfer (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
 
 - **Gallery.** Six thumbnails per page, newest first. Up/Down moves through
   the photos across pages; Select opens the viewer; short BOOT stars or
@@ -319,12 +319,15 @@ A short Power press opens the maintenance menu. Up/Down selects **Clear
 ghosting now** or **Cancel**, Select runs it, and hold BOOT cancels. Clearing
 ghosting performs a full refresh and returns to the underlying screen.
 
-Holding Power, or reaching the Auto-sleep delay, draws the sleep picture set
-in Settings › Sleep screen: a starred photo once Photos has prepared it, or a
-BMP from `/RUSTMIX/SLEEP/`, which is also the fallback. Shuffle avoids showing
-the same picture twice in a row. If no picture can be used, a sleep card shows
-the reason, battery and wake hint. BMP requirements are in
-[SD-card setup](SD_CARD_SETUP.md#sleep-images).
+Holding Power for about a second, or reaching the Auto-sleep delay, draws the
+sleep picture set in Settings › Sleep screen: a starred photo once Photos has
+prepared it, or a BMP from `/RUSTMIX/SLEEP/`, which is also the fallback.
+Shuffle avoids showing the same picture twice in a row. If no picture can be
+used, a sleep card shows the reason, battery and wake hint. BMP requirements
+are in [SD-card setup](SD_CARD_SETUP.md#sleep-images).
+
+If Power does nothing, Settings › Device Info shows the Power key status and
+its last error on page 3, and why the device last restarted on page 1.
 
 Sleep mode retains the previous route, stops Wi-Fi/transfer/weather activity,
 turns off the IMU, suspends idle audio, and deep-sleeps the panel with its

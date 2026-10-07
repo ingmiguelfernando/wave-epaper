@@ -18,7 +18,7 @@ use crate::{
             status_row::{draw_status_row, StatusRow},
         },
     },
-    build_info::{FIRMWARE_VERSION, PRODUCT_NAME},
+    build_info::{FIRMWARE_VERSION, PRODUCT_NAME, UI_SHELL_MILESTONE},
     orientation::OrientedFrameBuffer,
 };
 
@@ -54,7 +54,8 @@ pub fn render_device_info(
     Text::new("Firmware", Point::new(22, 164), heading).draw(display)?;
     line(display, 212, "Product", PRODUCT_NAME, body)?;
     line(display, 252, "Version", FIRMWARE_VERSION, body)?;
-    line(display, 292, "Milestone", "Readability repair", body)?;
+    line(display, 292, "Milestone", UI_SHELL_MILESTONE, body)?;
+    line(display, 332, "Last restart", state.reset_reason, body)?;
 
     Text::new("Display", Point::new(22, 372), heading).draw(display)?;
     line(display, 420, "Logical UI", "480 x 800 portrait", body)?;
@@ -150,8 +151,12 @@ pub fn render_device_info_runtime(
     Text::new("Stable ownership", Point::new(22, 450), heading).draw(display)?;
     line(display, 498, "EPD busy", "GPIO3 / ALDO3 managed", body)?;
     line(display, 538, "Buttons", "UP4 SELECT5 DOWN6", body)?;
-    line(display, 578, "Power key", "Short menu / hold sleep", body)?;
+    line(display, 578, "Power key", &state.power_key.label(), body)?;
     line(display, 618, "RTC alarm", "GPIO45 active-low", body)?;
+    if let Some(error) = state.power_key.last_error() {
+        let error = detail.fit(&format!("Power key error: {error}"), 436);
+        Text::new(&error, Point::new(22, 650), detail).draw(display)?;
+    }
     Text::new(
         "Hold BOOT to return to page 2.",
         Point::new(22, 680),
