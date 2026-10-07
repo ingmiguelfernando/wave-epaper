@@ -379,7 +379,10 @@ mod firmware {
         state.display = display_preferences;
         state.power = power_preferences;
         state.reset_reason = reset_reason_label(unsafe { sys::esp_reset_reason() });
-        info!("rustmix-wave=reset-reason last-restart={}", state.reset_reason);
+        info!(
+            "rustmix-wave=reset-reason last-restart={}",
+            state.reset_reason
+        );
         if _mounted_sd.is_some() {
             match BatteryLog::load_from_path(BATTERY_LOG_PATH) {
                 Ok(log) => state.battery_log = log,
