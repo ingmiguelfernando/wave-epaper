@@ -68,7 +68,10 @@ mod tests {
     #[test]
     fn darker_greys_get_more_black_and_near_white_stays_clean() {
         let counts = [32, 96, 160, 224].map(|level| black_count(100, 100, level));
-        assert!(counts.windows(2).all(|pair| pair[0] > pair[1]), "{counts:?}");
+        assert!(
+            counts.windows(2).all(|pair| pair[0] > pair[1]),
+            "{counts:?}"
+        );
         // Floyd–Steinberg would scatter about 4% dots here.
         assert!(black_count(100, 100, 245) < 200);
     }
