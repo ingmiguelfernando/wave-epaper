@@ -10,8 +10,8 @@ Pull request #4 (D18 to D23) was reviewed, merged into `main` and released as
 v0.9.3 (milestone `sudoku-steps`). Good scope and a real pull request
 description this time. The libraries (D21 to D23) are solid; the screens
 needed a mockup pass, and two bugs would only have shown on the device or
-against a real provider. The `side-tasks-4` branch is deleted; round 5 is not
-published yet.
+against a real provider. The `side-tasks-4` branch is deleted; round 5 is
+below.
 
 What the main developer changed at merge time:
 
@@ -174,6 +174,194 @@ Do differently next time:
   stays on one line, after a break at `=` when the line would pass 100;
   wider arrays go one item per line. `a.field.method(..)` chains break past
   60 characters.
+- **rustfmt call width:** when the arguments of one call add up to more than
+  60 characters, they go one per line, even if the line fits in 100. A
+  `draw_header(…)` with a 30-character subtitle did.
+
+## Round 5 tasks (branch `side-tasks-5`)
+
+Start from `main` at v0.9.4 or later. Five tasks, in this order; D25 uses
+D24's records.
+
+**Main line during this round.** The main developer builds Phase 3b (clock
+and weather sleep screens, refreshed while the device sleeps) and redraws
+Weather and the sleep screens like the mockup (bold display digits, the
+mockup's weather icons). Leave these files alone:
+
+- `src/main.rs`, except the lines a task names;
+- power and sleep: `src/power*.rs`, `src/sleep_*.rs`,
+  `src/app/screens/sleep_*.rs`, `src/app/screens/power*.rs`;
+- weather: `src/weather*.rs`, `src/app/screens/weather*.rs`;
+- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/big_digits.rs`,
+  `src/app/typography/`, `scripts/fonts/`;
+- photos: `src/photos/`, `src/app/screens/photos.rs`.
+
+The fonts have no `→`, `★` or `⌫`; write `›`, draw a star shape, or use
+`×`, as the existing screens do.
+
+### D24: Sudoku difficulty, timer and resume
+
+**Why.** Phase 6. Mockup "Sudoku" shows `Sudoku · Medium` with the play
+time on the right, and mockup "Games" shows `Medium · in progress 35/81` and
+`Best time 12:41 · auto-saved`. Today the SD app declares one fixed puzzle,
+there is no difficulty, and leaving the game loses it.
+
+**Change.**
+
+- **Puzzles.** New `src/games/sudoku_puzzles.rs`: a seeded generator that
+  fills a solution grid by shuffled backtracking, then removes cells in
+  random order while the puzzle keeps exactly one solution. Targets: Easy 40
+  givens, Medium 32, Hard 26; if uniqueness stops the removal earlier, keep
+  the puzzle. Use a small xorshift like `tetris.rs`; no new dependency. The
+  caller passes the seed.
+- **Start.** Opening Sudoku shows an option list (`widgets/option_list.rs`):
+  `Continue · Medium · 35/81` when a saved game exists, then `New · Easy`,
+  `New · Medium`, `New · Hard`. `APPS/SUDOKU/MAIN.LUA` becomes
+  `sudoku.init()`; an old card's `sudoku.init("…")` puzzle still parses and
+  appears as a last option, `SD puzzle`.
+- **Timer.** Play time in seconds: each key press adds the time since the
+  previous one, at most 60 s, so a game left open does not run up the clock.
+  The title bar shows `Sudoku · Medium` on the left and `7:41` (or
+  `1:02:03`) on the right, updated whenever the screen redraws; no ticking.
+  Give the game the elapsed milliseconds with each event, so tests choose
+  the times.
+- **Resume.** Hold BOOT saves `/RUSTMIX/GAMES/SUDOKU.TXT` (`key=value`:
+  `difficulty`, `puzzle` and `board` as 81 digits each, `seconds`) through
+  `sd_file`, creating the folder first. Save only on leaving, never per
+  move. Follow the records pattern: the runtime sets a flag and `main.rs`
+  writes the file next to the records save. Solving the puzzle deletes it.
+- **Best times.** `GameRecords` gains `sudoku_easy`, `sudoku_medium` and
+  `sudoku_hard` (seconds, 0 = none), written once when a solve beats them.
+  The solved screen says `Solved in 12:41 · best 11:02`.
+
+**Tests:** the generator (same seed, same puzzle; givens per difficulty;
+exactly one solution, with a solver that stops counting at two), capped
+timer gaps, the save file round trip and a missing or malformed file, best
+times only on improvement, the start list with and without a save.
+**Previews:** `sudoku-start` (with a saved game); `sudoku-row` and
+`sudoku-number` show the difficulty and a time. **main.rs:** the save next
+to the records save only.
+
+**Status:** not started.
+
+### D25: Games hub as in the mockup
+
+**Why.** Home › Games shows a single `SD Games` row, then a generic list of
+SD apps with author and version. Mockup "Games" lists the games themselves,
+each with its state.
+
+**Change.**
+
+- Home › Games opens the hub: the status bar `Games` with the number of
+  games, then one card per SD app of kind `game`, with an icon, the name and
+  two detail lines:
+  - Sudoku: `Medium · in progress 35/81` or `No game in progress`, then
+    `Best time 12:41 · auto-saved` or `No best time yet` (from D24);
+  - Tetris: `Zen · best 18,950`, then `No gravity: pieces move when you
+    press`. This is the third user of the private `grouped()` helpers;
+    move one to a shared place (see Tips);
+  - any other game: its manifest description on two lines.
+- Icons: the Sudoku grid and the Tetris blocks of the mockup's 60 × 60
+  drawings, made with primitives; other games get a plain framed square.
+- A dashed info box with what is true today: `Moves use the fast partial
+  refresh; a full refresh now and then cleans ghosting.` (the mockup's
+  "only the cells that change" is not how the panel refreshes yet).
+- ● opens the selected game directly; bottom bar `▲▼ game ● play BOOT
+  hold: back`.
+- Category screens say `1 items` today; use singular and plural there too.
+
+**Tests:** cards for the sample catalog, Sudoku lines with and without a
+save and a best time, Tetris thousands separator, plural labels.
+**Preview:** `games` with a Sudoku save and both records.
+
+**Status:** not started.
+
+### D26: Settings as in the mockup
+
+**Why.** Mockup "Settings": a handful of groups on one page, each row with a
+short description and its current value. Today Settings is an 11-row list
+over two pages.
+
+**Change.**
+
+- Rows in this order, each with description and value:
+  - Display: `Font, size, ghost cleanup`, value like `Inter · M`;
+  - Sleep screen: `Photo, clock, weather`, value like `Photo · 12 starred`
+    (Phase 3b adds a mode on the main line; compute the value in one
+    function so the merge changes only that function);
+  - Weather: `Service, interval, location`, value `On · 2 h`, `Manual` or
+    `Off`;
+  - Wi-Fi & transfer: `Network, file portal`, value from the network state;
+  - Clock & alarms: `Time, date, alarms`, value `2 alarms` or `No alarms`;
+    opens a list with Clock and Alarms;
+  - Power: `Auto-sleep, battery log`, value the battery percentage;
+  - System: `Version, SD, diagnostics`, value `v0.9.4`; opens a list with
+    Device Info, Audio, Environment and Motion.
+- Reading and AI from the mockup come later; leave them out rather than
+  adding SOON rows.
+- Row style as the mockup's `.set` rows: title and description on the left,
+  value on the right, the selected row inverted with the marker the other
+  lists use. Everything fits at every font size.
+- The two sub-lists are category routes like Home's, with `parent()` so
+  hold BOOT walks back. Every existing screen stays reachable.
+- Update the User Guide's Settings row and the smoke test.
+
+**Tests:** row order and routes, values from state, back from every
+sub-screen, fit at every font family and size. **Previews:** `settings`,
+`settings-system`, `settings-clock-alarms`, and Settings at the Large size.
+
+**Status:** not started.
+
+### D27: Reading Stats wiring
+
+**Why.** Phase 5. `reading_stats.rs` (D11) and its screen (D14) exist, but
+nothing records reading time, nothing loads or saves `STATS.TXT`, and
+`ScreenRoute::ReadingStats` cannot be reached.
+
+**Change.**
+
+- A host-tested reading session: while a Reader page is open, each key press
+  adds the time since the previous press, at most 2 minutes, and each page
+  turn adds a page. The day comes from the RTC's local date (`civil_date`);
+  without a set clock, record nothing.
+- Load `/RUSTMIX/READER/STATS.TXT` at boot with the other settings files.
+- Save when there is unsaved data and five minutes have passed since the
+  last save, when the Reader closes, and before sleep. Never per page.
+- Home › Reading Stats opens the screen (the row shows SOON today). The
+  Home row shows `5-day streak` when there is a streak; the Continue reading
+  card adds `· 25 min today` when today has reading time.
+
+**Tests:** session time with capped gaps, page counts, the day change at
+midnight, no save without changes, the Home labels. **Previews:** `home`
+with a streak and reading time. **main.rs:** the boot load, the five-minute
+save, and one line before sleep next to the battery-log save.
+
+**Status:** not started.
+
+### D28: AI hub (drawing and navigation)
+
+**Why.** Phase 7, mockup "AI": XiaoZhi and Voice Notes on one page with the
+recent notes. Today Home › AI is a two-row category.
+
+**Change.**
+
+- Home › AI opens the hub: status bar `AI` with the network state; a
+  XiaoZhi card (the mockup's face icon, `Voice chat · xiaozhi.me`, a `SOON`
+  badge); a Voice Notes card (microphone icon, `Record › transcript ›
+  summary`); `RECENT NOTES` with the three newest notes from the Voice Notes
+  catalog (title, then `Oct 2 · 12:04 · 18 min`); a dashed info box
+  `Recordings stay on the SD card.`; bottom bar `▲▼ move ● open BOOT new
+  note`.
+- ● opens XiaoZhi (its placeholder), Voice Notes, or the selected note's
+  details; short BOOT starts a recording the way the Voice Notes screen does
+  today, through the same request.
+- No network code and no provider settings: transcription, summaries and
+  Settings › AI are Phase 7.
+
+**Tests:** rows and selection, the three newest notes, an empty catalog.
+**Preview:** `ai` with sample notes.
+
+**Status:** not started.
 
 ## Round 4 tasks (done in v0.9.3)
 

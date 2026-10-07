@@ -21,7 +21,7 @@ Last updated: 2026-10-08, firmware v0.9.4.
 | Phase 1b: idle light sleep, Wi-Fi bursts, IMU and codec off when idle | 0.6.0 | 038269f | Done |
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
-| Phase 3b: sleep screen modes (clock, weather) | | | Planned, next |
+| Phase 3b: sleep screen modes (clock, weather) | | | In progress, with the Weather and sleep-screen mockup pass (display digits, mockup icons) |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | Planned |
 | Phase 6: Games (Sudoku, Tetris) | | | Planned |
