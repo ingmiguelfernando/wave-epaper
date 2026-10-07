@@ -304,9 +304,9 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
         CanvasTextStyle::Heading => state.display.heading_style(),
         CanvasTextStyle::Detail => state.display.detail_style(),
         CanvasTextStyle::Inverse => state.display.text_style(UiTextRole::Body, BinaryColor::Off),
-        CanvasTextStyle::InverseHeading => {
-            state.display.text_style(UiTextRole::Heading, BinaryColor::Off)
-        }
+        CanvasTextStyle::InverseHeading => state
+            .display
+            .text_style(UiTextRole::Heading, BinaryColor::Off),
     }
 }
 
