@@ -3,6 +3,22 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.3 — Sudoku three-step entry and delegated tasks (pull request #4)
+
+- D18 (`5dd70ff`): Sudoku enters a value in three steps, as in the mockup:
+  pick a row, then a cell, then a number or erase. At merge, the screen got
+  the mockup's title bar, row frame, inverted cell with a number preview and
+  boxed number strip; the old row outline was invisible.
+- D19 (`5a57d3f`): the Tetris best score survives closing the game and
+  rebooting, in `/RUSTMIX/GAMES/RECORDS.TXT`, written once on exit. At merge,
+  the first save creates the `GAMES` folder.
+- D20 (`c3e25e5`): Bible book and chapter pickers, drawn in previews only;
+  Phase 5 adds the routes and the reading view.
+- D21 (`7d67ad8`): `json_lite.rs`, a small JSON reader without floats.
+- D22 (`1e2fd22`): OpenAI-compatible transcription and summary requests and
+  responses. At merge, the transcript is escaped once instead of twice.
+- D23 (`bd7b52c`): XiaoZhi WebSocket messages and binary audio frames.
+
 ## v0.9.2 — Tetris Zen, shared bottom bar and delegated tasks (pull request #3)
 
 - Every screen ends with the same bottom bar: key caps and short labels as in

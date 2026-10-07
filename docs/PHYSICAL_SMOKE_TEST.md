@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.9.2), not an upstream v1.0.0 marker.
+	expected release version (currently v0.9.3), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Bible, Reading Stats and XiaoZhi remain SOON.
 - [ ] Every screen ends with the same bottom bar of key caps, and its labels
@@ -141,10 +141,11 @@ light sleep. Restore the owner's original preferences afterward.
 	Minesweeper and Tetris without the removed sensor-controlled samples.
 - [ ] Hello Grid draws its static canvas; hold BOOT returns to the catalog.
 - [ ] Sudoku three-step entry: ▲▼ row (given rows skipped), Select confirms;
-        ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase,
-        Select places. Short BOOT goes back one step; the step strip and the
-        bottom bar follow each step; a conflict keeps the number step and
-        hold BOOT exits.
+        ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase (×),
+        Select places. The row frame and the inverted cell are easy to see;
+        short BOOT goes back one step; the step chips and the bottom bar
+        follow each step; a conflict keeps the number step and hold BOOT
+        exits.
 - [ ] Minesweeper: movement/axis toggle, Reveal/Flag action choice, cancel,
 	first-reveal safety and hold BOOT exit. The bottom bar follows the mode.
 - [ ] Tetris Zen: Up/Down move, Select rotates clockwise, short BOOT drops;

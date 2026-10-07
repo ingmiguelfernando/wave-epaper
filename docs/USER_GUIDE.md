@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.9.2: what is implemented, not the future
+This guide describes firmware v0.9.3: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -271,7 +271,7 @@ IMU-controlled games or BLE remote page-turner in this build.
 | Sample | Controls |
 |---|---|
 | Hello Grid | Static canvas demonstration; wheel/Select have no game action; hold BOOT exits |
-| Sudoku | Three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase, ● place. Short BOOT goes back one step. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
+| Sudoku | Three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase (×), ● place. Short BOOT goes back one step. A thick frame marks the row, the chosen cell is inverted and previews the number, and the strip starts on the first value that fits. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
 | Tetris Zen | Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game. Best survives closing the game and rebooting (`/RUSTMIX/GAMES/RECORDS.TXT`, written once on exit) |
 

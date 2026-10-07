@@ -33,6 +33,8 @@ Use a FAT-formatted SD card. Wave mounts it at `/sdcard` and expects the followi
     CALENDAR/
       EVENTS.TXT
       US2026.TXT
+  GAMES/
+    RECORDS.TXT     best scores, created by the device
 ```
 
 ## Install bundled examples

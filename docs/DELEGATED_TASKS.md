@@ -4,63 +4,63 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
-## Round 3 result (2026-10-05)
+## Round 4 result (2026-10-08)
 
-Pull request #3 (D12 to D17) was reviewed, merged into `main` and released as
-v0.9.2 (milestone `tetris-zen`). A strong round: Tetris follows the mockup
-with bounded partial refreshes, `sd_file` and `civil_date` remove real
-duplication, and the boot log lost 88 stale lines without changing behaviour.
-The `side-tasks-3` branch is deleted; round 4 is in "Round 4 tasks" below.
+Pull request #4 (D18 to D23) was reviewed, merged into `main` and released as
+v0.9.3 (milestone `sudoku-steps`). Good scope and a real pull request
+description this time. The libraries (D21 to D23) are solid; the screens
+needed a mockup pass, and two bugs would only have shown on the device or
+against a real provider. The `side-tasks-4` branch is deleted; round 5 is not
+published yet.
 
 What the main developer changed at merge time:
 
-- **One bottom bar for every screen.** D13 drew the key caps under every SD
-  app, so Sudoku and Minesweeper showed two footers: their own canvas text at
-  y 742 and the caps. `widgets/key_hints.rs` became `widgets/bottom_bar.rs`,
-  every screen (games included) now ends with `draw_bottom_bar`, and the old
-  `draw_footer` text widget is gone. See Rules › Bottom bar.
-- D13: games are told apart by their `LuaEventBridge` variant, not by the
-  `APP.TOM` name, which anyone can edit on the card.
-- D13: `scripts/install-sd-examples.sh` and SD_CARD_SETUP did not include
-  `APPS/TETRIS`, so the installer left Tetris off the card.
-- D12: Rotate turned counter-clockwise; the spec says clockwise. `(c, r)` now
-  becomes `(size - 1 - r, c)`, and the kick tests follow.
-- D14: "1 books finished" is now "1 book finished"; "vs last" alone stays
-  blank until there is a previous week; weeks and years come from
-  `civil_date` (D16 landed after D14); week starts saturate, since an unset
-  clock gives day 0.
-- D15: the next save deleted a `.BAK` that was the only copy left by an
-  interrupted save. `replace` now renames it back first. The test helpers
-  moved into `mod tests`.
+- **D18:** the Row step drew a 1 px outline exactly on the grid lines, so no
+  row looked selected. Sudoku now follows the mockup: black title bar,
+  centered chips, 48 px cells with 3 px box lines, a 5 px row band outside
+  the row, the cursor cell inverted with the candidate previewed, a boxed
+  number strip (erase shows ×), and no key instructions in the status line,
+  since the bottom bar has them. The number step starts on the cell's value
+  or its first option.
+- **D19:** `RECORDS.TXT` lives in `/RUSTMIX/GAMES/`, which no card has, so
+  every save would have failed. The first save now creates the folder. The
+  host test passed only because it created the folder itself.
+- **D20:** the selected book row and section tab used a smaller font than
+  the others; the list showed three rows at the end of long sections; the
+  next-section line overlapped the seventh row; chapter numbers were not
+  centered and pages had no caption. One section filter replaces three.
+- **D22:** the transcript was JSON-escaped twice, so the provider would have
+  read `\n` and `\"` literally. The test only checked that the text was
+  there, not what the server parses.
+- Eleven compiler warnings: unused imports, a dead helper, an unused parser,
+  a `#[must_use]` result dropped in a test, and a `let _ =` shim.
 
 Verdict per task:
 
-- **D12:** done after the rotation fix; a clean engine with good tests.
-- **D13:** done after the footer and installer fixes; close to the mockup.
-- **D14:** done; close to the mockup at every font family and size.
-- **D15:** done; the injectable rename makes the failure tests convincing.
-- **D16:** done.
-- **D17:** done; only markers and the imports they used were removed.
+- **D18:** done after the mockup pass above.
+- **D19:** done after the folder fix; the save-once wiring is right.
+- **D20:** done after the layout fixes. The SD-format note is useful; see
+  ROADMAP › Phase 5.
+- **D21:** done; clean, with honest limits.
+- **D22:** done after the escaping fix.
+- **D23:** done.
 
 Do differently next time:
 
-- A change to a shared draw path (`render_lua_game` draws every SD app)
-  needs a look at every screen that goes through it, not only yours.
-- Do not key behaviour on text from the SD card; match on types.
-- Pin directions in tests. "Four turns return to the start" passes in both
-  directions; draw one turn on paper and assert its cells.
-- When a later task adds a shared module (`civil_date`, `sd_file`), go back
-  and use it in the earlier tasks of the same round.
-- A new SD sample needs its lines in `install-sd-examples.sh` and
-  SD_CARD_SETUP.
-- Labels: singular and plural ("1 book"), and no half labels when the number
-  is missing.
-- Power safety: walk through two interruptions in a row, not only one.
-- Write the pull request description: per task what changed, the checks, the
-  previews to look at and the device checks. Pull request #3 had none.
-- Remove "firmware build pending" from a Status once the build is green.
+- **No warnings.** CI passes with warnings; the review does not. Read the
+  `warning:` lines of the test build (`cargo test` prints them) before you
+  hand over.
+- **Look at the preview like a user.** "Which row is selected?" had no
+  answer on the `sudoku-row` preview, although the Status said it matched
+  the mockup. Compare highlights, text sizes and spacing, not only layout.
+- **Test what the other side reads.** For a request body, parse it and
+  compare the field with the input; `contains` hides double escaping.
+- **Folders on the card.** Only what the installer creates exists. Create
+  the parent folder before the first write, and test without it.
+- **Keep the Status honest.** D22 had no Status, and D20's described an
+  `Open { book, chapter }` that the code returns as a tuple.
 
-## Lessons from rounds 1 and 2
+## Lessons from earlier rounds
 
 - Write docs for `main` as it will be after the merge, not "on this branch";
   if another branch changes the same feature, say so in the Status line.
@@ -75,11 +75,21 @@ Do differently next time:
 - Status lines: about eight lines, no local `/tmp` paths. Logs and evidence
   go in the pull request description.
 - Indent Markdown continuation lines with two spaces, not tabs.
+- A change to a shared draw path needs a look at every screen that goes
+  through it, not only yours.
+- Do not key behaviour on text from the SD card; match on types.
+- Pin directions in tests; "four turns return to the start" passes both ways.
+- When a later task adds a shared module, use it in the earlier tasks of the
+  same round.
+- A new SD sample needs its lines in `install-sd-examples.sh` and
+  SD_CARD_SETUP.
+- Labels: singular and plural ("1 book"), no half labels without a number.
+- Power safety: walk through two interruptions in a row, not only one.
 
 ## How to work
 
 - **Branch.** Each round of tasks gets its own branch from the latest `main`
-  (round 4: `side-tasks-4`), with one commit per task (`D18: ...`). Push often.
+  (round 5: `side-tasks-5`), with one commit per task. Push often.
 - **Pull request.** When done, open a pull request to `main` with a
   description: per task what changed, the checks, the previews to look at and
   the device checks. Do not merge it; the main developer reviews it, resolves
@@ -116,6 +126,8 @@ Do differently next time:
 - Logic changes come with host tests. UI changes come with a preview: add an
   entry at the end of `preview_states()` in `src/app/preview.rs`, then check
   the PNG in the `screen-previews` artifact.
+- **No warnings.** The test build must print no `warning:` lines. CI stays
+  green with warnings, so read the log yourself.
 - **Bottom bar.** Every screen ends with
   `draw_bottom_bar(display, preferences, &HINTS)` from
   `widgets/bottom_bar.rs`. Use a shared set (`BACK_HINTS`, `OPEN_HINTS`,
@@ -147,7 +159,14 @@ Do differently next time:
   several copies of the same match arm.
 - **SD files.** Settings files go through `sd_file::replace` and
   `sd_file::read_to_string` (`.TMP` then `.BAK`); FAT cannot rename onto an
-  existing file.
+  existing file. A new folder does not exist until code creates it
+  (`fs::create_dir_all` before the first write).
+- **JSON.** Read with `json_lite`, write with `json_lite::escape` once per
+  value. No serde: the Xtensa backend cannot build its float visitor.
+- **Game dirty regions** are bookkeeping today: the panel refreshes the
+  whole screen with a partial refresh. Keep them right and at most
+  `MAX_DIRTY_REGIONS`; a whole-canvas region is fine when a step redraws
+  most of the screen.
 - **Shared modules.** Dates: `civil_date`. Look for a helper before writing
   one: Tetris and Reading Stats each grew a private `grouped()` for thousands
   separators, so a third user should move it to a shared place.
@@ -156,20 +175,9 @@ Do differently next time:
   wider arrays go one item per line. `a.field.method(..)` chains break past
   60 characters.
 
-## Round 4 tasks
+## Round 4 tasks (done in v0.9.3)
 
-Branch `side-tasks-4` from the latest `main` (v0.9.2); pull request title
-`Side tasks 4`. Order: D18, D19, D20, D21, D22, D23. D22 and D23 use D21.
-
-The main line builds Phase 3b (sleep screen modes) at the same time.
-
-- Do not edit: `src/sleep_mode.rs`, `src/sleep_screen.rs`,
-  `src/sleep_images.rs`, `src/radio_burst.rs`, `src/app/screens/sleep_*.rs`,
-  `docs/ROADMAP.md`, `docs/architecture.md`.
-- Keep edits small and local: `src/main.rs`, `src/app/state.rs`,
-  `src/app/router.rs`, `src/app/menu.rs`, `src/app/mod.rs`,
-  `src/app/preview.rs`, `src/app/screens/home.rs`, `src/lib.rs`,
-  `README.md`, `Cargo.toml`.
+Kept as the reference for the code they added.
 
 ### D18: Sudoku three-step entry
 
@@ -204,15 +212,10 @@ It reads without instructions, so it replaces Sudoku's H/V axis mode
 back from each step, completion, and the command and region limits.
 **Previews:** `sudoku-row` and `sudoku-number`, built like `tetris`.
 
-**Status:** done on `side-tasks-4` (2026-10-05). Sudoku now enters through
-  Row ▸ Cell ▸ Number: ▲▼ wraps, givens and all-given rows are skipped,
-  ● confirms, placing returns to Cell, short BOOT goes back one step and
-  does nothing on Row. The step strip, pick strip (struck values, erase as
-  −), and the `Row n · Col n · options:` line follow the mockup; the bottom
-  bar and `GAME_BOTTOM_BAR_RECT` switch per step. Bridge logs carry the
-  step in the former axis slot. Tests: 551 pass (14 new), fmt clean.
-  Previews `sudoku-row` and `sudoku-number` match the mockup layout.
-  Device: play a game through all three steps and BOOT back.
+**Status:** done in v0.9.3 (`5dd70ff`). At merge, the mockup pass: title bar,
+  visible row band, inverted cursor cell, boxed number strip, no key
+  instructions in the status line. Device check: play through all three
+  steps and BOOT back from each.
 
 ### D19: Keep the Tetris best score
 
@@ -236,15 +239,9 @@ best scores in the Games hub.
 best, no save after a lower score. **Device check:** score, leave and reopen
 (Best shows it), then reboot (still there).
 
-**Status:** done on `side-tasks-4` (2026-10-06). Added `games/records.rs`
-  (`RECORDS.TXT` as `key=value` under a header comment, through `sd_file`),
-  `TetrisApp::set_best`, and the wiring: `main.rs` loads the records at
-  boot, opening Tetris seeds the saved best, and closing marks the change
-  via `LuaRuntimeUiState::take_records_changed` so `main.rs` saves once.
-  Tests: 557 pass (7 new: format round trip, unknown keys, malformed files,
-  missing file defaults, observe saves once, SD round trip, and the
-  open/close flow). Guide and smoke test updated. Device: beat the best,
-  reopen and reboot; check one save in the log.
+**Status:** done in v0.9.3 (`5a57d3f`). At merge, the first save creates
+  `/RUSTMIX/GAMES/`. Device check: beat the best, leave and reopen, then
+  reboot; the log shows one save.
 
 ### D20: Bible book and chapter pickers (drawing and state only)
 
@@ -279,20 +276,10 @@ routes, the reading view and the wiring later.
 the Open outcome, fit at every font family and size. **Previews:**
 `bible-books` and `bible-chapters` (Psalms, 150 chapters).
 
-**Status:** done on `side-tasks-4` (2026-10-06). Added `bible_nav.rs`
-(eight sections by book number, tabs `PEN HIS POE MAJ MIN GOS PAU REV`,
-skips books missing from `BOOKS.TXT` and empty sections, short BOOT jumps
-to the next populated section, ▲▼ wraps, ● returns `Open { book, chapter }`,
-`back()` returns) and `screens/bible.rs` (mockup layout: `Go to · Book`
-+ translation, `Old/New Testament · section n of 8`, section name, tab
-strip with the current tab inverted, Spanish rows `Salmos · 150 ch.`,
-next-section line, and the chapter grid with the current cell inverted,
-6 rows of 8). Sample `BOOKS.TXT` with the 66 Reina-Valera names shared by
-both test modules. Host tests: 565 pass, fmt clean. Previews
-`bible-books` and `bible-chapters` match the mockup. No routes, no
-`main.rs` changes. Device check comes with the Phase 5 wiring; the
-SD-format decision (the card's proven `index.tsv`/`.idx` from folloup
-versus `BOOKS.TXT`) belongs to the main line.
+**Status:** done in v0.9.3 (`c3e25e5`). ● returns the choice as
+  `open() -> Option<(book, chapter)>`. At merge: text sizes of the selected
+  row and tab, the list window, the next-section line and the chapter grid.
+  Routes and the reading view come with Phase 5.
 
 ### D21: A small JSON reader
 
@@ -320,13 +307,8 @@ hand-roll pieces.
 an emoji, the limits, malformed input (trailing comma, unterminated string,
 bad escape).
 
-**Status:** done on `side-tasks-4` (2026-10-06). `json_lite.rs` parses all
-six value types with numbers kept as text (`as_i64` on demand), escapes both
-ways (`\uXXXX` with surrogate pairs, lone surrogates rejected), 64 KiB and
-depth-32 limits, and byte-offset errors. Host tests green (572, nine new);
-fmt clean. No existing parsers touched; candidates to migrate later:
-`weather.rs` hand-rolled fields, `dictionary.rs` pack index,
-`wifi_transfer.rs` portal JSON. Device: none (host library).
+**Status:** done in v0.9.3 (`7d67ad8`). Later candidates to move onto it:
+  `weather.rs`, `dictionary.rs` and `wifi_transfer.rs`.
 
 ### D22: OpenAI-compatible requests and responses (library only)
 
@@ -353,6 +335,9 @@ screens.
 quotes and accents, success and error responses taken from the Groq and
 OpenRouter documentation, title splitting.
 
+**Status:** done in v0.9.3 (`1e2fd22`). At merge, the transcript is escaped
+  once (it was escaped twice) and the model id is escaped.
+
 ### D23: XiaoZhi messages (library only)
 
 **Why.** XiaoZhi voice chat is the largest Phase 7 item. xiaozhi-esp32 needs
@@ -375,13 +360,7 @@ document of the xiaozhi-esp32 repository (`docs/websocket.md`) and its
 **Tests:** each message both ways against the document's examples, the frame
 headers, malformed and unknown input.
 
-**Status:** done on `side-tasks-4` (2026-10-06). `xiaozhi/protocol.rs`
-models hello/listen/abort/mcp for the device side and hello/stt/llm/tts/mcp
-for the server side, with `Unknown(type)` for anything else, and the v2/v3
-binary frame headers encoded and decoded with size checks. JSON-RPC payloads
-pass through compact re-serialization. Tests (eight new) cover every message
-against the document examples, both frame versions, malformed and unknown
-input. Host tests green (586); fmt clean. Device: none (host library).
+**Status:** done in v0.9.3 (`bd7b52c`), from xiaozhi-esp32 `af5a8c5`.
 
 ## Round 3 tasks (done in v0.9.2)
 

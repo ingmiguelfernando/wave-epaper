@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-04, firmware v0.9.2.
+Last updated: 2026-10-08, firmware v0.9.3.
 
 ## Status
 
@@ -31,7 +31,7 @@ Last updated: 2026-10-04, firmware v0.9.2.
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
 | Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | 0.9.2 | PR #3 | Done, waiting for device test |
 | Shared bottom bar (key caps) on every screen, games included | 0.9.2 | 4574cfc | Done, waiting for device test |
-| Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | | | Ready, branch `side-tasks-4` |
+| Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | 0.9.3 | PR #4 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -213,9 +213,9 @@ Done in v0.9.0; this section stays as the reference for the Weather code.
 ## Phase 5: Bible and Reading Stats
 
 The data layers are done (v0.9.1, tasks D10 and D11): `bible.rs` and
-`reading_stats.rs`. The Reading Stats screen is drawn (v0.9.2, D14), and
-delegated task D20 draws the Bible book and chapter pickers. This phase adds
-the reading view, the routes and the wiring; save reading stats in batches
+`reading_stats.rs`. The Reading Stats screen (v0.9.2, D14) and the Bible
+book and chapter pickers (v0.9.3, D20) are drawn. This phase adds the reading
+view, the routes and the wiring; save reading stats in batches
 (`has_unsaved`), since each save rewrites the file.
 
 ### Bible
@@ -226,6 +226,14 @@ the reading view, the routes and the wiring; save reading stats in batches
   - One UTF-8 file per book, `NN.TXT`, with lines
     `chapter:verse<TAB>text`.
   - Only this format is documented; conversion happens on a computer.
+  - **Open decision.** The reference project `referencias/folloup-waveshare`
+    already converts a Bible JSON (`scripts/bible_json_to_sd.py`) to
+    `bible/<abbr>/index.tsv`, one `<USFM>.txt` per book with headings,
+    paragraph marks and verses, and a `<USFM>.idx` of chapter byte offsets.
+    Headings are what the mockup's reading view shows ("Jehová es mi
+    pastor"), and the index makes chapter reads cheap. Decide before wiring:
+    read that layout in `bible.rs`, or convert it to `BOOKS.TXT`. The
+    pickers only need book names and chapter counts either way.
 - **Navigation.** Home › Bible → book picker → chapter grid → reading view.
   - The book picker follows the mockup "Go to · Book": eight sections
     (Pentateuch, History, Poetry & Wisdom, Major Prophets, Minor Prophets,
@@ -255,13 +263,13 @@ the reading view, the routes and the wiring; save reading stats in batches
 ## Phase 6: Games
 
 - **Sudoku** (`src/games/sudoku.rs`, SD app `SUDOKU`).
-  - The three-step entry from the mockup (row, then cell, then number) is
-    delegated task D18.
+  - The three-step entry from the mockup (row, then cell, then number)
+    shipped in v0.9.3 (D18).
   - This phase adds a timer, auto-save, best time per difficulty and a
     three-level difficulty choice.
-- **Tetris** (native engine). Zen ships in v0.9.2 (D12, D13); D19 keeps the
-  best score in `RECORDS.TXT`. This phase adds Classic gravity, which needs a
-  timer in `main.rs`.
+- **Tetris** (native engine). Zen ships in v0.9.2 (D12, D13), and the best
+  score survives in `/RUSTMIX/GAMES/RECORDS.TXT` since v0.9.3 (D19). This
+  phase adds Classic gravity, which needs a timer in `main.rs`.
   - Board: 10 × 20.
   - Modes: Zen (no gravity; pieces move only when a key is pressed) and Classic
     (slow gravity, at least 1 s per step).
@@ -293,9 +301,10 @@ the reading view, the routes and the wiring; save reading stats in batches
   reading a Bible verse) is the largest item. xiaozhi-esp32 now needs ESP-IDF
   6.0.1 or later (Wave uses 5.5.1), so port its documented WebSocket protocol
   to Rust and use Opus through an ESP-IDF component.
-- **Delegated groundwork.** D21 (a small JSON reader), D22 (OpenAI-compatible
-  requests and responses) and D23 (XiaoZhi messages) are libraries without
-  network access; this phase adds HTTPS, WebSocket and the screens.
+- **Delegated groundwork (v0.9.3).** `json_lite.rs` (D21), `ai_client.rs`
+  (D22, OpenAI-compatible requests and responses) and `xiaozhi/protocol.rs`
+  (D23, messages and binary frames) are libraries without network access;
+  this phase adds HTTPS, WebSocket and the screens.
 
 ## Phase 8: OTA updates
 
