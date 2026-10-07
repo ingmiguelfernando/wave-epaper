@@ -464,7 +464,7 @@ impl SudokuGame {
                 focus.x + 18,
                 focus.y + 33,
                 shown.to_string(),
-                CanvasTextStyle::Inverse,
+                CanvasTextStyle::InverseHeading,
             )?;
         }
         Ok(())
@@ -506,7 +506,7 @@ impl SudokuGame {
             let (x, y) = (left + 14, top + 34);
             if value == self.candidate {
                 canvas.rect(left, top, width, height, true)?;
-                canvas.text(x, y, label, CanvasTextStyle::Inverse)?;
+                canvas.text(x, y, label, CanvasTextStyle::InverseHeading)?;
             } else if value != 0 && conflicts(&self.board, self.cursor, value) {
                 canvas.rect(left, top, width, height, false)?;
                 canvas.text(x, y, label, CanvasTextStyle::Body)?;

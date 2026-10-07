@@ -12,6 +12,8 @@ pub enum CanvasTextStyle {
     Detail,
     /// Paper-colored text for the black status bar and key chips.
     Inverse,
+    /// Paper-colored Heading text, for digits on a black cell.
+    InverseHeading,
 }
 
 impl CanvasTextStyle {
@@ -22,6 +24,7 @@ impl CanvasTextStyle {
             "heading" => Some(Self::Heading),
             "detail" => Some(Self::Detail),
             "inverse" => Some(Self::Inverse),
+            "inverse-heading" => Some(Self::InverseHeading),
             _ => None,
         }
     }
@@ -321,6 +324,10 @@ mod tests {
         assert_eq!(
             CanvasTextStyle::parse("inverse"),
             Some(CanvasTextStyle::Inverse)
+        );
+        assert_eq!(
+            CanvasTextStyle::parse("inverse-heading"),
+            Some(CanvasTextStyle::InverseHeading)
         );
     }
 }
