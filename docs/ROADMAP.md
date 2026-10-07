@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-08, firmware v0.9.3.
+Last updated: 2026-10-08, firmware v0.9.4.
 
 ## Status
 
@@ -32,6 +32,7 @@ Last updated: 2026-10-08, firmware v0.9.3.
 | Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | 0.9.2 | PR #3 | Done, waiting for device test |
 | Shared bottom bar (key caps) on every screen, games included | 0.9.2 | 4574cfc | Done, waiting for device test |
 | Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | 0.9.3 | PR #4 | Done, waiting for device test |
+| Fixes: Power key menu on a sleeping panel, key retries, 1 s hold, Device Info diagnostics, photos in `/RUSTMIX/PHOTOS` | 0.9.4 | fdb1917 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.

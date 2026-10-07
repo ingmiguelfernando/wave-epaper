@@ -3,6 +3,20 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.4 — Power key and Photos folder fixes
+
+- A short Power press after a minute without keys opened the menu on the
+  powered-down panel, so nothing appeared. The panel now wakes first.
+- One PMIC read error turned the Power key off until the next reboot, and
+  auto-sleep with it. The key setup is now retried after 1 s, doubling up to
+  30 s; auto-sleep also runs meanwhile when Wake keys is Any key.
+- Holding Power for one second starts sleep: the PMIC long-press time (1 to
+  2.5 s) is now set at boot, and the log shows the previous value.
+- Device Info shows the Power key status and its last error (page 3), and
+  why the device last restarted and the real milestone (page 1).
+- Photos are read from `/RUSTMIX/PHOTOS`, which the Wi-Fi transfer reaches
+  and the SD installer creates. `/PHOTOS` at the card root is no longer read.
+
 ## v0.9.3 — Sudoku three-step entry and delegated tasks (pull request #4)
 
 - D18 (`5dd70ff`): Sudoku enters a value in three steps, as in the mockup:
