@@ -24,6 +24,9 @@ CONFIG_LWIP_SNTP_UPDATE_DELAY=3600000
 # HTTPS weather retrieval uses the ESP-IDF certificate bundle.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_DEFAULT_CERTIFICATE_BUNDLE=y
+# TLS buffers in PSRAM, so a weather update leaves internal RAM in one piece
+# for worker stacks.
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 
 # Embedded browser requests commonly exceed the ESP-IDF 512-byte default.
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

@@ -15,8 +15,11 @@ rain chances). Do not infer a battery-reading failure from the glyph.
 
 On battery, idle light sleep can make USB serial appear and disappear.
 Connect a USB-C **data** cable with USB power and press a key once so the
-firmware detects VBUS and stops idle CPU light sleep. If the port still does
-not appear, hold BOOT while power-cycling, then release it for download mode.
+firmware detects VBUS and stops idle CPU light sleep. Since v0.9.5 sleep mode
+also stays out of light sleep while USB power is present: before, a serial
+console that lost the port reset the board, which then booted to Home. If the
+port still does not appear, hold BOOT while power-cycling, then release it for
+download mode.
 Use the merged Wave `.bin` at `0x0`, as described in
 [README](../README.md#flash-the-board). An ELF requires the ELF-aware
 `espflash flash` command; do not flash an ELF at a raw address.

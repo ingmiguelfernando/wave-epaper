@@ -57,7 +57,9 @@ sleeps.
 - EXIF orientation (tag 0x0112) is applied, so phone photos come out upright.
   Values 1, 3, 6 and 8 rotate; mirrored values use the nearest rotation.
 - Cache: `/RUSTMIX/CACHE/PHOTOS/<key>.PIC`, one file per photo.
-  - `key`: 8 hex digits of FNV-1a 32 over `name|size|mtime`.
+  - `key`: 8 hex digits of FNV-1a 32 over `name|size|mtime`, with the offset
+    basis XORed with the pipeline version (2 since v0.9.5), so a new pipeline
+    prepares every photo again.
   - Content: magic `WPC1`, version, source width and height after rotation, a
     144 × 216 thumbnail (1 bit, 18 bytes per row), then two 48,000-byte frames
     in native panel layout, "fill" and "whole".
@@ -75,9 +77,10 @@ sleeps.
 - Decode at the smallest DCT scale (1/1, 1/2, 1/4, 1/8) that still covers the
   target size. A 12 MP photo decodes at 1/4, about 1008 × 756 RGB, roughly
   3.5 MB of PSRAM at the peak. A scaled decode over 4 MB is refused.
-- RGB to grey (77/150/29 weights), area-average resampling to each target,
-  Floyd–Steinberg dithering. This is the same dithering as `sleep_images.rs`;
-  share the code.
+- RGB to grey (77/150/29 weights), area-average resampling to each target, a
+  1st to 99th percentile contrast stretch, then Atkinson dithering in
+  serpentine order (`dither.rs`, shared with `sleep_images.rs`). Floyd–Steinberg
+  until v0.9.4 looked grainy on the panel.
 - Decoding runs on a background worker thread (`photos/worker.rs`, 48 KB
   stack) pinned to core 1, so the main loop on core 0 keeps reading the keys.
   It receives "photo ready" messages and redraws the visible page. Light sleep

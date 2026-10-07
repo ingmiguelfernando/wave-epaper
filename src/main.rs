@@ -1941,7 +1941,9 @@ mod firmware {
                 && !(state.panel_awake && imu_sampling)
                 && !photo_worker.is_busy()
                 && last_activity.elapsed() >= IDLE_LIGHT_SLEEP_DELAY;
-            if idle && last_usb_check.map_or(true, |at| at.elapsed() >= USB_CHECK_INTERVAL) {
+            let usb_check_due =
+                last_usb_check.map_or(true, |at| at.elapsed() >= USB_CHECK_INTERVAL);
+            if (idle || sleep_mode.is_sleeping()) && usb_check_due {
                 on_usb_power = board_services
                     .read_power()
                     .is_ok_and(|power| power.vbus_present);
@@ -1952,8 +1954,10 @@ mod firmware {
                     WakeKeys::AnyKey => &AWAKE_WAKE_GPIOS[..],
                     WakeKeys::PowerKey => &SLEEP_WAKE_GPIOS[..],
                 };
-                // Light sleep would stall the photo worker in the middle of an SD write.
-                !photo_worker.is_busy()
+                // Light sleep drops the USB serial port, and consoles then reset the
+                // board; it would also stall the photo worker in an SD write.
+                !on_usb_power
+                    && !photo_worker.is_busy()
                     && sleep_wake_guard.is_armed()
                     && light_sleep_until_wake(lines, LIGHT_SLEEP_MAX)
             } else if idle && !on_usb_power {

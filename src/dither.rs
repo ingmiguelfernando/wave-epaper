@@ -6,50 +6,71 @@ pub fn luma(red: u8, green: u8, blue: u8) -> u8 {
     ((u32::from(red) * 77 + u32::from(green) * 150 + u32::from(blue) * 29) >> 8) as u8
 }
 
-/// Floyd–Steinberg dithering of a `width` × `height` grey picture. `grey(x, y)`
-/// reads a level and `black(x, y)` is called for every pixel that turns black.
-pub fn floyd_steinberg(
+/// Atkinson dithering of a `width` × `height` grey picture, row by row in
+/// alternating directions. `grey(x, y)` reads a level and `black(x, y)` is
+/// called for every pixel that turns black. Only six eighths of each error
+/// spread, so light and dark areas stay clean instead of filling with dots.
+pub fn atkinson(
     width: usize,
     height: usize,
     mut grey: impl FnMut(usize, usize) -> u8,
     mut black: impl FnMut(usize, usize),
 ) {
-    // Diffused errors in sixteenths, offset by one so x - 1 never underflows.
-    let mut current = vec![0_i32; width + 2];
-    let mut next = vec![0_i32; width + 2];
+    // Errors in eighths for this row and the next two, offset by two so the
+    // neighbours of the first and last pixel stay inside.
+    let mut rows = [0; 3].map(|_| vec![0_i32; width + 4]);
     for y in 0..height {
-        for x in 0..width {
-            let value = i32::from(grey(x, y)) + current[x + 1] / 16;
+        let reverse = y % 2 == 1;
+        for step in 0..width {
+            let x = if reverse { width - 1 - step } else { step };
+            let at = x + 2;
+            let value = i32::from(grey(x, y)) + rows[0][at] / 8;
             let is_black = value < 128;
             let error = if is_black { value } else { value - 255 };
-            current[x + 2] += error * 7;
-            next[x] += error * 3;
-            next[x + 1] += error * 5;
-            next[x + 2] += error;
+            let (ahead, far, behind) = if reverse {
+                (at - 1, at - 2, at + 1)
+            } else {
+                (at + 1, at + 2, at - 1)
+            };
+            rows[0][ahead] += error;
+            rows[0][far] += error;
+            rows[1][behind] += error;
+            rows[1][at] += error;
+            rows[1][ahead] += error;
+            rows[2][at] += error;
             if is_black {
                 black(x, y);
             }
         }
-        core::mem::swap(&mut current, &mut next);
-        next.fill(0);
+        rows.rotate_left(1);
+        rows[2].fill(0);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{floyd_steinberg, luma};
+    use super::{atkinson, luma};
+
+    fn black_count(width: usize, height: usize, level: u8) -> usize {
+        let mut black = 0;
+        atkinson(width, height, |_, _| level, |_, _| black += 1);
+        black
+    }
 
     #[test]
     fn mid_grey_turns_about_half_black_and_extremes_stay_put() {
-        let mut black = 0;
-        floyd_steinberg(100, 100, |_, _| 128, |_, _| black += 1);
-        assert!((4_500..=5_500).contains(&black), "{black}");
-        let mut white_black = 0;
-        floyd_steinberg(10, 10, |_, _| 255, |_, _| white_black += 1);
-        assert_eq!(white_black, 0);
-        let mut ink = 0;
-        floyd_steinberg(10, 10, |_, _| 0, |_, _| ink += 1);
-        assert_eq!(ink, 100);
+        let black = black_count(100, 100, 128);
+        assert!((4_000..=6_000).contains(&black), "{black}");
+        assert_eq!(black_count(10, 10, 255), 0);
+        assert_eq!(black_count(10, 10, 0), 100);
+    }
+
+    #[test]
+    fn darker_greys_get_more_black_and_near_white_stays_clean() {
+        let counts = [32, 96, 160, 224].map(|level| black_count(100, 100, level));
+        assert!(counts.windows(2).all(|pair| pair[0] > pair[1]), "{counts:?}");
+        // Floyd–Steinberg would scatter about 4% dots here.
+        assert!(black_count(100, 100, 245) < 200);
     }
 
     #[test]
