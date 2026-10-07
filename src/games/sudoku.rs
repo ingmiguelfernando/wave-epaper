@@ -8,14 +8,32 @@ use crate::buttons::ButtonEvent;
 
 use super::{
     canvas::{CanvasTextStyle, NativeGameCanvas},
-    dirty_regions::{DirtyRect, GAME_BOTTOM_BAR_RECT},
+    dirty_regions::{DirtyRect, GAME_CANVAS_HEIGHT, GAME_CANVAS_WIDTH},
 };
 
 pub const SUDOKU_CELL_COUNT: usize = 81;
-pub const SUDOKU_GRID_X: i32 = 51;
-pub const SUDOKU_GRID_Y: i32 = 176;
-pub const SUDOKU_CELL_SIZE: i32 = 42;
+pub const SUDOKU_CELL_SIZE: i32 = 48;
+pub const SUDOKU_GRID_X: i32 = (GAME_CANVAS_WIDTH - 9 * SUDOKU_CELL_SIZE) / 2;
+pub const SUDOKU_GRID_Y: i32 = 100;
+const SUDOKU_BAR_HEIGHT: i32 = 44;
+/// The mockup's row band: a 5 px frame drawn 7 px outside the row.
+const BAND_OUTSET: i32 = 7;
+const BAND_WIDTH: i32 = 5;
+const PICK_TOP: i32 = 548;
+const PICK_WIDTH: i32 = 40;
+const PICK_HEIGHT: i32 = 52;
+const PICK_GAP: i32 = 4;
+const PICK_LEFT: i32 = (GAME_CANVAS_WIDTH - (10 * PICK_WIDTH + 9 * PICK_GAP)) / 2;
+/// Canvas text has no metrics, so chips are sized from a generous advance.
+const CHAR_WIDTH: i32 = 11;
+const SUDOKU_PICK_RECT: DirtyRect = DirtyRect::new(
+    PICK_LEFT,
+    PICK_TOP,
+    10 * PICK_WIDTH + 9 * PICK_GAP,
+    PICK_HEIGHT,
+);
 const SUDOKU_STATUS_RECT: DirtyRect = DirtyRect::new(16, 612, 448, 96);
+const SUDOKU_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
 
 /// The three-step entry: pick a row, then a cell, then a number.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,7 +123,7 @@ impl SudokuGame {
             status: if completed {
                 "Puzzle complete".into()
             } else {
-                "STEP 1 ROW: UP/DOWN move  SELECT choose".into()
+                String::new()
             },
             completed,
         })
@@ -196,12 +214,10 @@ impl SudokuGame {
             SudokuStep::Row => "noop",
             SudokuStep::Cell => {
                 self.step = SudokuStep::Row;
-                self.status = "STEP 1 ROW: UP/DOWN move  SELECT choose".into();
                 "back-to-row"
             }
             SudokuStep::Number => {
                 self.step = SudokuStep::Cell;
-                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
                 "back-to-cell"
             }
         };
@@ -220,15 +236,22 @@ impl SudokuGame {
     ) -> Result<SudokuEventResult, String> {
         self.render_commands(canvas)?;
         canvas.reset_dirty_regions();
-        let mut dirty_regions = vec![
-            cell_rect(old),
-            cell_rect(&self.snapshot()),
-            SUDOKU_STATUS_RECT,
-        ];
-        dirty_regions.dedup();
-        if old.2 != self.step {
-            dirty_regions.push(GAME_BOTTOM_BAR_RECT);
-        }
+        let dirty_regions = if old.2 == self.step {
+            let mut regions = vec![
+                focus_rect(old),
+                focus_rect(&self.snapshot()),
+                SUDOKU_STATUS_RECT,
+            ];
+            regions.dedup();
+            if self.step == SudokuStep::Number {
+                regions.push(SUDOKU_PICK_RECT);
+            }
+            regions
+        } else {
+            // A new step redraws the chips, the highlight, the number strip
+            // and the bottom bar.
+            vec![SUDOKU_FULL_RECT]
+        };
         for rect in &dirty_regions {
             canvas.invalidate_rect(*rect);
         }
@@ -249,20 +272,20 @@ impl SudokuGame {
             ButtonEvent::Up => {
                 self.row = self.neighbour_row(-1);
                 self.sync_cursor();
-                self.status = "STEP 1 ROW: UP/DOWN move  SELECT choose".into();
+                self.status.clear();
                 "row-move"
             }
             ButtonEvent::Down => {
                 self.row = self.neighbour_row(1);
                 self.sync_cursor();
-                self.status = "STEP 1 ROW: UP/DOWN move  SELECT choose".into();
+                self.status.clear();
                 "row-move"
             }
             ButtonEvent::Select => {
                 self.step = SudokuStep::Cell;
                 self.cell_choice = 0;
                 self.sync_cursor();
-                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                self.status.clear();
                 "cell-enter"
             }
         }
@@ -280,7 +303,7 @@ impl SudokuGame {
                         .unwrap_or(editable.len() - 1)
                 };
                 self.sync_cursor();
-                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                self.status.clear();
                 "cell-move"
             }
             ButtonEvent::Down => {
@@ -290,13 +313,16 @@ impl SudokuGame {
                     (self.cell_choice + 1) % editable.len()
                 };
                 self.sync_cursor();
-                self.status = "STEP 2 CELL: UP/DOWN move  SELECT choose".into();
+                self.status.clear();
                 "cell-move"
             }
             ButtonEvent::Select => {
                 self.step = SudokuStep::Number;
-                self.candidate = 1;
-                self.status = "STEP 3 NUMBER: UP/DOWN value  SELECT place".into();
+                self.candidate = match self.board[self.cursor] {
+                    0 => self.options().first().copied().unwrap_or(1),
+                    value => value,
+                };
+                self.status.clear();
                 "number-enter"
             }
         }
@@ -310,10 +336,7 @@ impl SudokuGame {
                 } else {
                     self.candidate - 1
                 };
-                self.status = format!(
-                    "STEP 3 NUMBER: value {}  SELECT place",
-                    display_candidate(self.candidate)
-                );
+                self.status.clear();
                 "number-change"
             }
             ButtonEvent::Down => {
@@ -322,10 +345,7 @@ impl SudokuGame {
                 } else {
                     self.candidate + 1
                 };
-                self.status = format!(
-                    "STEP 3 NUMBER: value {}  SELECT place",
-                    display_candidate(self.candidate)
-                );
+                self.status.clear();
                 "number-change"
             }
             ButtonEvent::Select => {
@@ -374,157 +394,157 @@ impl SudokuGame {
 
     fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         canvas.clear_frame();
-        canvas.text(24, 66, "Sudoku".into(), CanvasTextStyle::Heading)?;
+        canvas.rect(0, 0, GAME_CANVAS_WIDTH, SUDOKU_BAR_HEIGHT, true)?;
+        canvas.text(16, 30, "Sudoku".into(), CanvasTextStyle::Inverse)?;
         self.draw_step_strip(canvas)?;
-        canvas.grid(
-            SUDOKU_GRID_X,
-            SUDOKU_GRID_Y,
-            9,
-            9,
-            SUDOKU_CELL_SIZE,
-            SUDOKU_CELL_SIZE,
-        )?;
-        for offset in [3, 6] {
-            let x = SUDOKU_GRID_X + offset * SUDOKU_CELL_SIZE;
-            let y = SUDOKU_GRID_Y + offset * SUDOKU_CELL_SIZE;
-            canvas.line(
-                x - 1,
-                SUDOKU_GRID_Y,
-                x - 1,
-                SUDOKU_GRID_Y + 9 * SUDOKU_CELL_SIZE,
-            )?;
-            canvas.line(
-                x + 1,
-                SUDOKU_GRID_Y,
-                x + 1,
-                SUDOKU_GRID_Y + 9 * SUDOKU_CELL_SIZE,
-            )?;
-            canvas.line(
-                SUDOKU_GRID_X,
-                y - 1,
-                SUDOKU_GRID_X + 9 * SUDOKU_CELL_SIZE,
-                y - 1,
-            )?;
-            canvas.line(
-                SUDOKU_GRID_X,
-                y + 1,
-                SUDOKU_GRID_X + 9 * SUDOKU_CELL_SIZE,
-                y + 1,
-            )?;
-        }
-        for (index, value) in self.board.iter().copied().enumerate() {
-            if value == 0 {
-                continue;
-            }
-            let row = index / 9;
-            let column = index % 9;
-            canvas.text(
-                SUDOKU_GRID_X + column as i32 * SUDOKU_CELL_SIZE + 14,
-                SUDOKU_GRID_Y + row as i32 * SUDOKU_CELL_SIZE + 30,
-                value.to_string(),
-                if self.givens[index] {
-                    CanvasTextStyle::Heading
-                } else {
-                    CanvasTextStyle::Body
-                },
-            )?;
-        }
-        match self.step {
-            SudokuStep::Row => {
-                // A band around the whole highlighted row.
-                canvas.rect(
-                    SUDOKU_GRID_X,
-                    SUDOKU_GRID_Y + self.row as i32 * SUDOKU_CELL_SIZE,
-                    9 * SUDOKU_CELL_SIZE,
-                    SUDOKU_CELL_SIZE,
-                    false,
-                )?;
-            }
-            SudokuStep::Cell | SudokuStep::Number => {
-                let cursor = cell_rect(&self.snapshot());
-                canvas.rect(cursor.x, cursor.y, cursor.width, cursor.height, false)?;
-                canvas.rect(
-                    cursor.x + 2,
-                    cursor.y + 2,
-                    cursor.width - 4,
-                    cursor.height - 4,
-                    false,
-                )?;
-            }
-        }
+        self.draw_grid(canvas)?;
         if self.step == SudokuStep::Number {
             self.draw_pick_strip(canvas)?;
         }
-        canvas.text(
-            24,
-            648,
-            format!(
-                "Row {} · Col {} · options: {}",
-                self.cursor_row() + 1,
-                self.cursor_column() + 1,
-                self.options_line(),
-            ),
-            CanvasTextStyle::Body,
-        )?;
-        canvas.text(24, 690, self.status.clone(), CanvasTextStyle::Detail)?;
+        canvas.text(24, 644, self.info_line(), CanvasTextStyle::Body)?;
+        canvas.text(24, 684, self.status.clone(), CanvasTextStyle::Detail)?;
         canvas.request_refresh();
         Ok(())
     }
 
-    /// `1 · ROW ▸ 2 · CELL ▸ 3 · NUMBER`, the current chip inverted.
+    /// Cells, 3 px box lines and border, digits, and the step's highlight:
+    /// the row band, or the cursor cell inverted.
+    fn draw_grid(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        let (left, top, cell) = (SUDOKU_GRID_X, SUDOKU_GRID_Y, SUDOKU_CELL_SIZE);
+        let size = 9 * cell;
+        canvas.grid(left, top, 9, 9, cell, cell)?;
+        canvas.rect(left - 1, top - 1, size + 3, size + 3, false)?;
+        canvas.rect(left + 1, top + 1, size - 1, size - 1, false)?;
+        for offset in [3, 6] {
+            let (x, y) = (left + offset * cell, top + offset * cell);
+            for delta in [-1, 1] {
+                canvas.line(x + delta, top, x + delta, top + size)?;
+                canvas.line(left, y + delta, left + size, y + delta)?;
+            }
+        }
+        let inverted = (self.step != SudokuStep::Row).then_some(self.cursor);
+        for (index, value) in self.board.iter().copied().enumerate() {
+            if value == 0 || inverted == Some(index) {
+                continue;
+            }
+            let (x, y) = cell_origin(index);
+            let style = if self.givens[index] {
+                CanvasTextStyle::Heading
+            } else {
+                CanvasTextStyle::Body
+            };
+            canvas.text(x + 18, y + 33, value.to_string(), style)?;
+        }
+        let focus = focus_rect(&self.snapshot());
+        if self.step == SudokuStep::Row {
+            let DirtyRect {
+                x,
+                y,
+                width,
+                height,
+            } = focus;
+            for (band_x, band_y, band_width, band_height) in [
+                (x, y, width, BAND_WIDTH),
+                (x, y + height - BAND_WIDTH, width, BAND_WIDTH),
+                (x, y, BAND_WIDTH, height),
+                (x + width - BAND_WIDTH, y, BAND_WIDTH, height),
+            ] {
+                canvas.rect(band_x, band_y, band_width, band_height, true)?;
+            }
+            return Ok(());
+        }
+        canvas.rect(focus.x + 1, focus.y + 1, cell - 1, cell - 1, true)?;
+        // The Number step previews the candidate inside the cell.
+        let shown = match self.step {
+            SudokuStep::Number if self.candidate != 0 => self.candidate,
+            _ => self.board[self.cursor],
+        };
+        if shown != 0 {
+            canvas.text(
+                focus.x + 18,
+                focus.y + 33,
+                shown.to_string(),
+                CanvasTextStyle::Inverse,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// `1 · ROW › 2 · CELL › 3 · NUMBER`, centered, the current chip inverted.
     fn draw_step_strip(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
-        let mut x = 24;
-        for step in [SudokuStep::Row, SudokuStep::Cell, SudokuStep::Number] {
-            let label = step.chip_label();
-            let width = label.len() as i32 * 11 + 16;
+        const STEPS: [SudokuStep; 3] = [SudokuStep::Row, SudokuStep::Cell, SudokuStep::Number];
+        const ARROW: i32 = 24;
+        let total = STEPS.iter().map(|&step| chip_width(step)).sum::<i32>() + 2 * ARROW;
+        let mut x = (GAME_CANVAS_WIDTH - total) / 2;
+        for step in STEPS {
+            let width = chip_width(step);
+            let label = step.chip_label().to_string();
             if step == self.step {
-                canvas.rect(x, 84, width, 30, true)?;
-                canvas.text(x + 8, 106, label.into(), CanvasTextStyle::Inverse)?;
+                canvas.rect(x, 56, width, 30, true)?;
+                canvas.text(x + 8, 77, label, CanvasTextStyle::Inverse)?;
             } else {
-                canvas.rect(x, 84, width, 30, false)?;
-                canvas.text(x + 8, 106, label.into(), CanvasTextStyle::Detail)?;
+                canvas.rect(x, 56, width, 30, false)?;
+                canvas.rect(x + 1, 57, width - 2, 28, false)?;
+                canvas.text(x + 8, 77, label, CanvasTextStyle::Body)?;
             }
-            x += width + 8;
+            x += width;
             if step != SudokuStep::Number {
-                canvas.text(x, 106, ">".into(), CanvasTextStyle::Detail)?;
-                x += 20;
+                canvas.text(x + 8, 77, "\u{203a}".into(), CanvasTextStyle::Body)?;
+                x += ARROW;
             }
         }
         Ok(())
     }
 
-    /// The mockup's number strip: 1..9 then the erase entry, the choice
-    /// inverted and values already placed around the cell struck through.
+    /// The mockup's number strip: boxes for 1 to 9 and erase, the choice
+    /// inverted, values already around the cell thin and struck through.
     fn draw_pick_strip(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        let (top, width, height) = (PICK_TOP, PICK_WIDTH, PICK_HEIGHT);
         for (index, value) in (1..=9).chain([0]).enumerate() {
-            let left = 12 + index as i32 * 46;
+            let left = PICK_LEFT + index as i32 * (width + PICK_GAP);
             let label = display_candidate(value);
+            let (x, y) = (left + 14, top + 34);
             if value == self.candidate {
-                canvas.rect(left, 560, 38, 34, true)?;
-                canvas.text(left + 15, 584, label, CanvasTextStyle::Inverse)?;
+                canvas.rect(left, top, width, height, true)?;
+                canvas.text(x, y, label, CanvasTextStyle::Inverse)?;
+            } else if value != 0 && conflicts(&self.board, self.cursor, value) {
+                canvas.rect(left, top, width, height, false)?;
+                canvas.text(x, y, label, CanvasTextStyle::Body)?;
+                canvas.line(left + 8, top + 40, left + 32, top + 12)?;
             } else {
-                canvas.text(left + 15, 584, label, CanvasTextStyle::Body)?;
-                if value != 0 && conflicts(&self.board, self.cursor, value) {
-                    canvas.line(left + 8, 582, left + 30, 558)?;
-                }
+                canvas.rect(left, top, width, height, false)?;
+                canvas.rect(left + 1, top + 1, width - 2, height - 2, false)?;
+                canvas.text(x, y, label, CanvasTextStyle::Heading)?;
             }
         }
         Ok(())
     }
 
-    /// The options line payload: free values, or `none` when there are none.
-    fn options_line(&self) -> String {
+    /// `Row 5 · 4 to fill` while choosing a row, then
+    /// `Row 5 · Col 3 · options: 2 · 6 · 9` as in the mockup.
+    fn info_line(&self) -> String {
+        let row = self.cursor_row() + 1;
+        if self.step == SudokuStep::Row {
+            let open = (0..9)
+                .filter(|&column| self.board[self.row * 9 + column] == 0)
+                .count();
+            return format!("Row {row} · {open} to fill");
+        }
         let options = self
             .options()
             .iter()
             .map(|value| value.to_string())
             .collect::<Vec<_>>()
             .join(" · ");
-        if options.is_empty() {
-            "none".into()
+        let options = if options.is_empty() {
+            "none".to_string()
         } else {
             options
-        }
+        };
+        format!(
+            "Row {row} · Col {} · options: {options}",
+            self.cursor_column() + 1
+        )
     }
 }
 
@@ -582,48 +602,55 @@ fn is_complete(board: &[u8; SUDOKU_CELL_COUNT]) -> bool {
             .all(|(index, value)| !conflicts(board, index, value))
 }
 
-fn first_editable_cell(givens: &[bool; SUDOKU_CELL_COUNT]) -> Option<usize> {
-    givens.iter().position(|given| !*given)
+/// Top-left corner of a cell, on its grid lines.
+fn cell_origin(index: usize) -> (i32, i32) {
+    (
+        SUDOKU_GRID_X + (index % 9) as i32 * SUDOKU_CELL_SIZE,
+        SUDOKU_GRID_Y + (index / 9) as i32 * SUDOKU_CELL_SIZE,
+    )
 }
 
-/// Grid rectangle of the snapshot: the row band during the Row step,
-/// otherwise the single cell.
-fn cell_rect(snapshot: &(usize, usize, SudokuStep, u8)) -> DirtyRect {
+fn chip_width(step: SudokuStep) -> i32 {
+    step.chip_label().chars().count() as i32 * CHAR_WIDTH + 16
+}
+
+/// The highlight of a snapshot: the row band during the Row step, otherwise
+/// the single cell.
+fn focus_rect(snapshot: &(usize, usize, SudokuStep, u8)) -> DirtyRect {
     let (_row, cursor, step, _candidate) = *snapshot;
+    let (x, y) = cell_origin(cursor);
     if step == SudokuStep::Row {
         DirtyRect::new(
-            SUDOKU_GRID_X,
-            SUDOKU_GRID_Y + (cursor / 9) as i32 * SUDOKU_CELL_SIZE,
-            9 * SUDOKU_CELL_SIZE + 1,
-            SUDOKU_CELL_SIZE + 1,
+            SUDOKU_GRID_X - BAND_OUTSET,
+            y - BAND_OUTSET,
+            9 * SUDOKU_CELL_SIZE + 2 * BAND_OUTSET + 1,
+            SUDOKU_CELL_SIZE + 2 * BAND_OUTSET + 1,
         )
     } else {
-        DirtyRect::new(
-            SUDOKU_GRID_X + (cursor % 9) as i32 * SUDOKU_CELL_SIZE,
-            SUDOKU_GRID_Y + (cursor / 9) as i32 * SUDOKU_CELL_SIZE,
-            SUDOKU_CELL_SIZE + 1,
-            SUDOKU_CELL_SIZE + 1,
-        )
+        DirtyRect::new(x, y, SUDOKU_CELL_SIZE + 1, SUDOKU_CELL_SIZE + 1)
     }
 }
 
 /// The strip caption for one pick: a digit, or the erase entry. The atlas
-/// lacks ⌫, so the minus sign stands in.
+/// lacks ⌫, so × stands in.
 fn display_candidate(candidate: u8) -> String {
     match candidate {
-        0 => "\u{2212}".into(),
+        0 => "\u{d7}".into(),
         value => value.to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{cell_options, display_candidate, SudokuGame, SudokuStep, SUDOKU_CELL_COUNT};
+    use super::{
+        cell_options, display_candidate, SudokuGame, SudokuStep, BAND_WIDTH, SUDOKU_CELL_SIZE,
+        SUDOKU_FULL_RECT,
+    };
     use crate::{
         buttons::ButtonEvent,
         games::{
             canvas::{DrawCommand, NativeGameCanvas, MAX_GAME_DRAW_COMMANDS},
-            dirty_regions::{GAME_BOTTOM_BAR_RECT, MAX_DIRTY_REGIONS},
+            dirty_regions::MAX_DIRTY_REGIONS,
         },
     };
 
@@ -688,10 +715,11 @@ mod tests {
         let mut game = game();
         let cell = press(&mut game, ButtonEvent::Select);
         assert_eq!(cell.step, SudokuStep::Cell);
-        assert!(cell.dirty_regions.contains(&GAME_BOTTOM_BAR_RECT));
+        // A new step redraws everything, the bottom bar included.
+        assert_eq!(cell.dirty_regions, vec![SUDOKU_FULL_RECT]);
         let number = press(&mut game, ButtonEvent::Select);
         assert_eq!(number.step, SudokuStep::Number);
-        assert!(number.dirty_regions.contains(&GAME_BOTTOM_BAR_RECT));
+        assert_eq!(number.dirty_regions, vec![SUDOKU_FULL_RECT]);
     }
 
     #[test]
@@ -775,7 +803,7 @@ mod tests {
         press(&mut game, ButtonEvent::Select);
         let to_cell = boot(&mut game);
         assert_eq!(to_cell.step, SudokuStep::Cell);
-        assert!(to_cell.dirty_regions.contains(&GAME_BOTTOM_BAR_RECT));
+        assert_eq!(to_cell.dirty_regions, vec![SUDOKU_FULL_RECT]);
         let to_row = boot(&mut game);
         assert_eq!(to_row.step, SudokuStep::Row);
         // Row is the top step: BOOT does nothing and stays on the screen.
@@ -852,6 +880,41 @@ mod tests {
         assert!(labels.iter().any(|text| text.contains("Row 1 · Col 3")));
         assert!(labels.iter().any(|text| text.contains("options:")));
         assert!(labels.iter().any(|text| text == &display_candidate(1)));
-        let _ = SUDOKU_CELL_COUNT;
+    }
+
+    #[test]
+    fn row_band_and_cursor_cell_are_drawn_solid() {
+        let mut game = game();
+        let mut canvas = NativeGameCanvas::default();
+        game.render_initial(&mut canvas).unwrap();
+        let band = super::focus_rect(&game.snapshot());
+        assert!(canvas.commands().contains(&DrawCommand::Rect {
+            x: band.x,
+            y: band.y,
+            width: band.width,
+            height: BAND_WIDTH,
+            filled: true,
+        }));
+        press(&mut game, ButtonEvent::Select);
+        let mut canvas = NativeGameCanvas::default();
+        game.render_commands(&mut canvas).unwrap();
+        let (x, y) = super::cell_origin(game.cursor);
+        assert!(canvas.commands().contains(&DrawCommand::Rect {
+            x: x + 1,
+            y: y + 1,
+            width: SUDOKU_CELL_SIZE - 1,
+            height: SUDOKU_CELL_SIZE - 1,
+            filled: true,
+        }));
+    }
+
+    #[test]
+    fn number_step_starts_on_the_first_option() {
+        let mut game = game();
+        press(&mut game, ButtonEvent::Down);
+        press(&mut game, ButtonEvent::Select);
+        let number = press(&mut game, ButtonEvent::Select);
+        assert_eq!((number.row, number.column), (1, 1));
+        assert_eq!(number.candidate, 2, "options are 2 · 4 · 7");
     }
 }

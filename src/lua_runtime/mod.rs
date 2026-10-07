@@ -12,7 +12,6 @@ use crate::{
         canvas::NativeGameCanvas,
         records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
-        tetris::TetrisMode,
     },
 };
 
@@ -45,8 +44,9 @@ pub struct LuaRuntimeUiState {
     pub session: Option<LuaAppSession>,
     pub error: Option<String>,
     diagnostics: Vec<String>,
-    /// Best scores loaded at boot; `true` while a closed game raised one.
+    /// Best scores loaded at boot.
     pub records: GameRecords,
+    /// Set when a closed game raised a best score, so `main.rs` saves once.
     records_changed: bool,
 }
 
@@ -315,8 +315,7 @@ mod tests {
 
     use crate::buttons::ButtonEvent;
 
-    use super::{event_bridge::LuaEventBridge, manifest, LuaAppSession, LuaRuntimeUiState};
-    use crate::games::{canvas::NativeGameCanvas, refresh_policy::GameRefreshPlan};
+    use super::{event_bridge::LuaEventBridge, LuaRuntimeUiState};
 
     fn temp_directory() -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -384,20 +383,5 @@ mod tests {
         assert_eq!(runtime.records.tetris_zen, 9001);
         assert!(!runtime.take_records_changed(), "the flag clears after use");
         std::fs::remove_dir_all(root).unwrap();
-    }
-
-    fn manifest_test_entry(id: &str) -> manifest::LuaAppEntry {
-        manifest::LuaAppEntry {
-            directory_name: id.to_ascii_uppercase(),
-            directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS"),
-            manifest: manifest::LuaAppManifest {
-                id: id.into(),
-                name: "Test".into(),
-                kind: manifest::LuaAppKind::Game,
-                entry: "MAIN.LUA".into(),
-                version: "1.0".into(),
-                input: vec![],
-            },
-        }
     }
 }

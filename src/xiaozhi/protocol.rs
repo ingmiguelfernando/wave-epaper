@@ -6,10 +6,6 @@
 //! Text frames carry JSON dispatched by `type`; binary frames carry Opus
 //! audio with versioned headers.
 
-use std::format;
-use std::string::String;
-use std::vec::Vec;
-
 use crate::json_lite::{self, JsonValue};
 
 /// Opus frames the device streams: 16 kHz, mono, 60 ms.
@@ -32,15 +28,6 @@ impl ListenMode {
             Self::Auto => "auto",
             Self::Manual => "manual",
             Self::Realtime => "realtime",
-        }
-    }
-
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "auto" => Some(Self::Auto),
-            "manual" => Some(Self::Manual),
-            "realtime" => Some(Self::Realtime),
-            _ => None,
         }
     }
 }

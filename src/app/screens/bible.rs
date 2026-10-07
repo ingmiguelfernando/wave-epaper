@@ -12,22 +12,23 @@ use embedded_graphics::{
 use crate::{
     app::{
         display::DisplayPreferences,
-        typography::{Text, TextBounds, UiTextRole, UiTextStyle},
+        typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
             bottom_bar::{draw_bottom_bar, KeyCap},
             header::draw_header,
         },
     },
-    bible_nav::{BibleNav, BibleNavView},
+    bible::Testament,
+    bible_nav::{BibleNav, BibleNavView, SECTIONS},
     orientation::OrientedFrameBuffer,
 };
 
 const LEFT: i32 = 16;
 const RIGHT: i32 = 464;
 
-/// Paper-colored text for the inverted chip, row and chapter cell.
-fn inverse_text(preferences: DisplayPreferences) -> UiTextStyle {
-    preferences.text_style(UiTextRole::Body, BinaryColor::Off)
+/// Paper-colored text for the inverted tab, row and chapter cell.
+fn inverse_text(preferences: DisplayPreferences, role: UiTextRole) -> UiTextStyle {
+    preferences.text_style(role, BinaryColor::Off)
 }
 
 /// Row band height of the book list, as in the mockup's 58 px rows.
@@ -70,14 +71,12 @@ fn render_books(
 ) -> Result<(), Infallible> {
     draw_header(display, preferences, "GO TO · BOOK", translation)?;
     let detail = preferences.detail_style();
-    let heading = preferences.heading_style();
     let large = preferences.large_style();
-    let testament = if nav.selected_book().is_some_and(|book| book.number >= 40) {
-        "New Testament"
-    } else {
-        "Old Testament"
-    };
     let section = nav.section();
+    let testament = match Testament::from_book_number(section.first) {
+        Some(Testament::New) => "New Testament",
+        _ => "Old Testament",
+    };
     Text::new(
         &detail.fit(
             &format!("{testament} · section {} of 8", nav.section_cursor() + 1),
@@ -97,7 +96,9 @@ fn render_books(
 
     let books = nav.section_books();
     let selected = nav.book_cursor();
-    let first = selected.saturating_sub(2);
+    let first = selected
+        .saturating_sub(2)
+        .min(books.len().saturating_sub(BOOK_ROWS_SHOWN));
     for (visible, index) in (first..books.len().min(first + BOOK_ROWS_SHOWN)).enumerate() {
         let book = books[index];
         let top = BOOKS_TOP + visible as i32 * ROW_HEIGHT;
@@ -114,7 +115,7 @@ fn render_books(
         let body = preferences.body_style();
         let names = nav.next_section_books(cursor);
         let line = format!("Next section (BOOT): {name} · {}", names.join(", "));
-        Text::new(&body.fit(&line, RIGHT - LEFT), Point::new(LEFT, 700), body).draw(display)?;
+        Text::new(&body.fit(&line, RIGHT - LEFT), Point::new(LEFT, 730), body).draw(display)?;
     }
     draw_bottom_bar(display, preferences, &BOOKS_HINTS)
 }
@@ -137,46 +138,53 @@ fn render_chapters(
         heading,
     )
     .draw(display)?;
+
+    const PER_ROW: usize = 8;
+    const PER_PAGE: usize = PER_ROW * 6;
+    const CELL: i32 = 50;
+    const PITCH: i32 = 54;
+    const GRID_LEFT: i32 = (480 - (PER_ROW as i32 * PITCH - (PITCH - CELL))) / 2;
+    let total = usize::from(book.chapters);
+    let current = usize::from(nav.chapter_cursor().max(1));
+    let first = (current - 1) / PER_PAGE * PER_PAGE;
+    let caption = if total > PER_PAGE {
+        let last = (first + PER_PAGE).min(total);
+        format!("Chapters {}–{last} of {total}", first + 1)
+    } else {
+        format!("{total} chapters")
+    };
     Text::new(
-        &detail.fit(&format!("{} chapters", book.chapters), RIGHT - LEFT),
+        &detail.fit(&caption, RIGHT - LEFT),
         Point::new(LEFT, 200),
         detail,
     )
     .draw(display)?;
 
-    const PER_ROW: usize = 8;
-    const CELL: i32 = 50;
-    const PITCH: i32 = 54;
-    let total = usize::from(book.chapters);
-    let current = usize::from(nav.chapter_cursor().max(1));
-    let first = current.saturating_sub(1) / (PER_ROW * 6) * (PER_ROW * 6);
-    for index in 0..(PER_ROW * 6) {
+    for index in 0..PER_PAGE {
         let number = first + index + 1;
         if number > total {
             break;
         }
         let column = (index % PER_ROW) as i32;
         let row = (index / PER_ROW) as i32;
-        let left = 16 + column * PITCH;
+        let left = GRID_LEFT + column * PITCH;
         let top = 240 + row * PITCH;
-        let caption = number.to_string();
-        if number == current {
-            Rectangle::new(Point::new(left, top), Size::new(CELL as u32, CELL as u32))
-                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+        let cell = Rectangle::new(Point::new(left, top), Size::new(CELL as u32, CELL as u32));
+        let style = if number == current {
+            cell.into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                 .draw(display)?;
-            let style = inverse_text(preferences);
-            Text::new(&caption, Point::new(left + 8, top + 36), style).draw(display)?;
+            inverse_text(preferences, UiTextRole::Body)
         } else {
-            Rectangle::new(Point::new(left, top), Size::new(CELL as u32, CELL as u32))
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+            cell.into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
                 .draw(display)?;
-            Text::new(
-                &caption,
-                Point::new(left + 8, top + 36),
-                preferences.body_style(),
-            )
-            .draw(display)?;
-        }
+            preferences.body_style()
+        };
+        let label = number.to_string();
+        let origin = Point::new(
+            left + (CELL - style.text_width(&label)) / 2,
+            top + (CELL + style.cap_height()) / 2,
+        );
+        Text::new(&label, origin, style).draw(display)?;
     }
     draw_bottom_bar(display, preferences, &CHAPTERS_HINTS)
 }
@@ -187,9 +195,9 @@ fn draw_tab_strip(
     current: usize,
 ) -> Result<(), Infallible> {
     let detail = preferences.detail_style();
-    let inverse = inverse_text(preferences);
+    let inverse = inverse_text(preferences, UiTextRole::Detail);
     let mut x = LEFT;
-    for (index, section) in crate::bible_nav::SECTIONS.iter().enumerate() {
+    for (index, section) in SECTIONS.iter().enumerate() {
         let width = detail.text_width(section.tab) + 16;
         if index == current {
             Rectangle::new(Point::new(x, 216), Size::new(width as u32, 34))
@@ -227,12 +235,12 @@ fn draw_book_row(
     .into_styled(style)
     .draw(display)?;
     let name_style = if selected {
-        inverse_text(preferences)
+        inverse_text(preferences, UiTextRole::Heading)
     } else {
         preferences.heading_style()
     };
     let chapters_style = if selected {
-        inverse_text(preferences)
+        inverse_text(preferences, UiTextRole::Body)
     } else {
         preferences.body_style()
     };
@@ -299,5 +307,28 @@ mod tests {
             .iter()
             .map(|byte| u32::from(byte.count_zeros()))
             .sum()
+    }
+
+    #[test]
+    fn next_section_line_clears_a_full_book_list() {
+        let mut nav = sample_nav();
+        // History has twelve books, so all seven rows are drawn.
+        nav.next_section_cyclic();
+        let preferences = DisplayPreferences {
+            font_family: UiFontFamily::AtkinsonHyperlegible,
+            font_size: UiFontSize::Large,
+        };
+        let frame = render(preferences, &nav);
+        let rows_bottom = BOOKS_TOP + BOOK_ROWS_SHOWN as i32 * ROW_HEIGHT;
+        for y in rows_bottom + 2..rows_bottom + 20 {
+            for x in LEFT..RIGHT {
+                // Logical (x, y) is native (y, 479 - x) in portrait.
+                assert_eq!(
+                    frame.is_black(Point::new(y, 479 - x)),
+                    Some(false),
+                    "({x}, {y})"
+                );
+            }
+        }
     }
 }

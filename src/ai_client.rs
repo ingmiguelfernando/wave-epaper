@@ -1,10 +1,6 @@
 //! OpenAI-compatible request and response bodies for Voice Notes v2. No
 //! network access and no keys live here; Phase 7 adds HTTPS and screens.
 
-use std::format;
-use std::string::String;
-use std::vec::Vec;
-
 use crate::json_lite::{self, JsonValue};
 
 /// Content-Type and byte body of the transcription request, paired.
@@ -70,11 +66,11 @@ pub fn summary_request(model: &str, transcript: &str) -> String {
     let system = "You summarise voice notes. Reply with a title on the first \
 line (at most 40 characters), then a short summary in the same language as the \
 transcript.";
-    let user = format!("Transcript:\n{}", json_lite::escape(transcript));
+    let user = format!("Transcript:\n{transcript}");
     format!(
         "{{\"model\":\"{}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{}\"}},\
 {{\"role\":\"user\",\"content\":\"{}\"}}],\"temperature\":0.2,\"max_tokens\":300}}",
-        model,
+        json_lite::escape(model),
         json_lite::escape(system),
         json_lite::escape(&user),
     )
@@ -144,7 +140,7 @@ mod tests {
         assert_eq!(request.content_type, "multipart/form-data; boundary=wave7");
 
         let mut expected: Vec<u8> = Vec::new();
-        let mut part = |expected: &mut Vec<u8>, text: &str| {
+        let part = |expected: &mut Vec<u8>, text: &str| {
             expected.extend_from_slice(text.as_bytes());
         };
         part(&mut expected, "--wave7\r\n");
@@ -198,22 +194,23 @@ mod tests {
 
     #[test]
     fn summary_request_carries_model_prompt_and_limits() {
-        let body = summary_request(
-            "llama-3.1-8b-instant",
-            "Notas del mercado:\n- subió el euro",
-        );
-        assert!(body.contains("\"model\":\"llama-3.1-8b-instant\""));
+        let transcript = "Notas del mercado:\n- subió el \"euro\"";
+        let body = summary_request("llama-3.1-8b-instant", transcript);
         assert!(body.contains("temperature\":0.2"));
         assert!(body.contains("max_tokens\":300"));
         assert!(body.contains("at most 40 characters"));
-        assert!(body.contains("Notas del mercado"));
-        // The request is valid JSON with the transcript escaped inside.
         let parsed = crate::json_lite::parse(&body).unwrap();
         assert_eq!(
             parsed.get("model").and_then(|model| model.as_str()),
             Some("llama-3.1-8b-instant")
         );
-        assert!(parse_chat_completion(&body).is_err());
+        // The server must read the transcript exactly once escaped.
+        let user = parsed
+            .get("messages")
+            .and_then(|messages| messages.index(1))
+            .and_then(|message| message.get("content"))
+            .and_then(|content| content.as_str());
+        assert_eq!(user, Some(format!("Transcript:\n{transcript}").as_str()));
     }
 
     #[test]

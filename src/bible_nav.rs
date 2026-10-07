@@ -1,7 +1,7 @@
 //! Book and chapter picker state for the Bible reader. Drawing and state
 //! only: routes and wiring come with the main line.
 
-use crate::bible::{BibleBook, Testament};
+use crate::bible::BibleBook;
 
 /// The eight canonical sections, by book number.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -130,68 +130,51 @@ impl BibleNav {
     /// The books of the current section that exist on the card.
     #[must_use]
     pub fn section_books(&self) -> Vec<&BibleBook> {
-        let section = &SECTIONS[self.section_cursor];
-        self.books
-            .iter()
-            .filter(|book| (section.first..=section.last).contains(&book.number))
-            .collect()
+        self.books_in(self.section_cursor).collect()
     }
 
     /// The highlighted book of the current section.
     #[must_use]
     pub fn selected_book(&self) -> Option<&BibleBook> {
-        let section_books = self.section_books();
-        section_books.get(self.book_cursor).copied()
+        self.books_in(self.section_cursor).nth(self.book_cursor)
     }
 
     /// The next populated section after the cursor, wrapping; `None` when the
     /// card only carries the current one.
     #[must_use]
     pub fn next_section(&self) -> Option<(usize, &'static str)> {
-        for distance in 1..SECTIONS.len() {
-            let cursor = (self.section_cursor + distance) % SECTIONS.len();
-            if !self.section_book_count(cursor).is_empty() {
-                return Some((cursor, SECTIONS[cursor].name));
-            }
-        }
-        None
+        (1..SECTIONS.len())
+            .map(|distance| (self.section_cursor + distance) % SECTIONS.len())
+            .find(|&cursor| self.has_books(cursor))
+            .map(|cursor| (cursor, SECTIONS[cursor].name))
     }
 
-    /// Names of the books the next populated section offers.
+    /// Names of the books section `cursor` offers.
     #[must_use]
     pub fn next_section_books(&self, cursor: usize) -> Vec<String> {
-        let section = &SECTIONS[cursor];
-        self.books
-            .iter()
-            .filter(|book| (section.first..=section.last).contains(&book.number))
-            .map(|book| book.name.clone())
-            .collect()
+        self.books_in(cursor).map(|book| book.name.clone()).collect()
     }
 
-    fn section_book_count(&self, cursor: usize) -> Vec<&BibleBook> {
-        let section = &SECTIONS[cursor];
+    /// Books of section `cursor` that exist on the card.
+    fn books_in(&self, cursor: usize) -> impl Iterator<Item = &BibleBook> + '_ {
+        let section = SECTIONS[cursor];
         self.books
             .iter()
-            .filter(|book| (section.first..=section.last).contains(&book.number))
-            .collect()
+            .filter(move |book| (section.first..=section.last).contains(&book.number))
     }
 
-    /// Move to the next populated section; nothing to fill stays untouched.
-    pub fn skip_empty_section(&mut self) {
-        if !self.section_book_count(self.section_cursor).is_empty() {
-            self.book_cursor = self
-                .book_cursor
-                .min(self.section_books().len().saturating_sub(1));
-            return;
+    fn has_books(&self, cursor: usize) -> bool {
+        self.books_in(cursor).next().is_some()
+    }
+
+    /// Land on a populated section, keeping the cursor inside its books.
+    fn skip_empty_section(&mut self) {
+        if !self.has_books(self.section_cursor) {
+            self.next_section_cyclic();
         }
-        for distance in 1..=SECTIONS.len() {
-            let cursor = (self.section_cursor + distance) % SECTIONS.len();
-            if !self.section_book_count(cursor).is_empty() {
-                self.section_cursor = cursor;
-                self.book_cursor = 0;
-                return;
-            }
-        }
+        self.book_cursor = self
+            .book_cursor
+            .min(self.section_books().len().saturating_sub(1));
     }
 
     /// ▲▼ inside the books view: move and wrap within the section.
@@ -210,13 +193,9 @@ impl BibleNav {
     /// Short BOOT in the books view: always advance to the next populated
     /// section, wrapping.
     pub fn next_section_cyclic(&mut self) {
-        for distance in 1..=SECTIONS.len() {
-            let cursor = (self.section_cursor + distance) % SECTIONS.len();
-            if !self.section_book_count(cursor).is_empty() {
-                self.section_cursor = cursor;
-                self.book_cursor = 0;
-                return;
-            }
+        if let Some((cursor, _)) = self.next_section() {
+            self.section_cursor = cursor;
+            self.book_cursor = 0;
         }
     }
 
@@ -454,7 +433,7 @@ mod tests {
         assert_eq!(nav.chapter_cursor(), 11);
         nav.move_chapter(1);
         assert_eq!(nav.chapter_cursor(), 12);
-        nav.open();
+        assert_eq!(nav.open(), Some((19, 12)), "Psalms 12");
         nav.back();
         assert_eq!(nav.view(), BibleNavView::Books);
     }
@@ -488,6 +467,5 @@ mod tests {
         assert_eq!(books.len(), 66);
         assert_eq!(Testament::from_book_number(1), Some(Testament::Old));
         assert_eq!(Testament::from_book_number(40), Some(Testament::New));
-        let _ = books;
     }
 }

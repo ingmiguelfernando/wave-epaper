@@ -1,7 +1,7 @@
 //! Best scores for the SD games, kept in one SD file and saved only when a
 //! value changes: every write costs battery.
 
-use std::path::Path;
+use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 
@@ -55,10 +55,15 @@ impl GameRecords {
         }
     }
 
-    /// Save through `sd_file`; the caller decides when, never per piece.
+    /// Save through `sd_file`; the caller decides when, never per piece. The
+    /// card has no `GAMES/` folder until the first save creates it.
     pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<()> {
-        sd_file::replace(path.as_ref(), &self.serialized())
-            .with_context(|| format!("write game records {}", path.as_ref().display()))
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        sd_file::replace(path, &self.serialized())
+            .with_context(|| format!("write game records {}", path.display()))
     }
 
     /// Raise the Tetris Zen best score; `true` when the file must be saved.
@@ -74,14 +79,13 @@ impl GameRecords {
 
 #[cfg(test)]
 mod tests {
-    use super::{GameRecords, RECORDS_PATH};
+    use super::GameRecords;
 
     #[test]
     fn round_trips_the_file_format() {
         let records = GameRecords { tetris_zen: 18_950 };
         let parsed = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(parsed, records);
-        assert_eq!(RECORDS_PATH, "/sdcard/RUSTMIX/GAMES/RECORDS.TXT");
     }
 
     #[test]
@@ -113,16 +117,17 @@ mod tests {
     }
 
     #[test]
-    fn save_and_reload_survive_through_sd_file() {
+    fn the_first_save_creates_the_games_folder() {
         let root = std::env::temp_dir().join(format!("wave-records-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let path = root.join("RECORDS.TXT");
+        let games = root.join("GAMES");
+        let path = games.join("RECORDS.TXT");
         let mut records = GameRecords::default();
         records.observe_tetris_zen(9001);
         records.save_to_path(&path).unwrap();
         assert_eq!(GameRecords::load_from_path(&path).tetris_zen, 9001);
-        assert!(!root.join("RECORDS.TMP").exists());
-        assert!(!root.join("RECORDS.BAK").exists());
+        assert!(!games.join("RECORDS.TMP").exists());
+        assert!(!games.join("RECORDS.BAK").exists());
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
