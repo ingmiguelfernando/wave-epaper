@@ -5,6 +5,7 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 
+use super::sudoku_puzzles::SudokuDifficulty;
 use crate::sd_file;
 
 /// SD location of the games' best-score file.
@@ -88,36 +89,42 @@ impl GameRecords {
 
     /// Record a Sudoku solve; `true` when it beat the difficulty's best
     /// (a 0 stored best means none yet, so any solve improves it).
-    pub fn observe_sudoku(
-        &mut self,
-        difficulty: crate::games::sudoku_puzzles::SudokuDifficulty,
-        seconds: u32,
-    ) -> bool {
-        use crate::games::sudoku_puzzles::SudokuDifficulty;
-        let (current, key) = match difficulty {
-            SudokuDifficulty::Easy => (self.sudoku_easy, "sudoku_easy"),
-            SudokuDifficulty::Medium => (self.sudoku_medium, "sudoku_medium"),
-            SudokuDifficulty::Hard => (self.sudoku_hard, "sudoku_hard"),
-        };
-        if current != 0 && seconds >= current {
+    pub fn observe_sudoku(&mut self, difficulty: SudokuDifficulty, seconds: u32) -> bool {
+        let best = self.sudoku_slot(difficulty);
+        if *best != 0 && seconds >= *best {
             return false;
         }
-        match key {
-            "sudoku_easy" => self.sudoku_easy = seconds,
-            "sudoku_medium" => self.sudoku_medium = seconds,
-            _ => self.sudoku_hard = seconds,
-        }
+        // 0 means no best, so even an instant solve stores a second.
+        *best = seconds.max(1);
         true
     }
 
     /// The stored best for `difficulty`, 0 = none yet.
     #[must_use]
-    pub fn sudoku_best(&self, difficulty: crate::games::sudoku_puzzles::SudokuDifficulty) -> u32 {
-        use crate::games::sudoku_puzzles::SudokuDifficulty;
+    pub const fn sudoku_best(&self, difficulty: SudokuDifficulty) -> u32 {
         match difficulty {
             SudokuDifficulty::Easy => self.sudoku_easy,
             SudokuDifficulty::Medium => self.sudoku_medium,
             SudokuDifficulty::Hard => self.sudoku_hard,
+        }
+    }
+
+    /// The fastest solve of any difficulty, for the Games card when no game
+    /// is saved.
+    #[must_use]
+    pub fn sudoku_fastest(&self) -> Option<(SudokuDifficulty, u32)> {
+        SudokuDifficulty::ALL
+            .into_iter()
+            .map(|difficulty| (difficulty, self.sudoku_best(difficulty)))
+            .filter(|&(_, seconds)| seconds != 0)
+            .min_by_key(|&(_, seconds)| seconds)
+    }
+
+    fn sudoku_slot(&mut self, difficulty: SudokuDifficulty) -> &mut u32 {
+        match difficulty {
+            SudokuDifficulty::Easy => &mut self.sudoku_easy,
+            SudokuDifficulty::Medium => &mut self.sudoku_medium,
+            SudokuDifficulty::Hard => &mut self.sudoku_hard,
         }
     }
 }

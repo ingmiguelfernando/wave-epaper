@@ -123,7 +123,11 @@ impl LuaEventBridge {
             game.render_initial(canvas)?;
             Ok(Self::Minesweeper(game))
         } else if let Some(puzzle) = parse_sudoku_init(source)? {
-            let game = SudokuGame::from_puzzle(&puzzle)?;
+            // A declared puzzle is checked now and offered as `SD puzzle`.
+            if let Some(puzzle) = &puzzle {
+                SudokuGame::from_puzzle(puzzle)?;
+            }
+            let game = SudokuGame::start_list(None, puzzle);
             game.render_initial(canvas)?;
             Ok(Self::Sudoku(game))
         } else if let Some((mode, seed)) = parse_tetris_init(source)? {
@@ -188,14 +192,16 @@ impl LuaEventBridge {
         }
     }
 }
-fn parse_sudoku_init(source: &str) -> Result<Option<String>, String> {
+/// `sudoku.init()` opens the start list; `sudoku.init("…")` also offers the
+/// card's own puzzle. `None` when the script is not a Sudoku card.
+fn parse_sudoku_init(source: &str) -> Result<Option<Option<String>>, String> {
     parse_single_quoted_init(source, "sudoku.init(", "sudoku")
 }
 fn parse_single_quoted_init(
     source: &str,
     prefix: &str,
     label: &str,
-) -> Result<Option<String>, String> {
+) -> Result<Option<Option<String>>, String> {
     let mut value = None;
     for (index, raw) in source.lines().enumerate() {
         let line_number = index + 1;
@@ -216,11 +222,15 @@ fn parse_single_quoted_init(
                 "MAIN.LUA line {line_number}: duplicate {label}.init"
             ));
         }
-        let argument = &line[prefix.len()..line.len() - 1];
-        value = Some(
-            parse_quoted(argument.trim(), label)
+        let argument = line[prefix.len()..line.len() - 1].trim();
+        if argument.is_empty() {
+            value = Some(None);
+            continue;
+        }
+        value = Some(Some(
+            parse_quoted(argument, label)
                 .map_err(|error| format!("MAIN.LUA line {line_number}: {error}"))?,
-        );
+        ));
     }
     Ok(value)
 }
@@ -343,13 +353,25 @@ mod tests {
         let mut c = NativeGameCanvas::default();
         let mut b = LuaEventBridge::load(&format!("sudoku.init(\"{PUZZLE}\")"), &mut c).unwrap();
         assert_eq!(b.marker(), "sudoku");
+        let LuaEventBridge::Sudoku(game) = &b else {
+            unreachable!()
+        };
+        // The card's puzzle joins the three generated difficulties.
+        assert_eq!(game.start_options().len(), 4);
         assert_eq!(
             b.apply_button(ButtonEvent::Down, 1_000, &mut c)
                 .unwrap()
                 .unwrap()
                 .reason(),
-            "row-move"
+            "start-move"
         );
+        // A bare init opens the start list alone; a bad puzzle fails early.
+        let bare = LuaEventBridge::load("sudoku.init()", &mut c).unwrap();
+        let LuaEventBridge::Sudoku(game) = &bare else {
+            unreachable!()
+        };
+        assert_eq!(game.start_options().len(), 3);
+        assert!(LuaEventBridge::load("sudoku.init(\"123\")", &mut c).is_err());
     }
     #[test]
     fn loads_minesweeper_init_and_routes_native_event() {

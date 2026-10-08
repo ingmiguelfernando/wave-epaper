@@ -22,6 +22,7 @@ use crate::{
     civil_date,
     orientation::OrientedFrameBuffer,
     reading_stats::ReadingStats,
+    regional::grouped,
 };
 
 /// The book open in the Reader, drawn as the last summary block.
@@ -47,6 +48,23 @@ pub fn render_reading_stats(
     draw_heatmap_and_year(display, preferences, stats, today)?;
     if let Some(current) = current {
         draw_current_book(display, preferences, stats, current)?;
+    }
+    draw_bottom_bar(display, preferences, &BACK_HINTS)
+}
+
+/// Nothing is recorded until the clock is set, so the screen says how.
+pub fn render_without_clock(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+) -> Result<(), Infallible> {
+    draw_header(display, preferences, "READING STATS", "NO CLOCK")?;
+    let body = preferences.body_style();
+    let text = "Reading time is recorded once the clock is set: \
+                Settings › Clock & Alarms › Clock, or Wi-Fi time sync.";
+    let mut baseline = 140;
+    for line in body.wrap(text, 432) {
+        Text::new(&line, Point::new(24, baseline), body).draw(display)?;
+        baseline += i32::from(body.line_height()) + 4;
     }
     draw_bottom_bar(display, preferences, &BACK_HINTS)
 }
@@ -387,19 +405,6 @@ fn short_time_label(seconds: u32) -> String {
     } else {
         format!("~{minutes} m")
     }
-}
-
-/// Thousands separators, as in the mockup's "2,318 pages".
-fn grouped(value: u32) -> String {
-    let digits = value.to_string();
-    let mut out = String::new();
-    for (index, digit) in digits.bytes().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(digit as char);
-    }
-    out
 }
 
 /// "+18% vs last"; blank until last week has some reading.

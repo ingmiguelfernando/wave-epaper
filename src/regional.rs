@@ -334,6 +334,20 @@ fn key_of(value: RtcDateTime) -> u64 {
         + u64::from(value.second)
 }
 
+/// A count with thousands separators, as the mockups write `18,950`.
+#[must_use]
+pub fn grouped(value: u32) -> String {
+    let digits = value.to_string();
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

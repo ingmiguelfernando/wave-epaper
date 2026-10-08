@@ -244,7 +244,8 @@ impl ScreenRoute {
             Self::CalendarDeleteConfirmation => Some(Self::CalendarEventDetails),
             Self::VoiceNoteDetails | Self::VoiceNoteRecording => Some(Self::VoiceNotes),
             Self::GamesTbd | Self::LuaApps => Some(Self::Games),
-            Self::LuaGame | Self::LuaGameError => Some(Self::LuaApps),
+            // The Games hub replaced the old SD catalog list.
+            Self::LuaGame | Self::LuaGameError => Some(Self::Games),
             Self::Files | Self::Dictionary | Self::UnitConverter | Self::Calendar => {
                 Some(Self::Tools)
             }
@@ -380,12 +381,13 @@ mod tests {
             Some(ScreenRoute::DeviceInfoBoard)
         );
         assert_eq!(ScreenRoute::Reader.parent(), Some(ScreenRoute::Home));
-        assert_eq!(ScreenRoute::LuaApps.parent(), Some(ScreenRoute::Games));
-        assert_eq!(ScreenRoute::LuaGame.parent(), Some(ScreenRoute::LuaApps));
-        assert_eq!(
-            ScreenRoute::LuaGameError.parent(),
-            Some(ScreenRoute::LuaApps)
-        );
+        for route in [
+            ScreenRoute::LuaApps,
+            ScreenRoute::LuaGame,
+            ScreenRoute::LuaGameError,
+        ] {
+            assert_eq!(route.parent(), Some(ScreenRoute::Games));
+        }
         assert_eq!(ScreenRoute::Home.parent(), None);
     }
 

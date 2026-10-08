@@ -251,7 +251,7 @@ fn draw_reading_card(
 /// Whole minutes read today, `None` without a clock or without reading.
 #[must_use]
 pub fn minutes_read_today(state: &AppState) -> Option<u32> {
-    let today = reading_today(state)?;
+    let today = state.local_day()?;
     let seconds = state.reading_stats.day(today).seconds;
     if seconds == 0 {
         None
@@ -375,21 +375,13 @@ fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
 
 /// `5-day streak` when the RTC gives a day and more than today reads.
 fn reading_stats_meta(state: &AppState) -> String {
-    reading_today(state).map_or_else(String::new, |today| {
+    state.local_day().map_or_else(String::new, |today| {
         let streak = state.reading_stats.streak(today);
         if streak > 1 {
             format!("{streak}-day streak")
         } else {
             String::new()
         }
-    })
-}
-
-/// The RTC's civil day, `None` without a set clock.
-#[must_use]
-pub fn reading_today(state: &AppState) -> Option<u32> {
-    state.board.rtc.map(|rtc| {
-        crate::civil_date::days_from_civil(i64::from(rtc.year), rtc.month, rtc.day) as u32
     })
 }
 

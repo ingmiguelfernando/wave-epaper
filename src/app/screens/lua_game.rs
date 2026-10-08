@@ -224,6 +224,16 @@ fn draw_command(
         DrawCommand::Text { x, y, text, style } => {
             Text::new(text, Point::new(*x, *y), canvas_text_style(state, *style)).draw(display)?;
         }
+        DrawCommand::TextRight {
+            right,
+            y,
+            text,
+            style,
+        } => {
+            let style = canvas_text_style(state, *style);
+            let left = *right - style.text_width(text);
+            Text::new(text, Point::new(left, *y), style).draw(display)?;
+        }
         DrawCommand::Line { x1, y1, x2, y2 } => {
             Line::new(Point::new(*x1, *y1), Point::new(*x2, *y2))
                 .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))

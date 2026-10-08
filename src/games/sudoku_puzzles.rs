@@ -12,6 +12,9 @@ pub enum SudokuDifficulty {
 }
 
 impl SudokuDifficulty {
+    /// Every difficulty, easiest first, as the start list offers them.
+    pub const ALL: [Self; 3] = [Self::Easy, Self::Medium, Self::Hard];
+
     #[must_use]
     pub const fn target_givens(self) -> usize {
         match self {
@@ -37,16 +40,6 @@ impl SudokuDifficulty {
             Self::Easy => "Easy",
             Self::Medium => "Medium",
             Self::Hard => "Hard",
-        }
-    }
-
-    /// The persisted best-time key.
-    #[must_use]
-    pub const fn records_key(self) -> &'static str {
-        match self {
-            Self::Easy => "sudoku_easy",
-            Self::Medium => "sudoku_medium",
-            Self::Hard => "sudoku_hard",
         }
     }
 
@@ -172,31 +165,77 @@ fn shuffle<T>(items: &mut [T], random: &mut Xorshift) {
     }
 }
 
+/// Bits 1 to 9 of a unit's used-value mask.
+const ALL_VALUES: u16 = 0x3FE;
+
 /// Count solutions up to `limit`; the generator keeps removals that leave 1.
 fn count_solutions(grid: &[u8; SUDOKU_CELL_COUNT], limit: usize) -> usize {
+    // Used values per row, column and box, one bit per digit.
+    let mut used = [[0_u16; 9]; 3];
+    for (index, &value) in grid.iter().enumerate() {
+        if value == 0 {
+            continue;
+        }
+        let bit = 1 << value;
+        let [row, column, square] = units(index);
+        if (used[0][row] | used[1][column] | used[2][square]) & bit != 0 {
+            return 0;
+        }
+        used[0][row] |= bit;
+        used[1][column] |= bit;
+        used[2][square] |= bit;
+    }
     let mut grid = *grid;
-    count_from(&mut grid, 0, limit)
+    count_from(&mut grid, &mut used, limit)
 }
 
-/// Walk cells left to right; past the end one full solution has been found.
-fn count_from(grid: &mut [u8; SUDOKU_CELL_COUNT], index: usize, limit: usize) -> usize {
-    if index == SUDOKU_CELL_COUNT {
-        return 1;
-    }
-    if grid[index] != 0 {
-        return count_from(grid, index + 1, limit);
-    }
-    let mut found = 0;
-    for value in 1..=9_u8 {
-        if !conflicts(grid, index, value) {
-            grid[index] = value;
-            found += count_from(grid, index + 1, limit - found);
-            grid[index] = 0;
-            if found >= limit {
-                return found;
+/// Row, column and box of a cell.
+const fn units(index: usize) -> [usize; 3] {
+    let (row, column) = (index / 9, index % 9);
+    [row, column, row / 3 * 3 + column / 3]
+}
+
+/// Fill the empty cell with the fewest candidates first. A sparse Hard grid
+/// then takes thousands of steps instead of millions, so the device's
+/// generator answers within a press.
+fn count_from(
+    grid: &mut [u8; SUDOKU_CELL_COUNT],
+    used: &mut [[u16; 9]; 3],
+    limit: usize,
+) -> usize {
+    let mut best: Option<(usize, u16, u32)> = None;
+    for (index, &value) in grid.iter().enumerate() {
+        if value != 0 {
+            continue;
+        }
+        let [row, column, square] = units(index);
+        let options = !(used[0][row] | used[1][column] | used[2][square]) & ALL_VALUES;
+        let count = options.count_ones();
+        if best.map_or(true, |(_, _, fewest)| count < fewest) {
+            best = Some((index, options, count));
+            if count <= 1 {
+                break;
             }
         }
     }
+    let Some((index, mut options, _)) = best else {
+        return 1;
+    };
+    let [row, column, square] = units(index);
+    let mut found = 0;
+    while options != 0 && found < limit {
+        let bit = options & options.wrapping_neg();
+        options &= options - 1;
+        grid[index] = bit.trailing_zeros() as u8;
+        used[0][row] |= bit;
+        used[1][column] |= bit;
+        used[2][square] |= bit;
+        found += count_from(grid, used, limit - found);
+        used[0][row] &= !bit;
+        used[1][column] &= !bit;
+        used[2][square] &= !bit;
+    }
+    grid[index] = 0;
     found
 }
 

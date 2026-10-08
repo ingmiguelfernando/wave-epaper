@@ -95,12 +95,12 @@ pub fn ai_row_count(state: &AppState) -> usize {
     2 + recent_notes(state).len()
 }
 
-/// The status bar's right text for the hub.
+/// The status bar's right text: `Online` or `Offline`.
 #[must_use]
 pub fn network_label(state: &AppState) -> String {
     match state.network.wifi_state {
         crate::network::WifiConnectionState::Connected => "Online".into(),
-        other => other.label().to_owned(),
+        _ => "Offline".into(),
     }
 }
 
@@ -405,7 +405,7 @@ mod d28_tests {
     #[test]
     fn network_label_follows_the_wifi_state() {
         let mut state = AppState::default();
-        assert_eq!(network_label(&state), "NO CONFIG");
+        assert_eq!(network_label(&state), "Offline");
         state.network.wifi_state = crate::network::WifiConnectionState::Connected;
         assert_eq!(network_label(&state), "Online");
     }

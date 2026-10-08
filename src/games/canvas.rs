@@ -39,6 +39,13 @@ pub enum DrawCommand {
         text: String,
         style: CanvasTextStyle,
     },
+    /// Text that ends at `right`; the screen measures it with the real font.
+    TextRight {
+        right: i32,
+        y: i32,
+        text: String,
+        style: CanvasTextStyle,
+    },
     Line {
         x1: i32,
         y1: i32,
@@ -141,6 +148,32 @@ impl NativeGameCanvas {
             width.min(GAME_CANVAS_WIDTH - x),
             36,
         ));
+        Ok(())
+    }
+
+    /// Text whose end sits at `right`, such as a clock on a title bar.
+    pub fn text_right(
+        &mut self,
+        right: i32,
+        y: i32,
+        text: String,
+        style: CanvasTextStyle,
+    ) -> Result<(), String> {
+        if text.len() > MAX_GAME_TEXT_BYTES {
+            return Err(format!(
+                "game text exceeds {MAX_GAME_TEXT_BYTES}-byte command limit"
+            ));
+        }
+        self.validate_point(right, y)?;
+        let width = (text.len() as i32).saturating_mul(14).max(8).min(right);
+        self.push(DrawCommand::TextRight {
+            right,
+            y,
+            text,
+            style,
+        })?;
+        let area = DirtyRect::new(right - width, (y - 28).max(0), width, 36);
+        self.dirty.invalidate(area);
         Ok(())
     }
 

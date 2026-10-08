@@ -101,9 +101,15 @@ impl SudokuSave {
             .with_context(|| format!("write sudoku save {}", path.display()))
     }
 
-    /// Remove the resume file after a solve; a missing file is fine.
+    /// Remove the resume file after a solve, with any `.BAK` or `.TMP` an
+    /// interrupted write left, so loading cannot bring the old game back.
+    /// Missing files are fine.
     pub fn remove_from_path(path: impl AsRef<Path>) {
-        let _ = std::fs::remove_file(path.as_ref());
+        let path = path.as_ref();
+        let _ = std::fs::remove_file(path);
+        for extension in ["BAK", "TMP"] {
+            let _ = std::fs::remove_file(path.with_extension(extension));
+        }
     }
 }
 
@@ -185,6 +191,8 @@ mod tests {
         };
         save.save_to_path(&path).unwrap();
         assert_eq!(SudokuSave::load_from_path(&path), Some(save));
+        // A backup left by an interrupted write goes too.
+        std::fs::copy(&path, path.with_extension("BAK")).unwrap();
         SudokuSave::remove_from_path(&path);
         assert_eq!(SudokuSave::load_from_path(&path), None);
         std::fs::remove_dir_all(&root).unwrap();

@@ -23,7 +23,13 @@ use crate::{
     board_services::BoardSnapshot,
     buttons::ButtonEvent,
     framebuffer::FrameBuffer,
-    games::{canvas::NativeGameCanvas, refresh_policy::GameRefreshPlan},
+    games::{
+        canvas::NativeGameCanvas,
+        records::GameRecords,
+        refresh_policy::GameRefreshPlan,
+        sudoku::SudokuGame,
+        sudoku_puzzles::{generate, SudokuDifficulty},
+    },
     lua_runtime::{
         event_bridge::LuaEventBridge,
         manifest::{LuaAppEntry, LuaAppKind, LuaAppManifest},
@@ -394,6 +400,11 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     tetris.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("tetris", tetris));
 
+    let mut sudoku_start = sample_state();
+    sudoku_start.lua_runtime.session = Some(sudoku_start_session());
+    sudoku_start.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("sudoku-start", sudoku_start));
+
     let mut sudoku_row = sample_state();
     sudoku_row.lua_runtime.session = Some(sudoku_sample_session(0));
     sudoku_row.router.navigate_to(ScreenRoute::LuaGame);
@@ -424,7 +435,6 @@ fn render_sample_bible(with_chapters: bool, preferences: DisplayPreferences) -> 
     frame
 }
 
-/// A Zen Tetris game a few drops in, drawn through the native SD game canvas.
 /// A Sudoku game one third in, as the hub's Continue card reads it.
 fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
     let puzzle =
@@ -502,6 +512,7 @@ fn sample_games_catalog(state: &mut AppState) {
     state.lua_runtime.catalog.warning = None;
 }
 
+/// A Zen Tetris game a few drops in, drawn through the native SD game canvas.
 fn tetris_sample_session() -> LuaAppSession {
     let source = "tetris.init('zen', 1803)";
     let mut canvas = NativeGameCanvas::default();
@@ -546,21 +557,43 @@ fn tetris_sample_session() -> LuaAppSession {
     }
 }
 
-/// The Sudoku sample a step or two into the three-step entry.
-fn sudoku_sample_session(step_downs: usize) -> LuaAppSession {
-    let puzzle =
-        "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
-    let source = format!("sudoku.init(\"{puzzle}\")");
+/// The start list as the card opens it, with a saved game to continue.
+fn sudoku_start_session() -> LuaAppSession {
     let mut canvas = NativeGameCanvas::default();
-    let mut event_bridge = LuaEventBridge::load(&source, &mut canvas).unwrap();
-    event_bridge
-        .apply_button(ButtonEvent::Down, 2_000, &mut canvas)
-        .unwrap();
-    for _ in 0..step_downs {
+    let mut event_bridge = LuaEventBridge::load("sudoku.init()", &mut canvas).unwrap();
+    if let LuaEventBridge::Sudoku(game) = &mut event_bridge {
+        game.prepare(Some(sample_sudoku_save()), GameRecords::default());
+        game.render_initial(&mut canvas).unwrap();
+    }
+    sudoku_session(canvas, event_bridge)
+}
+
+/// A Medium game seven minutes in, `selects` presses into the three-step
+/// entry.
+fn sudoku_sample_session(selects: usize) -> LuaAppSession {
+    let generated = generate(SudokuDifficulty::Medium, 1803);
+    let mut board = generated.puzzle;
+    // Every fifth open cell already holds the player's answer.
+    let open: Vec<usize> = (0..81).filter(|&index| board[index] == 0).collect();
+    for &index in open.iter().step_by(5) {
+        board[index] = generated.solution[index];
+    }
+    let givens = generated.puzzle.map(|cell| cell != 0);
+    let difficulty = Some(SudokuDifficulty::Medium);
+    let game = SudokuGame::new(board, givens, generated.puzzle, difficulty, 461);
+    let mut canvas = NativeGameCanvas::default();
+    game.render_initial(&mut canvas).unwrap();
+    let mut event_bridge = LuaEventBridge::Sudoku(game);
+    let selects = std::iter::repeat(ButtonEvent::Select).take(selects);
+    for event in std::iter::once(ButtonEvent::Down).chain(selects) {
         event_bridge
-            .apply_button(ButtonEvent::Select, 3_000, &mut canvas)
+            .apply_button(event, 2_000, &mut canvas)
             .unwrap();
     }
+    sudoku_session(canvas, event_bridge)
+}
+
+fn sudoku_session(canvas: NativeGameCanvas, event_bridge: LuaEventBridge) -> LuaAppSession {
     LuaAppSession {
         entry: LuaAppEntry {
             directory_name: "SUDOKU".into(),
@@ -574,7 +607,7 @@ fn sudoku_sample_session(step_downs: usize) -> LuaAppSession {
                 input: vec![],
             },
         },
-        source_bytes: source.len(),
+        source_bytes: "sudoku.init()".len(),
         canvas,
         refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
         event_bridge,

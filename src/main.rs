@@ -411,8 +411,7 @@ mod firmware {
                 Err(error) => info!("rustmix-wave=reading-stats status=new error={error:#}"),
             }
             info!(
-                "rustmix-wave=game-records status=ready tetris-zen={} sudoku-sav\
-ed={}",
+                "rustmix-wave=game-records status=ready tetris-zen={} sudoku-saved={}",
                 state.lua_runtime.records.tetris_zen,
                 state.lua_runtime.sudoku_save.is_some()
             );
@@ -589,7 +588,8 @@ ed={}",
         let mut last_status_refresh = Instant::now();
         let mut last_alarm_poll = Instant::now();
         let mut last_power_key_poll = Instant::now();
-        let power_key_clock = Instant::now();
+        // Milliseconds since boot for the Power key, game and reading clocks.
+        let uptime = Instant::now();
         // A key still held from powering on is not a press.
         let mut power_presses = PowerKeyPresses::new(power_key_held(&power_key_pin));
         let mut last_weather_attempt: Option<Instant> = None;
@@ -1113,7 +1113,7 @@ ed={}",
                 && voice_recording.is_none()
                 && voice_playback.is_none()
                 && wifi_transfer_server.is_none();
-            let power_key_now_ms = power_key_clock.elapsed().as_millis() as u64;
+            let power_key_now_ms = uptime.elapsed().as_millis() as u64;
             let power_key_was_down = power_presses.is_down();
             let power_key_down = power_key_held(&power_key_pin);
             let gpio_event = power_presses.update(power_key_down, power_key_now_ms);
@@ -1751,6 +1751,7 @@ ed={}",
                         FreeRtos::delay_ms(20);
                         continue;
                     }
+                    state.event_clock_ms = uptime.elapsed().as_millis() as u64;
                     let calendar_agenda_context = state.apply_calendar_boot_short_press();
                     let keyboard_context = if calendar_agenda_context {
                         false
@@ -1797,6 +1798,14 @@ ed={}",
                             }
                         }
                         let woke_from_sleep = !state.panel_awake;
+                        // The AI hub's short BOOT queues a new recording.
+                        apply_voice_notes_ui_request(
+                            &mut voice_recording,
+                            &mut voice_playback,
+                            &mut audio_runtime,
+                            &mut state,
+                            _mounted_sd.is_some(),
+                        );
                         if woke_from_sleep {
                             panel.initialize()?;
                             state.panel_awake = true;
@@ -1896,8 +1905,8 @@ ed={}",
                         apply_audio_request(&mut audio_runtime, &mut state, request);
                     }
                 } else {
-                    // The game timers read the event clock in milliseconds.
-                    state.apply_with_clock(event, last_activity.elapsed().as_millis() as u64);
+                    // Game and reading timers measure between key presses.
+                    state.apply_with_clock(event, uptime.elapsed().as_millis() as u64);
                     log_lua_runtime_events(&mut state);
                     if state.active_route() == ScreenRoute::Files {
                         storage_browser.refresh();
@@ -2204,14 +2213,7 @@ ed={}",
     /// Accrue the reading session into the stats and save when changed. The
     /// first save creates `/RUSTMIX/READER/` (the SD card has no folders).
     fn save_reading_stats_if_dirty(state: &mut AppState) {
-        let today = state.board.rtc.map(|rtc| {
-            waveshare_epd397_rust_app::civil_date::days_from_civil(
-                i64::from(rtc.year),
-                rtc.month,
-                rtc.day,
-            ) as u32
-        });
-        state.collect_reading_stats(today);
+        state.collect_reading_stats(state.local_day());
         if !state.reading_stats.has_unsaved() {
             return;
         }

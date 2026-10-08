@@ -17,12 +17,13 @@ use crate::{
         typography::{Text, UiTextRole},
         widgets::{
             bottom_bar::{draw_bottom_bar, KeyCap},
-            header::draw_header,
-            status_bar::STATUS_BAR_HEIGHT,
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
+    games::sudoku::time_text,
     lua_runtime::manifest::LuaAppManifest,
     orientation::OrientedFrameBuffer,
+    regional::grouped,
 };
 
 /// One card's geometry, as the mockup's 120 px cards.
@@ -30,14 +31,10 @@ const CARD_HEIGHT: i32 = 120;
 const CARD_GAP: i32 = 12;
 const CARD_LEFT: i32 = 16;
 const CARD_RIGHT: i32 = 464;
-const CARDS_TOP: i32 = STATUS_BAR_HEIGHT + 20;
+const CARDS_TOP: i32 = STATUS_BAR_HEIGHT + 14;
 const CARDS_SHOWN: usize = 4;
-
-/// `12:41` from seconds, as the mockup's best time reads.
-#[must_use]
-pub fn minutes_text(seconds: u32) -> String {
-    format!("{}:{:02}", seconds / 60, seconds % 60)
-}
+const INFO_TEXT: &str = "Only the cells that change are refreshed (partial refresh); \
+                         a full refresh every few moves cleans ghosting.";
 
 /// Shared hint set for this screen.
 pub const GAMES_HINTS: [(KeyCap, &str); 3] = [
@@ -51,8 +48,15 @@ pub fn render_games_hub(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(display, state.display, "GAMES", "SD GAMES")?;
     let games = state.lua_runtime.games();
+    draw_status_bar(display, state.display, ScreenRoute::Games.label())?;
+    let count = games.len().to_string();
+    draw_status_text(display, state.display, &count, STATUS_BAR_RIGHT)?;
+    if games.is_empty() {
+        let body = state.display.body_style();
+        let message = "No games on the SD card";
+        Text::new(message, Point::new(CARD_LEFT, CARDS_TOP + 40), body).draw(display)?;
+    }
     let selected = state
         .category_selection(ScreenRoute::Games)
         .min(games.len().saturating_sub(1));
@@ -62,12 +66,7 @@ pub fn render_games_hub(
         draw_game_card(display, state, games[index], top, index == selected)?;
     }
     let info_top = CARDS_TOP + CARDS_SHOWN as i32 * (CARD_HEIGHT + CARD_GAP);
-    draw_info_box(
-        display,
-        state.display,
-        "Moves use the fast partial refresh; a full refresh now and then cleans ghosting.",
-        info_top,
-    )?;
+    draw_info_box(display, state.display, INFO_TEXT, info_top)?;
     draw_bottom_bar(display, state.display, &GAMES_HINTS)
 }
 
@@ -139,39 +138,37 @@ pub(crate) fn card_text(
 
 /// The mockup's two detail lines per game; other games read their manifest.
 fn game_details(state: &AppState, manifest: &LuaAppManifest) -> (String, String) {
+    let records = state.lua_runtime.records;
     match manifest.id.as_str() {
         "sudoku" => {
-            let save = state.lua_runtime.sudoku_save;
-            let first = match save {
-                Some(save) => format!(
-                    "{} · in progress {}/81",
-                    save.difficulty.label(),
-                    save.board.iter().filter(|&&cell| cell != 0).count()
-                ),
-                None => "No game in progress".into(),
+            let Some(save) = state.lua_runtime.sudoku_save else {
+                // Solving deletes the save, so the best times stay in view.
+                let second = match records.sudoku_fastest() {
+                    Some((difficulty, best)) => {
+                        format!("Best time {} · {}", time_text(best), difficulty.label())
+                    }
+                    None => "No best time yet".into(),
+                };
+                return ("No game in progress".into(), second);
             };
-            let best = save.map_or(0, |save| {
-                state.lua_runtime.records.sudoku_best(save.difficulty)
-            });
-            let second = if best == 0 {
-                "No best time yet".into()
-            } else {
-                format!("Best time {} · auto-saved", minutes_text(best))
+            let filled = save.board.iter().filter(|&&cell| cell != 0).count();
+            let first = format!("{} · in progress {filled}/81", save.difficulty.label());
+            let second = match records.sudoku_best(save.difficulty) {
+                0 => "Auto-saved".into(),
+                best => format!("Best time {} · auto-saved", time_text(best)),
             };
             (first, second)
         }
         "tetris" => {
-            let best = state.lua_runtime.records.tetris_zen;
-            let first = if best == 0 {
-                "Zen".into()
-            } else {
-                format!("Zen · best {}", crate::games::tetris::grouped(best))
+            let first = match records.tetris_zen {
+                0 => "Zen".into(),
+                best => format!("Zen · best {}", grouped(best)),
             };
             (first, "No gravity: pieces move when you press".into())
         }
         _ => (
-            format!("version {}", manifest.version),
-            format!("SD app · {}", manifest.entry),
+            format!("Version {}", manifest.version),
+            "SD card game".into(),
         ),
     }
 }
@@ -184,11 +181,13 @@ fn draw_icon(
     top_left: Point,
     selected: bool,
 ) -> Result<(), Infallible> {
-    let ink = if selected {
-        PrimitiveStyle::with_fill(BinaryColor::Off)
+    // Paper on the selected card's black fill, ink elsewhere.
+    let color = if selected {
+        BinaryColor::Off
     } else {
-        PrimitiveStyle::with_fill(BinaryColor::On)
+        BinaryColor::On
     };
+    let ink = PrimitiveStyle::with_fill(color);
     const ICON: i32 = 60;
     match manifest.id.as_str() {
         "sudoku" => {
@@ -227,14 +226,14 @@ fn draw_icon(
         }
         _ => {
             Rectangle::new(top_left, Size::new(ICON as u32, ICON as u32))
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
+                .into_styled(PrimitiveStyle::with_stroke(color, 2))
                 .draw(display)?;
         }
     }
     Ok(())
 }
 
-/// The mockup's dashed info box.
+/// The mockup's framed info box, as tall as its wrapped text.
 pub(crate) fn draw_info_box(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -242,24 +241,25 @@ pub(crate) fn draw_info_box(
     top: i32,
 ) -> Result<(), Infallible> {
     let body = preferences.body_style();
+    let lines = body.wrap(text, CARD_RIGHT - CARD_LEFT - 24);
+    let line_height = i32::from(body.line_height()) + 2;
+    let height = lines.len() as i32 * line_height + 18;
     Rectangle::new(
         Point::new(CARD_LEFT, top),
-        Size::new((CARD_RIGHT - CARD_LEFT) as u32, 60),
+        Size::new((CARD_RIGHT - CARD_LEFT) as u32, height as u32),
     )
     .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
     .draw(display)?;
-    Text::new(
-        &body.fit(text, CARD_RIGHT - CARD_LEFT - 24),
-        Point::new(CARD_LEFT + 12, top + 36),
-        body,
-    )
-    .draw(display)?;
+    let mut baseline = top + 10 + body.cap_height();
+    for line in lines {
+        Text::new(&line, Point::new(CARD_LEFT + 12, baseline), body).draw(display)?;
+        baseline += line_height;
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod d25_tests {
-    use super::minutes_text;
     use crate::{
         app::{menu::category_entries, render_current_screen, router::ScreenRoute, AppState},
         framebuffer::FrameBuffer,
@@ -299,12 +299,6 @@ mod d25_tests {
     }
 
     #[test]
-    fn minutes_text_reads_like_the_mockup() {
-        assert_eq!(minutes_text(761), "12:41");
-        assert_eq!(minutes_text(0), "0:00");
-    }
-
-    #[test]
     fn sudoku_card_reads_the_save_and_the_best_time() {
         let mut state = hub_state_with_games();
         // No save, no best.
@@ -316,10 +310,16 @@ mod d25_tests {
             .iter()
             .find(|entry| entry.manifest.id == manifest_id)
             .map(|entry| &entry.manifest)
-            .unwrap();
-        let (first, second) = super::game_details(&state, manifest);
+            .unwrap()
+            .clone();
+        let (first, second) = super::game_details(&state, &manifest);
         assert_eq!(first, "No game in progress");
         assert_eq!(second, "No best time yet");
+        // A solve deleted the save; the fastest best stays on the card.
+        state.lua_runtime.records.sudoku_hard = 1_500;
+        state.lua_runtime.records.sudoku_easy = 401;
+        let (_, second) = super::game_details(&state, &manifest);
+        assert_eq!(second, "Best time 6:41 · Easy");
         // A running game and a best time.
         state.lua_runtime.sudoku_save = Some(SudokuSave {
             difficulty: SudokuDifficulty::Medium,

@@ -121,9 +121,6 @@ pub fn render_active_screen(
 /// Reading Stats needs the RTC's civil day; without a set clock there is
 /// nothing to show but the header.
 fn render_reading_stats_from_state(display: &mut OrientedFrameBuffer<'_>, state: &AppState) {
-    let today = state.board.rtc.map(|rtc| {
-        crate::civil_date::days_from_civil(i64::from(rtc.year), rtc.month, rtc.day) as u32
-    });
     let current = state
         .reader
         .session
@@ -133,13 +130,14 @@ fn render_reading_stats_from_state(display: &mut OrientedFrameBuffer<'_>, state:
             path: &session.book.path,
             percent: None,
         });
-    if let Some(today) = today {
-        let _ = reading_stats::render_reading_stats(
+    let _ = match state.local_day() {
+        Some(today) => reading_stats::render_reading_stats(
             display,
             state.display,
             &state.reading_stats,
             today,
             current.as_ref(),
-        );
-    }
+        ),
+        None => reading_stats::render_without_clock(display, state.display),
+    };
 }

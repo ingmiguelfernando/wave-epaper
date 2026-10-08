@@ -25,56 +25,28 @@ use crate::{
     weather_config::WeatherConfig,
 };
 
-/// One settings group: what it covers on the one-page Settings.
-struct SettingsGroup {
-    title: &'static str,
-    subtitle: &'static str,
+/// Value of the Settings row that opens `route`, straight from state.
+#[must_use]
+pub fn group_value(state: &AppState, route: ScreenRoute) -> String {
+    match route {
+        ScreenRoute::Display => display_value(state.display),
+        ScreenRoute::SleepScreen => sleep_screen_value(state),
+        ScreenRoute::WeatherSettings => weather_value(state.weather_config.as_ref()),
+        ScreenRoute::Network => {
+            network_value(&state.network.wifi_state, state.network.ssid.as_deref())
+        }
+        ScreenRoute::SettingsClockAlarms => clock_alarms_value(&state.alarms),
+        ScreenRoute::Power => {
+            power_value(state.board.power.and_then(|power| power.battery_percent))
+        }
+        ScreenRoute::SettingsSystem => version_text(),
+        _ => String::new(),
+    }
 }
 
-const GROUPS: [SettingsGroup; 7] = [
-    SettingsGroup {
-        title: "Display",
-        subtitle: "Font, size, ghost cleanup",
-    },
-    SettingsGroup {
-        title: "Sleep screen",
-        subtitle: "Photo, clock, weather",
-    },
-    SettingsGroup {
-        title: "Weather",
-        subtitle: "Service, interval, location",
-    },
-    SettingsGroup {
-        title: "Wi-Fi & transfer",
-        subtitle: "Network, file portal",
-    },
-    SettingsGroup {
-        title: "Clock & alarms",
-        subtitle: "Time, date, alarms",
-    },
-    SettingsGroup {
-        title: "Power",
-        subtitle: "Auto-sleep, battery log",
-    },
-    SettingsGroup {
-        title: "System",
-        subtitle: "Version, SD, diagnostics",
-    },
-];
-
-/// Value of the group at `index`, straight from state. The index follows
-/// [`GROUPS`]; tests pin the order.
-#[must_use]
-pub fn group_value(state: &AppState, index: usize) -> String {
-    match index {
-        0 => display_value(state.display),
-        1 => sleep_screen_value(state),
-        2 => weather_value(state.weather_config.as_ref()),
-        3 => network_value(&state.network.wifi_state, state.network.ssid.as_deref()),
-        4 => clock_alarms_value(&state.alarms),
-        5 => power_value(state.board.power.and_then(|power| power.battery_percent)),
-        _ => format!("v{FIRMWARE_VERSION}"),
-    }
+/// `v0.9.7`, on the status bar and the System row as in the mockup.
+fn version_text() -> String {
+    format!("v{FIRMWARE_VERSION}")
 }
 
 /// `Inter · Standard`, the mockup's font row.
@@ -104,30 +76,27 @@ pub fn sleep_screen_value(state: &AppState) -> String {
     }
 }
 
-/// `On · 2 h`, `Manual` (no config file) or `Off`.
+/// `On · 2 h`, `Manual` when updates wait for a press, `Off`, or
+/// `Not set up` without a weather file.
 #[must_use]
 pub fn weather_value(config: Option<&WeatherConfig>) -> String {
     match config {
-        None => "Manual".into(),
+        None => "Not set up".into(),
         Some(config) if !config.enabled => "Off".into(),
-        Some(config) => {
-            if config.refresh_minutes == 0 {
-                "On · manual".into()
-            } else {
-                format!("On · {}", hours_text(config.refresh_minutes))
-            }
-        }
+        Some(config) if config.refresh_minutes == 0 => "Manual".into(),
+        Some(config) => format!("On · {}", hours_text(config.refresh_minutes)),
     }
 }
 
-/// The Wi-Fi state as the status bar words it; the SSID when connected.
+/// The Wi-Fi state in the mockup's words; the SSID when connected.
 #[must_use]
 pub fn network_value(wifi_state: &WifiConnectionState, ssid: Option<&str>) -> String {
     match wifi_state {
-        WifiConnectionState::Connected => ssid
-            .map(str::to_owned)
-            .unwrap_or_else(|| "Connected".into()),
-        other => other.label().to_owned(),
+        WifiConnectionState::Disabled => "Off".into(),
+        WifiConnectionState::ConfigurationMissing => "Not set up".into(),
+        WifiConnectionState::Connecting => "Connecting".into(),
+        WifiConnectionState::Failed => "Failed".into(),
+        WifiConnectionState::Connected => ssid.unwrap_or("Connected").to_owned(),
     }
 }
 
@@ -169,13 +138,14 @@ pub fn render_settings(
     state: &AppState,
 ) -> Result<(), Infallible> {
     let selected = state.category_selection(ScreenRoute::Settings);
+    let version = version_text();
     draw_status_bar(display, state.display, ScreenRoute::Settings.label())?;
-    draw_status_text(display, state.display, FIRMWARE_VERSION, STATUS_BAR_RIGHT)?;
-    for (offset, group) in GROUPS.iter().enumerate() {
-        let value = group_value(state, offset);
+    draw_status_text(display, state.display, &version, STATUS_BAR_RIGHT)?;
+    for (offset, entry) in category_entries(ScreenRoute::Settings).iter().enumerate() {
+        let value = group_value(state, entry.route);
         let row = ListRow {
-            title: group.title,
-            subtitle: group.subtitle,
+            title: entry.label,
+            subtitle: entry.subtitle,
             value: &value,
             selected: offset == selected,
         };
@@ -214,7 +184,8 @@ mod tests {
     use super::*;
     use crate::alarm::{AlarmDefinition, AlarmScheduleKind};
     use crate::app::display::{UiFontFamily, UiFontSize};
-    use crate::network::{NetworkSnapshot, NtpSyncState};
+    use crate::app::typography::UiTextRole;
+    use embedded_graphics::pixelcolor::BinaryColor;
 
     fn alarm(hour: u8, enabled: bool) -> AlarmDefinition {
         AlarmDefinition {
@@ -236,8 +207,8 @@ mod tests {
     }
 
     #[test]
-    fn weather_value_covers_manual_off_and_intervals() {
-        assert_eq!(weather_value(None), "Manual");
+    fn weather_value_covers_setup_off_manual_and_intervals() {
+        assert_eq!(weather_value(None), "Not set up");
         let mut config = WeatherConfig::parse(crate::weather_config::SAMPLE_CONFIG).unwrap();
         config.enabled = false;
         assert_eq!(weather_value(Some(&config)), "Off");
@@ -247,20 +218,20 @@ mod tests {
         config.refresh_minutes = 90;
         assert_eq!(weather_value(Some(&config)), "On · 1.5 h");
         config.refresh_minutes = 0;
-        assert_eq!(weather_value(Some(&config)), "On · manual");
+        assert_eq!(weather_value(Some(&config)), "Manual");
     }
 
     #[test]
-    fn network_value_shows_the_ssid_when_connected() {
-        assert_eq!(
-            network_value(&WifiConnectionState::Connected, Some("FOLLOUP")),
-            "FOLLOUP"
-        );
-        assert_eq!(
-            network_value(&WifiConnectionState::Connected, None),
-            "Connected"
-        );
-        assert_eq!(network_value(&WifiConnectionState::Disabled, None), "OFF");
+    fn network_value_reads_like_the_mockup() {
+        let value = |wifi_state| network_value(&wifi_state, Some("FOLLOUP"));
+        assert_eq!(value(WifiConnectionState::Connected), "FOLLOUP");
+        assert_eq!(value(WifiConnectionState::Disabled), "Off");
+        let missing = WifiConnectionState::ConfigurationMissing;
+        assert_eq!(value(missing), "Not set up");
+        assert_eq!(value(WifiConnectionState::Connecting), "Connecting");
+        assert_eq!(value(WifiConnectionState::Failed), "Failed");
+        let connected = WifiConnectionState::Connected;
+        assert_eq!(network_value(&connected, None), "Connected");
     }
 
     #[test]
@@ -293,70 +264,45 @@ mod tests {
     }
 
     #[test]
-    fn group_values_follow_the_group_order() {
+    fn every_settings_row_has_a_value() {
         let state = AppState::default();
-        assert_eq!(group_value(&state, 0), "Inter · Standard");
-        assert_eq!(group_value(&state, 6), format!("v{FIRMWARE_VERSION}"));
-    }
-
-    #[test]
-    fn network_snapshot_defaults_do_not_panic_in_values() {
-        let snapshot = NetworkSnapshot::default();
-        assert_eq!(
-            network_value(&snapshot.wifi_state, snapshot.ssid.as_deref()),
-            "NO CONFIG"
-        );
-        let _ = NtpSyncState::default();
-    }
-
-    #[test]
-    fn every_value_and_subtitle_fit_at_every_font_family_and_size() {
-        use crate::app::typography::UiTextRole;
-        use embedded_graphics::pixelcolor::BinaryColor;
-
-        let state = AppState::default();
-        let mut longest_value = String::new();
-        for index in 0..7 {
-            let value = group_value(&state, index);
-            if value.chars().count() > longest_value.chars().count() {
-                longest_value = value;
-            }
+        let display = group_value(&state, ScreenRoute::Display);
+        assert_eq!(display, "Inter · Standard");
+        let system = group_value(&state, ScreenRoute::SettingsSystem);
+        assert_eq!(system, format!("v{FIRMWARE_VERSION}"));
+        for entry in category_entries(ScreenRoute::Settings) {
+            let value = group_value(&state, entry.route);
+            assert!(!value.is_empty(), "{}", entry.label);
         }
-        // The widest plausible SSID keeps the Wi-Fi row honest too.
-        longest_value.clone_from(&"VeryLongNetworkName-5G".to_string());
+    }
 
-        for family in UiFontFamily::ALL {
-            for size in UiFontSize::ALL {
+    #[test]
+    fn every_row_fits_beside_its_value_at_every_font() {
+        let mut state = AppState::default();
+        state.network.wifi_state = WifiConnectionState::Connected;
+        state.network.ssid = Some("Home-5G".into());
+        for font_family in UiFontFamily::ALL {
+            for font_size in UiFontSize::ALL {
                 let preferences = DisplayPreferences {
-                    font_family: family,
-                    font_size: size,
+                    font_family,
+                    font_size,
                 };
-                let heading = preferences.text_style(UiTextRole::Heading, BinaryColor::On);
-                let detail = preferences.text_style(UiTextRole::Detail, BinaryColor::On);
-                let body = preferences.text_style(UiTextRole::Body, BinaryColor::On);
-                // Row text width: title and subtitle share the left column;
-                // the value sits right of it with a 12 px gutter.
-                let available = 480 - 18 - 34 - 12;
-                for group in [
-                    ("Display", "Font, size, ghost cleanup"),
-                    ("Sleep screen", "Photo, clock, weather"),
-                    ("Weather", "Service, interval, location"),
-                    ("Wi-Fi & transfer", "Network, file portal"),
-                    ("Clock & alarms", "Time, date, alarms"),
-                    ("Power", "Auto-sleep, battery log"),
-                    ("System", "Version, SD, diagnostics"),
-                ] {
-                    let title = heading.fit(group.0, available);
-                    assert_eq!(title, group.0, "title {family:?} {size:?}");
-                    let subtitle = detail.fit(group.1, available);
-                    assert_eq!(
-                        subtitle, group.1,
-                        "subtitle {family:?}
-{size:?}"
+                let style = |role| preferences.text_style(role, BinaryColor::On);
+                for entry in category_entries(ScreenRoute::Settings) {
+                    let value = group_value(&state, entry.route);
+                    // As `draw_list_row`: text from x 34, the value ending at
+                    // x 462, 12 px between them.
+                    let room = 462 - style(UiTextRole::Body).text_width(&value) - 12 - 34;
+                    let label = format!("{} {font_family:?} {font_size:?}", entry.label);
+                    assert!(
+                        style(UiTextRole::Heading).text_width(entry.label) <= room,
+                        "{label}"
+                    );
+                    assert!(
+                        style(UiTextRole::Detail).text_width(entry.subtitle) <= room,
+                        "{label}"
                     );
                 }
-                let value = body.fit(&longest_value, available);
-                assert_eq!(value, longest_value, "value {family:?} {size:?}");
             }
         }
     }

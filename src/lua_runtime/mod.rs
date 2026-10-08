@@ -136,12 +136,12 @@ impl LuaRuntimeUiState {
             entry.manifest.id, entry.manifest.entry
         ));
         let entry_id = entry.manifest.id.clone();
-        match self.open_entry(entry) {
-            Ok(mut session) => {
-                // A Tetris session picks up the saved best when it opens.
-                if let LuaEventBridge::Tetris(app) = &mut session.event_bridge {
-                    app.set_best(self.records.tetris_zen);
-                }
+        let opened = self.open_entry(entry).and_then(|mut session| {
+            self.prepare_session(&mut session)?;
+            Ok(session)
+        });
+        match opened {
+            Ok(session) => {
                 let regions = session.canvas.dirty().regions().len();
                 let command_count = session.canvas.commands().len();
                 self.push_diagnostic(format!(
@@ -169,6 +169,20 @@ impl LuaRuntimeUiState {
 
     fn open_entry(&mut self, entry: LuaAppEntry) -> Result<LuaAppSession, String> {
         open_entry_on_worker(entry)
+    }
+
+    /// Hand saved state to a freshly opened game before its first frame.
+    fn prepare_session(&self, session: &mut LuaAppSession) -> Result<(), String> {
+        match &mut session.event_bridge {
+            LuaEventBridge::Tetris(app) => app.set_best(self.records.tetris_zen),
+            LuaEventBridge::Sudoku(game) => {
+                game.prepare(self.sudoku_save, self.records);
+                // Redraw, so the start list shows the Continue row.
+                game.render_initial(&mut session.canvas)?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Manifests of the catalog's game apps, in catalog order.
@@ -381,7 +395,15 @@ fn sanitize_marker(value: &str) -> String {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::buttons::ButtonEvent;
+    use crate::{
+        buttons::ButtonEvent,
+        games::{
+            canvas::DrawCommand,
+            sudoku::{StartKind, SudokuGame, SudokuStep},
+            sudoku_puzzles::{generate, SudokuDifficulty},
+            sudoku_save::SudokuSave,
+        },
+    };
 
     use super::{event_bridge::LuaEventBridge, LuaRuntimeUiState};
 
@@ -451,5 +473,63 @@ mod tests {
         assert_eq!(runtime.records.tetris_zen, 9001);
         assert!(!runtime.take_records_changed(), "the flag clears after use");
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sudoku_opens_on_its_start_list_with_the_saved_game() {
+        let root = temp_directory();
+        let app = root.join("SUDOKU");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("APP.TOM"),
+            "id=\"sudoku\"\nname=\"Sudoku\"\nkind=\"game\"\nentry=\"MAIN.LUA\"\n",
+        )
+        .unwrap();
+        std::fs::write(app.join("MAIN.LUA"), "sudoku.init()\n").unwrap();
+        let mut runtime = LuaRuntimeUiState::default();
+        let generated = generate(SudokuDifficulty::Medium, 3);
+        runtime.sudoku_save = Some(SudokuSave {
+            difficulty: SudokuDifficulty::Medium,
+            puzzle: generated.puzzle,
+            board: generated.puzzle,
+            seconds: 61,
+        });
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        let session = runtime.session.as_ref().unwrap();
+        let LuaEventBridge::Sudoku(game) = &session.event_bridge else {
+            panic!("the card opens the Sudoku bridge");
+        };
+        assert_eq!(game.step(), SudokuStep::Start);
+        assert_eq!(game.start_options()[0].kind, StartKind::Continue);
+        // The first frame was redrawn with the Continue row.
+        let continue_row = |command: &DrawCommand| {
+            matches!(command, DrawCommand::Text { text, .. } if text.starts_with("Continue"))
+        };
+        assert!(session.canvas.commands().iter().any(continue_row));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn closing_sudoku_saves_progress_and_a_solve_clears_the_save() {
+        let mut runtime = LuaRuntimeUiState::default();
+        let generated = generate(SudokuDifficulty::Easy, 7);
+        let givens = generated.puzzle.map(|cell| cell != 0);
+        let difficulty = Some(SudokuDifficulty::Easy);
+        let puzzle = generated.puzzle;
+        let unfinished = SudokuGame::new(puzzle, givens, puzzle, difficulty, 95);
+        runtime.close_sudoku(&unfinished);
+        assert!(runtime.take_sudoku_save_changed());
+        assert_eq!(runtime.sudoku_save.map(|save| save.seconds), Some(95));
+        let solved = SudokuGame::new(generated.solution, givens, puzzle, difficulty, 300);
+        runtime.close_sudoku(&solved);
+        assert!(runtime.take_sudoku_save_changed());
+        assert_eq!(runtime.sudoku_save, None);
+        assert_eq!(runtime.records.sudoku_easy, 300);
+        assert!(runtime.take_records_changed());
+        // The card's own puzzle keeps no save and no best.
+        let own = SudokuGame::new(puzzle, givens, puzzle, None, 40);
+        runtime.close_sudoku(&own);
+        assert!(!runtime.take_sudoku_save_changed());
     }
 }

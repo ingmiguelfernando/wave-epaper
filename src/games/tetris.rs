@@ -4,7 +4,7 @@
 //! 10 x 20 board. Pieces rotate inside their bounding box (SRS-like states);
 //! queries speak in (column, row) pairs.
 
-use crate::buttons::ButtonEvent;
+use crate::{buttons::ButtonEvent, regional::grouped};
 
 use super::{
     canvas::{CanvasTextStyle, NativeGameCanvas},
@@ -857,19 +857,6 @@ fn cells_span(sets: &[[(usize, usize); 4]]) -> DirtyRect {
         span = span.union(rectangle);
     }
     span
-}
-
-/// Thousands-separated value like the mockup ("12,400").
-pub(crate) fn grouped(value: u32) -> String {
-    let digits = value.to_string();
-    let mut grouped = String::new();
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            grouped.push(',');
-        }
-        grouped.push(digit);
-    }
-    grouped
 }
 
 #[cfg(test)]
