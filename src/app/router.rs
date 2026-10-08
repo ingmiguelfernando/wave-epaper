@@ -10,6 +10,8 @@ pub enum ScreenRoute {
     Games,
     Tools,
     Settings,
+    SettingsClockAlarms,
+    SettingsSystem,
     Photos,
     PhotoViewer,
     Bible,
@@ -74,6 +76,8 @@ impl ScreenRoute {
             Self::Games => "Games",
             Self::Tools => "Tools",
             Self::Settings => "Settings",
+            Self::SettingsClockAlarms => "Clock & alarms",
+            Self::SettingsSystem => "System",
             Self::Photos => "Photos",
             Self::PhotoViewer => "Photo",
             Self::Bible => "Bible",
@@ -138,6 +142,8 @@ impl ScreenRoute {
             Self::Games => "games",
             Self::Tools => "tools",
             Self::Settings => "settings",
+            Self::SettingsClockAlarms => "settings-clock-alarms",
+            Self::SettingsSystem => "settings-system",
             Self::Photos => "photos",
             Self::PhotoViewer => "photo-viewer",
             Self::Bible => "bible",
@@ -195,7 +201,15 @@ impl ScreenRoute {
 
     #[must_use]
     pub const fn is_category(self) -> bool {
-        matches!(self, Self::Reader | Self::Ai | Self::Tools | Self::Settings)
+        matches!(
+            self,
+            Self::Reader
+                | Self::Ai
+                | Self::Tools
+                | Self::Settings
+                | Self::SettingsClockAlarms
+                | Self::SettingsSystem
+        )
     }
 
     #[must_use]
@@ -219,6 +233,7 @@ impl ScreenRoute {
             | Self::Bible
             | Self::ReadingStats
             | Self::Weather => Some(Self::Home),
+            Self::SettingsClockAlarms | Self::SettingsSystem => Some(Self::Settings),
             Self::ContinueReading | Self::Library | Self::Bookmarks => Some(Self::Reader),
             Self::PhotoViewer => Some(Self::Photos),
             Self::ReaderBookmarks => Some(Self::ReaderOptions),
@@ -238,13 +253,11 @@ impl ScreenRoute {
                 Some(Self::Tools)
             }
             Self::PowerKeyMenu => Some(Self::Home),
-            Self::Alarms
-            | Self::Audio
-            | Self::Clock
-            | Self::Display
-            | Self::DeviceInfo
-            | Self::Environment
-            | Self::Motion
+            Self::Alarms | Self::Clock => Some(Self::SettingsClockAlarms),
+            Self::Audio | Self::DeviceInfo | Self::Environment | Self::Motion => {
+                Some(Self::SettingsSystem)
+            }
+            Self::Display
             | Self::Network
             | Self::Power
             | Self::SleepScreen
@@ -316,6 +329,16 @@ mod tests {
         assert_eq!(ScreenRoute::Files.parent(), Some(ScreenRoute::Tools));
         assert_eq!(ScreenRoute::Display.parent(), Some(ScreenRoute::Settings));
         assert_eq!(ScreenRoute::Power.parent(), Some(ScreenRoute::Settings));
+        assert_eq!(
+            ScreenRoute::SettingsClockAlarms.parent(),
+            Some(ScreenRoute::Settings)
+        );
+        assert_eq!(
+            ScreenRoute::SettingsSystem.parent(),
+            Some(ScreenRoute::Settings)
+        );
+        assert!(ScreenRoute::SettingsClockAlarms.is_category());
+        assert!(ScreenRoute::SettingsSystem.is_category());
         assert_eq!(ScreenRoute::PowerKeyMenu.parent(), Some(ScreenRoute::Home));
         assert_eq!(ScreenRoute::Calendar.parent(), Some(ScreenRoute::Tools));
         assert_eq!(ScreenRoute::Weather.parent(), Some(ScreenRoute::Home));
@@ -373,10 +396,13 @@ mod tests {
     fn back_returns_details_to_overview_then_category_then_home() {
         let mut router = ScreenRouter::default();
         router.navigate_to(ScreenRoute::Settings);
+        router.navigate_to(ScreenRoute::SettingsSystem);
         router.navigate_to(ScreenRoute::Audio);
         router.navigate_to(ScreenRoute::AudioDetails);
         router.back();
         assert_eq!(router.current(), ScreenRoute::Audio);
+        router.back();
+        assert_eq!(router.current(), ScreenRoute::SettingsSystem);
         router.back();
         assert_eq!(router.current(), ScreenRoute::Settings);
         router.back();

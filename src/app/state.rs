@@ -1512,9 +1512,7 @@ mod tests {
     #[test]
     fn settings_display_changes_persistent_preferences_without_a_back_row() {
         let mut state = open_from_home(ScreenRoute::Settings);
-        state.apply(ButtonEvent::Down);
-        state.apply(ButtonEvent::Down);
-        state.apply(ButtonEvent::Down);
+        // Display is the first group of the one-page Settings.
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Display);
         let original = state.display;
@@ -1537,6 +1535,79 @@ mod tests {
         state.apply(ButtonEvent::Down);
         assert_eq!(state.display_action_selected, 0);
         assert_eq!(state.active_route(), ScreenRoute::Display);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
+
+    #[test]
+    fn settings_groups_open_their_screens_in_mockup_order() {
+        let mut state = open_from_home(ScreenRoute::Settings);
+        // Display, Sleep screen, Weather, Wi-Fi & transfer, Clock & alarms,
+        // Power, System.
+        let expected = [
+            ScreenRoute::Display,
+            ScreenRoute::SleepScreen,
+            ScreenRoute::WeatherSettings,
+            ScreenRoute::Network,
+            ScreenRoute::SettingsClockAlarms,
+            ScreenRoute::Power,
+            ScreenRoute::SettingsSystem,
+        ];
+        for route in expected {
+            assert_eq!(state.active_route(), ScreenRoute::Settings);
+            state.apply(ButtonEvent::Select);
+            assert_eq!(state.active_route(), route, "{}", route.label());
+            state.back();
+            state.apply(ButtonEvent::Down);
+        }
+    }
+
+    #[test]
+    fn clock_alarms_sublist_opens_both_screens_and_walks_back() {
+        let mut state = open_from_home(ScreenRoute::Settings);
+        // Clock & alarms is the fifth group.
+        for _ in 0..4 {
+            state.apply(ButtonEvent::Down);
+        }
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::SettingsClockAlarms);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Clock);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::SettingsClockAlarms);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Alarms);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::SettingsClockAlarms);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Home);
+    }
+
+    #[test]
+    fn system_sublist_opens_all_four_diagnostics_and_walks_back() {
+        let mut state = open_from_home(ScreenRoute::Settings);
+        // System is the last group.
+        for _ in 0..6 {
+            state.apply(ButtonEvent::Down);
+        }
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::SettingsSystem);
+        let expected = [
+            ScreenRoute::DeviceInfo,
+            ScreenRoute::Audio,
+            ScreenRoute::Environment,
+            ScreenRoute::Motion,
+        ];
+        for route in expected {
+            state.apply(ButtonEvent::Select);
+            assert_eq!(state.active_route(), route, "{}", route.label());
+            state.back();
+            assert_eq!(state.active_route(), ScreenRoute::SettingsSystem);
+            state.apply(ButtonEvent::Down);
+        }
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Settings);
     }

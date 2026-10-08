@@ -316,7 +316,13 @@ over two pages.
 sub-screen, fit at every font family and size. **Previews:** `settings`,
 `settings-system`, `settings-clock-alarms`, and Settings at the Large size.
 
-**Status:** not started.
+**Status:** done on `side-tasks-5`. The seven rows render through the
+existing `draw_list_row` (mockup `.set` style for free); values come from
+one function per group, so the sleep-screen mode work later changes
+`sleep_screen_value()` only. `Clock`, `Alarms`, `Audio`, `Device Info`,
+`Environment` and `Motion` now parent to their sub-list, so hold BOOT walks
+Settings › System › Audio › back, not straight to Settings. Reading and AI
+wait for their phases, with no SOON rows added.
 
 ### D27: Reading Stats wiring
 

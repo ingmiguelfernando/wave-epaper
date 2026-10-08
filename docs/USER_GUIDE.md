@@ -44,7 +44,7 @@ one.
 | Games | Games hub (SD games with their state) |
 | AI | XiaoZhi (SOON) and implemented Voice Notes |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
-| Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power, Sleep screen, Weather |
+| Settings | One page of groups: Display, Sleep screen, Weather, Wi-Fi & transfer, Clock & alarms, Power, System |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
 Tetris Classic, AI transcription, OTA updates and the clock or weather sleep
@@ -126,7 +126,25 @@ after closing a picker to leave Reading Preferences.
 
 ## Settings
 
-Up/Down chooses one of the ten rows, Select opens it, hold BOOT returns Home.
+One page with seven groups, each row showing what the group covers and its
+current value: Display (`Inter · Standard`), Sleep screen (`Photo · 2
+starred`), Weather (`On · 2 h`, `Manual` or `Off`), Wi-Fi & transfer (the
+Wi-Fi state), Clock & alarms (`2 alarms` or `No alarms`), Power (battery
+percent) and System (`v0.9.4`). Up/Down chooses a group, Select opens it,
+hold BOOT returns Home.
+
+Clock & alarms and System open short lists; every other group opens its
+screen directly.
+
+### Clock & alarms
+
+A list with **Clock** (time, date and battery) and **Alarms** (schedules,
+snooze and dismiss). Hold BOOT returns to Settings.
+
+### System
+
+A list with **Device Info** (firmware, board and memory), **Audio**,
+**Environment** and **Motion**. Hold BOOT returns to Settings.
 
 ### Display
 
@@ -327,8 +345,9 @@ Shuffle avoids showing the same picture twice in a row. If no picture can be
 used, a sleep card shows the reason, battery and wake hint. BMP requirements
 are in [SD-card setup](SD_CARD_SETUP.md#sleep-images).
 
-If Power does nothing, Settings › Device Info shows the Power key status and
-its last error on page 3, and why the device last restarted on page 1.
+If Power does nothing, Settings › System › Device Info shows the Power key
+status and its last error on page 3, and why the device last restarted on
+page 1.
 
 Sleep mode retains the previous route, stops Wi-Fi/transfer/weather activity,
 turns off the IMU, suspends idle audio, and deep-sleeps the panel with its

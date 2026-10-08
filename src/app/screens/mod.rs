@@ -28,6 +28,7 @@ pub mod power;
 pub mod power_key;
 pub mod reader;
 pub mod reading_stats;
+pub mod settings;
 pub mod sleep_card;
 pub mod sleep_screens;
 pub mod sleep_settings;
@@ -43,6 +44,10 @@ pub fn render_active_screen(
 ) -> Result<(), Infallible> {
     match state.active_route() {
         ScreenRoute::Home => home::render_home(display, state),
+        ScreenRoute::Settings => settings::render_settings(display, state),
+        ScreenRoute::SettingsClockAlarms | ScreenRoute::SettingsSystem => {
+            settings::render_settings_sublist(display, state)
+        }
         route if route.is_category() => category::render_category(display, state),
         route if route.is_placeholder() => placeholder::render_placeholder(display, state),
         ScreenRoute::ContinueReading => reader::render_continue_reading(display, state),
@@ -102,7 +107,6 @@ pub fn render_active_screen(
         ScreenRoute::Reader
         | ScreenRoute::Ai
         | ScreenRoute::Tools
-        | ScreenRoute::Settings
         | ScreenRoute::GamesTbd
         | ScreenRoute::Bible
         | ScreenRoute::ReadingStats

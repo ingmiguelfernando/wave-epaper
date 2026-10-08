@@ -121,9 +121,7 @@ mod tests {
         let mut frame = FrameBuffer::new_white();
         let mut state = open_from_home(ScreenRoute::Settings);
         assert_eq!(state.active_route(), ScreenRoute::Settings);
-        for _ in 0..3 {
-            state.apply(ButtonEvent::Down);
-        }
+        // Display is the first group of the one-page Settings.
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Display);
         render_current_screen(&mut frame, &state).unwrap();

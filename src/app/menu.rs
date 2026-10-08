@@ -6,7 +6,7 @@
 use super::router::ScreenRoute;
 
 pub const HOME_ENTRY_COUNT: usize = 9;
-pub const CATEGORY_COUNT: usize = 5;
+pub const CATEGORY_COUNT: usize = 7;
 pub const CATEGORY_PAGE_SIZE: usize = 9;
 
 /// Badge for entries whose screen is planned but not built yet.
@@ -140,19 +140,53 @@ const TOOLS_ENTRIES: [MenuEntry; 4] = [
     },
 ];
 
-const SETTINGS_ENTRIES: [MenuEntry; 11] = [
+const SETTINGS_ENTRIES: [MenuEntry; 7] = [
     MenuEntry {
-        label: "Alarms",
-        subtitle: "Alarm schedules, snooze and dismiss",
+        label: "Display",
+        subtitle: "Font, size, ghost cleanup",
         badge: "",
-        route: ScreenRoute::Alarms,
+        route: ScreenRoute::Display,
     },
     MenuEntry {
-        label: "Audio",
-        subtitle: "Speaker test and alarm chime",
+        label: "Sleep screen",
+        subtitle: "Photo, clock, weather",
         badge: "",
-        route: ScreenRoute::Audio,
+        route: ScreenRoute::SleepScreen,
     },
+    MenuEntry {
+        label: "Weather",
+        subtitle: "Service, interval, location",
+        badge: "",
+        route: ScreenRoute::WeatherSettings,
+    },
+    MenuEntry {
+        label: "Wi-Fi & transfer",
+        subtitle: "Network, file portal",
+        badge: "",
+        route: ScreenRoute::Network,
+    },
+    MenuEntry {
+        label: "Clock & alarms",
+        subtitle: "Time, date, alarms",
+        badge: "",
+        route: ScreenRoute::SettingsClockAlarms,
+    },
+    MenuEntry {
+        label: "Power",
+        subtitle: "Auto-sleep, battery log",
+        badge: "",
+        route: ScreenRoute::Power,
+    },
+    MenuEntry {
+        label: "System",
+        subtitle: "Version, SD, diagnostics",
+        badge: "",
+        route: ScreenRoute::SettingsSystem,
+    },
+];
+
+/// Sub-list opened from the Clock & alarms group.
+const SETTINGS_CLOCK_ALARMS_ENTRIES: [MenuEntry; 2] = [
     MenuEntry {
         label: "Clock",
         subtitle: "Time, date and battery",
@@ -160,16 +194,26 @@ const SETTINGS_ENTRIES: [MenuEntry; 11] = [
         route: ScreenRoute::Clock,
     },
     MenuEntry {
-        label: "Display",
-        subtitle: "Interface font and size",
+        label: "Alarms",
+        subtitle: "Alarm schedules, snooze and dismiss",
         badge: "",
-        route: ScreenRoute::Display,
+        route: ScreenRoute::Alarms,
     },
+];
+
+/// Sub-list opened from the System group.
+const SETTINGS_SYSTEM_ENTRIES: [MenuEntry; 4] = [
     MenuEntry {
         label: "Device Info",
         subtitle: "Firmware, board and memory",
         badge: "",
         route: ScreenRoute::DeviceInfo,
+    },
+    MenuEntry {
+        label: "Audio",
+        subtitle: "Speaker test and alarm chime",
+        badge: "",
+        route: ScreenRoute::Audio,
     },
     MenuEntry {
         label: "Environment",
@@ -182,30 +226,6 @@ const SETTINGS_ENTRIES: [MenuEntry; 11] = [
         subtitle: "Accelerometer and gyroscope",
         badge: "",
         route: ScreenRoute::Motion,
-    },
-    MenuEntry {
-        label: "Network",
-        subtitle: "Wi-Fi, time sync and file transfer",
-        badge: "",
-        route: ScreenRoute::Network,
-    },
-    MenuEntry {
-        label: "Power",
-        subtitle: "Auto-sleep, wake keys and battery log",
-        badge: "",
-        route: ScreenRoute::Power,
-    },
-    MenuEntry {
-        label: "Sleep screen",
-        subtitle: "Starred photos or the sleep folder",
-        badge: "",
-        route: ScreenRoute::SleepScreen,
-    },
-    MenuEntry {
-        label: "Weather",
-        subtitle: "Service, interval, units",
-        badge: "",
-        route: ScreenRoute::WeatherSettings,
     },
 ];
 
@@ -221,6 +241,8 @@ pub const fn category_entries(route: ScreenRoute) -> &'static [MenuEntry] {
         ScreenRoute::Ai => &AI_ENTRIES,
         ScreenRoute::Tools => &TOOLS_ENTRIES,
         ScreenRoute::Settings => &SETTINGS_ENTRIES,
+        ScreenRoute::SettingsClockAlarms => &SETTINGS_CLOCK_ALARMS_ENTRIES,
+        ScreenRoute::SettingsSystem => &SETTINGS_SYSTEM_ENTRIES,
         _ => &[],
     }
 }
@@ -233,6 +255,8 @@ pub const fn category_index(route: ScreenRoute) -> Option<usize> {
         ScreenRoute::Games => Some(2),
         ScreenRoute::Tools => Some(3),
         ScreenRoute::Settings => Some(4),
+        ScreenRoute::SettingsClockAlarms => Some(5),
+        ScreenRoute::SettingsSystem => Some(6),
         _ => None,
     }
 }
@@ -274,7 +298,9 @@ mod tests {
         // Games is the hub screen now: no static menu entries.
         assert_eq!(category_entries(ScreenRoute::Games).len(), 0);
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
-        assert_eq!(category_entries(ScreenRoute::Settings).len(), 11);
+        assert_eq!(category_entries(ScreenRoute::Settings).len(), 7);
+        assert_eq!(category_entries(ScreenRoute::SettingsClockAlarms).len(), 2);
+        assert_eq!(category_entries(ScreenRoute::SettingsSystem).len(), 4);
         for route in CATEGORIES {
             assert!(category_entries(route)
                 .iter()

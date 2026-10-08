@@ -277,12 +277,38 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     large.display.font_size = UiFontSize::Large;
     states.push(("home-large-font", large));
 
+    // Settings previews: the one-page groups, both sub-lists, and the page
+    // at the Large size.
+    let mut settings = sample_state();
+    settings.router.navigate_to(ScreenRoute::Settings);
+    settings.photos.starred.toggle("IMG_0407.jpg");
+    settings.photos.starred.toggle("IMG_0409.jpg");
+    states.push(("settings", settings));
+
+    let mut settings_system = sample_state();
+    settings_system
+        .router
+        .navigate_to(ScreenRoute::SettingsSystem);
+    states.push(("settings-system", settings_system));
+
+    let mut settings_clock = sample_state();
+    settings_clock
+        .router
+        .navigate_to(ScreenRoute::SettingsClockAlarms);
+    states.push(("settings-clock-alarms", settings_clock));
+
+    let mut settings_large = sample_state();
+    settings_large.display.font_size = UiFontSize::Large;
+    settings_large.router.navigate_to(ScreenRoute::Settings);
+    settings_large.photos.starred.toggle("IMG_0407.jpg");
+    settings_large.photos.starred.toggle("IMG_0409.jpg");
+    states.push(("settings-large-font", settings_large));
+
     let routes = [
         ("library", ScreenRoute::Reader),
         ("ai", ScreenRoute::Ai),
         ("games", ScreenRoute::Games),
         ("tools", ScreenRoute::Tools),
-        ("settings", ScreenRoute::Settings),
         ("weather", ScreenRoute::Weather),
         ("weather-details", ScreenRoute::WeatherDetails),
         ("weather-settings", ScreenRoute::WeatherSettings),

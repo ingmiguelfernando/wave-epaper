@@ -44,6 +44,12 @@ before tests; never remove the card while writes are active.
 	verify repagination retains the reading anchor.
 - [ ] Settings › Display lists both fonts and all three sizes; open/move/apply/
 	cancel work, `DISPLAY.TXT` changes only when needed and survives reboot.
+- [ ] Settings is one page of seven groups, each row showing a live value:
+	`Inter · Standard`, `Photo · N starred`, `On · 2 h`/`Manual`/`Off`,
+	the Wi-Fi state, `No alarms`/`N alarms`, the battery percent and
+	`v0.9.4`. Clock & alarms opens a two-row list (Clock, Alarms); System
+	opens a four-row list (Device Info, Audio, Environment, Motion); hold
+	BOOT from every sub-screen walks back to Settings and then Home.
 - [ ] Review Home, lists, book text and footers at both families/all UI sizes.
 
 ## Photos and sleep screen
