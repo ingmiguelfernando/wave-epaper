@@ -1019,4 +1019,60 @@ mod tests {
         assert_eq!(temperature_height("18°"), 110);
         assert!(temperature_height("-123°") < 110);
     }
+
+    fn at(day: u8, hour: u8, minute: u8) -> RtcDateTime {
+        RtcDateTime {
+            year: 2026,
+            month: 10,
+            day,
+            weekday: (day + 3) % 7,
+            hour,
+            minute,
+            second: 0,
+        }
+    }
+
+    #[test]
+    fn dates_read_in_words_and_forecasts_go_stale_after_six_hours() {
+        assert_eq!(long_date(at(2, 13, 42)), "Friday, October 2");
+        assert_eq!(short_date("2026-10-02").as_deref(), Some("Fri, Oct 2"));
+        assert_eq!(short_date("2026-13-02"), None);
+        assert_eq!(short_date("today"), None);
+        let observed = "2026-10-02T13:30";
+        assert!(!is_stale(observed, Some(at(2, 19, 30))));
+        assert!(is_stale(observed, Some(at(2, 19, 31))));
+        assert!(is_stale(observed, Some(at(3, 8, 0))));
+        assert!(!is_stale(observed, None));
+        assert!(!is_stale("not a time", Some(at(9, 0, 0))));
+    }
+
+    #[test]
+    fn sleep_modes_pick_their_layout() {
+        use crate::weather::{parse_open_meteo_response, SAMPLE_RESPONSE};
+        use crate::weather_config::{WeatherConfig, SAMPLE_CONFIG};
+
+        let mut state = AppState::default();
+        state.board.rtc = Some(at(2, 13, 42));
+        let mut frame = FrameBuffer::new_white();
+        let mut layout = |state: &AppState| {
+            crate::app::render_sleep_mode(&mut frame, state).unwrap()
+        };
+        state.sleep_screen.mode = SleepMode::Clock;
+        assert_eq!(layout(&state), SleepLayout::Clock);
+        // No forecast yet: the weather mode keeps the clock.
+        state.sleep_screen.mode = SleepMode::Weather;
+        assert_eq!(layout(&state), SleepLayout::Clock);
+        state.set_weather_config(Some(WeatherConfig::parse(SAMPLE_CONFIG).unwrap()));
+        state.weather.record_success(parse_open_meteo_response(SAMPLE_RESPONSE).unwrap());
+        assert_eq!(layout(&state), SleepLayout::Weather);
+        state.sleep_screen.mode = SleepMode::ClockWeather;
+        assert_eq!(layout(&state), SleepLayout::Clock);
+        let (_, summary, details) = clock_weather_line(
+            &state,
+            state.weather.current.as_ref().unwrap(),
+            Some(at(3, 8, 0)),
+        );
+        assert!(summary.contains(" · "));
+        assert_eq!(details, "Updated 13:30 · stale");
+    }
 }

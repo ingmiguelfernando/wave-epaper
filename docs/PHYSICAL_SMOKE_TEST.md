@@ -172,7 +172,9 @@ light sleep. Restore the owner's original preferences afterward.
         The title bar shows `Sudoku · Medium` and the time on the right; the
         time grows between presses (at most a minute per press). Hold BOOT
         mid-game, reopen: `Continue` restores the board and the time, also
-        after a reboot. Solving says `Solved in … · new best`; the hub card
+        after a reboot. Place a number and press the reset key without
+        leaving the game: after the reboot `Continue` keeps that number.
+        Solving says `Solved in … · new best`; the hub card
         shows the best time and `No game in progress`.
 - [ ] Sudoku three-step entry: ▲▼ row (given rows skipped), Select confirms;
         ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase (×),

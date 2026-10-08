@@ -317,9 +317,11 @@ hold BOOT returns to the hub.
 
 The title bar shows the difficulty on the left and the play time on the
 right. Each press adds the time since the previous one, at most a minute,
-so a game left open does not run up the clock. Hold BOOT saves the game in
-`/RUSTMIX/GAMES/SUDOKU.TXT`; there is one save, so a new game replaces it
-when you leave. Solving deletes the save, says `Solved in 12:41 · best
+so a game left open does not run up the clock. The game saves itself in
+`/RUSTMIX/GAMES/SUDOKU.TXT` each time you place or erase a number, and
+again when you leave with hold BOOT, so a restart or a flat battery keeps
+it. There is one save, so a new game replaces it once you place a number.
+Solving deletes the save, says `Solved in 12:41 · best
 11:02` (or `new best`) and keeps the best time per difficulty in
 `RECORDS.TXT`. The card's own puzzle (`SD puzzle`) keeps no save and no
 best time.

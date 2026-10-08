@@ -37,10 +37,11 @@ mod firmware {
         alarm::{AlarmEngine, AlarmSnapshot, AlarmUiOutcome, ALARMS_CONFIG_PATH},
         app::{
             display::{DisplayPreferences, DISPLAY_CONFIG_PATH},
-            render_current_screen, render_sleep_card, AppState, ScreenRoute, SleepCard,
-            ALARM_POLL_SECONDS, IMU_EVENT_SCREEN_REFRESH_SECONDS, MOTION_LIVE_REFRESH_SECONDS,
-            NETWORK_LIVE_REFRESH_SECONDS, NETWORK_LOG_HEARTBEAT_SECONDS, PANEL_IDLE_SLEEP_SECONDS,
-            SAMPLE_LIVE_REFRESH_SECONDS, VOICE_RECORD_SCREEN_REFRESH_SECONDS,
+            render_current_screen, render_sleep_card, render_sleep_mode, AppState, ScreenRoute,
+            SleepCard, SleepLayout, ALARM_POLL_SECONDS, IMU_EVENT_SCREEN_REFRESH_SECONDS,
+            MOTION_LIVE_REFRESH_SECONDS, NETWORK_LIVE_REFRESH_SECONDS,
+            NETWORK_LOG_HEARTBEAT_SECONDS, PANEL_IDLE_SLEEP_SECONDS, SAMPLE_LIVE_REFRESH_SECONDS,
+            VOICE_RECORD_SCREEN_REFRESH_SECONDS,
         },
         audio::{
             espidf::AudioRuntime, AudioSnapshot, AudioUiRequest, AUDIO_MCLK_HZ,
@@ -90,9 +91,11 @@ mod firmware {
         sleep_images::{SleepImageCatalog, SleepImageSelection, SLEEP_IMAGE_DIRECTORY},
         sleep_mode::{
             light_sleep_budget, LightSleepShare, SleepModeState, SleepReport, SleepWakeCause,
-            LIGHT_SLEEP_MAX,
         },
-        sleep_screen::{choose_sleep_picture, SleepScreenSettings, SLEEP_SCREEN_CONFIG_PATH},
+        sleep_screen::{
+            choose_sleep_picture, clock_redraw_wait, SleepScreenSettings, SLEEP_GLOBAL_REFRESH,
+            SLEEP_SCREEN_CONFIG_PATH,
+        },
         storage::{
             StorageBrowser, StorageSnapshot, StorageUiOutcome, SDMMC_COMMAND_TIMEOUT_MS,
             SDMMC_STABLE_SPEED_KHZ, SD_MOUNT_POINT, STORAGE_IO_RETRY_ATTEMPTS,
@@ -465,6 +468,9 @@ mod firmware {
         let mut radio = RadioBurst::default();
         let mut manual_weather_pending = false;
         let mut sleep_started: Option<(Instant, Option<PowerSnapshot>)> = None;
+        // Live sleep screens: the next timed redraw and the last global one.
+        let mut sleep_redraw_at: Option<Instant> = None;
+        let mut sleep_last_global = Instant::now();
         // Awake time since the last wake, and the part of it spent light-sleeping.
         let mut light_sleep_clock = (Instant::now(), Duration::ZERO);
         let mut imu_enabled = true;
@@ -818,10 +824,10 @@ mod firmware {
             let weather_due = next_weather_refresh(weather_config.as_ref(), last_weather_attempt);
             let transfer_waiting = wifi_transfer_server.is_none()
                 && state.wifi_transfer.state == WifiTransferState::Starting;
-            if let Some(config) = network_config
-                .as_ref()
-                .filter(|_| network_runtime.has_radio() && !sleep_mode.is_sleeping())
-            {
+            if let Some(config) = network_config.as_ref().filter(|_| {
+                network_runtime.has_radio()
+                    && (!sleep_mode.is_sleeping() || weather_while_asleep(&state))
+            }) {
                 let now = Instant::now();
                 match radio.phase() {
                     RadioPhase::Off => {
@@ -1249,12 +1255,16 @@ mod firmware {
                                 state.update_audio_snapshot(runtime.snapshot());
                                 log_audio_snapshot(&state.audio);
                             }
-                            let selection = next_sleep_picture(
-                                &state,
-                                &mut sleep_images,
-                                sleep_mode.last_image(),
-                            );
-                            log_sleep_image_selection(&selection);
+                            let live = state.sleep_screen.mode.is_live();
+                            let selection = (!live).then(|| {
+                                let selection = next_sleep_picture(
+                                    &state,
+                                    &mut sleep_images,
+                                    sleep_mode.last_image(),
+                                );
+                                log_sleep_image_selection(&selection);
+                                selection
+                            });
                             if radio.phase() != RadioPhase::Off {
                                 if !radio_off(
                                     &mut network_runtime,
@@ -1275,31 +1285,51 @@ mod firmware {
                             }
                             let restore_route = state.power_key_sleep_restore_route();
                             let battery = board_services.read_power().ok();
-                            if let Some(note) = selection.note.as_deref() {
+                            let (image_label, layout) = match selection {
                                 // No usable SD picture: say why instead.
-                                let battery_percent =
-                                    battery.and_then(|power| power.battery_percent);
-                                let card = SleepCard {
-                                    note,
-                                    battery_percent,
-                                    wake_hint: state.power.wake_keys.wake_hint(),
-                                };
-                                render_sleep_card(&mut frame, state.display, &card)?;
-                            } else {
-                                frame = selection.frame;
-                            }
+                                Some(selection) => {
+                                    if let Some(note) = selection.note.as_deref() {
+                                        let battery_percent =
+                                            battery.and_then(|power| power.battery_percent);
+                                        let card = SleepCard {
+                                            note,
+                                            battery_percent,
+                                            wake_hint: state.power.wake_keys.wake_hint(),
+                                        };
+                                        render_sleep_card(&mut frame, state.display, &card)?;
+                                    } else {
+                                        frame = selection.frame;
+                                    }
+                                    (selection.file_name, None)
+                                }
+                                None => {
+                                    state.update_board_snapshot(
+                                        board_services.read_snapshot(&mut service_delay),
+                                    );
+                                    let layout = render_sleep_mode(&mut frame, &state)?;
+                                    (format!("live-{}", layout.marker()), Some(layout))
+                                }
+                            };
                             panel.show_base(frame.as_bytes())?;
                             panel_refresh
                                 .reset_after_external_global(PanelGlobalReason::SleepImage);
                             sync_panel_refresh_diagnostics(&mut state, &panel_refresh);
                             info!("rustmix-wave=panel-refresh plan=global-base reason=sleep-image transport=global-base");
-                            sleep_mode.enter(restore_route, selection.file_name.clone());
+                            sleep_mode.enter(restore_route, image_label.clone());
                             sleep_wake_guard.begin_sleep_entry();
                             sleep_wake_guard_started_at = Some(Instant::now());
                             info!(
                                 "rustmix-wave=sleep-wake-guard status=waiting-for-quiet-window minimum-quiet-ms={POWER_KEY_WAKE_GUARD_QUIET_MS} policy=suppress-stale-power-key"
                             );
-                            panel.sleep()?;
+                            // Live screens redraw while asleep, so the panel keeps its RAM.
+                            if live {
+                                panel.sleep_keeping_ram()?;
+                                sleep_redraw_at =
+                                    layout.and_then(|layout| next_sleep_redraw(&state, layout));
+                                sleep_last_global = Instant::now();
+                            } else {
+                                panel.sleep()?;
+                            }
                             state.panel_awake = false;
                             if _mounted_sd.is_some() && state.battery_log.has_unsaved() {
                                 save_battery_log(&mut state.battery_log);
@@ -1313,9 +1343,11 @@ mod firmware {
                                 state.light_sleep.asleep_seconds, state.light_sleep.awake_seconds
                             );
                             info!(
-                                "rustmix-wave=sleep-mode-enter image={} restore-route={} display=global-refresh panel=deep-sleep aldo3=off wifi=off network-services=paused mcu-sleep=light",
-                                selection.file_name,
-                                restore_route.marker()
+                                "rustmix-wave=sleep-mode-enter image={} mode={} restore-route={} display=global-refresh panel={} wifi=off network-services=paused mcu-sleep=light",
+                                image_label,
+                                state.sleep_screen.mode.marker(),
+                                restore_route.marker(),
+                                if live { "deep-sleep-ram aldo3=on" } else { "deep-sleep aldo3=off" }
                             );
                         }
                     }
@@ -1332,6 +1364,7 @@ mod firmware {
             if let Some(cause) = wake_cause.take() {
                 sleep_wake_guard.reset_after_wake();
                 sleep_wake_guard_started_at = None;
+                sleep_redraw_at = None;
                 end_sleep(&mut board_services, &mut state, &mut sleep_started);
                 light_sleep_clock = (Instant::now(), Duration::ZERO);
                 let restore_route = sleep_mode.exit(cause);
@@ -1352,7 +1385,28 @@ mod firmware {
                 last_status_refresh = Instant::now();
             }
 
-            if !sleep_mode.is_sleeping() {
+            // The live sleep screen: partial redraws, a global one every half hour.
+            if sleep_mode.is_sleeping() && sleep_redraw_at.is_some_and(|at| Instant::now() >= at) {
+                state.update_board_snapshot(board_services.read_snapshot(&mut service_delay));
+                let layout = render_sleep_mode(&mut frame, &state)?;
+                let global = sleep_last_global.elapsed() >= SLEEP_GLOBAL_REFRESH;
+                if global {
+                    panel.initialize()?;
+                    panel.show_base(frame.as_bytes())?;
+                    sleep_last_global = Instant::now();
+                } else {
+                    panel.show_partial_fullscreen(frame.as_bytes())?;
+                }
+                panel.sleep_keeping_ram()?;
+                sleep_redraw_at = next_sleep_redraw(&state, layout);
+                info!(
+                    "rustmix-wave=sleep-redraw layout={} refresh={}",
+                    layout.marker(),
+                    if global { "global" } else { "partial" }
+                );
+            }
+
+            if !sleep_mode.is_sleeping() || weather_while_asleep(&state) {
                 let enabled_weather = weather_config.as_ref().filter(|config| config.enabled);
                 if enabled_weather.is_none() {
                     weather_retry.clear();
@@ -1396,6 +1450,9 @@ mod firmware {
                                 &mut state,
                             );
                             last_weather_attempt = Some(Instant::now());
+                            if sleep_mode.is_sleeping() {
+                                sleep_redraw_at = Some(Instant::now());
+                            }
                             if state.panel_awake
                                 && matches!(
                                     state.active_route(),
@@ -1967,10 +2024,12 @@ mod firmware {
                         Err(error) => warn!("rustmix-wave=sleep-screen-write error={error:#}"),
                     }
                     info!(
-                        "rustmix-wave=sleep-screen-updated source={} order={} fit={}",
+                        "rustmix-wave=sleep-screen-updated mode={} source={} order={} fit={} clock-refresh={}",
+                        state.sleep_screen.mode.marker(),
                         state.sleep_screen.source.marker(),
                         state.sleep_screen.order.marker(),
-                        state.sleep_screen.fit.marker()
+                        state.sleep_screen.fit.marker(),
+                        state.sleep_screen.clock_refresh.marker()
                     );
                 }
                 sync_weather_config(&state, &mut weather_config);
@@ -2046,12 +2105,30 @@ mod firmware {
                     WakeKeys::AnyKey => &AWAKE_WAKE_GPIOS[..],
                     WakeKeys::PowerKey => &SLEEP_WAKE_GPIOS[..],
                 };
+                let now = Instant::now();
+                let weather_due =
+                    next_weather_refresh(weather_config.as_ref(), last_weather_attempt);
+                let burst_due = (network_config.is_some()
+                    && network_runtime.has_radio()
+                    && weather_while_asleep(&state))
+                .then(|| {
+                    radio
+                        .next_burst(now, weather_due, last_activity)
+                        .saturating_duration_since(now)
+                });
+                let budget = light_sleep_budget(&[
+                    sleep_redraw_at.map(|at| at.saturating_duration_since(now)),
+                    burst_due,
+                ]);
                 // Light sleep drops the USB serial port, and consoles then reset the
                 // board; it would also stall the photo worker in an SD write.
                 !on_usb_power
                     && !photo_worker.is_busy()
                     && sleep_wake_guard.is_armed()
-                    && light_sleep_until_wake(lines, power_key_wakes, LIGHT_SLEEP_MAX)
+                    && radio.phase() == RadioPhase::Off
+                    && budget.is_some_and(|budget| {
+                        light_sleep_until_wake(lines, power_key_wakes, budget)
+                    })
             } else if idle && !on_usb_power {
                 let now = Instant::now();
                 let weather_due =
@@ -2166,6 +2243,12 @@ mod firmware {
         folder: &SleepImageCatalog,
         previous: Option<&str>,
     ) -> Result<FrameBuffer> {
+        if state.sleep_screen.mode.is_live() {
+            let mut picture = FrameBuffer::new_white();
+            let layout = render_sleep_mode(&mut picture, state)?;
+            info!("rustmix-wave=sleep-preview layout={}", layout.marker());
+            return Ok(picture);
+        }
         let selection = next_sleep_picture(state, &mut folder.clone(), previous);
         log_sleep_image_selection(&selection);
         let mut picture = selection.frame;
@@ -2224,6 +2307,25 @@ mod firmware {
             Ok(()) => info!("rustmix-wave=reading-stats status=saved path={READING_STATS_PATH}"),
             Err(error) => warn!("rustmix-wave=reading-stats status=save-failed error={error:#}"),
         }
+    }
+
+    /// Weather sleep modes keep the weather updated while asleep.
+    fn weather_while_asleep(state: &AppState) -> bool {
+        state.sleep_screen.mode.shows_weather() && state.weather_enabled()
+    }
+
+    /// When the clock of a live sleep screen next changes; `None` for the
+    /// weather layout, which redraws after each weather update.
+    fn next_sleep_redraw(state: &AppState, layout: SleepLayout) -> Option<Instant> {
+        if layout != SleepLayout::Clock {
+            return None;
+        }
+        // Without a clock reading, look again in a minute.
+        let wait = state.board.rtc.map_or(Duration::from_secs(60), |rtc| {
+            let local = state.regional.localize_rtc(rtc);
+            clock_redraw_wait(local, state.sleep_screen.clock_refresh)
+        });
+        Some(Instant::now() + wait)
     }
 
     /// When the next automatic weather update falls due; `None` when weather

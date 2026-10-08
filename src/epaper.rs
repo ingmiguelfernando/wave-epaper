@@ -168,6 +168,16 @@ where
         Ok(())
     }
 
+    /// Deep sleep mode 1 with ALDO3 left on: the controller keeps both RAM
+    /// planes, so the hardware reset of `show_partial_fullscreen` wakes it
+    /// for a partial update.
+    pub fn sleep_keeping_ram(&mut self) -> Result<()> {
+        info!("epd397: deep sleep, ALDO3 stays on");
+        self.command_data(0x10, &[0x01])?;
+        self.delay.delay_ms(10);
+        Ok(())
+    }
+
     fn hardware_reset(&mut self) -> Result<()> {
         self.reset
             .set_high()
