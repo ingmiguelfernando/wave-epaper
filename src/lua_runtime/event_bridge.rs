@@ -182,14 +182,18 @@ impl LuaEventBridge {
                 .map(Some),
             Self::TetrisStart(start) => {
                 if let Some(mode) = apply_tetris_start_button(start, event) {
-                    let game = TetrisApp::new(mode, 1);
+                    // The press time seeds the game, so each new game differs.
+                    let seed = (now_ms as u32).max(1);
+                    let game = TetrisApp::new(mode, seed);
                     game.render_initial(canvas)?;
+                    let result = game.started_result();
                     *self = Self::Tetris(game);
+                    Ok(Some(LuaGameEventResult::Tetris(result)))
                 } else {
                     // A cursor move changes the highlight, so the list redraws.
                     start.render(canvas)?;
+                    Ok(None)
                 }
-                Ok(None)
             }
         }
     }
@@ -463,16 +467,45 @@ mod tests {
             .apply_button(ButtonEvent::Down, 0, &mut c)
             .unwrap()
             .is_none());
-        assert!(b
-            .apply_button(ButtonEvent::Select, 0, &mut c)
-            .unwrap()
-            .is_none());
+        let started = b.apply_button(ButtonEvent::Select, 0, &mut c).unwrap();
+        assert_eq!(
+            started.map(|result| result.reason()),
+            Some("start-choose"),
+            "choosing a mode reports the start"
+        );
         match &b {
             LuaEventBridge::Tetris(game) => {
                 assert_eq!(game.game().mode(), TetrisMode::Classic);
             }
             other => panic!("choosing a mode starts a game, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn each_new_game_from_the_list_is_seeded_by_its_press_time() {
+        let mut c = NativeGameCanvas::default();
+        let mut first = LuaEventBridge::load("tetris.init()", &mut c).unwrap();
+        first
+            .apply_button(ButtonEvent::Select, 1_000, &mut c)
+            .unwrap();
+        let mut second = LuaEventBridge::load("tetris.init()", &mut c).unwrap();
+        second
+            .apply_button(ButtonEvent::Select, 9_999_000, &mut c)
+            .unwrap();
+        let shape = |bridge: &LuaEventBridge| match bridge {
+            LuaEventBridge::Tetris(game) => game.game().next(),
+            other => panic!("expected a game, got {other:?}"),
+        };
+        // The same press time gives the same game; different times differ.
+        let mut same = LuaEventBridge::load("tetris.init()", &mut c).unwrap();
+        same.apply_button(ButtonEvent::Select, 1_000, &mut c)
+            .unwrap();
+        assert_eq!(shape(&first), shape(&same), "same press time, same game");
+        assert_ne!(
+            format!("{:?}", first),
+            format!("{:?}", second),
+            "different press times seed different games"
+        );
     }
 
     #[test]

@@ -14,6 +14,8 @@ pub enum CanvasTextStyle {
     Inverse,
     /// Paper-colored Heading text, for digits on a black cell.
     InverseHeading,
+    /// The player's digits: a lighter book face, mapped to the Reader body style.
+    Player,
 }
 
 impl CanvasTextStyle {
@@ -25,6 +27,7 @@ impl CanvasTextStyle {
             "detail" => Some(Self::Detail),
             "inverse" => Some(Self::Inverse),
             "inverse-heading" => Some(Self::InverseHeading),
+            "player" => Some(Self::Player),
             _ => None,
         }
     }

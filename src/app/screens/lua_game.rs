@@ -9,6 +9,7 @@ use embedded_graphics::{
 };
 
 use crate::{
+    app::reader_typography::reader_body_style,
     app::{
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
@@ -320,6 +321,11 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
         CanvasTextStyle::InverseHeading => state
             .display
             .text_style(UiTextRole::Heading, BinaryColor::Off),
+        CanvasTextStyle::Player => reader_body_style(
+            state.reader.preferences.book_font,
+            state.reader.preferences.font_size,
+            state.reader.preferences.theme,
+        ),
     }
 }
 

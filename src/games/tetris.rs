@@ -662,6 +662,25 @@ impl TetrisApp {
         self.finish_and_render(reason, Some(TetrisAction::Drop), before, canvas)
     }
 
+    /// The result reported when the mode list starts this game, so the device
+    /// logs the start like any other game event.
+    #[must_use]
+    pub fn started_result(&self) -> TetrisEventResult {
+        let (column, row) = self.game.active_cells()[0];
+        TetrisEventResult {
+            reason: "start-choose",
+            row,
+            column,
+            mode: self.game.mode(),
+            action: None,
+            score: self.game.score(),
+            lines: self.game.lines(),
+            level: self.game.level(),
+            completed: self.game.is_over(),
+            dirty_regions: vec![TETRIS_FULL_RECT],
+        }
+    }
+
     /// A gravity tick, redrawn and counted like a key press. `None` when the
     /// tick changed nothing (Zen, a finished game), so the caller skips a
     /// redraw. A lock counts toward the 20-lock full refresh and the best.

@@ -2280,7 +2280,8 @@ mod tests {
             ("hello_grid", "static", None),
             ("minesweeper", "minesweeper", Some("action-enter")),
             ("sudoku", "sudoku", Some("start-choose")),
-            ("tetris", "tetris", Some("rotate")),
+            // The sample opens the mode list first, as Sudoku's does.
+            ("tetris", "tetris", Some("start-choose")),
         ] {
             // The hub's card follows ▲▼; the catalog entry follows on ●.
             let games = state.lua_runtime.games();

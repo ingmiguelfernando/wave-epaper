@@ -702,7 +702,7 @@ impl SudokuGame {
             let style = if self.givens[index] {
                 CanvasTextStyle::Heading
             } else {
-                CanvasTextStyle::Body
+                CanvasTextStyle::Player
             };
             canvas.text(x + 18, y + 33, value.to_string(), style)?;
         }
