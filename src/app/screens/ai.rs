@@ -250,16 +250,40 @@ fn draw_note_row(
     let meta_style = card_text(state.display, selected, UiTextRole::Body);
     let left = CARD_LEFT + 12;
     let width = CARD_RIGHT - left - 12;
-    // A note with a record shows its state at the right of the title line;
-    // the title gives the label its room, measured with the real font.
+    // The status chip sits at the right, centred on the row, as in the mockup:
+    // a bordered tag, inverse when the note is summarized.
     let label = note
         .ai_state
         .and_then(|ai| crate::voice_note_record::state_label(ai, network_online(state)));
-    let label_width = label.map_or(0, |text| meta_style.text_width(text));
-    let title_width = if label.is_some() {
-        width - label_width - 8
+    let (title_width, meta_width) = if let Some(text) = label {
+        let done = note.ai_state == Some(crate::voice_note_record::NoteState::Done);
+        // A summarized chip is filled, so its text is inverse; the others are outlined.
+        let chip_text_style = card_text(state.display, done, UiTextRole::Body);
+        let chip_width = chip_text_style.text_width(text) + 16;
+        let chip_height = 26;
+        let chip_left = CARD_RIGHT - 12 - chip_width;
+        let chip_top = top + (NOTE_HEIGHT - 8 - chip_height) / 2;
+        let chip_style = if done {
+            PrimitiveStyle::with_fill(BinaryColor::On)
+        } else {
+            PrimitiveStyle::with_stroke(BinaryColor::On, 2)
+        };
+        Rectangle::new(
+            Point::new(chip_left, chip_top),
+            Size::new(chip_width as u32, chip_height as u32),
+        )
+        .into_styled(chip_style)
+        .draw(display)?;
+        Text::new(
+            text,
+            Point::new(chip_left + 8, chip_top + 18),
+            chip_text_style,
+        )
+        .draw(display)?;
+        // The title and meta stop before the chip, with a gap.
+        (width - chip_width - 12, width - chip_width - 12)
     } else {
-        width
+        (width, width)
     };
     Text::new(
         &title_style.fit(&note.title, title_width),
@@ -267,16 +291,8 @@ fn draw_note_row(
         title_style,
     )
     .draw(display)?;
-    if let Some(text) = label {
-        Text::new(
-            text,
-            Point::new(left + width - label_width, top + 30),
-            meta_style,
-        )
-        .draw(display)?;
-    }
     Text::new(
-        &meta_style.fit(&note_meta(note), width),
+        &meta_style.fit(&note_meta(note), meta_width),
         Point::new(left, top + 54),
         meta_style,
     )
