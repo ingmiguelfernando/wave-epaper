@@ -89,6 +89,21 @@ pub fn save_record(root: &std::path::Path, wav_name: &str, record: &NoteRecord) 
     crate::sd_file::replace(&root.join(name), &record.serialized()).context("saving the AI record")
 }
 
+/// The label a note shows in the list and on the AI hub, from its record.
+/// `None` for a note never processed. A queued note says `OFFLINE` while
+/// Wi-Fi is down, so the user knows it waits for a connection.
+#[must_use]
+pub fn state_label(state: NoteState, online: bool) -> Option<&'static str> {
+    match state {
+        NoteState::Queued if online => Some("QUEUED"),
+        NoteState::Queued => Some("QUEUED \u{00b7} OFFLINE"),
+        NoteState::Transcribing => Some("TRANSCRIBING\u{2026}"),
+        NoteState::Summarizing => Some("SUMMARIZING\u{2026}"),
+        NoteState::Done => Some("SUMMARY"),
+        NoteState::Failed => Some("FAILED"),
+    }
+}
+
 /// The oldest queued note: notes sort by WAV name, and the numbers increase
 /// with each recording, so the lowest queued name is the oldest.
 #[must_use]
@@ -418,6 +433,29 @@ mod tests {
             "HTTP 429"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn every_state_has_the_spec_label() {
+        assert_eq!(state_label(NoteState::Done, true), Some("SUMMARY"));
+        assert_eq!(
+            state_label(NoteState::Transcribing, true),
+            Some("TRANSCRIBING\u{2026}")
+        );
+        assert_eq!(
+            state_label(NoteState::Summarizing, true),
+            Some("SUMMARIZING\u{2026}")
+        );
+        assert_eq!(state_label(NoteState::Failed, true), Some("FAILED"));
+    }
+
+    #[test]
+    fn a_queued_note_says_offline_only_without_wifi() {
+        assert_eq!(state_label(NoteState::Queued, true), Some("QUEUED"));
+        assert_eq!(
+            state_label(NoteState::Queued, false),
+            Some("QUEUED \u{00b7} OFFLINE")
+        );
     }
 
     #[test]

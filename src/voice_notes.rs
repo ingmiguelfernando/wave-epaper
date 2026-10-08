@@ -184,6 +184,8 @@ pub struct VoiceNoteEntry {
     pub wav_bytes: u64,
     pub pcm_bytes: u32,
     pub duration_seconds: u32,
+    /// The AI state from the note's `.AI` record; `None` when never processed.
+    pub ai_state: Option<crate::voice_note_record::NoteState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -788,6 +790,15 @@ fn read_voice_note_entry_with_metadata(
         .with_context(|| format!("read WAV header {}", path.display()))?;
     let pcm_bytes = parse_pcm_wav_header(&header)?;
     let wav_bytes = file.metadata()?.len();
+    // The record sits next to the WAV; a bad record shows no state, not an error.
+    let ai_state = path
+        .parent()
+        .and_then(|root| {
+            crate::voice_note_record::load_record(root, &file_name)
+                .ok()
+                .flatten()
+        })
+        .map(|record| record.state);
     Ok(VoiceNoteEntry {
         file_name,
         title: metadata.title,
@@ -795,6 +806,7 @@ fn read_voice_note_entry_with_metadata(
         wav_bytes,
         pcm_bytes,
         duration_seconds: pcm_bytes / bytes_per_second(),
+        ai_state,
     })
 }
 
@@ -1160,6 +1172,33 @@ mod tests {
     }
 
     #[test]
+    fn scan_carries_each_notes_ai_state_from_its_record() {
+        use crate::voice_note_record::{save_record, NoteRecord, NoteState};
+        let root = temporary_root("voice-ai-state");
+        let mut session = VoiceRecordingSession::start(&root).unwrap();
+        session.append_pcm16_mono(&[1, 0, 2, 0]).unwrap();
+        session.finalize().unwrap();
+        let mut session = VoiceRecordingSession::start(&root).unwrap();
+        session.append_pcm16_mono(&[3, 0, 4, 0]).unwrap();
+        session.finalize().unwrap();
+        // VOICE001 has a queued record; VOICE002 has none.
+        save_record(&root, "VOICE001.WAV", &NoteRecord::queued()).unwrap();
+
+        let notes = scan_voice_notes(&root).unwrap();
+        let first = notes
+            .iter()
+            .find(|n| n.file_name == "VOICE001.WAV")
+            .unwrap();
+        let second = notes
+            .iter()
+            .find(|n| n.file_name == "VOICE002.WAV")
+            .unwrap();
+        assert_eq!(first.ai_state, Some(NoteState::Queued));
+        assert_eq!(second.ai_state, None);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn streamed_tmp_recording_finalizes_to_fat83_wav_and_index() {
         let root = temporary_root("voice-record");
         let mut session = VoiceRecordingSession::start(&root).unwrap();
@@ -1299,6 +1338,7 @@ mod tests {
                 wav_bytes: 44,
                 pcm_bytes: 0,
                 duration_seconds: 0,
+                ai_state: None,
             });
         }
         ui.selected = 9;
@@ -1315,6 +1355,7 @@ mod tests {
             wav_bytes: 44,
             pcm_bytes: 0,
             duration_seconds: 0,
+            ai_state: None,
         });
         ui.selected = 2;
         assert!(ui.apply_detail_button(ButtonEvent::Select));
@@ -1339,6 +1380,7 @@ mod tests {
             wav_bytes: 44,
             pcm_bytes: 0,
             duration_seconds: 0,
+            ai_state: None,
         });
         ui.selected = 2;
         ui.detail_selected = 3;
@@ -1376,6 +1418,7 @@ mod tests {
             wav_bytes: 44,
             pcm_bytes: 0,
             duration_seconds: 0,
+            ai_state: None,
         });
         ui.selected = 2;
         ui.begin_title_edit();

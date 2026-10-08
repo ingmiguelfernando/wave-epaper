@@ -2360,6 +2360,7 @@ mod tests {
                 wav_bytes: 44,
                 pcm_bytes: 0,
                 duration_seconds: 0,
+                ai_state: None,
             });
         state.voice_notes.selected = 2;
         state.voice_notes.begin_title_edit();
@@ -2575,6 +2576,7 @@ mod tests {
                 wav_bytes: 1,
                 pcm_bytes: 1,
                 duration_seconds: 60,
+                ai_state: None,
             },
             crate::voice_notes::VoiceNoteEntry {
                 file_name: "NOTE_002.WAV".into(),
@@ -2583,6 +2585,7 @@ mod tests {
                 wav_bytes: 1,
                 pcm_bytes: 1,
                 duration_seconds: 1_080,
+                ai_state: None,
             },
         ];
         state.apply(ButtonEvent::Down);

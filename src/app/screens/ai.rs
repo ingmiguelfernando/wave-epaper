@@ -98,10 +98,19 @@ pub fn ai_row_count(state: &AppState) -> usize {
 /// The status bar's right text: `Online` or `Offline`.
 #[must_use]
 pub fn network_label(state: &AppState) -> String {
-    match state.network.wifi_state {
-        crate::network::WifiConnectionState::Connected => "Online".into(),
-        _ => "Offline".into(),
+    if network_online(state) {
+        "Online".into()
+    } else {
+        "Offline".into()
     }
+}
+
+/// Wi-Fi is up; the same source as the hub's Online/Offline line.
+fn network_online(state: &AppState) -> bool {
+    matches!(
+        state.network.wifi_state,
+        crate::network::WifiConnectionState::Connected
+    )
 }
 
 /// The catalog's newest three: entries sort by file name, so the newest
@@ -241,12 +250,31 @@ fn draw_note_row(
     let meta_style = card_text(state.display, selected, UiTextRole::Body);
     let left = CARD_LEFT + 12;
     let width = CARD_RIGHT - left - 12;
+    // A note with a record shows its state at the right of the title line;
+    // the title gives the label its room, measured with the real font.
+    let label = note
+        .ai_state
+        .and_then(|ai| crate::voice_note_record::state_label(ai, network_online(state)));
+    let label_width = label.map_or(0, |text| meta_style.text_width(text));
+    let title_width = if label.is_some() {
+        width - label_width - 8
+    } else {
+        width
+    };
     Text::new(
-        &title_style.fit(&note.title, width),
+        &title_style.fit(&note.title, title_width),
         Point::new(left, top + 30),
         title_style,
     )
     .draw(display)?;
+    if let Some(text) = label {
+        Text::new(
+            text,
+            Point::new(left + width - label_width, top + 30),
+            meta_style,
+        )
+        .draw(display)?;
+    }
     Text::new(
         &meta_style.fit(&note_meta(note), width),
         Point::new(left, top + 54),
@@ -367,6 +395,7 @@ mod d28_tests {
             wav_bytes: 1_000_000,
             pcm_bytes: 500_000,
             duration_seconds: seconds,
+            ai_state: None,
         }
     }
 

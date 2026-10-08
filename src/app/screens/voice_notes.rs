@@ -79,7 +79,15 @@ pub fn render_voice_notes(
         let note = &voice.notes[note_index];
         let row = note_index + 2;
         let duration = format_duration(note.duration_seconds);
-        let label = format!("{}   {}", note.title, duration);
+        // A note with an AI record shows its state between title and duration.
+        let online = state.network.wifi_state == crate::network::WifiConnectionState::Connected;
+        let label = match note
+            .ai_state
+            .and_then(|ai| crate::voice_note_record::state_label(ai, online))
+        {
+            Some(state_text) => format!("{}   {}   {}", note.title, state_text, duration),
+            None => format!("{}   {}", note.title, duration),
+        };
         draw_action(
             display,
             308 + visible_index as i32 * 54,
@@ -514,6 +522,7 @@ mod tests {
             wav_bytes: 44,
             pcm_bytes: 0,
             duration_seconds: 0,
+            ai_state: None,
         });
         state.voice_notes.selected = 2;
         state.voice_notes.begin_title_edit();

@@ -546,6 +546,7 @@ fn sample_voice_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
             wav_bytes: 3_400_000,
             pcm_bytes: 1_900_000,
             duration_seconds: seconds,
+            ai_state: None,
         };
     vec![
         note(
