@@ -195,10 +195,7 @@ impl ScreenRoute {
 
     #[must_use]
     pub const fn is_category(self) -> bool {
-        matches!(
-            self,
-            Self::Reader | Self::Ai | Self::Games | Self::Tools | Self::Settings
-        )
+        matches!(self, Self::Reader | Self::Ai | Self::Tools | Self::Settings)
     }
 
     #[must_use]

@@ -27,7 +27,7 @@ pub fn render_category(
     let status = if pages > 1 {
         format!("{}/{}", page_start / CATEGORY_PAGE_SIZE + 1, pages)
     } else {
-        format!("{} items", entries.len())
+        item_count_text(entries.len())
     };
 
     draw_status_bar(display, state.display, route.label())?;
@@ -44,4 +44,14 @@ pub fn render_category(
         draw_list_row(display, state.display, top, row)?;
     }
     draw_bottom_bar(display, state.display, &OPEN_HINTS)
+}
+
+/// `1 item`, `4 items`, per the labels lesson.
+#[must_use]
+pub fn item_count_text(count: usize) -> String {
+    if count == 1 {
+        "1 item".into()
+    } else {
+        format!("{count} items")
+    }
 }

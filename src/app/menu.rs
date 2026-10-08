@@ -113,13 +113,6 @@ const AI_ENTRIES: [MenuEntry; 2] = [
     },
 ];
 
-const GAMES_ENTRIES: [MenuEntry; 1] = [MenuEntry {
-    label: "SD Games",
-    subtitle: "Games loaded from the SD card",
-    badge: "",
-    route: ScreenRoute::LuaApps,
-}];
-
 const TOOLS_ENTRIES: [MenuEntry; 4] = [
     MenuEntry {
         label: "File Browser",
@@ -226,7 +219,6 @@ pub const fn category_entries(route: ScreenRoute) -> &'static [MenuEntry] {
     match route {
         ScreenRoute::Reader => &READER_ENTRIES,
         ScreenRoute::Ai => &AI_ENTRIES,
-        ScreenRoute::Games => &GAMES_ENTRIES,
         ScreenRoute::Tools => &TOOLS_ENTRIES,
         ScreenRoute::Settings => &SETTINGS_ENTRIES,
         _ => &[],
@@ -279,7 +271,8 @@ mod tests {
     fn categories_have_entries_without_synthetic_back_rows() {
         assert_eq!(category_entries(ScreenRoute::Reader).len(), 3);
         assert_eq!(category_entries(ScreenRoute::Ai).len(), 2);
-        assert_eq!(category_entries(ScreenRoute::Games).len(), 1);
+        // Games is the hub screen now: no static menu entries.
+        assert_eq!(category_entries(ScreenRoute::Games).len(), 0);
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
         assert_eq!(category_entries(ScreenRoute::Settings).len(), 11);
         for route in CATEGORIES {

@@ -860,7 +860,7 @@ fn cells_span(sets: &[[(usize, usize); 4]]) -> DirtyRect {
 }
 
 /// Thousands-separated value like the mockup ("12,400").
-fn grouped(value: u32) -> String {
+pub(crate) fn grouped(value: u32) -> String {
     let digits = value.to_string();
     let mut grouped = String::new();
     for (index, digit) in digits.chars().enumerate() {

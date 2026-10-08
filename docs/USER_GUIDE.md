@@ -41,7 +41,7 @@ one.
 | Bible | SOON placeholder |
 | Reading Stats | SOON placeholder |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
-| Games | SD Games catalog |
+| Games | Games hub (SD games with their state) |
 | AI | XiaoZhi (SOON) and implemented Voice Notes |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
 | Settings | Alarms, Audio, Clock, Display, Device Info, Environment, Motion, Network, Power, Sleep screen, Weather |
@@ -263,9 +263,10 @@ costs about 2 mAh a day.
 
 ## Games
 
-Install the bundled SD samples, then open **Home › Games › SD Games**.
-Up/Down chooses an app, Select opens it, hold BOOT returns to the catalog.
-The supplied games are Hello Grid, Sudoku, Minesweeper and Tetris; there are no
+Open **Home › Games** for the hub: one card per SD game — icon, name, and
+its state (Sudoku's running game and best time; Tetris' best score; other
+games' version). ▲▼ picks a card, ● plays it, hold BOOT returns Home.
+Install the bundled SD samples with the installer; there are no
 IMU-controlled games or BLE remote page-turner in this build.
 
 | Sample | Controls |

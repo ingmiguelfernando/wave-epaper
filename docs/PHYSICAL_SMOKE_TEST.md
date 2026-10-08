@@ -141,8 +141,13 @@ light sleep. Restore the owner's original preferences afterward.
 
 ## Remaining games and diagnostics (D3)
 
-- [ ] Install current examples; Games › SD Games lists Hello Grid, Sudoku,
-	Minesweeper and Tetris without the removed sensor-controlled samples.
+- [ ] Install current examples; Home › Games lists one card per game —
+	Hello Grid, Sudoku, Minesweeper and Tetris — without the removed
+	sensor-controlled samples. Each card shows an icon, its name and its
+	state: Sudoku `Medium · in progress N/81` (or `No game in progress`)
+	plus its best time; Tetris `Zen · best N` with thousands separators.
+	Beating a best time updates the card after the next hub refresh. One
+	game shows `1 item` in the header count; four show `4 items`.
 - [ ] Hello Grid draws its static canvas; hold BOOT returns to the catalog.
 - [ ] Sudoku three-step entry: ▲▼ row (given rows skipped), Select confirms;
         ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase (×),

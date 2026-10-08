@@ -291,6 +291,13 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     for (name, route) in routes {
         let mut state = sample_state();
         state.router.navigate_to(route);
+        if route == ScreenRoute::Games {
+            sample_games_catalog(&mut state);
+            // The hub's Sudoku card shows a running game and its best time.
+            state.lua_runtime.sudoku_save = Some(sample_sudoku_save());
+            state.lua_runtime.records.tetris_zen = 18_950;
+            state.lua_runtime.records.sudoku_medium = 761;
+        }
         states.push((name, state));
     }
 
@@ -389,6 +396,54 @@ fn render_sample_bible(with_chapters: bool, preferences: DisplayPreferences) -> 
 }
 
 /// A Zen Tetris game a few drops in, drawn through the native SD game canvas.
+/// A Sudoku game one third in, as the hub's Continue card reads it.
+fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
+    let puzzle =
+        "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
+    let grid = |text: &str| {
+        let mut out = [0_u8; 81];
+        for (index, byte) in text.bytes().enumerate() {
+            out[index] = byte - b'0';
+        }
+        out
+    };
+    crate::games::sudoku_save::SudokuSave {
+        difficulty: crate::games::sudoku_puzzles::SudokuDifficulty::Medium,
+        puzzle: grid(puzzle),
+        board: grid(puzzle),
+        seconds: 761,
+    }
+}
+
+/// Four SD games so the hub preview looks like a card in use.
+fn sample_games_catalog(state: &mut AppState) {
+    let manifest = |id: &str, name: &str| crate::lua_runtime::manifest::LuaAppManifest {
+        id: id.into(),
+        name: name.into(),
+        kind: crate::lua_runtime::manifest::LuaAppKind::Game,
+        entry: "MAIN.LUA".into(),
+        version: "1.0".into(),
+        input: vec![],
+    };
+    for (id, name) in [
+        ("hgrid", "Hello Grid"),
+        ("mines", "Minesweeper"),
+        ("sudoku", "Sudoku"),
+        ("tetris", "Tetris"),
+    ] {
+        state
+            .lua_runtime
+            .catalog
+            .entries
+            .push(crate::lua_runtime::manifest::LuaAppEntry {
+                directory_name: id.to_ascii_uppercase(),
+                directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS"),
+                manifest: manifest(id, name),
+            });
+    }
+    state.lua_runtime.catalog.warning = None;
+}
+
 fn tetris_sample_session() -> LuaAppSession {
     let source = "tetris.init('zen', 1803)";
     let mut canvas = NativeGameCanvas::default();

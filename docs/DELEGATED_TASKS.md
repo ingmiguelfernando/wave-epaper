@@ -242,7 +242,9 @@ times only on improvement, the start list with and without a save.
 `sudoku-number` show the difficulty and a time. **main.rs:** the save next
 to the records save only.
 
-**Status:** not started.
+**Status:** done on `side-tasks-5` (`2ec0ff1`). The timer caps a gap at one
+minute, the save keeps the difficulty so resume reuses it, and `main.rs`
+touches only the two named lines.
 
 ### D25: Games hub as in the mockup
 
@@ -274,7 +276,11 @@ each with its state.
 save and a best time, Tetris thousands separator, plural labels.
 **Preview:** `games` with a Sudoku save and both records.
 
-**Status:** not started.
+**Status:** done on `side-tasks-5`. The hub lists only kind-`game` SD apps,
+`grouped()` is `pub(crate)` for the hub's Tetris line, the
+info box repeats the partial-refresh note honestly, and the Games row left
+`category_entries`, so category screens no longer report it as unreachable.
+Status lines and tests say `1 item` / `N items`.
 
 ### D26: Settings as in the mockup
 

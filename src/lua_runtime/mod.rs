@@ -171,6 +171,35 @@ impl LuaRuntimeUiState {
         open_entry_on_worker(entry)
     }
 
+    /// Manifests of the catalog's game apps, in catalog order.
+    #[must_use]
+    pub fn games(&self) -> Vec<&crate::lua_runtime::manifest::LuaAppManifest> {
+        self.catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.manifest.kind == crate::lua_runtime::manifest::LuaAppKind::Game)
+            .map(|entry| &entry.manifest)
+            .collect()
+    }
+
+    /// Select the catalog entry of the game card `index`; `false` when the
+    /// card does not exist.
+    pub fn select_game(&mut self, index: usize) -> bool {
+        let Some(entry) = self.games().get(index).map(|manifest| manifest.id.clone()) else {
+            return false;
+        };
+        let Some(position) = self
+            .catalog
+            .entries
+            .iter()
+            .position(|candidate| candidate.manifest.id == entry)
+        else {
+            return false;
+        };
+        self.selected = position;
+        true
+    }
+
     pub fn apply_game_button(&mut self, event: ButtonEvent, now_ms: u64) -> bool {
         let outcome = {
             let Some(session) = self.session.as_mut() else {

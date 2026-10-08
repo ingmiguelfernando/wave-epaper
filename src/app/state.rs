@@ -234,6 +234,8 @@ impl AppState {
         let route = self.router.current();
         if route == ScreenRoute::Home {
             self.apply_home(event);
+        } else if route == ScreenRoute::Games {
+            self.apply_games_hub(event);
         } else if route.is_category() {
             self.apply_category(route, event);
         } else if route == ScreenRoute::Display {
@@ -392,6 +394,33 @@ impl AppState {
         }
     }
 
+    /// Apply one Games-hub event: move between game cards, play the chosen
+    /// game. Hold BOOT is the runtime's back path, as in every game screen.
+    fn apply_games_hub(&mut self, event: ButtonEvent) {
+        let count = self.lua_runtime.games().len().max(1);
+        let selected = self.category_selection_mut(ScreenRoute::Games);
+        match event {
+            ButtonEvent::Up => {
+                *selected = selected.checked_sub(1).unwrap_or(count - 1);
+            }
+            ButtonEvent::Down => {
+                *selected = (*selected + 1) % count;
+            }
+            ButtonEvent::Select => {
+                self.note_select_press();
+                if self
+                    .lua_runtime
+                    .select_game(self.category_selection(ScreenRoute::Games))
+                    && self.lua_runtime.open_selected()
+                {
+                    self.router.navigate_to(ScreenRoute::LuaGame);
+                } else if self.lua_runtime.error.is_some() {
+                    self.router.navigate_to(ScreenRoute::LuaGameError);
+                }
+            }
+        }
+    }
+
     fn apply_category(&mut self, route: ScreenRoute, event: ButtonEvent) {
         let entries = category_entries(route);
         match event {
@@ -440,7 +469,7 @@ impl AppState {
         if target == ScreenRoute::Library {
             self.reader.refresh_library();
         }
-        if target == ScreenRoute::LuaApps {
+        if matches!(target, ScreenRoute::LuaApps | ScreenRoute::Games) {
             self.lua_runtime.refresh_catalog(true);
         }
         if target == ScreenRoute::VoiceNotes {
@@ -1697,13 +1726,15 @@ mod tests {
     }
 
     #[test]
-    fn games_route_opens_sd_lua_catalog_safely_without_sd_card() {
+    fn games_hub_stays_when_no_game_can_open() {
         let mut state = open_from_home(ScreenRoute::Games);
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::LuaApps);
+        // The hub stays on Games; the catalog scan runs on the way in.
         assert!(state.lua_runtime.catalog.warning.is_some());
-        state.back();
+        // SELECT with no games on the card does nothing: the hub stays.
+        state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Games);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Home);
     }
 
     #[test]
@@ -1713,8 +1744,8 @@ mod tests {
         let root =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS");
         let mut state = open_from_home(ScreenRoute::Games);
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::LuaApps);
+        // The hub refreshed the catalog on the way in; re-point it at the
+        // repo's real samples for the rest of the flow.
         state.lua_runtime.refresh_catalog_from_root(root, true);
         assert!(state.lua_runtime.catalog.is_available());
         assert_eq!(
