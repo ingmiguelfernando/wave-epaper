@@ -169,6 +169,10 @@ light sleep. Restore the owner's original preferences afterward.
         progress`) plus its best time; Tetris `Zen · best N` with thousands
         separators. Beating a best time updates the card after the next hub
         refresh. The info box shows both of its lines.
+- [ ] Tetris: Games › Tetris opens the mode list `Zen · no best yet` and
+        `Classic · no best yet`. Choose Classic: the piece falls one row a second
+        with no key pressed, the title reads `Tetris · Classic`, and leaving the game
+        saves the Classic best (check the card after reboot).
 - [ ] Hello Grid draws its static canvas; hold BOOT returns to the hub.
 - [ ] Sudoku start list: `New · Easy/Medium/Hard`, plus `Continue · …`
         after leaving an unfinished game. Two `New · Medium` games in a row

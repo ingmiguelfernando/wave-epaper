@@ -307,9 +307,9 @@ page-turner in this build.
 | Hello Grid | Static canvas demonstration; ▲▼ and ● have no game action; hold BOOT exits |
 | Sudoku | Opens on a start list: `Continue` (the saved game, with its difficulty and filled cells), `New · Easy`, `New · Medium` or `New · Hard` (a new puzzle each time), and `SD puzzle` when `MAIN.LUA` declares one. Then three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase (×), ● place. Short BOOT goes back one step. A thick frame marks the row, the chosen cell is inverted and previews the number, and the strip starts on the first value that fits. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
-| Tetris Zen | Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game. Best survives closing the game and rebooting (`/RUSTMIX/GAMES/RECORDS.TXT`, written once on exit) |
+| Tetris | Opens a mode list: Zen or Classic (Up and Down move, Select starts). Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. Zen has no gravity: the piece moves only on a press. Classic falls one row a second. Game over shows the score; Select starts a new game. Each mode keeps its own best, saved to `/RUSTMIX/GAMES/RECORDS.TXT` when you leave |
 
-These are button-driven samples. Tetris Classic gravity belongs to Phase 6. A
+These are button-driven samples. A
 missing/invalid SD app reports an error;
 hold BOOT returns to the hub.
 

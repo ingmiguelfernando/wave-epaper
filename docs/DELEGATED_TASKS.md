@@ -401,7 +401,18 @@ the mode list, and a tick through `LuaRuntimeUiState` after
 `open_selected`. **Previews:** `tetris-start`, `tetris-classic`, and
 `sudoku-row` with the new digits.
 
-**Status:**
+**Status:** done on `side-tasks-6`. Built: the mode list on `tetris.init()`
+with the press time as the seed; Classic gravity on a one-second clock
+(tick, sleep budget and refresh in `main.rs`); a separate `tetris_classic`
+best saved on leaving; the Games card's two lines; the title and Mode block
+read the mode; the `tetris-start` and `tetris-classic` previews; the Sudoku
+player digits in a lighter Reader face (`sudoku-row`). The mode list reports
+its start as `start-choose`, so the device log shows it. Checked: host suite
+683 passed, no warnings; local Xtensa build clean on the branch head. Device
+check: Classic falls with no key pressed, the piece stays put in Zen, a long
+pause steps once, and the card shows both bests after a reboot. The player
+digits are the Reader face at the Reader size, close to the givens; confirm
+the size on the panel.
 
 ### D32: Settings › AI
 
