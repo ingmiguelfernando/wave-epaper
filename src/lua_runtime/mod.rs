@@ -13,7 +13,7 @@ use crate::{
         records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
         sudoku_save::SudokuSave,
-        tetris::TetrisMode,
+        tetris::{TetrisMode, GRAVITY_MS},
     },
 };
 
@@ -46,6 +46,8 @@ pub struct LuaRuntimeUiState {
     pub session: Option<LuaAppSession>,
     pub error: Option<String>,
     diagnostics: Vec<String>,
+    /// When the last gravity tick ran, on the app clock; `None` until a tick.
+    last_game_tick_ms: Option<u64>,
     /// Best scores loaded at boot.
     pub records: GameRecords,
     /// Set when a closed game raised a best score, so `main.rs` saves once.
@@ -65,6 +67,7 @@ impl Default for LuaRuntimeUiState {
             session: None,
             error: None,
             diagnostics: Vec::new(),
+            last_game_tick_ms: None,
             records: GameRecords::default(),
             records_changed: false,
             sudoku_save: None,
@@ -153,6 +156,7 @@ impl LuaRuntimeUiState {
                     session.entry.manifest.id, session.source_bytes
                 ));
                 self.session = Some(session);
+                self.last_game_tick_ms = None;
                 true
             }
             Err(error) => {
@@ -319,7 +323,47 @@ impl LuaRuntimeUiState {
         }
     }
 
+    /// The next gravity tick, when the open game needs one: Classic only, one
+    /// tick every `GRAVITY_MS`. `None` when nothing falls.
+    #[must_use]
+    pub fn next_game_tick_ms(&self) -> Option<u64> {
+        let session = self.session.as_ref()?;
+        if !matches!(session.event_bridge, LuaEventBridge::Tetris(ref app) if app.game().mode() == TetrisMode::Classic)
+        {
+            return None;
+        }
+        let last = self.last_game_tick_ms?;
+        Some(last + u64::from(GRAVITY_MS))
+    }
+
+    /// Run a gravity tick when one is due. After a long pause the piece steps
+    /// once, because the clock restarts at `now_ms` rather than catching up.
+    pub fn tick_game(&mut self, now_ms: u64) -> bool {
+        let Some(due) = self.next_game_tick_ms() else {
+            // First tick of a session: start the clock.
+            if self.session.is_some() {
+                self.last_game_tick_ms = Some(now_ms);
+            }
+            return false;
+        };
+        if now_ms < due {
+            return false;
+        }
+        self.last_game_tick_ms = Some(now_ms);
+        let Some(session) = self.session.as_mut() else {
+            return false;
+        };
+        match session.event_bridge.tick_game(&mut session.canvas) {
+            Ok(changed) => changed,
+            Err(error) => {
+                self.push_diagnostic(format!("tetris tick failed: {error}"));
+                false
+            }
+        }
+    }
+
     pub fn close_session(&mut self) {
+        self.last_game_tick_ms = None;
         if let Some(session) = self.session.take() {
             match &session.event_bridge {
                 LuaEventBridge::Tetris(app) => {
@@ -414,6 +458,7 @@ mod tests {
             sudoku::{StartKind, SudokuGame, SudokuStep},
             sudoku_puzzles::{generate, SudokuDifficulty},
             sudoku_save::SudokuSave,
+            tetris::GRAVITY_MS,
         },
     };
 
@@ -448,6 +493,75 @@ mod tests {
         assert!(runtime.session.is_some());
         assert!(!runtime.take_diagnostics().is_empty());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_classic_game_falls_once_per_second_and_a_long_pause_steps_once() {
+        let root = temp_directory();
+        let app = root.join("TETRIS");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("APP.TOM"),
+            "id=\"tetris\"\nname=\"Tetris\"\nkind=\"game\"\nentry=\"MAIN.LUA\"\n",
+        )
+        .unwrap();
+        std::fs::write(app.join("MAIN.LUA"), "tetris.init('classic', 7)\n").unwrap();
+        let mut runtime = LuaRuntimeUiState::default();
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        let row_before = piece_row(&runtime);
+
+        // The first tick only starts the clock; nothing falls yet.
+        assert!(!runtime.tick_game(10_000));
+        assert_eq!(
+            runtime.next_game_tick_ms(),
+            Some(10_000 + u64::from(GRAVITY_MS))
+        );
+        assert!(!runtime.tick_game(10_500), "half a second is not a tick");
+        assert_eq!(piece_row(&runtime), row_before);
+
+        // One tick at one second; the piece falls one row.
+        assert!(runtime.tick_game(11_000));
+        assert_eq!(piece_row(&runtime), row_before + 1);
+
+        // A long pause steps once, then the clock restarts from now.
+        assert!(runtime.tick_game(60_000));
+        assert_eq!(
+            piece_row(&runtime),
+            row_before + 2,
+            "one step after the pause"
+        );
+        assert_eq!(
+            runtime.next_game_tick_ms(),
+            Some(60_000 + u64::from(GRAVITY_MS))
+        );
+    }
+
+    /// The active piece's top row on the open Classic game.
+    fn piece_row(runtime: &LuaRuntimeUiState) -> usize {
+        match &runtime.session.as_ref().unwrap().event_bridge {
+            LuaEventBridge::Tetris(app) => app.game().active_cells()[0].1,
+            other => panic!("expected a Tetris game, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn zen_never_schedules_or_takes_a_gravity_tick() {
+        let root = temp_directory();
+        let app = root.join("TETRIS");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("APP.TOM"),
+            "id=\"tetris\"\nname=\"Tetris\"\nkind=\"game\"\nentry=\"MAIN.LUA\"\n",
+        )
+        .unwrap();
+        std::fs::write(app.join("MAIN.LUA"), "tetris.init('zen', 7)\n").unwrap();
+        let mut runtime = LuaRuntimeUiState::default();
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        assert_eq!(runtime.next_game_tick_ms(), None, "zen has no clock");
+        assert!(!runtime.tick_game(5_000));
+        assert!(!runtime.tick_game(50_000), "zen never falls");
     }
 
     #[test]

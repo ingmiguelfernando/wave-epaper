@@ -1520,6 +1520,21 @@ mod firmware {
                 last_reader_tick = Instant::now();
             }
 
+            // Classic Tetris falls on its own clock; a tick is not a key press,
+            // so `last_activity` stays put.
+            if !sleep_mode.is_sleeping()
+                && state.tick_lua_game(uptime.elapsed().as_millis() as u64)
+                && state.panel_awake
+            {
+                refresh_screen(
+                    &mut panel,
+                    &mut frame,
+                    &mut state,
+                    &mut panel_refresh,
+                    RefreshRequest::Normal,
+                )?;
+            }
+
             // Photos are prepared in the background while the gallery is open.
             let photos_open = !sleep_mode.is_sleeping()
                 && matches!(
@@ -2077,6 +2092,9 @@ mod firmware {
                     live_status.then(|| time_left(last_status_refresh, live_refresh_seconds)),
                     alarm_polling.then(|| time_left(last_alarm_poll, ALARM_POLL_SECONDS)),
                     network_runtime.has_radio().then_some(burst_due),
+                    state
+                        .next_lua_game_tick_ms()
+                        .map(|at| Duration::from_millis(at).saturating_sub(uptime.elapsed())),
                 ]);
                 // The RTC line only needs watching while an alarm is programmed.
                 let lines = if state.alarms.hardware_programmed {

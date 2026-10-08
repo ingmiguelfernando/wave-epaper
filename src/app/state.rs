@@ -786,6 +786,24 @@ impl AppState {
         }
     }
 
+    /// Gravity tick for the open Lua game. Only while a game is on screen;
+    /// returns whether the screen changed, so the caller refreshes once.
+    pub fn tick_lua_game(&mut self, now_ms: u64) -> bool {
+        if self.router.current() != ScreenRoute::LuaGame {
+            return false;
+        }
+        self.lua_runtime.tick_game(now_ms)
+    }
+
+    /// When the open game next needs a gravity tick, on the app clock.
+    #[must_use]
+    pub fn next_lua_game_tick_ms(&self) -> Option<u64> {
+        if self.router.current() != ScreenRoute::LuaGame {
+            return None;
+        }
+        self.lua_runtime.next_game_tick_ms()
+    }
+
     pub fn apply_lua_game_boot_short_press(&mut self) -> bool {
         self.router.current() == ScreenRoute::LuaGame
             && self

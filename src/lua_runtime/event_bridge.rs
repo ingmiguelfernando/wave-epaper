@@ -193,6 +193,14 @@ impl LuaEventBridge {
             }
         }
     }
+    /// A timed tick. Only Classic Tetris falls; every other game ignores it.
+    /// Returns whether the screen changed, so the caller refreshes once.
+    pub fn tick_game(&mut self, canvas: &mut NativeGameCanvas) -> Result<bool, String> {
+        match self {
+            Self::Tetris(game) => Ok(game.tick_and_render(canvas)?.is_some()),
+            _ => Ok(false),
+        }
+    }
     pub fn apply_boot_short_press(
         &mut self,
         now_ms: u64,
