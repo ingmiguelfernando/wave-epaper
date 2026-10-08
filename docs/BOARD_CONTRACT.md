@@ -21,7 +21,8 @@ BUSY           GPIO3
 ```text
 Rotary wheel / Select   Primary UI navigation
 BOOT                    GPIO0, short contextual action, long hierarchical Back
-Power key               AXP2101 PEK short / long interrupts
+Power key               GPIO1 PWR_OUT, high while held (via T1);
+                        AXP2101 PEK short / long interrupts as backup
 ```
 
 Power-key product behavior:

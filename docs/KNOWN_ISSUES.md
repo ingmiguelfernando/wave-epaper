@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.9.5. This is not a list of promised mockup features. See
+Firmware v0.9.6. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -43,10 +43,11 @@ SD card, so a reboot starts without one.
 ## MCU deep sleep
 
 The panel deep-sleeps with its rail off, but the CPU uses light sleep in
-bounded intervals. Full MCU deep sleep is not implemented. GPIO38 Power and
-GPIO45 RTC-alarm wake must be preserved; the mockup's deep-sleep current is
-not a measured firmware result. D5 clock/weather layouts are drawing-only,
-not selectable sleep modes or scheduled refreshes.
+bounded intervals. Full MCU deep sleep is not implemented. Power-key wake on
+GPIO1 (also high during an RTC alarm) and GPIO38, and RTC-alarm wake on
+GPIO45 must be preserved; the mockup's deep-sleep current is not a measured
+firmware result. D5 clock/weather layouts are drawing-only, not selectable
+sleep modes or scheduled refreshes.
 
 ## EPUB scope
 

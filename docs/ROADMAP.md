@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-08, firmware v0.9.5.
+Last updated: 2026-10-08, firmware v0.9.6.
 
 ## Status
 
@@ -34,6 +34,7 @@ Last updated: 2026-10-08, firmware v0.9.5.
 | Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | 0.9.3 | PR #4 | Done, waiting for device test |
 | Fixes: Power key menu on a sleeping panel, key retries, 1 s hold, Device Info diagnostics, photos in `/RUSTMIX/PHOTOS` | 0.9.4 | fdb1917 | Done, waiting for device test |
 | Fixes: Atkinson photos, no sleep-mode light sleep on USB, weather request buffer, worker memory wait | 0.9.5 | 83d0313 | Done, waiting for device test |
+| Fix: Power key read on GPIO1 (`PWR_OUT`), PMIC interrupt as backup | 0.9.6 | e0fc071 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -334,9 +335,9 @@ view, the routes and the wiring; save reading stats in batches
   200 ms. `buttons.rs` has to report the press before the release, and the
   loop has to merge repeats while a refresh runs.
 - **Deeper sleep.** The mockup's 8 µA needs deep sleep in sleep mode. Deep
-  sleep can only wake from RTC GPIOs (0 to 21), so BOOT and the wheel could wake
-  it but the Power key (GPIO38) and the RTC alarm (GPIO45) could not. Needs
-  research before any change.
+  sleep can only wake from RTC GPIOs (0 to 21). BOOT and the wheel qualify,
+  and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
+  also drives high. Needs research before any change.
 - The `%` sign is broken in the Inter Standard Detail strike (12 px). Task D6
   found no `fonts.toml` setting that fixes it alone; a fix needs a per-glyph
   override in the generator. Until then, show percentages in Body size.
