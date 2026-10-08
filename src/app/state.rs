@@ -265,6 +265,14 @@ impl AppState {
             self.apply_power(event);
         } else if matches!(route, ScreenRoute::Photos | ScreenRoute::PhotoViewer) {
             self.apply_photos(route, event);
+        } else if matches!(
+            route,
+            ScreenRoute::Bible
+                | ScreenRoute::BibleBooks
+                | ScreenRoute::BibleChapters
+                | ScreenRoute::BibleReading
+        ) {
+            self.apply_bible(route, event);
         } else if route == ScreenRoute::SleepScreen {
             self.apply_sleep_screen(event);
         } else if route == ScreenRoute::WeatherSettings {
@@ -535,6 +543,8 @@ impl AppState {
         }
         if target == ScreenRoute::ContinueReading && self.reader.session.is_some() {
             self.router.navigate_to(ScreenRoute::ReaderPage);
+        } else if target == ScreenRoute::Bible {
+            self.open_bible_entry();
         } else {
             self.router.navigate_to(target);
         }
@@ -1118,16 +1128,108 @@ impl AppState {
         }
     }
 
-    /// BOOT short press stars the selected photo in the gallery and viewer.
-    pub fn apply_photos_boot_short_press(&mut self) -> bool {
-        let viewer = &self.photos.viewer;
-        let viewer_idle = viewer.action.is_none() && !viewer.confirm_delete;
-        match self.router.current() {
-            ScreenRoute::Photos => {}
-            ScreenRoute::PhotoViewer if viewer_idle => {}
-            _ => return false,
+    /// Bible keys: picker, chapter grid and reading view. The place is saved
+    /// when the view closes, never per page.
+    fn apply_bible(&mut self, route: ScreenRoute, event: ButtonEvent) {
+        if event == ButtonEvent::Select {
+            self.note_select_press();
         }
-        self.photos.toggle_star();
+        match (route, event) {
+            (ScreenRoute::Bible, _) => self.open_bible_entry(),
+            (ScreenRoute::BibleBooks, ButtonEvent::Up) => self.bible.nav_mut().move_book(-1),
+            (ScreenRoute::BibleBooks, ButtonEvent::Down) => self.bible.nav_mut().move_book(1),
+            (ScreenRoute::BibleBooks, ButtonEvent::Select) => {
+                self.bible.nav_mut().open_chapters();
+                self.router.navigate_to(ScreenRoute::BibleChapters);
+            }
+            (ScreenRoute::BibleChapters, ButtonEvent::Up) => {
+                self.bible.nav_mut().move_chapter(-1);
+            }
+            (ScreenRoute::BibleChapters, ButtonEvent::Down) => {
+                self.bible.nav_mut().move_chapter(1);
+            }
+            (ScreenRoute::BibleChapters, ButtonEvent::Select) => self.open_bible_chapter(),
+            (ScreenRoute::BibleReading, ButtonEvent::Up) => self.turn_bible_page(true),
+            (ScreenRoute::BibleReading, ButtonEvent::Down) => self.turn_bible_page(false),
+            (ScreenRoute::BibleReading, ButtonEvent::Select) => {
+                self.router.navigate_to(ScreenRoute::BibleMenu);
+            }
+            _ => {}
+        }
+    }
+
+    /// Home › Bible: the saved place when it is usable, else the picker; no
+    /// card means the Spanish missing view.
+    fn open_bible_entry(&mut self) {
+        if self.bible.translation().is_none() {
+            self.router.navigate_to(ScreenRoute::BibleMissing);
+            return;
+        }
+        let place = self.bible.usable_place().cloned();
+        match place {
+            Some(place) => {
+                let book = self
+                    .bible
+                    .books()
+                    .iter()
+                    .position(|book| book.usfm == place.usfm)
+                    .unwrap_or(0);
+                self.bible.open_at(crate::bible_reader::Position {
+                    book,
+                    chapter: place.chapter,
+                    page: usize::from(place.page),
+                });
+                self.router.navigate_to(ScreenRoute::BibleReading);
+            }
+            None => self.router.navigate_to(ScreenRoute::BibleBooks),
+        }
+    }
+
+    /// ● on a chapter: read it from its first page.
+    fn open_bible_chapter(&mut self) {
+        let Some((number, chapter)) = self.bible.nav().open() else {
+            return;
+        };
+        let Some(book) = self.bible.books().iter().position(|b| b.number == number) else {
+            return;
+        };
+        self.bible.open_at(crate::bible_reader::Position {
+            book,
+            chapter,
+            page: 0,
+        });
+        self.router.navigate_to(ScreenRoute::BibleReading);
+    }
+
+    /// ▲▼ in the reading view: turn one page, crossing chapters when needed.
+    fn turn_bible_page(&mut self, forward: bool) {
+        let Some(position) = self.bible.position() else {
+            return;
+        };
+        let pages = crate::app::screens::bible::chapter_pages(self, position);
+        self.bible.turn_page(forward, pages);
+        let Some(position) = self.bible.position() else {
+            return;
+        };
+        let pages = crate::app::screens::bible::chapter_pages(self, position);
+        self.bible.resolve_last_page(|_| pages);
+    }
+
+    /// BOOT short press in the reading view: the chapter grid of this book.
+    pub fn apply_bible_boot_short_press(&mut self) -> bool {
+        if self.router.current() != ScreenRoute::BibleReading {
+            return false;
+        }
+        let Some(position) = self.bible.position() else {
+            return false;
+        };
+        let Some(book) = self.bible.books().get(position.book) else {
+            return false;
+        };
+        let number = book.number;
+        let chapter = position.chapter;
+        self.bible.nav_mut().select_book(number, chapter);
+        self.router.navigate_to(ScreenRoute::BibleChapters);
         true
     }
 
@@ -1416,12 +1518,20 @@ impl AppState {
         if self.router.current() == ScreenRoute::ReaderLoading {
             self.reader.cancel_loading();
         }
+        if self.router.current() == ScreenRoute::BibleReading {
+            self.bible.remember_place();
+        }
         if self.router.current() == ScreenRoute::ReaderPreferences {
             if self.reader.finish_preferences_edit() {
                 self.router.navigate_to(ScreenRoute::ReaderLoading);
             } else {
                 self.router.navigate_to(ScreenRoute::ReaderOptions);
             }
+        } else if self.router.current() == ScreenRoute::BibleBooks
+            && self.bible.position().is_some()
+        {
+            // Walk back from the picker to the place that is still open.
+            self.router.navigate_to(ScreenRoute::BibleReading);
         } else {
             self.router.back();
         }
@@ -2318,5 +2428,182 @@ mod tests {
         state.open_power_key_menu();
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Calendar);
+    }
+}
+
+#[cfg(test)]
+mod bible_routing_tests {
+    use super::AppState;
+    use crate::{
+        app::{
+            menu::{home_entries, home_index},
+            router::ScreenRoute,
+        },
+        bible_state::BibleUiState,
+        buttons::ButtonEvent,
+    };
+    use std::{fs, path::PathBuf};
+
+    const INDEX: &str = "GEN\tGénesis\t2\tGEN.txt\nPSA\tSalmos\t2\tPSA.txt\n";
+
+    /// Two chapters per book, each with a heading and a few verses, so pages
+    /// and chapter boundaries exist to cross.
+    fn chapter_text() -> String {
+        let mut text = String::new();
+        for chapter in 1..=2 {
+            text.push_str(&format!("C\t{chapter}\n"));
+            text.push_str("H\tUn encabezado\n");
+            for verse in 1..=3 {
+                text.push_str(&format!("V\t{verse}\t1\tTexto del versículo {verse}\n"));
+            }
+        }
+        text
+    }
+
+    fn temp_card(tag: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("wave-bible-routing-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let folder = root.join("RVR1960");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("index.tsv"), INDEX).unwrap();
+        fs::write(folder.join("meta.txt"), "format=1\nabbreviation=RVR1960\n").unwrap();
+        fs::write(folder.join("GEN.txt"), chapter_text()).unwrap();
+        fs::write(folder.join("PSA.txt"), chapter_text()).unwrap();
+        root
+    }
+
+    /// A state whose Bible card lives in `root`, reached from Home.
+    fn home_with_card(root: &PathBuf) -> AppState {
+        let mut state = AppState::default();
+        state.bible = BibleUiState::with_root(root);
+        state.home_selected = home_index(ScreenRoute::Bible).expect("Bible on Home");
+        state
+    }
+
+    #[test]
+    fn first_use_opens_the_book_picker() {
+        let root = temp_card("first");
+        let mut state = home_with_card(&root);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleBooks);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_missing_card_opens_the_missing_view() {
+        let mut state = home_with_card(&PathBuf::from("/nonexistent-wave-bible"));
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleMissing);
+    }
+
+    #[test]
+    fn choosing_a_book_and_chapter_opens_the_reading_view() {
+        let root = temp_card("choose");
+        let mut state = home_with_card(&root);
+        state.apply(ButtonEvent::Select); // Home → picker
+        state.apply(ButtonEvent::Select); // book → chapter grid
+        assert_eq!(state.active_route(), ScreenRoute::BibleChapters);
+        state.apply(ButtonEvent::Down); // chapter 2
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        let position = state.bible.position().expect("a place is open");
+        assert_eq!(position.chapter, 2);
+        assert_eq!(position.page, 0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn paging_crosses_into_the_next_and_previous_chapter() {
+        let root = temp_card("paging");
+        let mut state = home_with_card(&root);
+        state.apply(ButtonEvent::Select); // picker
+        state.apply(ButtonEvent::Select); // chapter grid, Genesis 1
+        state.apply(ButtonEvent::Select); // read Genesis 1
+        let first = state.bible.position().unwrap();
+        assert_eq!((first.book, first.chapter), (0, 1));
+        // Keep turning forward until the chapter changes.
+        let mut guard = 0;
+        while state.bible.position().unwrap().chapter == 1 && guard < 50 {
+            state.apply(ButtonEvent::Up);
+            guard += 1;
+        }
+        let next = state.bible.position().unwrap();
+        assert_eq!(
+            (next.book, next.chapter),
+            (0, 2),
+            "forward crosses into chapter 2"
+        );
+        // Back past its first page lands on the previous chapter's last page.
+        let mut guard = 0;
+        while state.bible.position().unwrap().chapter == 2 && guard < 50 {
+            state.apply(ButtonEvent::Down);
+            guard += 1;
+        }
+        let back = state.bible.position().unwrap();
+        assert_eq!((back.book, back.chapter), (0, 1));
+        assert_ne!(back.page, usize::MAX, "the page sentinel is resolved");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_place_survives_a_reload() {
+        let root = temp_card("reload");
+        {
+            let mut state = home_with_card(&root);
+            state.apply(ButtonEvent::Select); // picker
+            state.apply(ButtonEvent::Select); // chapter grid
+            state.apply(ButtonEvent::Down); // chapter 2
+            state.apply(ButtonEvent::Select); // read it
+            state.bible.remember_place();
+            assert!(
+                state.bible.save_if_changed(),
+                "opening a place marks it changed"
+            );
+        }
+        let reloaded = BibleUiState::with_root(&root);
+        let place = reloaded.usable_place().expect("the saved place loads");
+        assert_eq!(place.usfm, "GEN");
+        assert_eq!(place.chapter, 2);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn home_opens_the_saved_place_on_later_visits() {
+        let root = temp_card("resume");
+        {
+            let mut state = home_with_card(&root);
+            state.apply(ButtonEvent::Select);
+            state.apply(ButtonEvent::Select);
+            state.apply(ButtonEvent::Select); // read Genesis 1
+            state.bible.remember_place();
+            state.bible.save_if_changed();
+        }
+        let mut state = home_with_card(&root);
+        state.bible = BibleUiState::with_root(&root);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn short_boot_from_the_reader_opens_the_chapter_grid_of_this_book() {
+        let root = temp_card("boot");
+        let mut state = home_with_card(&root);
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Select); // read Genesis 1
+        assert!(state.apply_bible_boot_short_press());
+        assert_eq!(state.active_route(), ScreenRoute::BibleChapters);
+        assert_eq!(state.bible.nav().chapter_cursor(), 1);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_bible_home_row_reads_bible() {
+        assert_eq!(
+            home_entries()[home_index(ScreenRoute::Bible).unwrap()].label,
+            "Bible"
+        );
     }
 }

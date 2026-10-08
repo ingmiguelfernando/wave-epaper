@@ -264,6 +264,27 @@ impl BibleNav {
             .map(|book| (book.number, self.chapter_cursor))
     }
 
+    /// Land the picker on book `number` in its section, with its chapter
+    /// highlighted, and open the chapter grid. Unknown books change nothing.
+    pub fn select_book(&mut self, number: u8, chapter: u16) {
+        let Some(section) = SECTIONS
+            .iter()
+            .position(|section| (section.first..=section.last).contains(&number))
+        else {
+            return;
+        };
+        let Some(index) = self
+            .books_in(section)
+            .position(|book| book.number == number)
+        else {
+            return;
+        };
+        self.section_cursor = section;
+        self.book_cursor = index;
+        self.view = BibleNavView::Chapters;
+        self.chapter_cursor = chapter;
+    }
+
     /// The chapters view goes back to the books.
     pub fn back(&mut self) {
         if self.view == BibleNavView::Chapters {

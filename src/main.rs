@@ -47,6 +47,8 @@ mod firmware {
             AUDIO_SAMPLE_RATE_HZ, DEFAULT_AUDIO_VOLUME_PERCENT,
         },
         battery_log::{BatteryLog, BATTERY_LOG_PATH, SAMPLE_MINUTES},
+        bible::BIBLE_ROOT,
+        bible_state::BibleUiState,
         board_services::{reset_reason_label, BoardServices, BoardSnapshot},
         build_info::{FIRMWARE_VERSION, PRODUCT_SLUG, UI_SHELL_MILESTONE},
         buttons::{
@@ -410,6 +412,7 @@ mod firmware {
                 Ok(stats) => state.reading_stats = stats,
                 Err(error) => info!("rustmix-wave=reading-stats status=new error={error:#}"),
             }
+            state.bible = BibleUiState::with_root(BIBLE_ROOT);
             info!(
                 "rustmix-wave=game-records status=ready tetris-zen={} sudoku-saved={}",
                 state.lua_runtime.records.tetris_zen,
@@ -1306,6 +1309,7 @@ mod firmware {
                             }
                             if _mounted_sd.is_some() {
                                 save_reading_stats_if_dirty(&mut state);
+                                state.bible.save_if_changed();
                             }
                             sleep_started = Some((Instant::now(), battery));
                             info!(
@@ -1764,6 +1768,7 @@ mod firmware {
                         state.apply_lua_game_boot_short_press()
                     };
                     let screen_context = state.apply_photos_boot_short_press()
+                        || state.apply_bible_boot_short_press()
                         || state.apply_sleep_screen_boot_short_press()
                         || state.apply_weather_boot_short_press()
                         || state.apply_ai_hub_boot_short_press();

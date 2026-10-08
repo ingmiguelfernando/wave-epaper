@@ -100,9 +100,11 @@ impl BibleUiState {
         }
     }
 
-    /// Open the reading view at `position`.
+    /// Open the reading view at `position`. The place is marked changed so
+    /// the first close saves it, even when nothing was turned.
     pub fn open_at(&mut self, position: Position) {
         self.position = Some(position);
+        self.place_changed = true;
     }
 
     pub fn position(&self) -> Option<Position> {
@@ -131,6 +133,18 @@ impl BibleUiState {
             self.place_changed = true;
         }
         outcome
+    }
+
+    /// Resolve the "last page" sentinel of a backward turn against the page
+    /// count of the chapter now open. `pages_of` pages a chapter by its
+    /// position, so the caller decides how a chapter is laid out.
+    pub fn resolve_last_page(&mut self, pages_of: impl FnOnce(Position) -> usize) {
+        let Some(position) = self.position.as_mut() else {
+            return;
+        };
+        if position.page == usize::MAX {
+            position.page = pages_of(*position).saturating_sub(1);
+        }
     }
 
     /// Record the place in memory; it reaches the card only through `save`,

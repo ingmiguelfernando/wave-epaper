@@ -380,6 +380,29 @@ pub const READING_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Boot, "capítulos"),
 ];
 
+/// Pages of one chapter at the Reader's body style, or 1 when it cannot load.
+/// The turn path and the drawing both use this, so they agree on the count.
+#[must_use]
+pub fn chapter_pages(state: &AppState, position: bible_reader::Position) -> usize {
+    let Some(translation) = state.bible.translation() else {
+        return 1;
+    };
+    let Some(book) = state.bible.books().get(position.book) else {
+        return 1;
+    };
+    let Ok(items) = bible::load_chapter(state.bible.root(), translation, book, position.chapter)
+    else {
+        return 1;
+    };
+    let body = reader_body_style(
+        state.reader.preferences.book_font,
+        state.reader.preferences.font_size,
+        state.reader.preferences.theme,
+    );
+    let lines = bible_reader::layout(&items, RIGHT - LEFT, |text| body.text_width(text));
+    bible_reader::paginate(lines.len(), reading_lines_per_page(body))
+}
+
 /// Reading view of the open place: the chapter's verses in the Reader's body
 /// style, one page at a time.
 pub fn render_bible_reading(
