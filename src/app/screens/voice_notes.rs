@@ -349,6 +349,135 @@ fn render_voice_note_delete_confirmation(
     Ok(())
 }
 
+const RESULT_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "scroll"),
+    (KeyCap::Boot, "tab"),
+    (KeyCap::Select, "back"),
+];
+
+/// The active tab's text, cleaned for the device fonts and wrapped to width.
+fn result_body_lines(
+    state: &AppState,
+    record: &crate::voice_note_record::NoteRecord,
+    width: i32,
+) -> Vec<String> {
+    use crate::voice_note_result::{prepare_text, ResultTab};
+    let text = match state.voice_notes_result.tab {
+        ResultTab::Summary => record.summary.as_str(),
+        ResultTab::Transcript => record.transcript.as_str(),
+        ResultTab::Audio => "",
+    };
+    let body = state.display.body_style();
+    let mut lines = Vec::new();
+    for paragraph in prepare_text(text).split('\n') {
+        if paragraph.trim().is_empty() {
+            lines.push(String::new());
+        } else {
+            lines.extend(body.wrap(paragraph, width));
+        }
+    }
+    lines
+}
+
+pub fn render_voice_note_result(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    use crate::voice_note_result::ResultTab;
+    let body = state.display.body_style();
+    let detail = state.display.detail_style();
+    draw_header(display, state.display, "VOICE NOTE", "AI RESULT")?;
+    let Some(note) = state.voice_notes.selected_note() else {
+        Text::new("No saved note selected.", Point::new(22, 232), detail).draw(display)?;
+        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
+        return Ok(());
+    };
+    let heading = state.display.heading_style();
+    // The summarized title when the record has one, as the mockup shows.
+    let record = state.voice_notes_result.record.as_ref();
+    let title = record
+        .map(|record| record.title.as_str())
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or(note.title.as_str());
+    Text::new(&heading.fit(title, 436), Point::new(22, 158), heading).draw(display)?;
+    // Stamp, language, then the providers: transcriber → summarizer.
+    let (date, time) = crate::app::screens::ai::split_stamp(&note.recorded_at);
+    let when = match (date, time) {
+        (Some(date), Some(time)) => format!("{date} · {time}"),
+        (Some(date), None) => date,
+        _ => note.recorded_at.clone(),
+    };
+    let meta = match record {
+        Some(record) => format!(
+            "{} · {} · {} → {}",
+            when, record.language, record.transcribed_by, record.summarized_by
+        ),
+        None => format!("{} · {}", when, format_duration(note.duration_seconds)),
+    };
+    let meta = crate::voice_note_result::prepare_text(&meta);
+    Text::new(&detail.fit(&meta, 436), Point::new(22, 186), detail).draw(display)?;
+
+    // Tabs: the active one is filled, the others outlined.
+    let tabs = [ResultTab::Summary, ResultTab::Transcript, ResultTab::Audio];
+    let mut tab_left = 22;
+    for tab in tabs {
+        let active = tab == state.voice_notes_result.tab;
+        let tab_style = if active {
+            PrimitiveStyle::with_fill(BinaryColor::On)
+        } else {
+            PrimitiveStyle::with_stroke(BinaryColor::On, 2)
+        };
+        let tab_width = body.text_width(tab.label()) + 20;
+        Rectangle::new(Point::new(tab_left, 208), Size::new(tab_width as u32, 30))
+            .into_styled(tab_style)
+            .draw(display)?;
+        let text_style = state.display.text_style(
+            crate::app::typography::UiTextRole::Body,
+            if active {
+                BinaryColor::Off
+            } else {
+                BinaryColor::On
+            },
+        );
+        Text::new(tab.label(), Point::new(tab_left + 10, 228), text_style).draw(display)?;
+        tab_left += tab_width + 8;
+    }
+
+    // Body: wrapped lines from the scroll offset, between the tabs and the footer.
+    let body_top = 258;
+    let footer_top = 700;
+    let line_step = i32::from(body.line_height()) + 4;
+    let visible = ((footer_top - body_top) / line_step).max(1) as usize;
+    match state.voice_notes_result.record.as_ref() {
+        Some(record) => {
+            let lines = result_body_lines(state, &record, 436);
+            // Clamp to the last page here: input has no line count, so it scrolls freely.
+            let last_start = lines.len().saturating_sub(visible);
+            let scroll = state.voice_notes_result.scroll.min(last_start);
+            for (row, line) in lines.iter().skip(scroll).take(visible).enumerate() {
+                Text::new(
+                    line,
+                    Point::new(22, body_top + row as i32 * line_step + 16),
+                    body,
+                )
+                .draw(display)?;
+            }
+        }
+        None => {
+            Text::new("No AI result yet.", Point::new(22, body_top + 16), body).draw(display)?;
+        }
+    }
+
+    Text::new(
+        "AI-generated · may contain mistakes · audio kept on SD",
+        Point::new(22, footer_top + 16),
+        detail,
+    )
+    .draw(display)?;
+    draw_bottom_bar(display, state.display, &RESULT_HINTS)?;
+    Ok(())
+}
+
 pub fn render_voice_note_recording(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,

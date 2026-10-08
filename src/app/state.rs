@@ -169,6 +169,8 @@ pub struct AppState {
     wifi_transfer_request: Option<WifiTransferUiRequest>,
     /// SD-backed PCM WAV voice-note catalog and recorder UI snapshot.
     pub voice_notes: VoiceNotesUiState,
+    /// AI result screen: the open tab and the body scroll.
+    pub voice_notes_result: crate::voice_note_result::ResultUiState,
     /// Global display-maintenance menu opened by a physical Power short press.
     pub power_key_menu: PowerKeyMenuUiState,
     power_key_menu_return_route: ScreenRoute,
@@ -248,6 +250,7 @@ impl Default for AppState {
             wifi_transfer: WifiTransferSnapshot::default(),
             wifi_transfer_request: None,
             voice_notes: VoiceNotesUiState::default(),
+            voice_notes_result: crate::voice_note_result::ResultUiState::default(),
             power_key_menu: PowerKeyMenuUiState::default(),
             power_key_menu_return_route: ScreenRoute::Home,
             power_key_manual_refresh_requested: false,
@@ -341,6 +344,7 @@ impl AppState {
             route,
             ScreenRoute::VoiceNotes
                 | ScreenRoute::VoiceNoteDetails
+                | ScreenRoute::VoiceNoteResult
                 | ScreenRoute::VoiceNoteRecording
         ) {
             self.apply_voice_notes(event);
@@ -610,9 +614,35 @@ impl AppState {
                     self.router.navigate_to(ScreenRoute::VoiceNoteRecording);
                 } else if event == ButtonEvent::Select && self.voice_notes.selected >= 2 {
                     self.voice_notes.clear_transient_details();
-                    self.router.navigate_to(ScreenRoute::VoiceNoteDetails);
+                    // A note with an AI record opens its result; one without opens details.
+                    let has_record = self
+                        .voice_notes
+                        .selected_note()
+                        .is_some_and(|note| note.ai_state.is_some());
+                    if has_record {
+                        let record = self.voice_notes.selected_note().and_then(|note| {
+                            crate::voice_note_record::load_record(
+                                std::path::Path::new(crate::voice_notes::VOICE_NOTES_ROOT),
+                                &note.file_name,
+                            )
+                            .ok()
+                            .flatten()
+                        });
+                        self.voice_notes_result = crate::voice_note_result::ResultUiState {
+                            record,
+                            ..Default::default()
+                        };
+                        self.router.navigate_to(ScreenRoute::VoiceNoteResult);
+                    } else {
+                        self.router.navigate_to(ScreenRoute::VoiceNoteDetails);
+                    }
                 }
             }
+            ScreenRoute::VoiceNoteResult => match event {
+                ButtonEvent::Up => self.voice_notes_result.step(-1),
+                ButtonEvent::Down => self.voice_notes_result.step(1),
+                ButtonEvent::Select => self.router.navigate_to(ScreenRoute::VoiceNotes),
+            },
             ScreenRoute::VoiceNoteDetails => {
                 if event == ButtonEvent::Select {
                     self.note_select_press();
@@ -812,6 +842,9 @@ impl AppState {
     pub fn apply_keyboard_boot_short_press(&mut self) -> bool {
         if self.router.current() == ScreenRoute::CalendarEventEditor {
             self.calendar.toggle_editor_navigation_axis()
+        } else if self.router.current() == ScreenRoute::VoiceNoteResult {
+            self.voice_notes_result.cycle_tab();
+            true
         } else if self.router.current() == ScreenRoute::VoiceNoteDetails
             && self.voice_notes.title_editing
         {
@@ -2377,6 +2410,61 @@ mod tests {
         state.back();
         assert!(!state.voice_notes.title_editing);
         assert_eq!(state.active_route(), ScreenRoute::VoiceNoteDetails);
+    }
+
+    /// The Voice Notes list with one note, the first note selected, and
+    /// optionally its AI state set.
+    fn voice_list_with_note(ai_state: Option<crate::voice_note_record::NoteState>) -> AppState {
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::VoiceNotes);
+        state.voice_notes.notes = vec![crate::voice_notes::VoiceNoteEntry {
+            file_name: "VOICE001.WAV".into(),
+            title: "Team meeting".into(),
+            recorded_at: "2026-10-02  12:04:33".into(),
+            wav_bytes: 44,
+            pcm_bytes: 0,
+            duration_seconds: 60,
+            ai_state,
+        }];
+        state.voice_notes.selected = 2;
+        state
+    }
+
+    #[test]
+    fn a_note_with_an_ai_record_opens_its_result_from_the_list() {
+        let mut state = voice_list_with_note(Some(crate::voice_note_record::NoteState::Done));
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::VoiceNoteResult);
+    }
+
+    #[test]
+    fn a_note_without_a_record_still_opens_its_details() {
+        let mut state = voice_list_with_note(None);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::VoiceNoteDetails);
+    }
+
+    #[test]
+    fn result_boot_cycles_tabs_scroll_moves_and_select_goes_back_to_the_list() {
+        use crate::voice_note_result::ResultTab;
+        let mut state = voice_list_with_note(Some(crate::voice_note_record::NoteState::Done));
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.voice_notes_result.tab, ResultTab::Summary);
+
+        assert!(state.apply_keyboard_boot_short_press());
+        assert_eq!(state.voice_notes_result.tab, ResultTab::Transcript);
+
+        state.apply(ButtonEvent::Down);
+        assert_eq!(state.voice_notes_result.scroll, 1);
+        state.apply(ButtonEvent::Up);
+        state.apply(ButtonEvent::Up);
+        assert_eq!(
+            state.voice_notes_result.scroll, 0,
+            "no scroll above the top"
+        );
+
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::VoiceNotes);
     }
 
     #[test]

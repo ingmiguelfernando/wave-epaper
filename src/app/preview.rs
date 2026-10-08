@@ -351,6 +351,18 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     list_states.voice_notes.notes = sample_ai_state_notes();
     states.push(("voice-notes-states", list_states));
 
+    // The result screen: the summary tab, then the transcript tab. The note is
+    // selected on the list row, as the device does.
+    let mut result = sample_state();
+    result.router.navigate_to(ScreenRoute::VoiceNotes);
+    result.voice_notes.notes = sample_ai_state_notes();
+    result.voice_notes.selected = 2;
+    result.router.navigate_to(ScreenRoute::VoiceNoteResult);
+    result.voice_notes_result.record = Some(sample_result_record());
+    states.push(("voice-note-summary", result.clone()));
+    result.voice_notes_result.cycle_tab();
+    states.push(("voice-note-transcript", result));
+
     let mut page = sample_state();
     open_sample_book(&mut page);
     states.push(("reader-page", page));
@@ -552,6 +564,26 @@ fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
 
 /// Notes oldest first, as the catalog scans them, so the AI hub's recent
 /// list reads newest first.
+/// A finished record in the mockup's words, with a checkbox to exercise the
+/// device text rule (`☐` becomes `•`).
+fn sample_result_record() -> crate::voice_note_record::NoteRecord {
+    crate::voice_note_record::NoteRecord {
+        state: crate::voice_note_record::NoteState::Done,
+        error: String::new(),
+        title: "Reunión de equipo: presupuesto Q4".into(),
+        language: "es".into(),
+        transcribed_by: "Groq whisper-large-v3-turbo".into(),
+        summarized_by: "OpenRouter llama-3.3-70b".into(),
+        summary: "• Se aprobó el presupuesto del Q4 con un recorte del 10 % en viajes.\n\
+• El lanzamiento pasa al 15 de noviembre.\n\
+• Ana presentará el plan de contratación el viernes.\n\
+☐ Carlos: enviar este resumen al equipo (hoy).\n\
+☐ Ana: plan de contratación (viernes)."
+            .into(),
+        transcript: "Hablamos del presupuesto del cuarto trimestre. Se aprobó con un recorte del diez por ciento en viajes. El lanzamiento pasa al quince de noviembre.".into(),
+    }
+}
+
 /// Four notes, one in each AI state, so the labels show side by side.
 fn sample_ai_state_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
     use crate::voice_note_record::NoteState;

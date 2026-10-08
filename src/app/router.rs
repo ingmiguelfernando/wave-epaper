@@ -38,6 +38,7 @@ pub enum ScreenRoute {
     CalendarDeleteConfirmation,
     VoiceNotes,
     VoiceNoteDetails,
+    VoiceNoteResult,
     VoiceNoteRecording,
     GamesTbd,
     LuaApps,
@@ -110,6 +111,7 @@ impl ScreenRoute {
             Self::CalendarDeleteConfirmation => "Delete Calendar Event",
             Self::VoiceNotes => "Voice Notes",
             Self::VoiceNoteDetails => "Voice Note",
+            Self::VoiceNoteResult => "Voice Note Result",
             Self::VoiceNoteRecording => "Record Voice Note",
             Self::GamesTbd => "TBD",
             Self::LuaApps => "SD Lua Apps",
@@ -182,6 +184,7 @@ impl ScreenRoute {
             Self::CalendarDeleteConfirmation => "calendar-delete-confirmation",
             Self::VoiceNotes => "voice-notes",
             Self::VoiceNoteDetails => "voice-note-details",
+            Self::VoiceNoteResult => "voice-note-result",
             Self::VoiceNoteRecording => "voice-note-recording",
             Self::GamesTbd => "games-tbd",
             Self::LuaApps => "lua-apps",
@@ -265,7 +268,9 @@ impl ScreenRoute {
             Self::CalendarEventDetails => Some(Self::CalendarAgenda),
             Self::CalendarEventEditor => Some(Self::CalendarAgenda),
             Self::CalendarDeleteConfirmation => Some(Self::CalendarEventDetails),
-            Self::VoiceNoteDetails | Self::VoiceNoteRecording => Some(Self::VoiceNotes),
+            Self::VoiceNoteDetails | Self::VoiceNoteResult | Self::VoiceNoteRecording => {
+                Some(Self::VoiceNotes)
+            }
             Self::GamesTbd | Self::LuaApps => Some(Self::Games),
             // The Games hub replaced the old SD catalog list.
             Self::LuaGame | Self::LuaGameError => Some(Self::Games),

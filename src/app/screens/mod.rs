@@ -73,6 +73,7 @@ pub fn render_active_screen(
         }
         ScreenRoute::VoiceNotes => voice_notes::render_voice_notes(display, state),
         ScreenRoute::VoiceNoteDetails => voice_notes::render_voice_note_details(display, state),
+        ScreenRoute::VoiceNoteResult => voice_notes::render_voice_note_result(display, state),
         ScreenRoute::VoiceNoteRecording => voice_notes::render_voice_note_recording(display, state),
         ScreenRoute::Games => games::render_games_hub(display, state),
         ScreenRoute::LuaApps => lua_game::render_lua_apps(display, state),
