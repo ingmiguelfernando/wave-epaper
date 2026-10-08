@@ -3,7 +3,13 @@
 
 use core::convert::Infallible;
 
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::Point};
+
+use crate::app::typography::{Text, UiTextRole};
 use crate::orientation::OrientedFrameBuffer;
+
+/// Left inset of the group labels, matching the list rows' title inset.
+const LIST_TEXT_LEFT: i32 = 34;
 
 use super::category::item_count_text;
 use crate::{
@@ -14,8 +20,9 @@ use crate::{
         router::ScreenRoute,
         state::AppState,
         widgets::{
-            bottom_bar::{draw_bottom_bar, OPEN_HINTS},
+            bottom_bar::{draw_bottom_bar, CHANGE_HINTS, CHOOSE_HINTS, OPEN_HINTS},
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
+            option_list::draw_option_list,
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
@@ -312,28 +319,70 @@ mod tests {
     }
 }
 
-/// Settings › AI, placeholder: the status bar and the provider row. The
-/// provider groups, option lists and their bar come in the next D32 step.
+/// Settings › AI as the mockup draws it: three groups of rows, the selected
+/// row inverted, and an open list over the row it belongs to.
 pub fn render_ai_settings(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
     let preferences = state.display;
-    draw_status_bar(display, preferences, "AI")?;
-    let value = state
-        .ai
-        .as_ref()
-        .map_or("Not set up", |config| config.settings_value());
-    draw_list_row(
-        display,
-        preferences,
-        STATUS_BAR_HEIGHT + 24,
-        ListRow {
-            title: "Transcription and summary",
-            subtitle: "XiaoZhi, transcription, summary",
-            value,
-            selected: true,
-        },
-    )?;
-    draw_bottom_bar(display, preferences, &OPEN_HINTS)
+    draw_status_bar(display, preferences, "Settings \u{203a} AI")?;
+    let config = state.ai.clone().unwrap_or_default();
+    let cursor = state.ai_settings_ui;
+    let rows: [(&str, String); 8] = [
+        ("Provider", provider_or_empty(&config.transcription_url)),
+        ("Model", config.transcription_model.clone()),
+        ("Language", config.language.label().into()),
+        ("Provider", provider_or_empty(&config.summary_url)),
+        ("Model", config.summary_model.clone()),
+        ("Style", config.style.label().into()),
+        ("Process", config.process.label().into()),
+        ("API keys", "Not set".into()),
+    ];
+    let groups = [
+        (0, "Transcription \u{00b7} /audio/transcriptions"),
+        (3, "Summary \u{00b7} /chat/completions"),
+        (6, "General"),
+    ];
+    if let (Some(highlighted), Some(row)) = (cursor.picker, cursor.list_row()) {
+        // An open list replaces the rows, as the Weather list does.
+        let (options, current) = config.options(row);
+        let heading = preferences.heading_style();
+        let title = rows[cursor.selected].0;
+        Text::new(title, Point::new(LIST_TEXT_LEFT, 160), heading).draw(display)?;
+        draw_option_list(display, preferences, 184, &options, current, highlighted)?;
+        return draw_bottom_bar(display, preferences, &CHOOSE_HINTS);
+    }
+    let mut top = STATUS_BAR_HEIGHT + 16;
+    for (index, (title, value)) in rows.iter().enumerate() {
+        if let Some((_, label)) = groups.iter().find(|(first, _)| *first == index) {
+            // Each group's label takes a short band above its first row.
+            let style = preferences.text_style(UiTextRole::Detail, BinaryColor::On);
+            let baseline = top + style.cap_height();
+            Text::new(label, Point::new(LIST_TEXT_LEFT, baseline), style).draw(display)?;
+            top += LIST_ROW_HEIGHT / 3;
+        }
+        draw_list_row(
+            display,
+            preferences,
+            top,
+            ListRow {
+                title,
+                subtitle: "",
+                value,
+                selected: index == cursor.selected,
+            },
+        )?;
+        top += LIST_ROW_HEIGHT;
+    }
+    draw_bottom_bar(display, preferences, &CHANGE_HINTS)
+}
+
+/// The provider name of a URL, or `Not set` when the URL is empty.
+fn provider_or_empty(url: &str) -> String {
+    if url.is_empty() {
+        "Not set".into()
+    } else {
+        crate::ai_config::provider_name(url)
+    }
 }

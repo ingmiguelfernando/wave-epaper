@@ -87,6 +87,33 @@ impl WeatherSettingsUiState {
     }
 }
 
+/// Settings › AI cursor over its rows, and the highlighted choice of an open
+/// list. Rows without a list (provider, model, keys) only move the cursor.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AiSettingsUiState {
+    pub selected: usize,
+    pub picker: Option<usize>,
+}
+
+/// The Settings › AI rows in mockup order.
+pub const AI_SETTINGS_ROWS: usize = 8;
+
+impl AiSettingsUiState {
+    /// The list row under the cursor, if that row opens one.
+    #[must_use]
+    pub fn list_row(self) -> Option<crate::ai_config::AiRow> {
+        use crate::ai_config::AiRow;
+        // Rows: 0 provider, 1 model, 2 language, 3 provider, 4 model, 5 style,
+        // 6 process, 7 API keys.
+        match self.selected {
+            2 => Some(AiRow::Language),
+            5 => Some(AiRow::Style),
+            6 => Some(AiRow::Process),
+            _ => None,
+        }
+    }
+}
+
 // Not `Eq`: the weather location is a pair of `f64` coordinates.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppState {
@@ -125,6 +152,10 @@ pub struct AppState {
     /// AI.TXT; `None` until the file loads, and then `Not set up` when it is missing.
     pub ai: Option<crate::ai_config::AiConfig>,
     pub weather_settings_ui: WeatherSettingsUiState,
+    /// Settings › AI cursor and open list.
+    pub ai_settings_ui: AiSettingsUiState,
+    /// Set when a choice changes AI.TXT; `main.rs` saves it once.
+    ai_changed: bool,
     /// SD-backed alarm schedules and active-alarm UI snapshot.
     pub alarms: AlarmSnapshot,
     /// Playback-only ES8311 diagnostics snapshot.
@@ -208,6 +239,8 @@ impl Default for AppState {
             weather_config: None,
             ai: None,
             weather_settings_ui: WeatherSettingsUiState::default(),
+            ai_settings_ui: AiSettingsUiState::default(),
+            ai_changed: false,
             alarms: AlarmSnapshot::default(),
             audio: AudioSnapshot::default(),
             audio_action_selected: 0,
@@ -284,6 +317,8 @@ impl AppState {
             self.apply_sleep_screen(event);
         } else if route == ScreenRoute::WeatherSettings {
             self.apply_weather_settings(event);
+        } else if route == ScreenRoute::AiSettings {
+            self.apply_ai_settings(event);
         } else if route == ScreenRoute::PowerKeyMenu {
             self.apply_power_key_menu(event);
         } else if route == ScreenRoute::Calendar {
@@ -1390,6 +1425,60 @@ impl AppState {
 
     /// Rows of Settings › Weather, each opening a list of its values.
     /// Without WEATHER.TXT the screen only explains how to add it.
+    /// Settings › AI: ▲▼ move the cursor, or the open list; ● opens a list
+    /// on the three choice rows and saves only a value that really changed.
+    fn apply_ai_settings(&mut self, event: ButtonEvent) {
+        let config = self.ai.clone().unwrap_or_default();
+        let ui = self.ai_settings_ui;
+        if let (Some(highlighted), Some(row)) = (ui.picker, ui.list_row()) {
+            let (options, _) = config.options(row);
+            let count = options.len();
+            match event {
+                ButtonEvent::Up => {
+                    self.ai_settings_ui.picker = Some((highlighted + count - 1) % count);
+                }
+                ButtonEvent::Down => {
+                    self.ai_settings_ui.picker = Some((highlighted + 1) % count);
+                }
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    self.ai_settings_ui.picker = None;
+                    self.choose_ai_setting(row, highlighted);
+                }
+            }
+            return;
+        }
+        match event {
+            ButtonEvent::Up => {
+                self.ai_settings_ui.selected =
+                    (ui.selected + AI_SETTINGS_ROWS - 1) % AI_SETTINGS_ROWS;
+            }
+            ButtonEvent::Down => {
+                self.ai_settings_ui.selected = (ui.selected + 1) % AI_SETTINGS_ROWS;
+            }
+            ButtonEvent::Select => {
+                self.note_select_press();
+                if let Some(row) = ui.list_row() {
+                    let (_, current) = config.options(row);
+                    self.ai_settings_ui.picker = Some(current);
+                }
+            }
+        }
+    }
+
+    fn choose_ai_setting(&mut self, row: crate::ai_config::AiRow, index: usize) {
+        let mut config = self.ai.clone().unwrap_or_default();
+        if config.choose(row, index) {
+            self.ai = Some(config);
+            self.ai_changed = true;
+        }
+    }
+
+    /// Whether a choice changed AI.TXT since the last take; reading it clears it.
+    pub fn take_ai_changed(&mut self) -> bool {
+        std::mem::take(&mut self.ai_changed)
+    }
+
     fn apply_weather_settings(&mut self, event: ButtonEvent) {
         let Some(config) = self.weather_config.as_ref() else {
             return;
@@ -2015,6 +2104,53 @@ mod tests {
         assert_eq!(state.active_route(), ScreenRoute::AiSettings);
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
+
+    /// Home › Settings, then down to the AI row (the fourth) and ●.
+    fn open_ai_settings() -> AppState {
+        let mut state = open_from_home(ScreenRoute::Settings);
+        for _ in 0..3 {
+            state.apply(ButtonEvent::Down);
+        }
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::AiSettings);
+        state
+    }
+
+    #[test]
+    fn the_ai_list_opens_at_the_value_in_use_and_saves_only_a_change() {
+        use crate::ai_config::AiConfig;
+
+        let mut state = open_ai_settings();
+        state.ai = Some(AiConfig::default());
+        // Row 2 is Language; its list opens on Auto, the value in use.
+        state.ai_settings_ui.selected = 2;
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.ai_settings_ui.picker, Some(0));
+        state.apply(ButtonEvent::Select);
+        assert!(!state.take_ai_changed(), "the value in use saves nothing");
+
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Down); // Spanish
+        state.apply(ButtonEvent::Select);
+        assert!(state.take_ai_changed(), "a new language saves once");
+        assert!(!state.take_ai_changed(), "the flag is taken");
+        assert_eq!(
+            state.ai.as_ref().map(|c| c.language),
+            Some(crate::ai_config::AiLanguage::Spanish)
+        );
+    }
+
+    #[test]
+    fn the_ai_cursor_wraps_over_all_eight_rows() {
+        let mut state = open_ai_settings();
+        state.apply(ButtonEvent::Up);
+        assert_eq!(
+            state.ai_settings_ui.selected, 7,
+            "up from the first row wraps"
+        );
+        state.apply(ButtonEvent::Down);
+        assert_eq!(state.ai_settings_ui.selected, 0);
     }
 
     #[test]

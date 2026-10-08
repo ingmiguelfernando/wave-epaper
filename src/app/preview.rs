@@ -432,7 +432,32 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     states.push(("bible-reading-large", bible_preview_state_large()));
     states.push(("bible-menu", bible_preview_state(ScreenRoute::BibleMenu, 1)));
     states.push(("bible-missing", AppState::default()));
+
+    let mut ai = sample_state();
+    ai.ai = Some(sample_ai_config());
+    ai.router.navigate_to(ScreenRoute::AiSettings);
+    states.push(("settings-ai", ai));
+
+    let mut ai_picker = sample_state();
+    ai_picker.ai = Some(sample_ai_config());
+    ai_picker.ai_settings_ui.selected = 2;
+    ai_picker.ai_settings_ui.picker = Some(1);
+    ai_picker.router.navigate_to(ScreenRoute::AiSettings);
+    states.push(("settings-ai-picker", ai_picker));
     states
+}
+
+/// A configured AI setup: Groq for transcription, OpenRouter for summaries.
+fn sample_ai_config() -> crate::ai_config::AiConfig {
+    crate::ai_config::AiConfig {
+        transcription_url: "https://api.groq.com/openai/v1".into(),
+        transcription_model: "whisper-large-v3-turbo".into(),
+        language: crate::ai_config::AiLanguage::Auto,
+        summary_url: "https://openrouter.ai/api/v1".into(),
+        summary_model: "llama-3.3-70b-instruct".into(),
+        style: crate::ai_config::SummaryStyle::BulletsTodos,
+        process: crate::ai_config::AiProcess::Online,
+    }
 }
 
 /// A Bible state over a temp card holding Genesis 1, opened on `route`.

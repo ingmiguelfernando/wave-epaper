@@ -217,6 +217,18 @@ impl AiConfig {
         }
     }
 
+    /// Write through `sd_file`, creating the folder first: a card may not have
+    /// `/RUSTMIX/` yet.
+    pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        crate::sd_file::replace(path, &self.serialized())
+            .with_context(|| format!("write AI settings {}", path.display()))
+    }
+
     #[must_use]
     pub fn serialized(&self) -> String {
         format!(
@@ -232,9 +244,110 @@ impl AiConfig {
     }
 }
 
+/// The rows of Settings › AI that open an option list.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AiRow {
+    Language,
+    Style,
+    Process,
+}
+
+impl AiConfig {
+    /// The labels of a row's list and the index of the value in use.
+    #[must_use]
+    pub fn options(&self, row: AiRow) -> (Vec<&'static str>, usize) {
+        match row {
+            AiRow::Language => option_marks(&AiLanguage::ALL, self.language, AiLanguage::label),
+            AiRow::Style => option_marks(&SummaryStyle::ALL, self.style, SummaryStyle::label),
+            AiRow::Process => option_marks(&AiProcess::ALL, self.process, AiProcess::label),
+        }
+    }
+
+    /// Apply the chosen index of a row's list. Returns whether the value
+    /// changed; choosing the value in use changes nothing and saves nothing.
+    pub fn choose(&mut self, row: AiRow, index: usize) -> bool {
+        let before = self.clone();
+        match row {
+            AiRow::Language => {
+                if let Some(&value) = AiLanguage::ALL.get(index) {
+                    self.language = value;
+                }
+            }
+            AiRow::Style => {
+                if let Some(&value) = SummaryStyle::ALL.get(index) {
+                    self.style = value;
+                }
+            }
+            AiRow::Process => {
+                if let Some(&value) = AiProcess::ALL.get(index) {
+                    self.process = value;
+                }
+            }
+        }
+        *self != before
+    }
+}
+
+/// Labels of a list and the position of the value in use, defaulting to 0.
+fn option_marks<T: Copy + PartialEq>(
+    all: &[T],
+    current: T,
+    label: fn(T) -> &'static str,
+) -> (Vec<&'static str>, usize) {
+    (
+        all.iter().copied().map(label).collect(),
+        all.iter().position(|&value| value == current).unwrap_or(0),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn choosing_the_value_in_use_changes_nothing() {
+        let mut config = AiConfig::default();
+        let (labels, current) = config.options(AiRow::Style);
+        assert_eq!(labels.len(), 3);
+        assert!(
+            !config.choose(AiRow::Style, current),
+            "the value in use is kept"
+        );
+        assert_eq!(config.style, SummaryStyle::BulletsTodos);
+    }
+
+    #[test]
+    fn choosing_another_value_reports_the_change() {
+        let mut config = AiConfig::default();
+        assert!(config.choose(AiRow::Process, 0), "Manual to Online changes");
+        assert_eq!(config.process, AiProcess::Online);
+        assert!(config.choose(AiRow::Language, 1));
+        assert_eq!(config.language, AiLanguage::Spanish);
+    }
+
+    #[test]
+    fn an_out_of_range_index_changes_nothing() {
+        let mut config = AiConfig::default();
+        assert!(!config.choose(AiRow::Language, 99));
+        assert_eq!(config.language, AiLanguage::Auto);
+    }
+
+    #[test]
+    fn a_save_creates_its_folder_and_loads_back_exactly() {
+        let root = std::env::temp_dir().join(format!("wave-ai-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // The card may not have /RUSTMIX/ yet: the save must create the folder.
+        let path = root.join("RUSTMIX").join("AI.TXT");
+        let config = AiConfig {
+            transcription_url: "https://api.groq.com/openai/v1".into(),
+            transcription_model: "whisper-large-v3-turbo".into(),
+            language: AiLanguage::English,
+            ..AiConfig::default()
+        };
+        config.save_to_path(&path).unwrap();
+        assert_eq!(AiConfig::load_from_path(&path).unwrap(), Some(config));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_missing_file_means_not_set_up() {

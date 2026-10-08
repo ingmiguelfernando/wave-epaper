@@ -34,6 +34,7 @@ mod firmware {
     };
     use log::{info, warn};
     use waveshare_epd397_rust_app::{
+        ai_config::{AiConfig, AI_CONFIG_PATH},
         alarm::{AlarmEngine, AlarmSnapshot, AlarmUiOutcome, ALARMS_CONFIG_PATH},
         app::{
             display::{DisplayPreferences, DISPLAY_CONFIG_PATH},
@@ -413,6 +414,11 @@ mod firmware {
                 Err(error) => info!("rustmix-wave=reading-stats status=new error={error:#}"),
             }
             state.bible = BibleUiState::with_root(BIBLE_ROOT);
+            // A missing AI.TXT is not an error: the row reads Not set up.
+            match AiConfig::load_from_path(AI_CONFIG_PATH) {
+                Ok(config) => state.ai = config,
+                Err(error) => info!("rustmix-wave=ai-settings status=invalid error={error:#}"),
+            }
             info!(
                 "rustmix-wave=game-records status=ready tetris-zen={} sudoku-saved={}",
                 state.lua_runtime.records.tetris_zen,
@@ -1955,6 +1961,18 @@ mod firmware {
                     voice_playback.is_some(),
                 );
                 log_reader_persistence_event(&mut state);
+                if state.take_ai_changed() {
+                    if let Some(config) = state.ai.as_ref() {
+                        match config.save_to_path(AI_CONFIG_PATH) {
+                            Ok(()) => {
+                                info!("rustmix-wave=ai-settings status=saved path={AI_CONFIG_PATH}")
+                            }
+                            Err(error) => {
+                                warn!("rustmix-wave=ai-settings status=save-failed error={error:#}")
+                            }
+                        }
+                    }
+                }
                 if state.display != previous_display {
                     match state.display.save_to_path(DISPLAY_CONFIG_PATH) {
                         Ok(()) => info!(
