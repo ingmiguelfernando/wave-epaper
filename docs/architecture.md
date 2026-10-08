@@ -9,8 +9,8 @@ work are in [ROADMAP.md](ROADMAP.md).
 |---|---|
 | Module | ESP32-S3-WROOM-1-N16R8: 16 MB flash, 8 MB octal PSRAM |
 | Display | 3.97" 800 × 480 1-bit e-paper on SPI; BUSY on GPIO3; panel rail is AXP2101 ALDO3 |
-| Keys | BOOT on GPIO0; wheel Up GPIO4, Select GPIO5, Down GPIO6 (all active low); Power key on the AXP2101 |
-| PMIC | AXP2101 on I2C; IRQ on GPIO38 (only Power-key short and long press interrupts are enabled) |
+| Keys | BOOT on GPIO0; wheel Up GPIO4, Select GPIO5, Down GPIO6 (all active low); Power key on GPIO1 (`PWR_OUT`, high while held, through the board's BSS138 inverter) and on the AXP2101 key input |
+| PMIC | AXP2101 on I2C; IRQ on GPIO38 (only Power-key short and long press interrupts are enabled; a backup until GPIO1 shows a press) |
 | RTC | PCF85063; alarm interrupt on GPIO45 (active low) |
 | Sensors | SHTC3 temperature and humidity, QMI8658 IMU |
 | Audio | ES8311 codec on I2S0 (speaker and microphone) |

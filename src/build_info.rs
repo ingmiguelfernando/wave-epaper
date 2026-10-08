@@ -11,7 +11,7 @@ pub const PRODUCT_SLUG: &str = "wave-epd397";
 /// Cargo semantic version for the current firmware package.
 pub const FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Stable milestone identifier for acceptance logs and diagnostics.
-pub const UI_SHELL_MILESTONE: &str = "power-key-photos";
+pub const UI_SHELL_MILESTONE: &str = "power-key-line";
 
 #[cfg(test)]
 mod tests {
@@ -22,6 +22,6 @@ mod tests {
         assert_eq!(PRODUCT_NAME, "Wave / EPD397");
         assert_eq!(PRODUCT_SLUG, "wave-epd397");
         assert_eq!(FIRMWARE_VERSION.split('.').count(), 3);
-        assert_eq!(UI_SHELL_MILESTONE, "power-key-photos");
+        assert_eq!(UI_SHELL_MILESTONE, "power-key-line");
     }
 }

@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.9.4: what is implemented, not the future
+This guide describes firmware v0.9.6: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -370,7 +370,8 @@ are in [SD-card setup](SD_CARD_SETUP.md#sleep-images).
 
 If Power does nothing, Settings › System › Device Info shows the Power key
 status and its last error on page 3, and why the device last restarted on
-page 1.
+page 1. The serial log shows `power-key-gpio down=true` each time the key goes
+down.
 
 Sleep mode retains the previous route, stops Wi-Fi/transfer/weather activity,
 turns off the IMU, suspends idle audio, and deep-sleeps the panel with its

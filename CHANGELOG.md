@@ -3,6 +3,33 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.6 — Power key read on its own line
+
+- The Power key is now read on GPIO1, the board's `PWR_OUT` line, which goes
+  high while the key is held. Until now only the PMIC's key interrupt was
+  used, and on the test board it reported no presses, so Power did nothing.
+  A tap opens the maintenance menu, holding it for a second starts sleep, and
+  a press wakes the device.
+- The PMIC key interrupt stays as a backup until GPIO1 shows its first press.
+- A BOOT press made while Power is held is ignored, so Power never acts as
+  Back.
+- The serial log shows `power-key-gpio down=true` and `down=false` for each
+  press, and the source of every Power event: `gpio1`, `axp2101-pek` or
+  `auto-sleep`.
+
+## v0.9.5 — Crisper photos, sleep on USB, memory for games
+
+- Photos, thumbnails and sleep BMPs use Atkinson dithering: whites and
+  blacks stay clean instead of filling with dots. Every photo is prepared
+  again once after the update.
+- With USB power, sleep mode no longer puts the CPU in light sleep, so the USB
+  serial console stays connected while the sleep picture shows.
+- Weather requests use a 1 KB transmit buffer, so the long request line no
+  longer logs `HTTP_HEADER: Buffer length is small to fit all the headers`.
+- Opening a game waits up to 3 s for free internal memory while a photo is
+  still being prepared; if memory stays short, the message says to try
+  again. TLS buffers moved to PSRAM.
+
 ## v0.9.4 — Power key and Photos folder fixes
 
 - A short Power press after a minute without keys opened the menu on the

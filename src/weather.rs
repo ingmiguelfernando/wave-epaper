@@ -863,6 +863,8 @@ pub mod espidf {
         let http_config = HttpConfiguration {
             crt_bundle_attach: Some(sys::esp_crt_bundle_attach),
             timeout: Some(Duration::from_secs(WEATHER_HTTP_TIMEOUT_SECONDS)),
+            // The request line alone passes the 512-byte default.
+            buffer_size_tx: Some(1024),
             ..Default::default()
         };
         let connection = EspHttpConnection::new(&http_config).map_err(|error| {

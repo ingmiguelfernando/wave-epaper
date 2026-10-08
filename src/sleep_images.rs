@@ -15,7 +15,7 @@ use anyhow::{anyhow, bail, Result};
 use embedded_graphics::prelude::Point;
 
 use crate::{
-    dither::{floyd_steinberg, luma},
+    dither::{atkinson, luma},
     framebuffer::{FrameBuffer, FRAMEBUFFER_SIZE, HEIGHT, ROW_BYTES, WIDTH},
     storage::SD_MOUNT_POINT,
 };
@@ -357,7 +357,7 @@ pub fn decode_sleep_bmp(bytes: &[u8]) -> Result<FrameBuffer> {
     }
 
     let mut frame = FrameBuffer::new_white();
-    floyd_steinberg(
+    atkinson(
         layout.width,
         layout.height,
         |x, y| layout.grey(layout.row(bytes, y), x),

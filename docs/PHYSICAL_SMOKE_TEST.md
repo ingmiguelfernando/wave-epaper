@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.9.4), not an upstream v1.0.0 marker.
+	expected release version (currently v0.9.6), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Bible and XiaoZhi remain SOON. Reading Stats opens its screen.
 - [ ] Reading Stats: read a page or two, leave the Reader, reopen the screen —
@@ -91,6 +91,9 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Leave a screen alone for over a minute (the panel powers down), then
 	press Power briefly: the menu still appears. Device Info page 3 shows
 	`Power key: Ready`.
+- [ ] With the serial console, tap Power: the log shows
+	`power-key-gpio down=true`, `down=false`, then
+	`power-key event=short-press source=gpio1`, and no `boot-button` line.
 - [ ] Hold Power from a Reader page for about a second, release and wait for
 	the guard: sleep picture appears, no immediate false wake, network/portal
 	stop.

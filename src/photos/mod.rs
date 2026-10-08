@@ -18,6 +18,8 @@ pub const PHOTO_CACHE_DIRECTORY: &str = "/sdcard/RUSTMIX/CACHE/PHOTOS";
 pub const STARRED_PATH: &str = "/sdcard/RUSTMIX/STARRED.TXT";
 /// Most photos listed; the newest are kept.
 pub const MAX_PHOTOS: usize = 500;
+/// Part of every photo key: changing it prepares all photos again.
+const PREPARED_VERSION: u32 = 2;
 /// Directory entries examined in one scan.
 const MAX_SCANNED_ENTRIES: usize = 2_000;
 const MONTHS: [&str; 12] = [
@@ -37,7 +39,7 @@ impl PhotoEntry {
     /// Names this version of the file, so a replaced photo is prepared again.
     #[must_use]
     pub fn key(&self) -> u32 {
-        let mut hash = 0x811C_9DC5_u32;
+        let mut hash = 0x811C_9DC5_u32 ^ PREPARED_VERSION;
         for byte in format!("{}|{}|{}", self.name, self.bytes, self.modified).bytes() {
             hash = (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193);
         }

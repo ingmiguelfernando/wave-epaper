@@ -9,7 +9,7 @@ use jpeg_decoder::{CodingProcess, Decoder, PixelFormat};
 
 use super::exif::Orientation;
 use crate::{
-    dither::{floyd_steinberg, luma},
+    dither::{atkinson, luma},
     framebuffer::FrameBuffer,
 };
 
@@ -170,7 +170,7 @@ impl GreyPhoto {
     pub fn screen_frame(&self, fit: PhotoFit) -> FrameBuffer {
         let grey = self.resample(SCREEN_WIDTH, SCREEN_HEIGHT, fit);
         let mut frame = FrameBuffer::new_white();
-        floyd_steinberg(
+        atkinson(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
             |x, y| self.stretched(grey[y * SCREEN_WIDTH + x]),
@@ -183,7 +183,7 @@ impl GreyPhoto {
     pub fn thumbnail(&self) -> Thumbnail {
         let grey = self.resample(THUMB_WIDTH, THUMB_HEIGHT, PhotoFit::Fill);
         let mut bits = vec![0xFF_u8; THUMB_ROW_BYTES * THUMB_HEIGHT];
-        floyd_steinberg(
+        atkinson(
             THUMB_WIDTH,
             THUMB_HEIGHT,
             |x, y| self.stretched(grey[y * THUMB_WIDTH + x]),

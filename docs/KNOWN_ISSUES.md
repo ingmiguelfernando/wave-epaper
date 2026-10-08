@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.9.4. This is not a list of promised mockup features. See
+Firmware v0.9.6. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -15,8 +15,10 @@ rain chances). Do not infer a battery-reading failure from the glyph.
 
 On battery, idle light sleep can make USB serial appear and disappear.
 Connect a USB-C **data** cable with USB power and press a key once so the
-firmware detects VBUS and stops idle CPU light sleep. If the port still does
-not appear, hold BOOT while power-cycling, then release it for download mode.
+firmware detects VBUS and stops idle CPU light sleep. Since v0.9.5 sleep mode
+also stays out of light sleep while USB power is present, so the console stays
+connected while the sleep picture shows. If the port still does not appear,
+hold BOOT while power-cycling, then release it for download mode.
 Use the merged Wave `.bin` at `0x0`, as described in
 [README](../README.md#flash-the-board). An ELF requires the ELF-aware
 `espflash flash` command; do not flash an ELF at a raw address.
@@ -41,10 +43,11 @@ SD card, so a reboot starts without one.
 ## MCU deep sleep
 
 The panel deep-sleeps with its rail off, but the CPU uses light sleep in
-bounded intervals. Full MCU deep sleep is not implemented. GPIO38 Power and
-GPIO45 RTC-alarm wake must be preserved; the mockup's deep-sleep current is
-not a measured firmware result. D5 clock/weather layouts are drawing-only,
-not selectable sleep modes or scheduled refreshes.
+bounded intervals. Full MCU deep sleep is not implemented. Power-key wake on
+GPIO1 (also high during an RTC alarm) and GPIO38, and RTC-alarm wake on
+GPIO45 must be preserved; the mockup's deep-sleep current is not a measured
+firmware result. D5 clock/weather layouts are drawing-only, not selectable
+sleep modes or scheduled refreshes.
 
 ## EPUB scope
 

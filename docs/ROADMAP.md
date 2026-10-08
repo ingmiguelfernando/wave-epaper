@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-08, firmware v0.9.4.
+Last updated: 2026-10-08, firmware v0.9.6.
 
 ## Status
 
@@ -33,6 +33,8 @@ Last updated: 2026-10-08, firmware v0.9.4.
 | Shared bottom bar (key caps) on every screen, games included | 0.9.2 | 4574cfc | Done, waiting for device test |
 | Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | 0.9.3 | PR #4 | Done, waiting for device test |
 | Fixes: Power key menu on a sleeping panel, key retries, 1 s hold, Device Info diagnostics, photos in `/RUSTMIX/PHOTOS` | 0.9.4 | fdb1917 | Done, waiting for device test |
+| Fixes: Atkinson photos, no sleep-mode light sleep on USB, weather request buffer, worker memory wait | 0.9.5 | 83d0313 | Done, waiting for device test |
+| Fix: Power key read on GPIO1 (`PWR_OUT`), PMIC interrupt as backup | 0.9.6 | e0fc071 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -57,7 +59,9 @@ sleeps.
 - EXIF orientation (tag 0x0112) is applied, so phone photos come out upright.
   Values 1, 3, 6 and 8 rotate; mirrored values use the nearest rotation.
 - Cache: `/RUSTMIX/CACHE/PHOTOS/<key>.PIC`, one file per photo.
-  - `key`: 8 hex digits of FNV-1a 32 over `name|size|mtime`.
+  - `key`: 8 hex digits of FNV-1a 32 over `name|size|mtime`, with the offset
+    basis XORed with the pipeline version (2 since v0.9.5), so a new pipeline
+    prepares every photo again.
   - Content: magic `WPC1`, version, source width and height after rotation, a
     144 × 216 thumbnail (1 bit, 18 bytes per row), then two 48,000-byte frames
     in native panel layout, "fill" and "whole".
@@ -75,9 +79,10 @@ sleeps.
 - Decode at the smallest DCT scale (1/1, 1/2, 1/4, 1/8) that still covers the
   target size. A 12 MP photo decodes at 1/4, about 1008 × 756 RGB, roughly
   3.5 MB of PSRAM at the peak. A scaled decode over 4 MB is refused.
-- RGB to grey (77/150/29 weights), area-average resampling to each target,
-  Floyd–Steinberg dithering. This is the same dithering as `sleep_images.rs`;
-  share the code.
+- RGB to grey (77/150/29 weights), area-average resampling to each target, a
+  1st to 99th percentile contrast stretch, then Atkinson dithering in
+  serpentine order (`dither.rs`, shared with `sleep_images.rs`). Floyd–Steinberg
+  until v0.9.4 looked grainy on the panel.
 - Decoding runs on a background worker thread (`photos/worker.rs`, 48 KB
   stack) pinned to core 1, so the main loop on core 0 keeps reading the keys.
   It receives "photo ready" messages and redraws the visible page. Light sleep
@@ -330,9 +335,9 @@ view, the routes and the wiring; save reading stats in batches
   200 ms. `buttons.rs` has to report the press before the release, and the
   loop has to merge repeats while a refresh runs.
 - **Deeper sleep.** The mockup's 8 µA needs deep sleep in sleep mode. Deep
-  sleep can only wake from RTC GPIOs (0 to 21), so BOOT and the wheel could wake
-  it but the Power key (GPIO38) and the RTC alarm (GPIO45) could not. Needs
-  research before any change.
+  sleep can only wake from RTC GPIOs (0 to 21). BOOT and the wheel qualify,
+  and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
+  also drives high. Needs research before any change.
 - The `%` sign is broken in the Inter Standard Detail strike (12 px). Task D6
   found no `fonts.toml` setting that fixes it alone; a fix needs a per-glyph
   override in the generator. Until then, show percentages in Body size.
