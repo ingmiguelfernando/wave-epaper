@@ -1134,6 +1134,19 @@ impl AppState {
 
     /// Bible keys: picker, chapter grid and reading view. The place is saved
     /// when the view closes, never per page.
+    /// BOOT short press stars the selected photo in the gallery and viewer.
+    pub fn apply_photos_boot_short_press(&mut self) -> bool {
+        let viewer = &self.photos.viewer;
+        let viewer_idle = viewer.action.is_none() && !viewer.confirm_delete;
+        match self.router.current() {
+            ScreenRoute::Photos => {}
+            ScreenRoute::PhotoViewer if viewer_idle => {}
+            _ => return false,
+        }
+        self.photos.toggle_star();
+        true
+    }
+
     fn apply_bible(&mut self, route: ScreenRoute, event: ButtonEvent) {
         if event == ButtonEvent::Select {
             self.note_select_press();
