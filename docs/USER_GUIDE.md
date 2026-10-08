@@ -39,7 +39,7 @@ Select opens the highlighted one.
 |---|---|
 | Photos | Gallery of the JPEG photos in `/RUSTMIX/PHOTOS`; see [Photos](#photos) |
 | Library | Continue Reading, Books, Bookmarks |
-| Bible | SOON placeholder |
+| Bible | Offline reader in Spanish; opens at the last place, or the book picker on first use. Menu offers `Ir a libro` and `Ir a capítulo`; the verse and translation options are not built yet |
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |

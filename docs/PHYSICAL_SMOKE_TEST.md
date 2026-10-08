@@ -23,7 +23,11 @@ before tests; never remove the card while writes are active.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
 	expected release version (currently v0.9.7), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
-	Bible and XiaoZhi remain SOON. Reading Stats opens its screen.
+	XiaoZhi remains SOON. Reading Stats opens its screen.
+- [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
+	picker first; choose a book and chapter, page with ▲▼ across a chapter
+	boundary, power-cycle, and Home › Bible reopens the same page. Without a
+	card it shows the Spanish missing view.
 - [ ] Reading Stats: read a page or two, leave the Reader, reopen the screen —
 	today's minutes and pages grow; the Home row shows `N-day streak` from
 	the second day above five minutes; the Continue card shows

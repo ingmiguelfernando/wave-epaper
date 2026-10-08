@@ -349,15 +349,17 @@ the sample books; the layout fits at every Reader and UI size.
 `bible-reading-large`, `bible-books`, `bible-chapters`, `bible-menu`,
 `bible-missing`.
 
-**Status:** partial on `side-tasks-6`. Done: place file `STATE.TXT` through
-`sd_file` (`bible_place.rs`), paging model (`bible_reader.rs`), Bible state
-with an empty-root guard (`bible_state.rs`), five Bible sub-routes, Spanish
-picker texts and section names, the Spanish no-Bible view, and the SOON badge
-gone from Home's row. Checked on the script's real output of RVR1960 (an
-ignored test; set `BIBLE_FOLDER`). Open: the reading view (the route still
-shows the picker), the Spanish thumb index (tabs still read `PEN`, `HIS`),
-Home routing and hold-BOOT walk-back, the menu, the place save in `main.rs`,
-previews, User Guide and smoke test. Device check after completion.
+**Status:** done on `side-tasks-6`, except two menu options. Built: the
+reading view (header, title, verses in the Reader's body style, wrapped to
+the width, the page indicator right-aligned), the Spanish thumb index from
+each section's first book, Home routing (saved place, else picker, else the
+missing view), paging across chapters, hold-BOOT walk-back, short BOOT to the
+chapter grid, the reading menu, the place saved on close and before sleep,
+and six previews. `Versículo del día` and `Traducción` are listed in the
+menu but only close it for now. Deviation: verse text wraps by words, not by
+Reader hyphenation. Checked: host suite green with no warnings; firmware
+green on the branch head (see the pull request). Device checks: the smoke-test Bible steps, and that a verse's
+first line starts after its number on the panel.
 
 ### D31: Tetris Classic
 
