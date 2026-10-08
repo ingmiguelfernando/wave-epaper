@@ -13,6 +13,7 @@ use crate::{
         records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
         sudoku_save::SudokuSave,
+        tetris::TetrisMode,
     },
 };
 
@@ -174,7 +175,14 @@ impl LuaRuntimeUiState {
     /// Hand saved state to a freshly opened game before its first frame.
     fn prepare_session(&self, session: &mut LuaAppSession) -> Result<(), String> {
         match &mut session.event_bridge {
-            LuaEventBridge::Tetris(app) => app.set_best(self.records.tetris_zen),
+            LuaEventBridge::Tetris(app) => app.set_best(match app.game().mode() {
+                TetrisMode::Zen => self.records.tetris_zen,
+                TetrisMode::Classic => self.records.tetris_classic,
+            }),
+            LuaEventBridge::TetrisStart(start) => {
+                start.set_bests(self.records.tetris_zen, self.records.tetris_classic);
+                start.render(&mut session.canvas)?;
+            }
             LuaEventBridge::Sudoku(game) => {
                 game.prepare(self.sudoku_save, self.records);
                 // Redraw, so the start list shows the Continue row.
@@ -316,7 +324,11 @@ impl LuaRuntimeUiState {
             match &session.event_bridge {
                 LuaEventBridge::Tetris(app) => {
                     // The changed flag makes main.rs save once, not per piece.
-                    self.records_changed |= self.records.observe_tetris_zen(app.best());
+                    // Each mode keeps its own best.
+                    self.records_changed |= match app.game().mode() {
+                        TetrisMode::Zen => self.records.observe_tetris_zen(app.best()),
+                        TetrisMode::Classic => self.records.observe_tetris_classic(app.best()),
+                    };
                 }
                 LuaEventBridge::Sudoku(game) => self.close_sudoku(game),
                 _ => {}
@@ -436,6 +448,37 @@ mod tests {
         assert!(runtime.session.is_some());
         assert!(!runtime.take_diagnostics().is_empty());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_classic_game_seeds_and_saves_only_its_own_record() {
+        let root = temp_directory();
+        let app = root.join("TETRIS");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("APP.TOM"),
+            "id=\"tetris\"\nname=\"Tetris\"\nkind=\"game\"\nentry=\"MAIN.LUA\"\n",
+        )
+        .unwrap();
+        std::fs::write(app.join("MAIN.LUA"), "tetris.init('classic', 7)\n").unwrap();
+        let mut runtime = LuaRuntimeUiState::default();
+        runtime.records.tetris_zen = 18_950;
+        runtime.records.tetris_classic = 4_200;
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        if let LuaEventBridge::Tetris(app) = &runtime.session.as_ref().unwrap().event_bridge {
+            assert_eq!(app.best(), 4_200, "a Classic game seeds the Classic best");
+        }
+        if let LuaEventBridge::Tetris(app) = &mut runtime.session.as_mut().unwrap().event_bridge {
+            app.set_best(5_000);
+        }
+        runtime.close_session();
+        assert!(
+            runtime.take_records_changed(),
+            "a new Classic best marks one save"
+        );
+        assert_eq!(runtime.records.tetris_classic, 5_000);
+        assert_eq!(runtime.records.tetris_zen, 18_950, "Zen is untouched");
     }
 
     #[test]

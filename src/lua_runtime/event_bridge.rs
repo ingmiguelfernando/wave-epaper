@@ -11,7 +11,7 @@ use crate::{
         canvas::NativeGameCanvas,
         minesweeper::{MinesweeperEventResult, MinesweeperGame},
         sudoku::{SudokuEventResult, SudokuGame},
-        tetris::{TetrisApp, TetrisEventResult, TetrisMode},
+        tetris::{TetrisApp, TetrisEventResult, TetrisMode, TetrisStart},
     },
 };
 
@@ -115,6 +115,8 @@ pub enum LuaEventBridge {
     Sudoku(SudokuGame),
     Minesweeper(MinesweeperGame),
     Tetris(TetrisApp),
+    /// The mode list; becomes `Tetris` once a row is chosen.
+    TetrisStart(TetrisStart),
 }
 impl LuaEventBridge {
     pub fn load(source: &str, canvas: &mut NativeGameCanvas) -> Result<Self, String> {
@@ -130,10 +132,20 @@ impl LuaEventBridge {
             let game = SudokuGame::start_list(None, puzzle);
             game.render_initial(canvas)?;
             Ok(Self::Sudoku(game))
-        } else if let Some((mode, seed)) = parse_tetris_init(source)? {
-            let game = TetrisApp::new(mode, seed);
-            game.render_initial(canvas)?;
-            Ok(Self::Tetris(game))
+        } else if let Some(init) = parse_tetris_init(source)? {
+            match init {
+                TetrisInit::Mode(mode, seed) => {
+                    let game = TetrisApp::new(mode, seed);
+                    game.render_initial(canvas)?;
+                    Ok(Self::Tetris(game))
+                }
+                // The mode list is the first screen; no game exists until a row is chosen.
+                TetrisInit::Start => {
+                    let start = TetrisStart::new(0, 0);
+                    start.render(canvas)?;
+                    Ok(Self::TetrisStart(start))
+                }
+            }
         } else {
             super::bootstrap::execute_bootstrap_script(source, canvas)?;
             Ok(Self::Static)
@@ -145,7 +157,7 @@ impl LuaEventBridge {
             Self::Static => "static",
             Self::Sudoku(_) => "sudoku",
             Self::Minesweeper(_) => "minesweeper",
-            Self::Tetris(_) => "tetris",
+            Self::Tetris(_) | Self::TetrisStart(_) => "tetris",
         }
     }
     pub fn apply_button(
@@ -168,6 +180,17 @@ impl LuaEventBridge {
                 .apply_button_and_render(event, canvas)
                 .map(LuaGameEventResult::Tetris)
                 .map(Some),
+            Self::TetrisStart(start) => {
+                if let Some(mode) = apply_tetris_start_button(start, event) {
+                    let game = TetrisApp::new(mode, 1);
+                    game.render_initial(canvas)?;
+                    *self = Self::Tetris(game);
+                } else {
+                    // A cursor move changes the highlight, so the list redraws.
+                    start.render(canvas)?;
+                }
+                Ok(None)
+            }
         }
     }
     pub fn apply_boot_short_press(
@@ -189,9 +212,27 @@ impl LuaEventBridge {
                 .apply_boot_short_press_and_render(canvas)
                 .map(LuaGameEventResult::Tetris)
                 .map(Some),
+            // BOOT does nothing on the mode list; hold BOOT still leaves the app.
+            Self::TetrisStart(_) => Ok(None),
         }
     }
 }
+/// Keys on the Tetris mode list. ▲▼ move the highlight; ● starts the chosen
+/// mode, replacing the list with its game and reporting the start.
+fn apply_tetris_start_button(start: &mut TetrisStart, event: ButtonEvent) -> Option<TetrisMode> {
+    match event {
+        ButtonEvent::Up => {
+            start.move_cursor(-1);
+            None
+        }
+        ButtonEvent::Down => {
+            start.move_cursor(1);
+            None
+        }
+        ButtonEvent::Select => Some(start.chosen()),
+    }
+}
+
 /// `sudoku.init()` opens the start list; `sudoku.init("…")` also offers the
 /// card's own puzzle. `None` when the script is not a Sudoku card.
 fn parse_sudoku_init(source: &str) -> Result<Option<Option<String>>, String> {
@@ -287,7 +328,14 @@ fn parse_minesweeper_init(source: &str) -> Result<Option<(usize, usize, usize, u
     }
     Ok(config)
 }
-fn parse_tetris_init(source: &str) -> Result<Option<(TetrisMode, u32)>, String> {
+/// What a `tetris.init` line asks for: the mode list, or one mode with a seed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TetrisInit {
+    Start,
+    Mode(TetrisMode, u32),
+}
+
+fn parse_tetris_init(source: &str) -> Result<Option<TetrisInit>, String> {
     let mut config = None;
     for (index, raw_line) in source.lines().enumerate() {
         let line_number = index + 1;
@@ -308,7 +356,12 @@ fn parse_tetris_init(source: &str) -> Result<Option<(TetrisMode, u32)>, String> 
                 "MAIN.LUA line {line_number}: duplicate tetris.init"
             ));
         }
-        let arguments = &line["tetris.init(".len()..line.len() - 1];
+        let arguments = line["tetris.init(".len()..line.len() - 1].trim();
+        if arguments.is_empty() {
+            // `tetris.init()` opens the mode list, as Sudoku's does.
+            config = Some(TetrisInit::Start);
+            continue;
+        }
         let values = arguments.split(',').map(str::trim).collect::<Vec<_>>();
         if values.len() != 2 {
             return Err(format!(
@@ -318,15 +371,19 @@ fn parse_tetris_init(source: &str) -> Result<Option<(TetrisMode, u32)>, String> 
         let mode = unquote(values[0]).ok_or_else(|| {
             format!("MAIN.LUA line {line_number}: tetris.init expects one quoted mode")
         })?;
-        if mode != "zen" {
-            return Err(format!(
-                "MAIN.LUA line {line_number}: tetris supports zen mode only"
-            ));
-        }
+        let mode = match mode {
+            "zen" => TetrisMode::Zen,
+            "classic" => TetrisMode::Classic,
+            _ => {
+                return Err(format!(
+                    "MAIN.LUA line {line_number}: tetris supports zen and classic modes"
+                ))
+            }
+        };
         let seed = values[1]
             .parse::<u32>()
             .map_err(|_| format!("MAIN.LUA line {line_number}: invalid tetris seed"))?;
-        config = Some((TetrisMode::Zen, seed));
+        config = Some(TetrisInit::Mode(mode, seed));
     }
     Ok(config)
 }
@@ -385,6 +442,43 @@ mod tests {
             "action-enter"
         );
     }
+    #[test]
+    fn tetris_init_opens_the_mode_list_and_a_choice_starts_that_mode() {
+        let mut c = NativeGameCanvas::default();
+        let mut b = LuaEventBridge::load("tetris.init()", &mut c).unwrap();
+        assert!(
+            matches!(b, LuaEventBridge::TetrisStart(_)),
+            "the list opens first"
+        );
+        // ▼ moves the highlight to Classic; ● starts it.
+        assert!(b
+            .apply_button(ButtonEvent::Down, 0, &mut c)
+            .unwrap()
+            .is_none());
+        assert!(b
+            .apply_button(ButtonEvent::Select, 0, &mut c)
+            .unwrap()
+            .is_none());
+        match &b {
+            LuaEventBridge::Tetris(game) => {
+                assert_eq!(game.game().mode(), TetrisMode::Classic);
+            }
+            other => panic!("choosing a mode starts a game, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_old_zen_init_still_starts_zen_directly() {
+        let mut c = NativeGameCanvas::default();
+        let b = LuaEventBridge::load("tetris.init('zen', 1803)", &mut c).unwrap();
+        match &b {
+            LuaEventBridge::Tetris(game) => {
+                assert_eq!(game.game().mode(), TetrisMode::Zen);
+            }
+            other => panic!("the old init starts a game, got {other:?}"),
+        }
+    }
+
     #[test]
     fn loads_tetris_init_and_routes_native_event() {
         let mut c = NativeGameCanvas::default();

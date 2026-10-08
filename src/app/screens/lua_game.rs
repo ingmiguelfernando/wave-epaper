@@ -177,6 +177,8 @@ fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
             MinesweeperMode::Action => &MINESWEEPER_ACTION_HINTS,
         },
         LuaEventBridge::Tetris(_) => &TETRIS_HINTS,
+        // The mode list chooses, as Sudoku's start list does.
+        LuaEventBridge::TetrisStart(_) => &CHOOSE_HINTS,
     }
 }
 

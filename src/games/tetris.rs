@@ -464,6 +464,92 @@ pub struct TetrisEventResult {
 
 /// Zen view over one `TetrisGame`: redraws, key mapping and the in-memory
 /// best score that Phase 6 will persist.
+/// The mode list Tetris opens on: Zen and Classic, each with its best score.
+/// Choosing a row starts that mode; the list holds no game of its own.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TetrisStart {
+    zen_best: u32,
+    classic_best: u32,
+    cursor: usize,
+}
+
+impl TetrisStart {
+    /// The saved bests, handed in when the list opens.
+    pub fn set_bests(&mut self, zen_best: u32, classic_best: u32) {
+        self.zen_best = zen_best;
+        self.classic_best = classic_best;
+    }
+
+    #[must_use]
+    pub const fn new(zen_best: u32, classic_best: u32) -> Self {
+        Self {
+            zen_best,
+            classic_best,
+            cursor: 0,
+        }
+    }
+
+    /// The rows, in order. A mode without a best yet says so.
+    #[must_use]
+    pub fn options(&self) -> [(TetrisMode, String); 2] {
+        [
+            (TetrisMode::Zen, best_label("Zen", self.zen_best)),
+            (
+                TetrisMode::Classic,
+                best_label("Classic", self.classic_best),
+            ),
+        ]
+    }
+
+    #[must_use]
+    pub const fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// ▲▼ move the highlight, wrapping over the two modes.
+    pub fn move_cursor(&mut self, direction: i32) {
+        let count = 2;
+        self.cursor = if direction < 0 {
+            self.cursor.checked_sub(1).unwrap_or(count - 1)
+        } else {
+            (self.cursor + 1) % count
+        };
+    }
+
+    /// ● on a row: the mode it names.
+    #[must_use]
+    pub fn chosen(&self) -> TetrisMode {
+        self.options()[self.cursor].0
+    }
+
+    /// One boxed row per mode, the highlighted one inverted, as Sudoku's list.
+    pub fn render(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        for (index, (_, label)) in self.options().iter().enumerate() {
+            let top = 140 + index as i32 * 64;
+            let selected = index == self.cursor;
+            canvas.rect(24, top, 432, 52, selected)?;
+            let style = if selected {
+                CanvasTextStyle::Inverse
+            } else {
+                CanvasTextStyle::Body
+            };
+            canvas.text(40, top + 34, label.clone(), style)?;
+        }
+        canvas.invalidate_rect(TETRIS_FULL_RECT);
+        canvas.request_refresh();
+        Ok(())
+    }
+}
+
+/// `Zen · best 18,950`, or `Classic · no best yet` before the first game.
+fn best_label(name: &str, best: u32) -> String {
+    if best == 0 {
+        format!("{name} · no best yet")
+    } else {
+        format!("{name} · best {}", grouped(best))
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TetrisApp {
     game: TetrisGame,
@@ -1200,6 +1286,25 @@ mod tests {
         assert_eq!(game.tick(), TickOutcome::Moved);
         assert_eq!(game.tick(), TickOutcome::Locked);
         assert_eq!(game.cell(4, 19), Some(TetrisPiece::O));
+    }
+
+    #[test]
+    fn the_start_list_offers_zen_and_classic_with_their_bests() {
+        let start = TetrisStart::new(18_950, 0);
+        let rows = start.options();
+        assert_eq!(rows[0].1, "Zen · best 18,950");
+        assert_eq!(rows[1].1, "Classic · no best yet");
+    }
+
+    #[test]
+    fn the_start_cursor_wraps_and_names_the_chosen_mode() {
+        let mut start = TetrisStart::new(0, 4_200);
+        assert_eq!(start.chosen(), TetrisMode::Zen, "the first row is Zen");
+        start.move_cursor(-1);
+        assert_eq!(start.cursor(), 1, "up from the first row wraps to the last");
+        assert_eq!(start.chosen(), TetrisMode::Classic);
+        start.move_cursor(1);
+        assert_eq!(start.chosen(), TetrisMode::Zen, "down wraps back to Zen");
     }
 
     #[test]
