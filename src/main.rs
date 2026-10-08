@@ -11,7 +11,7 @@ mod firmware {
         fs::fatfs::Fatfs,
         hal::{
             delay::FreeRtos,
-            gpio::{AnyIOPin, PinDriver, Pull},
+            gpio::{AnyIOPin, Input, PinDriver, Pull},
             i2c::{I2cConfig, I2cDriver},
             i2s::{
                 config::{
@@ -74,8 +74,8 @@ mod firmware {
         },
         power::{Axp2101, PowerSnapshot},
         power_key::{
-            PowerKeyEvent, SleepWakeGuard, SleepWakeGuardDecision, POWER_KEY_POLL_MS,
-            POWER_KEY_WAKE_GUARD_QUIET_MS,
+            PowerKeyEvent, PowerKeyPresses, PowerKeySource, SleepWakeGuard, SleepWakeGuardDecision,
+            POWER_KEY_GPIO, POWER_KEY_POLL_MS, POWER_KEY_WAKE_GUARD_QUIET_MS,
         },
         power_settings::{PowerPreferences, WakeKeys, POWER_CONFIG_PATH},
         radio_burst::{RadioBurst, RadioPhase},
@@ -366,6 +366,12 @@ mod firmware {
         // The AXP2101 interrupt line is open-drain and active-low; it wakes light
         // sleep on a Power-key press. The driver keeps the pull-up configured.
         let _pmic_irq = PinDriver::input(peripherals.pins.gpio38, Pull::Up)?;
+        // GPIO1 is the board's PWR_OUT line: high while the Power key is held.
+        let power_key_pin = PinDriver::input(peripherals.pins.gpio1, Pull::Floating)?;
+        info!(
+            "rustmix-wave=power-key-gpio status=ready gpio={POWER_KEY_GPIO} active-high=true held={}",
+            power_key_held(&power_key_pin)
+        );
         let mut button_delay = FreeRtosDelay;
         let mut service_delay = FreeRtosDelay;
         let mut frame = FrameBuffer::new_white();
@@ -496,6 +502,7 @@ mod firmware {
                 .map_or_else(|| "unavailable".into(), |value| format!("0x{value:02X}"))
         );
         let mut power_key_retry_at: Option<Instant> = None;
+        state.power_key.use_gpio_line();
         match board_services.initialize_power_key_events() {
             Ok(previous_ms) => {
                 state.power_key.succeeded();
@@ -572,6 +579,9 @@ mod firmware {
         let mut last_status_refresh = Instant::now();
         let mut last_alarm_poll = Instant::now();
         let mut last_power_key_poll = Instant::now();
+        let power_key_clock = Instant::now();
+        // A key still held from powering on is not a press.
+        let mut power_presses = PowerKeyPresses::new(power_key_held(&power_key_pin));
         let mut last_weather_attempt: Option<Instant> = None;
         let mut last_reader_tick = Instant::now();
         let imu_event_started_at = Instant::now();
@@ -1085,7 +1095,7 @@ mod firmware {
 
             let auto_sleep = state.power.auto_sleep.delay();
             // Without the Power key, only sleep when another key can wake.
-            let can_wake = state.power_key.is_ready() || state.power.wake_keys == WakeKeys::AnyKey;
+            let can_wake = state.power_key.can_wake() || state.power.wake_keys == WakeKeys::AnyKey;
             let auto_sleep_due = can_wake
                 && !sleep_mode.is_sleeping()
                 && auto_sleep.is_some_and(|delay| last_activity.elapsed() >= delay)
@@ -1093,24 +1103,50 @@ mod firmware {
                 && voice_recording.is_none()
                 && voice_playback.is_none()
                 && wifi_transfer_server.is_none();
+            let power_key_now_ms = power_key_clock.elapsed().as_millis() as u64;
+            let power_key_was_down = power_presses.is_down();
+            let power_key_down = power_key_held(&power_key_pin);
+            let gpio_event = power_presses.update(power_key_down, power_key_now_ms);
+            let power_key_is_down = power_presses.is_down();
+            if power_key_is_down != power_key_was_down {
+                info!("rustmix-wave=power-key-gpio down={power_key_is_down}");
+            }
             let power_key_poll_due = state.power_key.is_ready()
                 && last_power_key_poll.elapsed() >= Duration::from_millis(POWER_KEY_POLL_MS);
-            if auto_sleep_due || power_key_poll_due {
-                // Idle auto-sleep takes the same path as holding the Power key.
-                let event = if auto_sleep_due {
-                    info!(
-                        "rustmix-wave=auto-sleep idle={}",
-                        state.power.auto_sleep.marker()
-                    );
-                    Ok(Some(PowerKeyEvent::LongPress))
+            if gpio_event.is_some() || auto_sleep_due || power_key_poll_due {
+                let source = if gpio_event.is_some() {
+                    PowerKeySource::Gpio
+                } else if auto_sleep_due {
+                    PowerKeySource::AutoSleep
                 } else {
-                    board_services.take_power_key_event()
+                    PowerKeySource::Pmic
                 };
+                let event = match source {
+                    PowerKeySource::Gpio => Ok(gpio_event),
+                    // Idle auto-sleep takes the same path as holding the Power key.
+                    PowerKeySource::AutoSleep => {
+                        info!(
+                            "rustmix-wave=auto-sleep idle={}",
+                            state.power.auto_sleep.marker()
+                        );
+                        Ok(Some(PowerKeyEvent::LongPress))
+                    }
+                    PowerKeySource::Pmic => board_services.take_power_key_event(),
+                };
+                // Once GPIO1 has shown a press, the PMIC's key events repeat it.
+                let duplicate = source == PowerKeySource::Pmic && power_presses.seen_press();
                 match event {
+                    Ok(Some(event)) if duplicate => {
+                        info!(
+                            "rustmix-wave=power-key event={} source=axp2101-pek outcome=ignored reason=gpio1-reads-the-key",
+                            event.marker()
+                        );
+                    }
                     Ok(Some(event)) => {
                         info!(
-                            "rustmix-wave=power-key event={} source=axp2101-pek",
-                            event.marker()
+                            "rustmix-wave=power-key event={} source={}",
+                            event.marker(),
+                            source.marker()
                         );
                         if sleep_mode.is_sleeping() {
                             let elapsed_ms = sleep_wake_guard_started_at
@@ -1120,7 +1156,8 @@ mod firmware {
                                 == SleepWakeGuardDecision::SuppressStalePress
                             {
                                 info!(
-                                    "rustmix-wave=sleep-wake-guard event=stale-power-key-suppressed source=axp2101-pek elapsed-ms={elapsed_ms} minimum-quiet-ms={POWER_KEY_WAKE_GUARD_QUIET_MS}"
+                                    "rustmix-wave=sleep-wake-guard event=stale-power-key-suppressed source={} elapsed-ms={elapsed_ms} minimum-quiet-ms={POWER_KEY_WAKE_GUARD_QUIET_MS}",
+                                    source.marker()
                                 );
                                 last_power_key_poll = Instant::now();
                                 continue;
@@ -1600,7 +1637,7 @@ mod firmware {
                 last_status_refresh = Instant::now();
             }
 
-            match back_button.poll(&mut button_delay)? {
+            match back_button.poll(&mut button_delay, || power_key_held(&power_key_pin))? {
                 Some(BootButtonEvent::LongPress) => {
                     info!(
                         "rustmix-wave=boot-button event=long-press action=back hold-ms={BOOT_BACK_LONG_PRESS_MS}"
@@ -1949,6 +1986,8 @@ mod firmware {
                     .is_ok_and(|power| power.vbus_present);
                 last_usb_check = Some(Instant::now());
             }
+            // A stuck line, or one an RTC alarm holds, must not block light sleep.
+            let power_key_wakes = rtc_line_idle() && !power_presses.is_stuck(power_key_now_ms);
             let slept = if sleep_mode.is_sleeping() {
                 let lines = match state.power.wake_keys {
                     WakeKeys::AnyKey => &AWAKE_WAKE_GPIOS[..],
@@ -1959,7 +1998,7 @@ mod firmware {
                 !on_usb_power
                     && !photo_worker.is_busy()
                     && sleep_wake_guard.is_armed()
-                    && light_sleep_until_wake(lines, LIGHT_SLEEP_MAX)
+                    && light_sleep_until_wake(lines, power_key_wakes, LIGHT_SLEEP_MAX)
             } else if idle && !on_usb_power {
                 let now = Instant::now();
                 let weather_due =
@@ -1989,7 +2028,7 @@ mod firmware {
                 };
                 budget.is_some_and(|budget| {
                     let started = Instant::now();
-                    let slept = light_sleep_until_wake(lines, budget);
+                    let slept = light_sleep_until_wake(lines, power_key_wakes, budget);
                     if slept {
                         light_sleep_clock.1 += started.elapsed();
                     }
@@ -2010,7 +2049,7 @@ mod firmware {
 
     /// AXP2101 interrupt line; low while a Power-key event is latched.
     const PMIC_IRQ_GPIO: i32 = 38;
-    /// Lines that end the sleep-image light sleep.
+    /// Lines that end the sleep-image light sleep, besides the Power key.
     static SLEEP_WAKE_GPIOS: [i32; 2] = [PMIC_IRQ_GPIO, RTC_ALARM_INTERRUPT_GPIO as i32];
     /// While awake BOOT (GPIO0) and the wheel (GPIO4-6) wake it too. The RTC
     /// line comes first so it can be left out when no alarm is programmed.
@@ -2023,6 +2062,16 @@ mod firmware {
 
     fn time_left(since: Instant, period_seconds: u64) -> Duration {
         Duration::from_secs(period_seconds).saturating_sub(since.elapsed())
+    }
+
+    /// GPIO1 is high while the Power key is held. An RTC alarm pulls the same
+    /// key line low, so GPIO1 is only the key while GPIO45 is idle.
+    fn power_key_held(power_key: &PinDriver<'_, Input>) -> bool {
+        power_key.is_high() && rtc_line_idle()
+    }
+
+    fn rtc_line_idle() -> bool {
+        unsafe { sys::gpio_get_level(RTC_ALARM_INTERRUPT_GPIO as i32) } != 0
     }
 
     /// While asleep, BOOT and the wheel end sleep only when the wake-keys
@@ -2138,19 +2187,24 @@ mod firmware {
         );
     }
 
-    /// Light-sleep until one of `lines` is pulled low or `timer` runs out; the
-    /// event loop then handles whatever woke it. Returns false without
-    /// sleeping when a line is already low.
-    fn light_sleep_until_wake(lines: &[i32], timer: Duration) -> bool {
-        if lines
+    /// Light-sleep until one of `lines` is pulled low, the Power key line goes
+    /// high (when `power_key` is set) or `timer` runs out; the event loop then
+    /// handles whatever woke it. Returns false without sleeping when a line is
+    /// already active.
+    fn light_sleep_until_wake(lines: &[i32], power_key: bool, timer: Duration) -> bool {
+        let line_low = lines
             .iter()
-            .any(|&gpio| unsafe { sys::gpio_get_level(gpio) } == 0)
-        {
+            .any(|&gpio| unsafe { sys::gpio_get_level(gpio) } == 0);
+        let key_high = power_key && unsafe { sys::gpio_get_level(POWER_KEY_GPIO) } != 0;
+        if line_low || key_high {
             return false;
         }
         let result = unsafe {
             for &gpio in lines {
                 sys::gpio_wakeup_enable(gpio, sys::gpio_int_type_t_GPIO_INTR_LOW_LEVEL);
+            }
+            if power_key {
+                sys::gpio_wakeup_enable(POWER_KEY_GPIO, sys::gpio_int_type_t_GPIO_INTR_HIGH_LEVEL);
             }
             sys::esp_sleep_enable_gpio_wakeup();
             sys::esp_sleep_enable_timer_wakeup(timer.as_micros() as u64);
@@ -2158,6 +2212,9 @@ mod firmware {
             sys::esp_sleep_disable_wakeup_source(sys::esp_sleep_source_t_ESP_SLEEP_WAKEUP_ALL);
             for &gpio in lines {
                 sys::gpio_wakeup_disable(gpio);
+            }
+            if power_key {
+                sys::gpio_wakeup_disable(POWER_KEY_GPIO);
             }
             result
         };

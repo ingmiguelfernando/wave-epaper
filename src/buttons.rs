@@ -113,13 +113,18 @@ where
         Self { back }
     }
 
-    /// Return one BOOT release classified as short or long.
-    pub fn poll<D: DelayNs>(&mut self, delay: &mut D) -> Result<Option<BootButtonEvent>> {
+    /// Return one BOOT release classified as short or long. A press made while
+    /// `power_key_held` reports the Power key down is left to that key.
+    pub fn poll<D: DelayNs>(
+        &mut self,
+        delay: &mut D,
+        mut power_key_held: impl FnMut() -> bool,
+    ) -> Result<Option<BootButtonEvent>> {
         if !self.is_pressed()? {
             return Ok(None);
         }
         delay.delay_ms(DEBOUNCE_MS);
-        if !self.is_pressed()? {
+        if !self.is_pressed()? || power_key_held() {
             return Ok(None);
         }
 
