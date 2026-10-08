@@ -2151,7 +2151,11 @@ ed={}",
     /// first save creates `/RUSTMIX/READER/` (the SD card has no folders).
     fn save_reading_stats_if_dirty(state: &mut AppState) {
         let today = state.board.rtc.map(|rtc| {
-            crate::civil_date::days_from_civil(i64::from(rtc.year), rtc.month, rtc.day) as u32
+            waveshare_epd397_rust_app::civil_date::days_from_civil(
+                i64::from(rtc.year),
+                rtc.month,
+                rtc.day,
+            ) as u32
         });
         state.collect_reading_stats(today);
         if !state.reading_stats.has_unsaved() {
