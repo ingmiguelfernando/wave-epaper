@@ -263,7 +263,9 @@ mod tests {
         state.photos.starred.toggle("IMG_0409.jpg");
         assert_eq!(sleep_screen_value(&state), "Photo · 2 starred");
         state.sleep_screen.source = SleepSource::Folder;
-        assert_eq!(sleep_screen_value(&state), "Folder");
+        assert_eq!(sleep_screen_value(&state), "Photo · folder");
+        state.sleep_screen.mode = SleepMode::Clock;
+        assert_eq!(sleep_screen_value(&state), "Clock · 1 min");
     }
 
     #[test]
