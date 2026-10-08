@@ -8,9 +8,8 @@ Newest first. Versions and milestone commits follow the
 - Photos, thumbnails and sleep BMPs use Atkinson dithering: whites and
   blacks stay clean instead of filling with dots. Every photo is prepared
   again once after the update.
-- With USB power, sleep mode no longer puts the CPU in light sleep. The USB
-  serial port used to drop, and a serial console then reset the board, so a
-  Power hold looked like it went back to Home.
+- With USB power, sleep mode no longer puts the CPU in light sleep, so the USB
+  serial console stays connected while the sleep picture shows.
 - Weather requests use a 1 KB transmit buffer, so the long request line no
   longer logs `HTTP_HEADER: Buffer length is small to fit all the headers`.
 - Opening a game waits up to 3 s for free internal memory while a photo is
