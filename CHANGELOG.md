@@ -3,6 +3,26 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.9.7 — Hubs, Sudoku saves and reading stats
+
+- **Sudoku** opens on a start list: continue the saved game, or a new Easy,
+  Medium or Hard puzzle made on the device (a different one each time). The
+  title bar shows the difficulty and the play time. Hold BOOT saves the game
+  to `/RUSTMIX/GAMES/SUDOKU.TXT`; solving it deletes the save and keeps the
+  best time per difficulty (`Solved in 12:41 · best 11:02`). Copy the new
+  `APPS/SUDOKU/MAIN.LUA` from the samples; an old card's puzzle still works
+  and shows as `SD puzzle`.
+- **Games** is a hub with one card per SD game: Sudoku's saved game and best
+  time, Tetris' best score. Hold BOOT in a game returns to the hub.
+- **Settings** is one page of seven groups, each with its current value;
+  Clock & alarms and System open short lists.
+- **Reading Stats** opens from Home and records time and pages while a book
+  page is open, by local date, saved at most every five minutes, when the
+  Reader closes and before sleep. Home shows the streak, and the Continue
+  card the minutes read today. Without a set clock the screen says so.
+- **AI** is a hub with XiaoZhi (SOON), Voice Notes and the three newest
+  notes; a short BOOT starts a recording right away.
+
 ## v0.9.6 — Power key read on its own line
 
 - The Power key is now read on GPIO1, the board's `PWR_OUT` line, which goes

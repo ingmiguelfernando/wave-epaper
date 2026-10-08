@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.9.6), not an upstream v1.0.0 marker.
+	expected release version (currently v0.9.7), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Bible and XiaoZhi remain SOON. Reading Stats opens its screen.
 - [ ] Reading Stats: read a page or two, leave the Reader, reopen the screen —
@@ -51,9 +51,10 @@ before tests; never remove the card while writes are active.
 - [ ] Settings › Display lists both fonts and all three sizes; open/move/apply/
 	cancel work, `DISPLAY.TXT` changes only when needed and survives reboot.
 - [ ] Settings is one page of seven groups, each row showing a live value:
-	`Inter · Standard`, `Photo · N starred`, `On · 2 h`/`Manual`/`Off`,
-	the Wi-Fi state, `No alarms`/`N alarms`, the battery percent and
-	`v0.9.4`. Clock & alarms opens a two-row list (Clock, Alarms); System
+	`Inter · Standard`, `Photo · N starred`, `On · 2 h`/`Manual`/`Off`/
+	`Not set up`, `Off`/`Not set up`/the network name, `No alarms`/
+	`N alarms`, the battery percent and the version (also on the status
+	bar). Clock & alarms opens a two-row list (Clock, Alarms); System
 	opens a four-row list (Device Info, Audio, Environment, Motion); hold
 	BOOT from every sub-screen walks back to Settings and then Home.
 - [ ] Review Home, lists, book text and footers at both families/all UI sizes.
@@ -158,18 +159,27 @@ light sleep. Restore the owner's original preferences afterward.
 
 - [ ] Install current examples; Home › Games lists one card per game —
 	Hello Grid, Sudoku, Minesweeper and Tetris — without the removed
-	sensor-controlled samples. Each card shows an icon, its name and its
-	state: Sudoku `Medium · in progress N/81` (or `No game in progress`)
-	plus its best time; Tetris `Zen · best N` with thousands separators.
-	Beating a best time updates the card after the next hub refresh. One
-	game shows `1 item` in the header count; four show `4 items`.
-- [ ] Hello Grid draws its static canvas; hold BOOT returns to the catalog.
+        sensor-controlled samples. The status bar shows `Games` and `4`.
+        Each card shows an icon (also on the selected, black card), its name
+        and its state: Sudoku `Medium · in progress N/81` (or `No game in
+        progress`) plus its best time; Tetris `Zen · best N` with thousands
+        separators. Beating a best time updates the card after the next hub
+        refresh. The info box shows both of its lines.
+- [ ] Hello Grid draws its static canvas; hold BOOT returns to the hub.
+- [ ] Sudoku start list: `New · Easy/Medium/Hard`, plus `Continue · …`
+        after leaving an unfinished game. Two `New · Medium` games in a row
+        are different puzzles; `New · Hard` appears within a second or two.
+        The title bar shows `Sudoku · Medium` and the time on the right; the
+        time grows between presses (at most a minute per press). Hold BOOT
+        mid-game, reopen: `Continue` restores the board and the time, also
+        after a reboot. Solving says `Solved in … · new best`; the hub card
+        shows the best time and `No game in progress`.
 - [ ] Sudoku three-step entry: ▲▼ row (given rows skipped), Select confirms;
         ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase (×),
         Select places. The row frame and the inverted cell are easy to see;
         short BOOT goes back one step; the step chips and the bottom bar
         follow each step; a conflict keeps the number step and hold BOOT
-        exits.
+        returns to the hub.
 - [ ] Minesweeper: movement/axis toggle, Reveal/Flag action choice, cancel,
 	first-reveal safety and hold BOOT exit. The bottom bar follows the mode.
 - [ ] Tetris Zen: Up/Down move, Select rotates clockwise, short BOOT drops;
@@ -192,8 +202,9 @@ light sleep. Restore the owner's original preferences afterward.
 	NOTES` with the three newest (newest first, `Oct 2 · 12:04 · 18 min`
 	stamps), the SD-card info box and the `move / open / BOOT new note` bar.
 	Select opens the placeholder, the list or the chosen note's details;
-	short BOOT starts a recording directly. With no notes the hub still
-	renders.
+	short BOOT starts a recording directly (the recording screen counts up
+	without another press). With no notes the hub still renders, and the
+	status bar says `Online` or `Offline`.
 - [ ] AI › Voice Notes: record, pause/resume, save, playback, friendly-title
 	edit/cancel, delete confirmation and LAN export; WAV survives reboot.
 - [ ] Dictionary with a full pack: exact lookup, prefix fallback and `*`

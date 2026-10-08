@@ -2090,13 +2090,16 @@ mod tests {
             ("sudoku", "sudoku", Some("start-choose")),
             ("tetris", "tetris", Some("rotate")),
         ] {
-            for _ in 0..state.lua_runtime.catalog.entries.len() {
-                if state.lua_runtime.selected_entry().unwrap().manifest.id == id {
+            // The hub's card follows ▲▼; the catalog entry follows on ●.
+            let games = state.lua_runtime.games();
+            let card = games.iter().position(|game| game.id == id).unwrap();
+            for _ in 0..games.len() {
+                if state.category_selection(ScreenRoute::Games) == card {
                     break;
                 }
                 state.apply(ButtonEvent::Down);
             }
-            assert_eq!(state.lua_runtime.selected_entry().unwrap().manifest.id, id);
+            assert_eq!(state.category_selection(ScreenRoute::Games), card);
             state.apply(ButtonEvent::Select);
             assert_eq!(state.active_route(), ScreenRoute::LuaGame);
             assert!(state.lua_runtime.error.is_none());

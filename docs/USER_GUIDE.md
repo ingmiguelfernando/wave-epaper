@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.9.6: what is implemented, not the future
+This guide describes firmware v0.9.7: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -141,10 +141,11 @@ streak is live; the Continue card adds `· M min today`.
 
 One page with seven groups, each row showing what the group covers and its
 current value: Display (`Inter · Standard`), Sleep screen (`Photo · 2
-starred`), Weather (`On · 2 h`, `Manual` or `Off`), Wi-Fi & transfer (the
-Wi-Fi state), Clock & alarms (`2 alarms` or `No alarms`), Power (battery
-percent) and System (`v0.9.4`). Up/Down chooses a group, Select opens it,
-hold BOOT returns Home.
+starred`), Weather (`On · 2 h`, `Manual`, `Off` or `Not set up`), Wi-Fi &
+transfer (`Off`, `Not set up`, `Connecting`, `Failed` or the network name),
+Clock & alarms (`2 alarms` or `No alarms`), Power (battery percent) and
+System (the firmware version, also on the status bar). Up/Down chooses a
+group, Select opens it, hold BOOT returns Home.
 
 Clock & alarms and System open short lists; every other group opens its
 screen directly.
@@ -296,20 +297,32 @@ costs about 2 mAh a day.
 
 Open **Home › Games** for the hub: one card per SD game — icon, name, and
 its state (Sudoku's running game and best time; Tetris' best score; other
-games' version). ▲▼ picks a card, ● plays it, hold BOOT returns Home.
-Install the bundled SD samples with the installer; there are no
-IMU-controlled games or BLE remote page-turner in this build.
+games' version). ▲▼ picks a card, ● plays it, hold BOOT in a game returns
+to the hub and hold BOOT on the hub returns Home. Install the bundled SD
+samples with the installer; there are no IMU-controlled games or BLE remote
+page-turner in this build.
 
 | Sample | Controls |
 |---|---|
-| Hello Grid | Static canvas demonstration; wheel/Select have no game action; hold BOOT exits |
-| Sudoku | Three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase (×), ● place. Short BOOT goes back one step. A thick frame marks the row, the chosen cell is inverted and previews the number, and the strip starts on the first value that fits. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
+| Hello Grid | Static canvas demonstration; ▲▼ and ● have no game action; hold BOOT exits |
+| Sudoku | Opens on a start list: `Continue` (the saved game, with its difficulty and filled cells), `New · Easy`, `New · Medium` or `New · Hard` (a new puzzle each time), and `SD puzzle` when `MAIN.LUA` declares one. Then three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase (×), ● place. Short BOOT goes back one step. A thick frame marks the row, the chosen cell is inverted and previews the number, and the strip starts on the first value that fits. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
 | Tetris Zen | Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. No gravity: the piece moves only on a press. Game over shows the score; Select starts a new game. Best survives closing the game and rebooting (`/RUSTMIX/GAMES/RECORDS.TXT`, written once on exit) |
 
 These are button-driven samples. Tetris Classic gravity belongs to Phase 6. A
 missing/invalid SD app reports an error;
-hold BOOT returns to the catalog.
+hold BOOT returns to the hub.
+
+### Sudoku time and saves
+
+The title bar shows the difficulty on the left and the play time on the
+right. Each press adds the time since the previous one, at most a minute,
+so a game left open does not run up the clock. Hold BOOT saves the game in
+`/RUSTMIX/GAMES/SUDOKU.TXT`; there is one save, so a new game replaces it
+when you leave. Solving deletes the save, says `Solved in 12:41 · best
+11:02` (or `new best`) and keeps the best time per difficulty in
+`RECORDS.TXT`. The card's own puzzle (`SD puzzle`) keeps no save and no
+best time.
 
 ## AI
 
