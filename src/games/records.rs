@@ -14,6 +14,10 @@ pub const RECORDS_PATH: &str = "/sdcard/RUSTMIX/GAMES/RECORDS.TXT";
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct GameRecords {
     pub tetris_zen: u32,
+    /// Best solve time in seconds per difficulty, 0 = none yet.
+    pub sudoku_easy: u32,
+    pub sudoku_medium: u32,
+    pub sudoku_hard: u32,
 }
 
 impl GameRecords {
@@ -34,6 +38,9 @@ impl GameRecords {
                 .with_context(|| format!("records line {} has a bad number", number + 1))?;
             match key.trim() {
                 "tetris_zen" => records.tetris_zen = parsed,
+                "sudoku_easy" => records.sudoku_easy = parsed,
+                "sudoku_medium" => records.sudoku_medium = parsed,
+                "sudoku_hard" => records.sudoku_hard = parsed,
                 // Unknown keys stay ignored so older files keep loading.
                 _ => {}
             }
@@ -43,7 +50,10 @@ impl GameRecords {
 
     #[must_use]
     pub fn serialized(&self) -> String {
-        format!("# Wave game records v1\ntetris_zen={}\n", self.tetris_zen)
+        format!(
+            "# Wave game records v1\ntetris_zen={}\nsudoku_easy={}\nsudoku_medium={}\nsudoku_hard={}\n",
+            self.tetris_zen, self.sudoku_easy, self.sudoku_medium, self.sudoku_hard
+        )
     }
 
     /// Load through `sd_file`, falling back to the `.BAK` copy. A missing file
@@ -75,6 +85,41 @@ impl GameRecords {
             false
         }
     }
+
+    /// Record a Sudoku solve; `true` when it beat the difficulty's best
+    /// (a 0 stored best means none yet, so any solve improves it).
+    pub fn observe_sudoku(
+        &mut self,
+        difficulty: crate::games::sudoku_puzzles::SudokuDifficulty,
+        seconds: u32,
+    ) -> bool {
+        use crate::games::sudoku_puzzles::SudokuDifficulty;
+        let (current, key) = match difficulty {
+            SudokuDifficulty::Easy => (self.sudoku_easy, "sudoku_easy"),
+            SudokuDifficulty::Medium => (self.sudoku_medium, "sudoku_medium"),
+            SudokuDifficulty::Hard => (self.sudoku_hard, "sudoku_hard"),
+        };
+        if current != 0 && seconds >= current {
+            return false;
+        }
+        match key {
+            "sudoku_easy" => self.sudoku_easy = seconds,
+            "sudoku_medium" => self.sudoku_medium = seconds,
+            _ => self.sudoku_hard = seconds,
+        }
+        true
+    }
+
+    /// The stored best for `difficulty`, 0 = none yet.
+    #[must_use]
+    pub fn sudoku_best(&self, difficulty: crate::games::sudoku_puzzles::SudokuDifficulty) -> u32 {
+        use crate::games::sudoku_puzzles::SudokuDifficulty;
+        match difficulty {
+            SudokuDifficulty::Easy => self.sudoku_easy,
+            SudokuDifficulty::Medium => self.sudoku_medium,
+            SudokuDifficulty::Hard => self.sudoku_hard,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -83,7 +128,12 @@ mod tests {
 
     #[test]
     fn round_trips_the_file_format() {
-        let records = GameRecords { tetris_zen: 18_950 };
+        let records = GameRecords {
+            tetris_zen: 18_950,
+            sudoku_easy: 0,
+            sudoku_medium: 0,
+            sudoku_hard: 0,
+        };
         let parsed = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(parsed, records);
     }

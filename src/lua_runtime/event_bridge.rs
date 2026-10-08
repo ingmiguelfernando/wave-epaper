@@ -147,12 +147,13 @@ impl LuaEventBridge {
     pub fn apply_button(
         &mut self,
         event: ButtonEvent,
+        now_ms: u64,
         canvas: &mut NativeGameCanvas,
     ) -> Result<Option<LuaGameEventResult>, String> {
         match self {
             Self::Static => Ok(None),
             Self::Sudoku(g) => g
-                .apply_button_and_render(event, canvas)
+                .apply_button_and_render(event, now_ms, canvas)
                 .map(LuaGameEventResult::Sudoku)
                 .map(Some),
             Self::Minesweeper(g) => g
@@ -167,12 +168,13 @@ impl LuaEventBridge {
     }
     pub fn apply_boot_short_press(
         &mut self,
+        now_ms: u64,
         canvas: &mut NativeGameCanvas,
     ) -> Result<Option<LuaGameEventResult>, String> {
         match self {
             Self::Static => Ok(None),
             Self::Sudoku(g) => g
-                .apply_boot_short_press_and_render(canvas)
+                .apply_boot_short_press_and_render(now_ms, canvas)
                 .map(LuaGameEventResult::Sudoku)
                 .map(Some),
             Self::Minesweeper(g) => g
@@ -342,7 +344,7 @@ mod tests {
         let mut b = LuaEventBridge::load(&format!("sudoku.init(\"{PUZZLE}\")"), &mut c).unwrap();
         assert_eq!(b.marker(), "sudoku");
         assert_eq!(
-            b.apply_button(ButtonEvent::Down, &mut c)
+            b.apply_button(ButtonEvent::Down, 1_000, &mut c)
                 .unwrap()
                 .unwrap()
                 .reason(),
@@ -355,7 +357,7 @@ mod tests {
         let mut b = LuaEventBridge::load("minesweeper.init(9, 9, 10, 1803)", &mut c).unwrap();
         assert_eq!(b.marker(), "minesweeper");
         assert_eq!(
-            b.apply_button(ButtonEvent::Select, &mut c)
+            b.apply_button(ButtonEvent::Select, 2_000, &mut c)
                 .unwrap()
                 .unwrap()
                 .reason(),
@@ -368,14 +370,17 @@ mod tests {
         let mut b = LuaEventBridge::load("tetris.init('zen', 1803)", &mut c).unwrap();
         assert_eq!(b.marker(), "tetris");
         assert_eq!(
-            b.apply_button(ButtonEvent::Down, &mut c)
+            b.apply_button(ButtonEvent::Down, 1_000, &mut c)
                 .unwrap()
                 .unwrap()
                 .reason(),
             "move-right"
         );
         assert_eq!(
-            b.apply_boot_short_press(&mut c).unwrap().unwrap().reason(),
+            b.apply_boot_short_press(3_000, &mut c)
+                .unwrap()
+                .unwrap()
+                .reason(),
             "drop"
         );
     }

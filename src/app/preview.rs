@@ -395,19 +395,23 @@ fn tetris_sample_session() -> LuaAppSession {
     let mut event_bridge = LuaEventBridge::load(source, &mut canvas).unwrap();
     for _ in 0..4 {
         event_bridge
-            .apply_button(ButtonEvent::Up, &mut canvas)
+            .apply_button(ButtonEvent::Up, 1_000, &mut canvas)
             .unwrap();
         event_bridge
-            .apply_button(ButtonEvent::Up, &mut canvas)
-            .unwrap();
-        event_bridge.apply_boot_short_press(&mut canvas).unwrap();
-        event_bridge
-            .apply_button(ButtonEvent::Down, &mut canvas)
+            .apply_button(ButtonEvent::Up, 1_000, &mut canvas)
             .unwrap();
         event_bridge
-            .apply_button(ButtonEvent::Down, &mut canvas)
+            .apply_boot_short_press(4_000, &mut canvas)
             .unwrap();
-        event_bridge.apply_boot_short_press(&mut canvas).unwrap();
+        event_bridge
+            .apply_button(ButtonEvent::Down, 2_000, &mut canvas)
+            .unwrap();
+        event_bridge
+            .apply_button(ButtonEvent::Down, 2_000, &mut canvas)
+            .unwrap();
+        event_bridge
+            .apply_boot_short_press(4_000, &mut canvas)
+            .unwrap();
     }
     LuaAppSession {
         entry: LuaAppEntry {
@@ -437,11 +441,11 @@ fn sudoku_sample_session(step_downs: usize) -> LuaAppSession {
     let mut canvas = NativeGameCanvas::default();
     let mut event_bridge = LuaEventBridge::load(&source, &mut canvas).unwrap();
     event_bridge
-        .apply_button(ButtonEvent::Down, &mut canvas)
+        .apply_button(ButtonEvent::Down, 2_000, &mut canvas)
         .unwrap();
     for _ in 0..step_downs {
         event_bridge
-            .apply_button(ButtonEvent::Select, &mut canvas)
+            .apply_button(ButtonEvent::Select, 3_000, &mut canvas)
             .unwrap();
     }
     LuaAppSession {

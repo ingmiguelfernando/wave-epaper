@@ -11,4 +11,6 @@ pub mod minesweeper;
 pub mod records;
 pub mod refresh_policy;
 pub mod sudoku;
+pub mod sudoku_puzzles;
+pub mod sudoku_save;
 pub mod tetris;

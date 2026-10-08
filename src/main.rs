@@ -59,6 +59,7 @@ mod firmware {
         epaper::Epaper397,
         framebuffer::FrameBuffer,
         games::records::{GameRecords, RECORDS_PATH},
+        games::sudoku_save::{SudokuSave, SUDOKU_SAVE_PATH},
         imu_events::IMU_EVENT_SAMPLE_INTERVAL_MS,
         network::{
             espidf::NetworkRuntime, NetworkLogFingerprint, NetworkSnapshot, WifiConnectionState,
@@ -397,9 +398,12 @@ mod firmware {
                 Err(error) => info!("rustmix-wave=sleep-screen status=default error={error:#}"),
             }
             state.lua_runtime.records = GameRecords::load_from_path(RECORDS_PATH);
+            state.lua_runtime.sudoku_save = SudokuSave::load_from_path(SUDOKU_SAVE_PATH);
             info!(
-                "rustmix-wave=game-records status=ready tetris-zen={}",
-                state.lua_runtime.records.tetris_zen
+                "rustmix-wave=game-records status=ready tetris-zen={} sudoku-sav\
+ed={}",
+                state.lua_runtime.records.tetris_zen,
+                state.lua_runtime.sudoku_save.is_some()
             );
         }
         state.photos.fit = state.sleep_screen.fit;
@@ -1510,6 +1514,19 @@ mod firmware {
                     Err(error) => warn!("rustmix-wave=game-records-write error={error:#}"),
                 }
             }
+            if state.lua_runtime.take_sudoku_save_changed() {
+                match state.lua_runtime.sudoku_save.clone() {
+                    Some(save) => match save.save_to_path(SUDOKU_SAVE_PATH) {
+                        Ok(()) => info!(
+                            "rustmix-wave=sudoku-save-write status=saved seconds={}",
+                            save.seconds
+                        ),
+                        Err(error) => warn!("rustmix-wave=sudoku-save-write error={error:#}"),
+                    },
+                    // A solved game removes the resume file.
+                    None => SudokuSave::remove_from_path(SUDOKU_SAVE_PATH),
+                }
+            }
             if photos_changed && photos_open && state.panel_awake {
                 let request = if state.take_full_refresh() {
                     RefreshRequest::ForceGlobalManual
@@ -1824,7 +1841,8 @@ mod firmware {
                         apply_audio_request(&mut audio_runtime, &mut state, request);
                     }
                 } else {
-                    state.apply(event);
+                    // The game timers read the event clock in milliseconds.
+                    state.apply_with_clock(event, last_activity.elapsed().as_millis() as u64);
                     log_lua_runtime_events(&mut state);
                     if state.active_route() == ScreenRoute::Files {
                         storage_browser.refresh();

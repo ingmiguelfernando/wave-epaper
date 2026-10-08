@@ -13,7 +13,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
-            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, OPEN_HINTS},
+            bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, CHOOSE_HINTS, OPEN_HINTS},
             header::draw_header,
             status_row::{draw_status_row, StatusRow},
         },
@@ -167,6 +167,7 @@ fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
     match bridge {
         LuaEventBridge::Static => &BACK_HINTS,
         LuaEventBridge::Sudoku(game) => match game.step() {
+            SudokuStep::Start => &CHOOSE_HINTS,
             SudokuStep::Row => &SUDOKU_ROW_HINTS,
             SudokuStep::Cell => &SUDOKU_CELL_HINTS,
             SudokuStep::Number => &SUDOKU_NUMBER_HINTS,

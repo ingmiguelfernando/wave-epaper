@@ -12,6 +12,7 @@ use crate::{
         canvas::NativeGameCanvas,
         records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
+        sudoku_save::SudokuSave,
     },
 };
 
@@ -48,6 +49,11 @@ pub struct LuaRuntimeUiState {
     pub records: GameRecords,
     /// Set when a closed game raised a best score, so `main.rs` saves once.
     records_changed: bool,
+    /// Sudoku resume state loaded at boot; `None` when no save exists.
+    pub sudoku_save: Option<SudokuSave>,
+    /// Set when closing a Sudoku game changed the save: either a fresh
+    /// resume in `sudoku_save`, or `None` after a solved puzzle.
+    sudoku_save_changed: bool,
 }
 
 impl Default for LuaRuntimeUiState {
@@ -60,6 +66,8 @@ impl Default for LuaRuntimeUiState {
             diagnostics: Vec::new(),
             records: GameRecords::default(),
             records_changed: false,
+            sudoku_save: None,
+            sudoku_save_changed: false,
         }
     }
 }
@@ -163,14 +171,14 @@ impl LuaRuntimeUiState {
         open_entry_on_worker(entry)
     }
 
-    pub fn apply_game_button(&mut self, event: ButtonEvent) -> bool {
+    pub fn apply_game_button(&mut self, event: ButtonEvent, now_ms: u64) -> bool {
         let outcome = {
             let Some(session) = self.session.as_mut() else {
                 return false;
             };
             match session
                 .event_bridge
-                .apply_button(event, &mut session.canvas)
+                .apply_button(event, now_ms, &mut session.canvas)
             {
                 Ok(Some(result)) => {
                     session.refresh_plan = GameRefreshPolicy::plan(
@@ -212,14 +220,14 @@ impl LuaRuntimeUiState {
         }
     }
 
-    pub fn apply_game_boot_short_press(&mut self) -> bool {
+    pub fn apply_game_boot_short_press(&mut self, now_ms: u64) -> bool {
         let outcome = {
             let Some(session) = self.session.as_mut() else {
                 return false;
             };
             match session
                 .event_bridge
-                .apply_boot_short_press(&mut session.canvas)
+                .apply_boot_short_press(now_ms, &mut session.canvas)
             {
                 Ok(Some(result)) => {
                     session.refresh_plan = GameRefreshPolicy::plan(
@@ -262,9 +270,13 @@ impl LuaRuntimeUiState {
 
     pub fn close_session(&mut self) {
         if let Some(session) = self.session.take() {
-            if let LuaEventBridge::Tetris(app) = &session.event_bridge {
-                // The changed flag makes main.rs save once, not per piece.
-                self.records_changed |= self.records.observe_tetris_zen(app.best());
+            match &session.event_bridge {
+                LuaEventBridge::Tetris(app) => {
+                    // The changed flag makes main.rs save once, not per piece.
+                    self.records_changed |= self.records.observe_tetris_zen(app.best());
+                }
+                LuaEventBridge::Sudoku(game) => self.close_sudoku(game),
+                _ => {}
             }
             self.push_diagnostic(format!(
                 "rustmix-wave=lua-app-close id={} status=released",
@@ -274,9 +286,36 @@ impl LuaRuntimeUiState {
         self.error = None;
     }
 
+    /// Sudoku on close: a solved puzzle deletes the save and raises the best
+    /// time; unfinished progress becomes the new save.
+    fn close_sudoku(&mut self, game: &crate::games::sudoku::SudokuGame) {
+        let Some(difficulty) = game.difficulty() else {
+            return;
+        };
+        if game.completed() {
+            self.sudoku_save = None;
+            self.sudoku_save_changed = true;
+            self.records_changed |= self.records.observe_sudoku(difficulty, game.seconds());
+        } else if game.seconds() > 0 || game.board() != game.puzzle() {
+            self.sudoku_save = Some(SudokuSave {
+                difficulty,
+                puzzle: *game.puzzle(),
+                board: *game.board(),
+                seconds: game.seconds(),
+            });
+            self.sudoku_save_changed = true;
+        }
+    }
+
     /// Take the changed flag after the records were saved.
     pub fn take_records_changed(&mut self) -> bool {
         std::mem::take(&mut self.records_changed)
+    }
+
+    /// Take the sudoku save-changed flag after `main.rs` wrote or removed
+    /// the file.
+    pub fn take_sudoku_save_changed(&mut self) -> bool {
+        std::mem::take(&mut self.sudoku_save_changed)
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<String> {

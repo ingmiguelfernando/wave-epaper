@@ -12,6 +12,9 @@ use super::{
 };
 
 pub const SUDOKU_CELL_COUNT: usize = 81;
+/// Play seconds added for one key gap, at most; a game left open does not
+/// run up the clock.
+pub const MAX_EVENT_GAP_SECONDS: u32 = 60;
 pub const SUDOKU_CELL_SIZE: i32 = 48;
 pub const SUDOKU_GRID_X: i32 = (GAME_CANVAS_WIDTH - 9 * SUDOKU_CELL_SIZE) / 2;
 pub const SUDOKU_GRID_Y: i32 = 100;
@@ -35,9 +38,11 @@ const SUDOKU_PICK_RECT: DirtyRect = DirtyRect::new(
 const SUDOKU_STATUS_RECT: DirtyRect = DirtyRect::new(16, 612, 448, 96);
 const SUDOKU_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
 
-/// The three-step entry: pick a row, then a cell, then a number.
+/// The screens of one Sudoku app: the start list, then the three-step
+/// entry over the board.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SudokuStep {
+    Start,
     Row,
     Cell,
     Number,
@@ -47,16 +52,19 @@ impl SudokuStep {
     #[must_use]
     pub const fn marker(self) -> &'static str {
         match self {
+            Self::Start => "start",
             Self::Row => "row",
             Self::Cell => "cell",
             Self::Number => "number",
         }
     }
 
-    /// The mockup's chip caption, numbered like `1 · ROW`.
+    /// The mockup's chip caption, numbered like `1 · ROW`; the start list
+    /// has no chip.
     #[must_use]
     pub const fn chip_label(self) -> &'static str {
         match self {
+            Self::Start => "START",
             Self::Row => "1 · ROW",
             Self::Cell => "2 · CELL",
             Self::Number => "3 · NUMBER",
@@ -90,9 +98,126 @@ pub struct SudokuGame {
     candidate: u8,
     status: String,
     completed: bool,
+    /// Difficulty of the generated puzzle; a declared SD puzzle is Medium.
+    difficulty: Option<crate::games::sudoku_puzzles::SudokuDifficulty>,
+    /// The original puzzle grid, 0 for empty cells, saved for resume.
+    puzzle: [u8; SUDOKU_CELL_COUNT],
+    /// Solved puzzle, kept so the game can delete its save on exit.
+    solved_puzzle: Option<[u8; SUDOKU_CELL_COUNT]>,
+    /// Accumulated play time in seconds.
+    seconds: u32,
+    /// Last event's clock, in milliseconds; None until the first press.
+    last_event_ms: Option<u64>,
+    /// Seed the generator uses for `New · <difficulty>` games.
+    seed: u32,
+    /// Highlighted row of the start list.
+    start_cursor: usize,
+    /// The resumable save the runtime handed in, until a game starts.
+    resumed: Option<crate::games::sudoku_save::SudokuSave>,
+    /// The old fixed puzzle of a `sudoku.init("...")` card, if any.
+    sd_puzzle: Option<String>,
+}
+
+/// One row of the start list.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartOption {
+    pub label: String,
+    pub kind: StartKind,
+}
+
+/// What SELECT does on a start-list row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StartKind {
+    /// Resume the saved game.
+    Continue,
+    /// Generate a new puzzle of this difficulty.
+    New(crate::games::sudoku_puzzles::SudokuDifficulty),
+    /// Play the old fixed SD puzzle.
+    SdPuzzle,
 }
 
 impl SudokuGame {
+    /// The start list over the runtime's save and the card's init line.
+    /// Opening Sudoku with `sudoku.init()` lands here.
+    #[must_use]
+    pub fn start_list(
+        save: Option<crate::games::sudoku_save::SudokuSave>,
+        sd_puzzle: Option<String>,
+    ) -> Self {
+        let mut game = Self::empty_start();
+        game.resumed = save;
+        game.sd_puzzle = sd_puzzle;
+        game
+    }
+
+    /// A shell that only shows the start list.
+    fn empty_start() -> Self {
+        Self {
+            board: [0; SUDOKU_CELL_COUNT],
+            givens: [false; SUDOKU_CELL_COUNT],
+            step: SudokuStep::Start,
+            row: 0,
+            cell_choice: 0,
+            cursor: 0,
+            candidate: 1,
+            status: String::new(),
+            completed: false,
+            difficulty: None,
+            puzzle: [0; SUDOKU_CELL_COUNT],
+            solved_puzzle: None,
+            seconds: 0,
+            last_event_ms: None,
+            seed: 20_260_108,
+            start_cursor: 0,
+            resumed: None,
+            sd_puzzle: None,
+        }
+    }
+
+    /// The start list rows, in order.
+    #[must_use]
+    pub fn start_options(&self) -> Vec<StartOption> {
+        let mut options = Vec::new();
+        if let Some(save) = &self.resumed {
+            let filled = save.board.iter().filter(|&&cell| cell != 0).count();
+            options.push(StartOption {
+                label: format!("Continue · {} · {filled}/81", save.difficulty.label()),
+                kind: StartKind::Continue,
+            });
+        }
+        for difficulty in [
+            crate::games::sudoku_puzzles::SudokuDifficulty::Easy,
+            crate::games::sudoku_puzzles::SudokuDifficulty::Medium,
+            crate::games::sudoku_puzzles::SudokuDifficulty::Hard,
+        ] {
+            options.push(StartOption {
+                label: format!("New · {}", difficulty.label()),
+                kind: StartKind::New(difficulty),
+            });
+        }
+        if self.sd_puzzle.is_some() {
+            options.push(StartOption {
+                label: "SD puzzle".into(),
+                kind: StartKind::SdPuzzle,
+            });
+        }
+        options
+    }
+
+    #[must_use]
+    pub const fn start_cursor(&self) -> usize {
+        self.start_cursor
+    }
+
+    /// The old fixed puzzle text, when the card declared one.
+    #[must_use]
+    pub const fn sd_puzzle(&self) -> Option<&String> {
+        match &self.sd_puzzle {
+            Some(text) => Some(text),
+            None => None,
+        }
+    }
+
     pub fn from_puzzle(source: &str) -> Result<Self, String> {
         if source.len() != SUDOKU_CELL_COUNT {
             return Err(format!(
@@ -110,9 +235,22 @@ impl SudokuGame {
             givens[index] = board[index] != 0;
         }
         validate_initial_board(&board)?;
+        Ok(Self::new(board, givens, board, None, 0))
+    }
+
+    /// Build a game over a board, its original puzzle, difficulty and the
+    /// played seconds.
+    #[must_use]
+    pub fn new(
+        board: [u8; SUDOKU_CELL_COUNT],
+        givens: [bool; SUDOKU_CELL_COUNT],
+        puzzle: [u8; SUDOKU_CELL_COUNT],
+        difficulty: Option<crate::games::sudoku_puzzles::SudokuDifficulty>,
+        seconds: u32,
+    ) -> Self {
         let completed = is_complete(&board);
         let (row, cell_choice, cursor) = Self::entry_point(&givens);
-        Ok(Self {
+        Self {
             board,
             givens,
             step: SudokuStep::Row,
@@ -126,7 +264,53 @@ impl SudokuGame {
                 String::new()
             },
             completed,
-        })
+            difficulty,
+            puzzle,
+            solved_puzzle: None,
+            seconds,
+            last_event_ms: None,
+            seed: 20_260_108,
+            start_cursor: 0,
+            resumed: None,
+            sd_puzzle: None,
+        }
+    }
+
+    /// The original puzzle grid, 0 for empty cells.
+    #[must_use]
+    pub const fn puzzle(&self) -> &[u8; SUDOKU_CELL_COUNT] {
+        &self.puzzle
+    }
+
+    /// The game's difficulty, for the title bar and the records.
+    #[must_use]
+    pub const fn difficulty(&self) -> Option<crate::games::sudoku_puzzles::SudokuDifficulty> {
+        self.difficulty
+    }
+
+    /// Accumulated play time in seconds.
+    #[must_use]
+    pub const fn seconds(&self) -> u32 {
+        self.seconds
+    }
+
+    /// The solved grid, when the game came from the generator.
+    #[must_use]
+    pub const fn solved_puzzle(&self) -> Option<&[u8; SUDOKU_CELL_COUNT]> {
+        match &self.solved_puzzle {
+            Some(solution) => Some(solution),
+            None => None,
+        }
+    }
+
+    /// Add the elapsed time since the previous press, capped at 60 s, so a
+    /// game left open does not run up the clock. Call once per event.
+    pub fn on_event_clock(&mut self, now_ms: u64) {
+        if let Some(previous) = self.last_event_ms {
+            let gap_seconds = ((now_ms.saturating_sub(previous)) / 1000) as u32;
+            self.seconds += gap_seconds.min(MAX_EVENT_GAP_SECONDS);
+        }
+        self.last_event_ms = Some(now_ms);
     }
 
     /// The first row and cell with something to fill.
@@ -194,10 +378,13 @@ impl SudokuGame {
     pub fn apply_button_and_render(
         &mut self,
         event: ButtonEvent,
+        now_ms: u64,
         canvas: &mut NativeGameCanvas,
     ) -> Result<SudokuEventResult, String> {
+        self.on_event_clock(now_ms);
         let old = self.snapshot();
         let reason = match self.step {
+            SudokuStep::Start => self.apply_start_button(event),
             SudokuStep::Row => self.apply_row_button(event),
             SudokuStep::Cell => self.apply_cell_button(event),
             SudokuStep::Number => self.apply_number_button(event),
@@ -207,10 +394,13 @@ impl SudokuGame {
 
     pub fn apply_boot_short_press_and_render(
         &mut self,
+        now_ms: u64,
         canvas: &mut NativeGameCanvas,
     ) -> Result<SudokuEventResult, String> {
+        self.on_event_clock(now_ms);
         let old = self.snapshot();
         let reason = match self.step {
+            SudokuStep::Start => "noop",
             SudokuStep::Row => "noop",
             SudokuStep::Cell => {
                 self.step = SudokuStep::Row;
@@ -222,6 +412,66 @@ impl SudokuGame {
             }
         };
         self.finish_and_render(reason, &old, canvas)
+    }
+
+    fn apply_start_button(&mut self, event: ButtonEvent) -> &'static str {
+        let count = self.start_options().len().max(1);
+        match event {
+            ButtonEvent::Up => {
+                self.start_cursor = self.start_cursor.checked_sub(1).unwrap_or(count - 1);
+                "start-move"
+            }
+            ButtonEvent::Down => {
+                self.start_cursor = (self.start_cursor + 1) % count;
+                "start-move"
+            }
+            ButtonEvent::Select => {
+                self.begin_start_option(self.start_cursor);
+                "start-choose"
+            }
+        }
+    }
+
+    /// Start the highlighted option: resume the save, generate a new puzzle
+    /// or play the card's fixed puzzle.
+    fn begin_start_option(&mut self, index: usize) {
+        let options = self.start_options();
+        let Some(option) = options.get(index) else {
+            return;
+        };
+        match option.kind {
+            StartKind::Continue => {
+                if let Some(save) = self.resumed {
+                    let givens = save.puzzle.map(|cell| cell != 0);
+                    *self = Self::new(
+                        save.board,
+                        givens,
+                        save.puzzle,
+                        Some(save.difficulty),
+                        save.seconds,
+                    );
+                }
+            }
+            StartKind::New(difficulty) => {
+                let generated = crate::games::sudoku_puzzles::generate(difficulty, self.seed);
+                let givens = generated.puzzle.map(|cell| cell != 0);
+                *self = Self::new(
+                    generated.puzzle,
+                    givens,
+                    generated.puzzle,
+                    Some(difficulty),
+                    0,
+                );
+                self.solved_puzzle = Some(generated.solution);
+            }
+            StartKind::SdPuzzle => {
+                if let Some(source) = self.sd_puzzle.clone() {
+                    if let Ok(started) = Self::from_puzzle(&source) {
+                        *self = started;
+                    }
+                }
+            }
+        }
     }
 
     fn snapshot(&self) -> (usize, usize, SudokuStep, u8) {
@@ -395,7 +645,12 @@ impl SudokuGame {
     fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         canvas.clear_frame();
         canvas.rect(0, 0, GAME_CANVAS_WIDTH, SUDOKU_BAR_HEIGHT, true)?;
-        canvas.text(16, 30, "Sudoku".into(), CanvasTextStyle::Inverse)?;
+        canvas.text(16, 30, self.title_text(), CanvasTextStyle::Inverse)?;
+        if self.step == SudokuStep::Start {
+            self.draw_start_list(canvas)?;
+            canvas.request_refresh();
+            return Ok(());
+        }
         self.draw_step_strip(canvas)?;
         self.draw_grid(canvas)?;
         if self.step == SudokuStep::Number {
@@ -404,6 +659,32 @@ impl SudokuGame {
         canvas.text(24, 644, self.info_line(), CanvasTextStyle::Body)?;
         canvas.text(24, 684, self.status.clone(), CanvasTextStyle::Detail)?;
         canvas.request_refresh();
+        Ok(())
+    }
+
+    /// `Sudoku · Medium` on the bar's left, the played time on the right.
+    fn title_text(&self) -> String {
+        let difficulty = self.difficulty.map_or(String::new(), |difficulty| {
+            format!(" · {}", difficulty.label())
+        });
+        format!("Sudoku{difficulty} · {}", time_text(self.seconds))
+    }
+
+    /// The mockup's start list: one boxed row per option, the selected one
+    /// inverted.
+    fn draw_start_list(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        let options = self.start_options();
+        for (index, option) in options.iter().enumerate() {
+            let top = 140 + index as i32 * 64;
+            let selected = index == self.start_cursor;
+            canvas.rect(24, top, 432, 52, selected)?;
+            let style = if selected {
+                CanvasTextStyle::Inverse
+            } else {
+                CanvasTextStyle::Body
+            };
+            canvas.text(40, top + 34, option.label.clone(), style)?;
+        }
         Ok(())
     }
 
@@ -640,6 +921,17 @@ fn display_candidate(candidate: u8) -> String {
     }
 }
 
+/// Thousands-separator-free clock text: `7:41` or `1:02:03`.
+#[must_use]
+pub fn time_text(seconds: u32) -> String {
+    let (hours, rest) = (seconds / 3600, seconds % 3600);
+    if hours > 0 {
+        format!("{hours}:{:02}:{:02}", rest / 60, rest % 60)
+    } else {
+        format!("{}:{:02}", rest / 60, rest % 60)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -663,12 +955,14 @@ mod tests {
 
     fn press(game: &mut SudokuGame, event: ButtonEvent) -> super::SudokuEventResult {
         let mut canvas = NativeGameCanvas::default();
-        game.apply_button_and_render(event, &mut canvas).unwrap()
+        game.apply_button_and_render(event, 1_000, &mut canvas)
+            .unwrap()
     }
 
     fn boot(game: &mut SudokuGame) -> super::SudokuEventResult {
         let mut canvas = NativeGameCanvas::default();
-        game.apply_boot_short_press_and_render(&mut canvas).unwrap()
+        game.apply_boot_short_press_and_render(2_000, &mut canvas)
+            .unwrap()
     }
 
     #[test]
@@ -916,5 +1210,163 @@ mod tests {
         let number = press(&mut game, ButtonEvent::Select);
         assert_eq!((number.row, number.column), (1, 1));
         assert_eq!(number.candidate, 2, "options are 2 · 4 · 7");
+    }
+}
+
+#[cfg(test)]
+mod d24_tests {
+    use super::{time_text, StartKind, SudokuGame, SudokuStep, MAX_EVENT_GAP_SECONDS};
+    use crate::{
+        buttons::ButtonEvent,
+        games::{
+            canvas::NativeGameCanvas, records::GameRecords, sudoku_puzzles::SudokuDifficulty,
+            sudoku_save::SudokuSave,
+        },
+    };
+
+    const PUZZLE: &str =
+        "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
+
+    fn press(game: &mut SudokuGame, event: ButtonEvent, now_ms: u64) {
+        let mut canvas = NativeGameCanvas::default();
+        game.apply_button_and_render(event, now_ms, &mut canvas)
+            .unwrap();
+    }
+
+    #[test]
+    fn the_timer_caps_each_gap_and_accumulates() {
+        let mut game = SudokuGame::from_puzzle(PUZZLE).unwrap();
+        game.on_event_clock(0);
+        // 10 s of real play.
+        press(&mut game, ButtonEvent::Down, 10_000);
+        assert_eq!(game.seconds(), 10);
+        // A 5-minute pause only counts the 60 s cap.
+        press(&mut game, ButtonEvent::Down, 10_000 + 300_000);
+        assert_eq!(game.seconds(), 70);
+        // Sub-second gaps add nothing.
+        press(&mut game, ButtonEvent::Down, 70_500);
+        assert_eq!(game.seconds(), 70);
+        assert_eq!(MAX_EVENT_GAP_SECONDS, 60);
+    }
+
+    #[test]
+    fn the_clock_text_matches_the_mockup_formats() {
+        assert_eq!(time_text(7 * 60 + 41), "7:41");
+        assert_eq!(time_text(3600 + 2 * 60 + 3), "1:02:03");
+        assert_eq!(time_text(0), "0:00");
+    }
+
+    #[test]
+    fn the_start_list_lists_continue_new_and_sd_puzzle() {
+        let save = SudokuSave {
+            difficulty: SudokuDifficulty::Medium,
+            puzzle: [0; 81],
+            board: [0; 81],
+            seconds: 120,
+        };
+        let game = SudokuGame::start_list(Some(save), Some(PUZZLE.into()));
+        assert_eq!(game.step(), SudokuStep::Start);
+        let labels: Vec<String> = game
+            .start_options()
+            .iter()
+            .map(|o| o.label.clone())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Continue · Medium · 0/81",
+                "New · Easy",
+                "New · Medium",
+                "New · Hard",
+                "SD puzzle"
+            ]
+        );
+        let kinds: Vec<StartKind> = game.start_options().iter().map(|o| o.kind).collect();
+        assert_eq!(kinds[0], StartKind::Continue);
+        assert_eq!(kinds[1], StartKind::New(SudokuDifficulty::Easy));
+        assert_eq!(kinds[4], StartKind::SdPuzzle);
+    }
+
+    #[test]
+    fn without_a_save_the_list_starts_at_new_easy() {
+        let game = SudokuGame::start_list(None, None);
+        let labels: Vec<String> = game
+            .start_options()
+            .iter()
+            .map(|o| o.label.clone())
+            .collect();
+        assert_eq!(labels, ["New · Easy", "New · Medium", "New · Hard"]);
+        assert_eq!(game.start_cursor(), 0);
+    }
+
+    #[test]
+    fn select_on_new_generates_a_playable_puzzle_with_the_title_bar() {
+        let mut game = SudokuGame::start_list(None, None);
+        let mut canvas = NativeGameCanvas::default();
+        game.render_initial(&mut canvas).unwrap();
+        press(&mut game, ButtonEvent::Down, 0); // New · Medium
+        press(&mut game, ButtonEvent::Select, 500);
+        assert_eq!(game.step(), SudokuStep::Row);
+        assert_eq!(game.difficulty(), Some(SudokuDifficulty::Medium));
+        let title = game.title_text();
+        assert!(title.starts_with("Sudoku · Medium · "));
+        // The generated puzzle renders within the command budget.
+        let mut canvas = NativeGameCanvas::default();
+        game.render_initial(&mut canvas).unwrap();
+        assert!(canvas.commands().len() < crate::games::canvas::MAX_GAME_DRAW_COMMANDS);
+    }
+
+    #[test]
+    fn select_on_sd_puzzle_plays_the_card_puzzle() {
+        let mut game = SudokuGame::start_list(None, Some(PUZZLE.into()));
+        // Move to the last row (SD puzzle) and start.
+        for _ in 0..3 {
+            press(&mut game, ButtonEvent::Down, 1_000);
+        }
+        press(&mut game, ButtonEvent::Select, 2_000);
+        assert_eq!(game.step(), SudokuStep::Row);
+        assert_eq!(game.puzzle().len(), 81);
+        assert!(game.puzzle()[0] == 5, "the SD puzzle's first given is 5");
+    }
+
+    #[test]
+    fn resume_restores_the_board_and_seconds() {
+        let mut puzzle_text = PUZZLE.to_string();
+        puzzle_text.replace_range(..1, "0"); // one empty given to fill
+        let save = SudokuSave {
+            difficulty: SudokuDifficulty::Hard,
+            puzzle: text_grid(&puzzle_text),
+            board: text_grid(&puzzle_text),
+            seconds: 777,
+        };
+        let mut game = SudokuGame::start_list(Some(save), None);
+        press(&mut game, ButtonEvent::Select, 1_000);
+        assert_eq!(game.step(), SudokuStep::Row);
+        assert_eq!(game.seconds(), 777);
+        assert_eq!(game.difficulty(), Some(SudokuDifficulty::Hard));
+    }
+
+    fn text_grid(text: &str) -> [u8; 81] {
+        let mut grid = [0_u8; 81];
+        for (index, byte) in text.bytes().enumerate() {
+            grid[index] = byte - b'0';
+        }
+        grid
+    }
+
+    #[test]
+    fn records_gain_the_three_sudoku_keys_and_observe_only_improves() {
+        let mut records = GameRecords::default();
+        assert!(records.observe_sudoku(SudokuDifficulty::Easy, 600));
+        assert_eq!(records.sudoku_easy, 600);
+        assert!(!records.observe_sudoku(SudokuDifficulty::Easy, 700));
+        assert!(records.observe_sudoku(SudokuDifficulty::Easy, 500));
+        assert_eq!(records.sudoku_easy, 500);
+        // Other difficulties stay independent.
+        assert!(records.observe_sudoku(SudokuDifficulty::Hard, 4_000));
+        assert_eq!(records.sudoku_hard, 4_000);
+        assert_eq!(records.sudoku_medium, 0);
+        let round = GameRecords::parse(&records.serialized()).unwrap();
+        assert_eq!(round, records);
     }
 }

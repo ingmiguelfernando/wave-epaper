@@ -160,6 +160,8 @@ pub struct AppState {
     /// Battery use across the most recent sleep, for Settings › Power.
     pub last_sleep: Option<SleepReport>,
     pub light_sleep: LightSleepShare,
+    /// Milliseconds of the last dispatched event, for the games' timers.
+    pub event_clock_ms: u64,
 }
 
 impl Default for AppState {
@@ -212,6 +214,7 @@ impl Default for AppState {
             full_refresh_requested: false,
             last_sleep: None,
             light_sleep: LightSleepShare::default(),
+            event_clock_ms: 0,
         }
     }
 }
@@ -221,6 +224,13 @@ impl AppState {
     /// hardware-independent. Files, Alarms and Audio remain delegated to their
     /// existing owners from main.rs.
     pub fn apply(&mut self, event: ButtonEvent) {
+        self.apply_with_clock(event, self.event_clock_ms);
+    }
+
+    /// The same dispatch with a millisecond clock, so games can time
+    /// themselves; tests choose the times.
+    pub fn apply_with_clock(&mut self, event: ButtonEvent, now_ms: u64) {
+        self.event_clock_ms = now_ms;
         let route = self.router.current();
         if route == ScreenRoute::Home {
             self.apply_home(event);
@@ -265,7 +275,7 @@ impl AppState {
             route,
             ScreenRoute::LuaApps | ScreenRoute::LuaGame | ScreenRoute::LuaGameError
         ) {
-            self.apply_lua_runtime(event);
+            self.apply_lua_runtime(event, now_ms);
         } else if matches!(
             route,
             ScreenRoute::ContinueReading
@@ -634,7 +644,7 @@ impl AppState {
         }
     }
 
-    fn apply_lua_runtime(&mut self, event: ButtonEvent) {
+    fn apply_lua_runtime(&mut self, event: ButtonEvent, now_ms: u64) {
         match self.router.current() {
             ScreenRoute::LuaApps => {
                 if event == ButtonEvent::Select {
@@ -650,7 +660,7 @@ impl AppState {
                 if event == ButtonEvent::Select {
                     self.note_select_press();
                 }
-                self.lua_runtime.apply_game_button(event);
+                self.lua_runtime.apply_game_button(event, now_ms);
                 if self.lua_runtime.error.is_some() {
                     self.router.navigate_to(ScreenRoute::LuaGameError);
                 }
@@ -680,7 +690,9 @@ impl AppState {
 
     pub fn apply_lua_game_boot_short_press(&mut self) -> bool {
         self.router.current() == ScreenRoute::LuaGame
-            && self.lua_runtime.apply_game_boot_short_press()
+            && self
+                .lua_runtime
+                .apply_game_boot_short_press(self.event_clock_ms)
     }
 
     pub fn refresh_lua_app_catalog(&mut self, mounted: bool) {
