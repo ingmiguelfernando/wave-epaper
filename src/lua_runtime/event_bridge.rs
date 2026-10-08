@@ -184,7 +184,8 @@ impl LuaEventBridge {
                 if let Some(mode) = apply_tetris_start_button(start, event) {
                     // The press time seeds the game, so each new game differs.
                     let seed = (now_ms as u32).max(1);
-                    let game = TetrisApp::new(mode, seed);
+                    let mut game = TetrisApp::new(mode, seed);
+                    game.set_best(start.best(mode));
                     game.render_initial(canvas)?;
                     let result = game.started_result();
                     *self = Self::Tetris(game);
@@ -479,6 +480,27 @@ mod tests {
             }
             other => panic!("choosing a mode starts a game, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_mode_list_redraws_in_place_and_hands_its_best_to_the_game() {
+        let mut c = NativeGameCanvas::default();
+        let mut b = LuaEventBridge::load("tetris.init()", &mut c).unwrap();
+        if let LuaEventBridge::TetrisStart(start) = &mut b {
+            start.set_bests(0, 4_200);
+        }
+        let drawn = c.commands().len();
+        b.apply_button(ButtonEvent::Down, 0, &mut c).unwrap();
+        assert_eq!(
+            c.commands().len(),
+            drawn,
+            "a move redraws, it does not pile up"
+        );
+        b.apply_button(ButtonEvent::Select, 0, &mut c).unwrap();
+        let LuaEventBridge::Tetris(game) = &b else {
+            panic!("choosing Classic starts a game");
+        };
+        assert_eq!(game.best(), 4_200);
     }
 
     #[test]

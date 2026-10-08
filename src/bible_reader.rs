@@ -95,8 +95,8 @@ pub enum Line {
 }
 
 /// Lay a chapter's items out as lines of at most `width` pixels, measuring
-/// with `measure`. Headings and verses wrap; a verse's number stays on its
-/// first line only.
+/// with `measure`. Verses wrap and a heading keeps one line; a verse's
+/// number stays on its first line only.
 pub fn layout(
     items: &[crate::bible::ChapterItem],
     width: i32,

@@ -11,7 +11,7 @@ use embedded_graphics::{
 
 use crate::{
     app::{
-        display::DisplayPreferences,
+        display::{DisplayPreferences, UiFontSize},
         reader_typography::reader_body_style,
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
@@ -276,7 +276,7 @@ fn draw_book_row(
         preferences.body_style()
     };
     Text::new(name, Point::new(ROW_LEFT + 20, top + 40), name_style).draw(display)?;
-    let caption = format!("{chapters} ch.");
+    let caption = format!("{chapters} cap.");
     let width = chapters_style.text_width(&caption);
     Text::new(
         &caption,
@@ -443,7 +443,7 @@ pub fn render_bible_reading(
         state.reader.preferences.font_size,
         state.reader.preferences.theme,
     );
-    let heading = preferences.heading_style();
+    let large = preferences.large_style();
     let width = RIGHT - LEFT;
     let items = match bible::load_chapter(state.bible.root(), translation, book, position.chapter) {
         Ok(items) => items,
@@ -458,20 +458,22 @@ pub fn render_bible_reading(
     let chapter_title = format!("{} {}", book.short_name, position.chapter);
 
     draw_header(display, preferences, "BIBLIA", translation)?;
-    Text::new(
-        &heading.fit(&chapter_title, width),
-        Point::new(LEFT, 150),
-        heading,
-    )
-    .draw(display)?;
+    let title = format!("{} {}", book.name, position.chapter);
+    Text::new(&large.fit(&title, width), Point::new(LEFT, 150), large).draw(display)?;
     Rectangle::new(Point::new(LEFT, 166), Size::new(width as u32, 2))
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
         .draw(display)?;
 
     let small = preferences.detail_style();
+    // Section headings in bold capitals, at the compact size like the mockup.
+    let heading = DisplayPreferences {
+        font_size: UiFontSize::Compact,
+        ..preferences
+    }
+    .heading_style();
     let mut top = READING_TOP;
     for line in lines.iter().skip(page * per_page).take(per_page) {
-        top = draw_reading_line(display, body, small, top, line, width)?;
+        top = draw_reading_line(display, body, heading, small, top, line, width)?;
     }
 
     let indicator = format!("{chapter_title} · {}/{pages}", page + 1);
@@ -508,6 +510,7 @@ fn reading_lines_per_page(body: UiTextStyle) -> usize {
 fn draw_reading_line(
     display: &mut OrientedFrameBuffer<'_>,
     body: UiTextStyle,
+    heading: UiTextStyle,
     small: UiTextStyle,
     top: i32,
     line: &bible_reader::Line,
@@ -517,7 +520,8 @@ fn draw_reading_line(
     let baseline = top + body.cap_height();
     match line {
         bible_reader::Line::Heading(text) => {
-            Text::new(&body.fit(text, width), Point::new(LEFT, baseline), body).draw(display)?;
+            let text = heading.fit(&text.to_uppercase(), width);
+            Text::new(&text, Point::new(LEFT, baseline), heading).draw(display)?;
             Ok(top + pitch)
         }
         bible_reader::Line::Verse {
@@ -539,18 +543,11 @@ fn draw_reading_line(
     }
 }
 
-/// Options of the reading menu. The verse and translation rows appear only
-/// when the card supports them, so the list and its key handling agree.
+/// Options of the reading menu. The verse of the day and the translation
+/// switch come later; the list offers only what works.
 #[must_use]
-pub fn bible_menu_items(state: &AppState) -> Vec<&'static str> {
-    let mut items = vec!["Ir a libro", "Ir a capítulo"];
-    if state.bible.has_verse_list() {
-        items.push("Versículo del día");
-    }
-    if state.bible.translation_count() > 1 {
-        items.push("Traducción");
-    }
-    items
+pub fn bible_menu_items(_state: &AppState) -> Vec<&'static str> {
+    vec!["Ir a libro", "Ir a capítulo"]
 }
 
 /// Menu of the reading view: one option list, the option at `highlighted`.

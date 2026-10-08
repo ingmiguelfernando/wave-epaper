@@ -1584,11 +1584,11 @@ mod firmware {
                 last_reader_tick = Instant::now();
             }
 
-            // Classic Tetris falls on its own clock; a tick is not a key press,
-            // so `last_activity` stays put.
+            // Classic Tetris falls on its own clock and pauses while the panel
+            // is off; a tick is not a key press, so `last_activity` stays put.
             if !sleep_mode.is_sleeping()
-                && state.tick_lua_game(uptime.elapsed().as_millis() as u64)
                 && state.panel_awake
+                && state.tick_lua_game(uptime.elapsed().as_millis() as u64)
             {
                 refresh_screen(
                     &mut panel,
@@ -1778,6 +1778,9 @@ mod firmware {
                         info!("rustmix-wave=hierarchical-back outcome=ignored route=home");
                     } else {
                         state.back();
+                        if previous_route == ScreenRoute::BibleReading {
+                            state.bible.save_if_changed();
+                        }
                         apply_voice_notes_ui_request(
                             &mut voice_recording,
                             &mut voice_playback,
@@ -2190,6 +2193,7 @@ mod firmware {
                     network_runtime.has_radio().then_some(burst_due),
                     state
                         .next_lua_game_tick_ms()
+                        .filter(|_| state.panel_awake)
                         .map(|at| Duration::from_millis(at).saturating_sub(uptime.elapsed())),
                 ]);
                 // The RTC line only needs watching while an alarm is programmed.

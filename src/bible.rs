@@ -191,10 +191,9 @@ pub fn load_chapter(
             .with_context(|| format!("seeking {}", text_path.display()))?;
         let mut reader = BufReader::new(&mut file);
         let mut first = String::new();
-        reader
-            .read_line(&mut first)
-            .with_context(|| format!("{}: reading", text_path.display()))?;
-        if clean_line(&first) == format!("C\t{chapter}") {
+        // A stale offset can land inside a character; scan instead of failing.
+        let landed = reader.read_line(&mut first).is_ok();
+        if landed && clean_line(&first) == format!("C\t{chapter}") {
             let start = offset + first.len() as u64;
             return collect_records(reader, &text_path, start);
         }

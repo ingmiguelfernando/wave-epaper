@@ -33,8 +33,8 @@ pub struct BibleUiState {
 }
 
 impl BibleUiState {
-    /// Scan `root` for the first translation with an `index.tsv`; no card or
-    /// no translation leaves the state in `Missing`.
+    /// Scan `root` for the saved place's translation, else the first with an
+    /// `index.tsv`; no card or no translation leaves the state in `Missing`.
     #[must_use]
     pub fn with_root(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
@@ -44,7 +44,9 @@ impl BibleUiState {
         } else {
             bible::translations(&root).ok()
         };
-        let (card, books) = match scanned.and_then(|list| list.into_iter().next()) {
+        let place = BiblePlace::load(&root);
+        let saved = place.as_ref().map(|place| place.translation.as_str());
+        let (card, books) = match scanned.and_then(|list| pick_translation(list, saved)) {
             Some(translation) => {
                 let text = std::fs::read_to_string(root.join(&translation).join("index.tsv"));
                 match text.ok().and_then(|text| bible::parse_index(&text).ok()) {
@@ -54,7 +56,6 @@ impl BibleUiState {
             }
             None => (BibleCard::Missing, Vec::new()),
         };
-        let place = BiblePlace::load(&root);
         Self {
             root,
             card,
@@ -215,6 +216,12 @@ impl BibleUiState {
 
 const VERSES_FILE: &str = "VERSES.TXT";
 
+/// The saved translation when the card still has it, else the first one.
+fn pick_translation(list: Vec<String>, saved: Option<&str>) -> Option<String> {
+    let kept = saved.and_then(|code| list.iter().find(|candidate| *candidate == code));
+    kept.cloned().or_else(|| list.into_iter().next())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +241,20 @@ mod tests {
         assert_eq!(state.card(), &BibleCard::Missing);
         assert!(state.books().is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_saved_translation_wins_over_the_first_on_the_card() {
+        let list = || vec!["KJV".to_string(), "RVR1960".to_string()];
+        assert_eq!(
+            pick_translation(list(), Some("RVR1960")).as_deref(),
+            Some("RVR1960")
+        );
+        assert_eq!(
+            pick_translation(list(), Some("NVI")).as_deref(),
+            Some("KJV")
+        );
+        assert_eq!(pick_translation(list(), None).as_deref(), Some("KJV"));
+        assert_eq!(pick_translation(Vec::new(), Some("KJV")), None);
     }
 }

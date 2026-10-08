@@ -1223,8 +1223,6 @@ impl AppState {
         }
     }
 
-    /// Bible keys: picker, chapter grid and reading view. The place is saved
-    /// when the view closes, never per page.
     /// BOOT short press stars the selected photo in the gallery and viewer.
     pub fn apply_photos_boot_short_press(&mut self) -> bool {
         let viewer = &self.photos.viewer;
@@ -1238,6 +1236,8 @@ impl AppState {
         true
     }
 
+    /// Bible keys: picker, chapter grid and reading view. The place is saved
+    /// when the view closes, never per page.
     fn apply_bible(&mut self, route: ScreenRoute, event: ButtonEvent) {
         if event == ButtonEvent::Select {
             self.note_select_press();
@@ -1257,8 +1257,8 @@ impl AppState {
                 self.bible.nav_mut().move_chapter(1);
             }
             (ScreenRoute::BibleChapters, ButtonEvent::Select) => self.open_bible_chapter(),
-            (ScreenRoute::BibleReading, ButtonEvent::Up) => self.turn_bible_page(true),
-            (ScreenRoute::BibleReading, ButtonEvent::Down) => self.turn_bible_page(false),
+            (ScreenRoute::BibleReading, ButtonEvent::Up) => self.turn_bible_page(false),
+            (ScreenRoute::BibleReading, ButtonEvent::Down) => self.turn_bible_page(true),
             (ScreenRoute::BibleReading, ButtonEvent::Select) => {
                 self.bible_menu_selected = 0;
                 self.router.navigate_to(ScreenRoute::BibleMenu);
@@ -1283,8 +1283,7 @@ impl AppState {
         };
     }
 
-    /// ● in the reading menu: run the highlighted option. The verse and the
-    /// translation options are listed but not yet built, so they only close.
+    /// ● in the reading menu: run the highlighted option.
     fn open_bible_menu_item(&mut self) {
         let items = crate::app::screens::bible::bible_menu_items(self);
         let item = items.get(self.bible_menu_selected).copied();
@@ -1467,8 +1466,6 @@ impl AppState {
         std::mem::take(&mut self.full_refresh_requested) || photos
     }
 
-    /// Rows of Settings › Weather, each opening a list of its values.
-    /// Without WEATHER.TXT the screen only explains how to add it.
     /// Settings › AI: ▲▼ move the cursor, or the open list; ● opens a list
     /// on the three choice rows and saves only a value that really changed.
     fn apply_ai_settings(&mut self, event: ButtonEvent) {
@@ -1523,6 +1520,8 @@ impl AppState {
         std::mem::take(&mut self.ai_changed)
     }
 
+    /// Rows of Settings › Weather, each opening a list of its values.
+    /// Without WEATHER.TXT the screen only explains how to add it.
     fn apply_weather_settings(&mut self, event: ButtonEvent) {
         let Some(config) = self.weather_config.as_ref() else {
             return;
@@ -2872,7 +2871,7 @@ mod bible_routing_tests {
         // Keep turning forward until the chapter changes.
         let mut guard = 0;
         while state.bible.position().unwrap().chapter == 1 && guard < 50 {
-            state.apply(ButtonEvent::Up);
+            state.apply(ButtonEvent::Down);
             guard += 1;
         }
         let next = state.bible.position().unwrap();
@@ -2884,7 +2883,7 @@ mod bible_routing_tests {
         // Back past its first page lands on the previous chapter's last page.
         let mut guard = 0;
         while state.bible.position().unwrap().chapter == 2 && guard < 50 {
-            state.apply(ButtonEvent::Down);
+            state.apply(ButtonEvent::Up);
             guard += 1;
         }
         let back = state.bible.position().unwrap();
@@ -2975,12 +2974,12 @@ mod bible_routing_tests {
     }
 
     #[test]
-    fn the_verse_option_appears_only_when_verses_txt_exists() {
+    fn the_menu_offers_only_working_options_even_with_a_verse_file() {
         let root = temp_card("menu-verse");
         fs::write(root.join("VERSES.TXT"), "PSA 23:1-3\n").unwrap();
         let state = menu_state(&root);
         let items = crate::app::screens::bible::bible_menu_items(&state);
-        assert!(items.contains(&"Versículo del día"));
+        assert_eq!(items, vec!["Ir a libro", "Ir a capítulo"]);
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -462,8 +462,6 @@ pub struct TetrisEventResult {
     pub dirty_regions: Vec<DirtyRect>,
 }
 
-/// Zen view over one `TetrisGame`: redraws, key mapping and the in-memory
-/// best score that Phase 6 will persist.
 /// The mode list Tetris opens on: Zen and Classic, each with its best score.
 /// Choosing a row starts that mode; the list holds no game of its own.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -522,8 +520,20 @@ impl TetrisStart {
         self.options()[self.cursor].0
     }
 
+    /// The saved best of `mode`, for the game the list starts.
+    #[must_use]
+    pub const fn best(&self, mode: TetrisMode) -> u32 {
+        match mode {
+            TetrisMode::Zen => self.zen_best,
+            TetrisMode::Classic => self.classic_best,
+        }
+    }
+
     /// One boxed row per mode, the highlighted one inverted, as Sudoku's list.
     pub fn render(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        canvas.clear_frame();
+        canvas.rect(0, 0, GAME_CANVAS_WIDTH, TETRIS_BAR_HEIGHT, true)?;
+        canvas.text(16, 30, "Tetris".into(), CanvasTextStyle::Inverse)?;
         for (index, (_, label)) in self.options().iter().enumerate() {
             let top = 140 + index as i32 * 64;
             let selected = index == self.cursor;
@@ -550,6 +560,8 @@ fn best_label(name: &str, best: u32) -> String {
     }
 }
 
+/// The game view over one `TetrisGame`: redraws, key mapping and the best
+/// score of its mode.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TetrisApp {
     game: TetrisGame,

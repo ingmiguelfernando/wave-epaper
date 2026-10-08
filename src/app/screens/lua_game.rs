@@ -26,6 +26,7 @@ use crate::{
     },
     lua_runtime::{event_bridge::LuaEventBridge, LUA_CATALOG_PAGE_SIZE},
     orientation::OrientedFrameBuffer,
+    reader::{BookFont, BookFontSize, ReadingTheme},
 };
 
 const SUDOKU_ROW_HINTS: [(KeyCap, &str); 3] = [
@@ -321,12 +322,19 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
         CanvasTextStyle::InverseHeading => state
             .display
             .text_style(UiTextRole::Heading, BinaryColor::Off),
-        CanvasTextStyle::Player => reader_body_style(
-            state.reader.preferences.book_font,
-            state.reader.preferences.font_size,
-            state.reader.preferences.theme,
-        ),
+        CanvasTextStyle::Player => player_digit_style(state.display.heading_style()),
     }
+}
+
+/// Literata at the size whose capitals come closest to the givens', so the
+/// player's digits match them in size but not in weight.
+fn player_digit_style(givens: UiTextStyle) -> UiTextStyle {
+    let style = |size| reader_body_style(BookFont::Literata, size, ReadingTheme::Classic);
+    BookFontSize::ALL
+        .into_iter()
+        .map(style)
+        .min_by_key(|candidate| (candidate.cap_height() - givens.cap_height()).abs())
+        .unwrap_or_else(|| style(BookFontSize::Medium))
 }
 
 #[cfg(test)]

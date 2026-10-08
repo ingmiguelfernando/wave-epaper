@@ -332,9 +332,10 @@ impl LuaRuntimeUiState {
     /// tick every `GRAVITY_MS`. `None` when nothing falls.
     #[must_use]
     pub fn next_game_tick_ms(&self) -> Option<u64> {
-        let session = self.session.as_ref()?;
-        if !matches!(session.event_bridge, LuaEventBridge::Tetris(ref app) if app.game().mode() == TetrisMode::Classic)
-        {
+        let LuaEventBridge::Tetris(app) = &self.session.as_ref()?.event_bridge else {
+            return None;
+        };
+        if app.game().mode() != TetrisMode::Classic {
             return None;
         }
         let last = self.last_game_tick_ms?;
@@ -494,6 +495,7 @@ fn sanitize_marker(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
@@ -510,11 +512,15 @@ mod tests {
     use super::{event_bridge::LuaEventBridge, LuaRuntimeUiState};
 
     fn temp_directory() -> std::path::PathBuf {
+        // Parallel tests can read the same clock tick, so a counter keeps
+        // their catalogs apart.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("rustmix-lua-runtime-{nonce}"))
+        let count = NEXT.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("rustmix-lua-runtime-{nonce}-{count}"))
     }
 
     #[test]

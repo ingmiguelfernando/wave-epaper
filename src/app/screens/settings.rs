@@ -361,11 +361,10 @@ pub fn render_ai_settings(
     let mut top = STATUS_BAR_HEIGHT + 16;
     for (index, (title, value)) in rows.iter().enumerate() {
         if let Some((_, label)) = groups.iter().find(|(first, _)| *first == index) {
-            // Each group's label takes a short band above its first row.
+            // Each group's label sits low in its own band, clear of the row above.
             let style = preferences.text_style(UiTextRole::Detail, BinaryColor::On);
-            let baseline = top + style.cap_height();
-            Text::new(label, Point::new(LIST_TEXT_LEFT, baseline), style).draw(display)?;
-            top += LIST_ROW_HEIGHT / 3;
+            Text::new(label, Point::new(LIST_TEXT_LEFT, top + 20), style).draw(display)?;
+            top += 28;
         }
         draw_list_row(
             display,
