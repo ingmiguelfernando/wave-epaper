@@ -2135,7 +2135,7 @@ mod tests {
             assert!(state.lua_runtime.session.is_none());
         }
         state.back();
-        assert_eq!(state.active_route(), ScreenRoute::Games);
+        assert_eq!(state.active_route(), ScreenRoute::Home);
     }
 
     #[test]

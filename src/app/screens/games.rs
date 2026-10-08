@@ -33,8 +33,9 @@ const CARD_LEFT: i32 = 16;
 const CARD_RIGHT: i32 = 464;
 const CARDS_TOP: i32 = STATUS_BAR_HEIGHT + 14;
 const CARDS_SHOWN: usize = 4;
-const INFO_TEXT: &str = "Only the cells that change are refreshed (partial refresh); \
-                         a full refresh every few moves cleans ghosting.";
+/// What is true today: the panel refreshes the whole screen, not cells.
+const INFO_TEXT: &str =
+    "Moves use the fast partial refresh; a full refresh now and then cleans ghosting.";
 
 /// Shared hint set for this screen.
 pub const GAMES_HINTS: [(KeyCap, &str); 3] = [

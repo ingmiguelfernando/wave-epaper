@@ -4,64 +4,80 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
-## Round 4 result (2026-10-08)
+## Round 5 result (2026-10-08)
 
-Pull request #4 (D18 to D23) was reviewed, merged into `main` and released as
-v0.9.3 (milestone `sudoku-steps`). Good scope and a real pull request
-description this time. The libraries (D21 to D23) are solid; the screens
-needed a mockup pass, and two bugs would only have shown on the device or
-against a real provider. The `side-tasks-4` branch is deleted; round 5 is
-below.
+Pull request #5 (D24 to D28) was reviewed, merged into `main` and released as
+v0.9.7 (milestone `hubs-and-stats`). The screens follow the mockup and the
+round has many tests, but two features never ran on the device: the tested
+path and the device path were different. The `side-tasks-5` branch is
+deleted. Round 6 will be added here with the next main-line release.
 
 What the main developer changed at merge time:
 
-- **D18:** the Row step drew a 1 px outline exactly on the grid lines, so no
-  row looked selected. Sudoku now follows the mockup: black title bar,
-  centered chips, 48 px cells with 3 px box lines, a 5 px row band outside
-  the row, the cursor cell inverted with the candidate previewed, a boxed
-  number strip (erase shows ×), and no key instructions in the status line,
-  since the bottom bar has them. The number step starts on the cell's value
-  or its first option.
-- **D19:** `RECORDS.TXT` lives in `/RUSTMIX/GAMES/`, which no card has, so
-  every save would have failed. The first save now creates the folder. The
-  host test passed only because it created the folder itself.
-- **D20:** the selected book row and section tab used a smaller font than
-  the others; the list showed three rows at the end of long sections; the
-  next-section line overlapped the seventh row; chapter numbers were not
-  centered and pages had no caption. One section filter replaces three.
-- **D22:** the transcript was JSON-escaped twice, so the provider would have
-  read `\n` and `\"` literally. The test only checked that the text was
-  there, not what the server parses.
-- Eleven compiler warnings: unused imports, a dead helper, an unused parser,
-  a `#[must_use]` result dropped in a test, and a `let _ =` shim.
+- **D24:** the device never showed the start list. The event bridge still
+  built the fixed puzzle of `sudoku.init("…")`, `sudoku.init()` did not
+  parse, and nothing handed the save to the game. Now the bridge opens the
+  start list, the runtime passes in the save and the best times, and the
+  sample `MAIN.LUA` is `sudoku.init()`. Every `New` game used one constant
+  seed, so it was always the same puzzle; the press time now seeds it. The
+  solver walked the cells in order, millions of steps for some Hard puzzles
+  (seconds on the device, a watchdog risk); it now fills the cell with the
+  fewest candidates first. The time is right-aligned on the title bar (new
+  `text_right` canvas command), and a solve says `Solved in … · best …`.
+  Removing the save also removes its `.BAK`, which loading would read back.
+- **Clocks:** `main.rs` passed `last_activity.elapsed()` as the event clock.
+  It is about 0 at every press, so neither the Sudoku time nor the reading
+  time would ever grow. It now passes the time since boot.
+- **D25:** hold BOOT in a game went back to the old catalog list, not the
+  hub. The hub now has the mockup's status bar with the game count; the
+  selected card's plain icon is visible; the info box wraps instead of
+  cutting its text; and the Sudoku card keeps the best time after a solve
+  deletes the save. One `grouped()` in `regional.rs` replaces the two copies,
+  and the hub uses Sudoku's `time_text()`.
+- **D26:** the rows repeated the menu's titles and subtitles; they now come
+  from `category_entries`, with one value per route. Values read like the
+  mockup (`Off`, `Not set up`, `Manual`), the version is on the status bar,
+  and the fit test measures title and value side by side as the row draws
+  them.
+- **D27:** the day came from the raw RTC, which keeps its own time-zone
+  basis, so late reading could land on the wrong day; `AppState::local_day()`
+  serves Home, the screen and the saves. Without a clock the screen was
+  blank. A press on the last page counted as a page turn. `main.rs` dropped a
+  `#[must_use]` result, a warning in the firmware build.
+- **D28:** the short BOOT queued a recording that started only at the next
+  key press; `main.rs` now applies it at once. The status bar says `Online`
+  or `Offline`.
 
 Verdict per task:
 
-- **D18:** done after the mockup pass above.
-- **D19:** done after the folder fix; the save-once wiring is right.
-- **D20:** done after the layout fixes. The SD-format note is useful; see
-  ROADMAP › Phase 5.
-- **D21:** done; clean, with honest limits.
-- **D22:** done after the escaping fix.
-- **D23:** done.
+- **D24:** done after the wiring, seed and solver fixes.
+- **D25:** done after the back route and the hub fixes.
+- **D26:** done after the rows moved to the menu entries.
+- **D27:** done after the clock and local-day fixes.
+- **D28:** done after the BOOT fix.
 
 Do differently next time:
 
-- **No warnings.** CI passes with warnings; the review does not. Read the
-  `warning:` lines of the test build (`cargo test` prints them) before you
-  hand over.
-- **Look at the preview like a user.** "Which row is selected?" had no
-  answer on the `sudoku-row` preview, although the Status said it matched
-  the mockup. Compare highlights, text sizes and spacing, not only layout.
-- **Test what the other side reads.** For a request body, parse it and
-  compare the field with the input; `contains` hides double escaping.
-- **Folders on the card.** Only what the installer creates exists. Create
-  the parent folder before the first write, and test without it.
-- **Keep the Status honest.** D22 had no Status, and D20's described an
-  `Open { book, chapter }` that the code returns as a tuple.
+- **Test the device path.** A test that builds the game with
+  `start_list(…)` cannot show that the bridge never calls it. Add one test
+  through the entry the device uses (the catalog, `LuaEventBridge::load`,
+  `open_selected`), and read `main.rs` for every value the feature needs.
+- **Clocks.** Elapsed time needs a clock that keeps running between presses.
+- **Local dates.** Dates shown to the user or keyed by day go through
+  `regional.localize_rtc` (or `AppState::local_day`).
+- **Cost on the device.** A loop that is quick on the host can take seconds
+  on the ESP32-S3; count the steps of the worst case before handing over.
+- **Status lines.** "Done" for a start list the device never showed is not
+  honest; the User Guide also missed the new Sudoku behaviour.
 
 ## Lessons from earlier rounds
 
+- No warnings: read the `warning:` lines of the test and firmware builds.
+- Look at previews like a user: "which row is selected?" needs an answer.
+- Test what the other side reads: parse a request body and compare fields;
+  `contains` hides double escaping.
+- Only what the installer creates exists on the card: create the parent
+  folder before the first write, and test without it.
 - Write docs for `main` as it will be after the merge, not "on this branch";
   if another branch changes the same feature, say so in the Status line.
 - Compare previews with the mockup side by side; spacing is part of "looks
@@ -89,7 +105,7 @@ Do differently next time:
 ## How to work
 
 - **Branch.** Each round of tasks gets its own branch from the latest `main`
-  (round 5: `side-tasks-5`), with one commit per task. Push often.
+  (round 6: `side-tasks-6`), with one commit per task. Push often.
 - **Pull request.** When done, open a pull request to `main` with a
   description: per task what changed, the checks, the previews to look at and
   the device checks. Do not merge it; the main developer reviews it, resolves
@@ -167,9 +183,9 @@ Do differently next time:
   whole screen with a partial refresh. Keep them right and at most
   `MAX_DIRTY_REGIONS`; a whole-canvas region is fine when a step redraws
   most of the screen.
-- **Shared modules.** Dates: `civil_date`. Look for a helper before writing
-  one: Tetris and Reading Stats each grew a private `grouped()` for thousands
-  separators, so a third user should move it to a shared place.
+- **Shared modules.** Dates: `civil_date`; the user's day:
+  `AppState::local_day`; thousands separators: `regional::grouped`; play
+  time: `games::sudoku::time_text`. Look for a helper before writing one.
 - **rustfmt** (CI is the judge): an array whose items fit in 60 characters
   stays on one line, after a break at `=` when the line would pass 100;
   wider arrays go one item per line. `a.field.method(..)` chains break past
@@ -178,7 +194,7 @@ Do differently next time:
   60 characters, they go one per line, even if the line fits in 100. A
   `draw_header(…)` with a 30-character subtitle did.
 
-## Round 5 tasks (branch `side-tasks-5`)
+## Round 5 tasks (done in v0.9.7)
 
 Start from `main` at v0.9.4 or later. Five tasks, in this order; D25 uses
 D24's records.
@@ -242,9 +258,9 @@ times only on improvement, the start list with and without a save.
 `sudoku-number` show the difficulty and a time. **main.rs:** the save next
 to the records save only.
 
-**Status:** done on `side-tasks-5` (`2ec0ff1`). The timer caps a gap at one
-minute, the save keeps the difficulty so resume reuses it, and `main.rs`
-touches only the two named lines.
+**Status:** done in v0.9.7 (`2ec0ff1`). At merge, the start list was wired
+on the device path, new games seeded by the press time, the solver made
+fast and the clock right-aligned; see the Round 5 result.
 
 ### D25: Games hub as in the mockup
 
@@ -276,11 +292,9 @@ each with its state.
 save and a best time, Tetris thousands separator, plural labels.
 **Preview:** `games` with a Sudoku save and both records.
 
-**Status:** done on `side-tasks-5`. The hub lists only kind-`game` SD apps,
-`grouped()` is `pub(crate)` for the hub's Tetris line, the
-info box repeats the partial-refresh note honestly, and the Games row left
-`category_entries`, so category screens no longer report it as unreachable.
-Status lines and tests say `1 item` / `N items`.
+**Status:** done in v0.9.7 (`eae988d`). At merge, games return to the hub,
+the hub got the mockup's status bar, a visible selected icon and a wrapped
+info box, and `grouped()` moved to `regional.rs`.
 
 ### D26: Settings as in the mockup
 
@@ -316,13 +330,9 @@ over two pages.
 sub-screen, fit at every font family and size. **Previews:** `settings`,
 `settings-system`, `settings-clock-alarms`, and Settings at the Large size.
 
-**Status:** done on `side-tasks-5`. The seven rows render through the
-existing `draw_list_row` (mockup `.set` style for free); values come from
-one function per group, so the sleep-screen mode work later changes
-`sleep_screen_value()` only. `Clock`, `Alarms`, `Audio`, `Device Info`,
-`Environment` and `Motion` now parent to their sub-list, so hold BOOT walks
-Settings › System › Audio › back, not straight to Settings. Reading and AI
-wait for their phases, with no SOON rows added.
+**Status:** done in v0.9.7 (`fa72151`). At merge, the rows came from the
+menu entries, the values were reworded like the mockup and the fit test
+measures each row as drawn.
 
 ### D27: Reading Stats wiring
 
@@ -348,13 +358,9 @@ midnight, no save without changes, the Home labels. **Previews:** `home`
 with a streak and reading time. **main.rs:** the boot load, the five-minute
 save, and one line before sleep next to the battery-log save.
 
-**Status:** done on `side-tasks-5`. Accrual reuses `ReadingClock` (D11) and
-`collect_reading_stats` runs inside the existing five-minute save and the
-Reader-close poll, so main.rs only gained the boot load, one cadence block
-and the sleep-save line next to the battery log's. The streak label needs
-more than today (a single day is not a streak), and the first save creates
-`/RUSTMIX/READER/` like D19's lesson. `ReadingStats` left the placeholder
-set, so its route renders the D14 screen.
+**Status:** done in v0.9.7 (`ddca716`). At merge, `main.rs` passes the time
+since boot as the event clock, days are local, and the screen explains a
+missing clock.
 
 ### D28: AI hub (drawing and navigation)
 
@@ -379,12 +385,9 @@ recent notes. Today Home › AI is a two-row category.
 **Tests:** rows and selection, the three newest notes, an empty catalog.
 **Preview:** `ai` with sample notes.
 
-**Status:** done on `side-tasks-5`. The hub reuses the Games hub's card and
-info-box painters, notes open through the Voice Notes list cursor (details
-read `selected - 2`, so the hub maps newest-first onto the oldest-first
-list), and short BOOT queues the same `StartRecording` request the list's
-first row does. `Ai` left the category list like Games, so it renders as a
-hub; transcription, summaries and Settings › AI wait for Phase 7.
+**Status:** done in v0.9.7 (`482d639`). At merge, `main.rs` starts the
+recording on the short BOOT itself, and the status bar says `Online` or
+`Offline`.
 
 ## Round 4 tasks (done in v0.9.3)
 
