@@ -43,9 +43,9 @@ Select opens the highlighted one.
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |
-| AI | Hub: XiaoZhi (SOON), Voice Notes and its three newest notes |
+| AI | Hub: XiaoZhi (SOON), Voice Notes and its three newest notes. Voice Notes shows its transcription and summary providers (`GROQ` over `OPENROUTER`) once both are set in `AI.TXT` |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
-| Settings | One page of groups: Display, Sleep screen, Weather, Wi-Fi & transfer, Clock & alarms, Power, System |
+| Settings | One page of groups: Display, Sleep screen, Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. AI shows `Ready` once `/RUSTMIX/AI.TXT` sets both a transcription and a summary provider |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
 Tetris Classic, AI transcription, OTA updates and the clock or weather sleep

@@ -206,6 +206,10 @@ light sleep. Restore the owner's original preferences afterward.
 
 ## Other implemented SD tools
 
+- [ ] Settings › AI: with `/RUSTMIX/AI.TXT` copied from the example, the AI row
+        reads `Ready`; without it, `Not set up`. Choose Language: the list opens
+        on the value in use, choosing another saves it, and it is still there
+        after a reboot.
 - [ ] Home › AI hub: XiaoZhi card with SOON, Voice Notes card, `RECENT
 	NOTES` with the three newest (newest first, `Oct 2 · 12:04 · 18 min`
 	stamps), the SD-card info box and the `move / open / BOOT new note` bar.

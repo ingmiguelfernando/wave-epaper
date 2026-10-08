@@ -450,7 +450,23 @@ mark the value in use, the Settings row value, Settings › AI reached from
 Home and back. **Previews:** `settings` with eight rows, `settings-ai`,
 `settings-ai-picker`.
 
-**Status:**
+**Status:** done on `side-tasks-6`, except what is listed as open below. Built:
+`AI.TXT` (`ai_config.rs`: parse, defaults, readiness, provider names, save
+with the folder created first), loaded at boot and saved once per change
+from `main.rs`; the Settings row (`Ready` or `Not set up`); the Settings ›
+AI screen with its three groups and the Language, Style and Process lists
+(the value in use changes nothing); the Voice Notes card's providers
+(`GROQ` over `OPENROUTER`) once both are set; `AI.TXT.example` with its
+installer line and SD_CARD_SETUP section. Deviations: the eight rows at 72 px
+leave the group labels close to the rows above them, tighter than the
+mockup; the Process value reads `Online` or `Manual`, not the mockup's
+`When online`; the API keys row reads `Not set` (keys come in the browser,
+Phase 7). Checked: host suite 699 passed, no warnings; the device build is
+clean on the branch. Open: one host test,
+`tetris_sessions_seed_the_saved_best_and_close_marks_one_save`, failed once in
+about 45 full runs and never alone (60 of 60 passed); the cause is not found,
+so it should be fixed or re-run before the pull request. Device checks: the
+Settings › AI smoke test, and `AI.TXT` written on a real card.
 
 ### D33: Voice Notes results
 
