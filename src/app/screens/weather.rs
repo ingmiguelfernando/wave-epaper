@@ -411,7 +411,7 @@ fn provider_name(provider: &str) -> &str {
 }
 
 /// `40%`, or `--` when the provider has no value.
-fn percent_label(percent: Option<u8>) -> String {
+pub(super) fn percent_label(percent: Option<u8>) -> String {
     percent.map_or_else(|| "--".into(), |percent| format!("{percent}%"))
 }
 

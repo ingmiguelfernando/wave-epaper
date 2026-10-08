@@ -21,7 +21,7 @@ use crate::{
     },
     build_info::FIRMWARE_VERSION,
     network::WifiConnectionState,
-    sleep_screen::SleepSource,
+    sleep_screen::{SleepMode, SleepSource},
     weather_config::WeatherConfig,
 };
 
@@ -59,20 +59,23 @@ pub fn display_value(preferences: DisplayPreferences) -> String {
     )
 }
 
-/// Sleep screen mode, with the starred photo count when it plays photos.
-/// One function, so the main line's sleep-mode work changes only this.
+/// The sleep mode, with the starred photo count when it plays photos.
 #[must_use]
 pub fn sleep_screen_value(state: &AppState) -> String {
-    match state.sleep_screen.source {
-        SleepSource::Starred => {
-            let starred = state.photos.starred.len();
-            if starred == 0 {
-                "Photo · none starred".into()
-            } else {
-                format!("Photo · {starred} starred")
-            }
+    match state.sleep_screen.mode {
+        SleepMode::Photo => match state.sleep_screen.source {
+            SleepSource::Starred => match state.photos.starred.len() {
+                0 => "Photo · none starred".into(),
+                starred => format!("Photo · {starred} starred"),
+            },
+            SleepSource::Folder => "Photo · folder".into(),
+        },
+        SleepMode::Clock => {
+            format!("Clock · {} min", state.sleep_screen.clock_refresh.minutes())
         }
-        SleepSource::Folder => "Folder".into(),
+        SleepMode::Weather => "Weather".into(),
+        SleepMode::ClockWeather => "Clock + weather".into(),
+        SleepMode::Verse => "Verse".into(),
     }
 }
 
@@ -122,7 +125,7 @@ pub fn power_value(battery_percent: Option<u8>) -> String {
 
 /// Minutes as `30 min`, `2 h`, `1.5 h`.
 #[must_use]
-fn hours_text(minutes: u64) -> String {
+pub(super) fn hours_text(minutes: u64) -> String {
     if minutes < 60 {
         format!("{minutes} min")
     } else if minutes % 60 == 0 {

@@ -17,6 +17,33 @@ pub const MONTH_SHORT: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+/// Weekday names starting on Sunday.
+pub const WEEKDAY_LONG: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+
+/// Month names from January to December.
+pub const MONTH_LONG: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+
 /// Days since 1970-01-01 for a proleptic-Gregorian date (Howard Hinnant's
 /// algorithm). Out-of-range months and days roll over arithmetically, so the
 /// function is total; results are exact while the day count fits in `i64`.
