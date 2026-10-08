@@ -80,6 +80,75 @@ pub fn paginate(lines: usize, lines_per_page: usize) -> usize {
     }
 }
 
+/// One drawn line of a chapter: a heading, or a verse line. A verse's first
+/// line carries its number, drawn small and raised.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Line {
+    Heading(String),
+    /// `number` is set only on the verse's first line; `paragraph` starts a
+    /// new paragraph above it.
+    Verse {
+        number: Option<String>,
+        paragraph: bool,
+        text: String,
+    },
+}
+
+/// Lay a chapter's items out as lines of at most `width` pixels, measuring
+/// with `measure`. Headings and verses wrap; a verse's number stays on its
+/// first line only.
+pub fn layout(
+    items: &[crate::bible::ChapterItem],
+    width: i32,
+    measure: impl Fn(&str) -> i32,
+) -> Vec<Line> {
+    let mut lines = Vec::new();
+    for item in items {
+        match item {
+            crate::bible::ChapterItem::Heading(text) => {
+                lines.push(Line::Heading(text.clone()));
+            }
+            crate::bible::ChapterItem::Verse {
+                label,
+                paragraph,
+                text,
+            } => {
+                for (index, piece) in wrap_words(text, width, &measure).into_iter().enumerate() {
+                    lines.push(Line::Verse {
+                        number: (index == 0).then(|| label.clone()),
+                        paragraph: index == 0 && *paragraph,
+                        text: piece,
+                    });
+                }
+            }
+        }
+    }
+    lines
+}
+
+/// Greedy word wrap by measured width. An over-long word keeps its own line,
+/// as `UiTextStyle::wrap` does.
+fn wrap_words(text: &str, width: i32, measure: &impl Fn(&str) -> i32) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if line.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{line} {word}")
+        };
+        if line.is_empty() || measure(&candidate) <= width {
+            line = candidate;
+        } else {
+            lines.push(core::mem::replace(&mut line, word.to_owned()));
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +275,79 @@ mod tests {
         assert_eq!(paginate(20, 20), 1);
         assert_eq!(paginate(21, 20), 2);
         assert_eq!(paginate(40, 0), 1);
+    }
+
+    /// Every character is one pixel wide, so line breaks are easy to predict.
+    fn by_chars(text: &str) -> i32 {
+        text.chars().count() as i32
+    }
+
+    fn verse(label: &str, paragraph: bool, text: &str) -> crate::bible::ChapterItem {
+        crate::bible::ChapterItem::Verse {
+            label: label.into(),
+            paragraph,
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn a_verse_number_stays_on_its_first_line_only() {
+        let items = [verse("3", false, "uno dos tres cuatro")];
+        let lines = layout(&items, 9, by_chars);
+        assert!(lines.len() > 1, "the verse wraps");
+        assert!(matches!(&lines[0], Line::Verse { number: Some(n), .. } if n == "3"));
+        assert!(lines[1..]
+            .iter()
+            .all(|line| matches!(line, Line::Verse { number: None, .. })));
+    }
+
+    #[test]
+    fn a_heading_is_one_line_and_a_paragraph_flag_marks_only_the_first_line() {
+        let items = [
+            crate::bible::ChapterItem::Heading("Salmo".into()),
+            verse("1", true, "uno dos tres cuatro"),
+        ];
+        let lines = layout(&items, 9, by_chars);
+        assert_eq!(lines[0], Line::Heading("Salmo".into()));
+        let paragraphs = lines
+            .iter()
+            .filter(|line| {
+                matches!(
+                    line,
+                    Line::Verse {
+                        paragraph: true,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(paragraphs, 1, "only the first line starts the paragraph");
+    }
+
+    #[test]
+    fn wrapping_keeps_every_word_in_order() {
+        let text = "uno dos tres cuatro cinco seis";
+        let items = [verse("2", false, text)];
+        let rejoined: Vec<String> = layout(&items, 9, by_chars)
+            .into_iter()
+            .filter_map(|line| match line {
+                Line::Verse { text, .. } => Some(text),
+                Line::Heading(_) => None,
+            })
+            .collect();
+        assert_eq!(rejoined.join(" "), text);
+    }
+
+    #[test]
+    fn a_long_word_keeps_its_own_line_without_being_split() {
+        let items = [verse("1", false, "ab abcdefghijklmnop cd")];
+        let texts: Vec<String> = layout(&items, 5, by_chars)
+            .into_iter()
+            .filter_map(|line| match line {
+                Line::Verse { text, .. } => Some(text),
+                Line::Heading(_) => None,
+            })
+            .collect();
+        assert!(texts.contains(&"abcdefghijklmnop".to_owned()));
     }
 }

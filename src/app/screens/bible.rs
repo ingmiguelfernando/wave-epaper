@@ -12,6 +12,7 @@ use embedded_graphics::{
 use crate::{
     app::{
         display::DisplayPreferences,
+        reader_typography::reader_body_style,
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
@@ -19,8 +20,9 @@ use crate::{
             header::draw_header,
         },
     },
-    bible::Testament,
+    bible::{self, Testament},
     bible_nav::{BibleNav, BibleNavView, SECTIONS},
+    bible_reader,
     orientation::OrientedFrameBuffer,
 };
 
@@ -371,12 +373,122 @@ pub fn render_bible_chapters_screen(
     }
 }
 
-/// Reading view of the open place. Filled in by the reading view step.
+/// Spanish bottom bar of the reading view.
+pub const READING_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "página"),
+    (KeyCap::Select, "menú"),
+    (KeyCap::Boot, "capítulos"),
+];
+
+/// Reading view of the open place: the chapter's verses in the Reader's body
+/// style, one page at a time.
 pub fn render_bible_reading(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    render_bible_books_screen(display, state)
+    let Some(position) = state.bible.position() else {
+        return render_bible_books_screen(display, state);
+    };
+    let (Some(translation), Some(book)) = (
+        state.bible.translation(),
+        state.bible.books().get(position.book),
+    ) else {
+        return render_bible_missing(display, state);
+    };
+    let preferences = state.display;
+    let body = reader_body_style(
+        state.reader.preferences.book_font,
+        state.reader.preferences.font_size,
+        state.reader.preferences.theme,
+    );
+    let heading = preferences.heading_style();
+    let width = RIGHT - LEFT;
+    let items = match bible::load_chapter(state.bible.root(), translation, book, position.chapter) {
+        Ok(items) => items,
+        Err(_) => return render_bible_missing(display, state),
+    };
+    let lines = bible_reader::layout(&items, width, |text| body.text_width(text));
+    let per_page = reading_lines_per_page(body);
+    let pages = bible_reader::paginate(lines.len(), per_page);
+    // The sentinel from a backward turn means "last page"; clamp it here.
+    let page = position.page.min(pages - 1);
+    let chapter_title = format!("{} {}", book.short_name, position.chapter);
+
+    draw_header(display, preferences, "BIBLIA", translation)?;
+    Text::new(
+        &heading.fit(&chapter_title, width),
+        Point::new(LEFT, 150),
+        heading,
+    )
+    .draw(display)?;
+    Rectangle::new(Point::new(LEFT, 166), Size::new(width as u32, 2))
+        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+        .draw(display)?;
+
+    let small = preferences.detail_style();
+    let mut top = READING_TOP;
+    for line in lines.iter().skip(page * per_page).take(per_page) {
+        top = draw_reading_line(display, body, small, top, line, width)?;
+    }
+
+    let indicator = format!("{chapter_title} · {}/{pages}", page + 1);
+    let detail = preferences.detail_style();
+    Text::new(
+        &detail.fit(&indicator, width),
+        Point::new(LEFT, READING_INDICATOR_TOP),
+        detail,
+    )
+    .draw(display)?;
+    draw_bottom_bar(display, preferences, &READING_HINTS)
+}
+
+/// Vertical room for verse lines: from under the title rule down to the
+/// indicator line above the bottom bar.
+const READING_TOP: i32 = 186;
+const READING_INDICATOR_TOP: i32 = 716;
+
+/// Whole verse lines that fit between `READING_TOP` and the indicator, at the
+/// body style's pitch. Never zero, so a large face still shows a line.
+fn reading_lines_per_page(body: UiTextStyle) -> usize {
+    let pitch = i32::from(body.line_height()) + 8;
+    let room = (READING_INDICATOR_TOP - READING_TOP).max(pitch);
+    (room / pitch).max(1) as usize
+}
+
+/// Draw one laid-out line and return the top of the next one. A verse number
+/// is drawn small and raised in front of its first line.
+fn draw_reading_line(
+    display: &mut OrientedFrameBuffer<'_>,
+    body: UiTextStyle,
+    small: UiTextStyle,
+    top: i32,
+    line: &bible_reader::Line,
+    width: i32,
+) -> Result<i32, Infallible> {
+    let pitch = i32::from(body.line_height()) + 8;
+    let baseline = top + body.cap_height();
+    match line {
+        bible_reader::Line::Heading(text) => {
+            Text::new(&body.fit(text, width), Point::new(LEFT, baseline), body).draw(display)?;
+            Ok(top + pitch)
+        }
+        bible_reader::Line::Verse {
+            number,
+            paragraph,
+            text,
+        } => {
+            let indent = if *paragraph { 24 } else { 0 };
+            let mut x = LEFT + indent;
+            if let Some(number) = number {
+                // Small and raised: the Detail size, sitting above the baseline.
+                let number = number.as_str();
+                Text::new(number, Point::new(x, baseline - 8), small).draw(display)?;
+                x += small.text_width(number) + 6;
+            }
+            Text::new(&body.fit(text, RIGHT - x), Point::new(x, baseline), body).draw(display)?;
+            Ok(top + pitch)
+        }
+    }
 }
 
 /// Menu of the reading view. Filled in by the menu step.
