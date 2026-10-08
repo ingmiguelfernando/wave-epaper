@@ -3,6 +3,28 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.10.1 — Bible reader, Tetris Classic and AI settings
+
+- **Bible**, in Spanish. Home › Bible opens where you stopped, or the book
+  picker the first time: eight sections with a thumb index (`GÉN JOS JOB ISA
+  OSE MAT ROM HEB`), then the chapter grid. ▼ and ▲ turn pages across
+  chapters and books, short BOOT opens the chapter grid and ● a menu (`Ir a
+  libro`, `Ir a capítulo`). The place is saved when you leave and before
+  sleep. The text is the folloup script's layout in `/RUSTMIX/BIBLE/<ABBR>/`
+  ([SD card setup](docs/SD_CARD_SETUP.md)).
+- **Tetris** opens on a mode list: Zen (no gravity) or Classic (one row a
+  second), each with its own best; the Games card shows both. Copy the new
+  `APPS/TETRIS/MAIN.LUA`; an old card still starts Zen. Classic pauses while
+  the screen is powered down.
+- **Settings › AI** shows the transcription and summary providers of
+  `/RUSTMIX/AI.TXT` (see `AI.TXT.example`); Language, Style and Process
+  change on the device. Settings reads `Ready` or `Not set up`.
+- **Voice Notes** read each note's AI record (`VOICE###.AI`): the list and
+  the AI hub show `SUMMARY`, `TRANSCRIBING…`, `QUEUED` or `FAILED`, and a
+  summarized note opens on its summary, transcript and audio tabs. The device
+  does not send notes for processing yet.
+- Sudoku draws your digits in Literata, about the size of the given ones.
+
 ## v0.10.0 — Clock and weather sleep screens
 
 - **Sleep screen modes.** Settings › Sleep screen lists five modes, each with

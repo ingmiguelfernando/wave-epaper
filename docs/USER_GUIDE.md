@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.10.0: what is implemented, not the future
+This guide describes firmware v0.10.1: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -39,7 +39,7 @@ Select opens the highlighted one.
 |---|---|
 | Photos | Gallery of the JPEG photos in `/RUSTMIX/PHOTOS`; see [Photos](#photos) |
 | Library | Continue Reading, Books, Bookmarks |
-| Bible | Offline reader in Spanish; opens at the last place, or the book picker on first use. Menu offers `Ir a libro` and `Ir a capítulo`; the verse and translation options are not built yet |
+| Bible | Offline reader in Spanish; opens at the last place, or the book picker on first use. ▼ turns to the next page and ▲ back, across chapters and books; short BOOT opens the chapter grid; ● opens the menu (`Ir a libro`, `Ir a capítulo`). The place is saved when you leave and before sleep |
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |

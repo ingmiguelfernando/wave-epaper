@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.10.0. This is not a list of promised mockup features. See
+Firmware v0.10.1. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -50,6 +50,19 @@ Power-key wake on GPIO1 (also high during an RTC alarm) and GPIO38, and
 RTC-alarm wake on GPIO45 must be preserved; the mockup's deep-sleep current
 is not a measured firmware result. The sleep modes' battery figures are
 estimates until the battery log confirms them on the device.
+
+## Bible
+
+The reading view wraps verses by words, without the Reader's hyphenation.
+The menu has `Ir a libro` and `Ir a capítulo` only: the verse of the day
+and the translation switch come later. With two translations on the card,
+the one of the last place opens.
+
+## Voice Notes AI
+
+Notes are not sent for transcription or summary yet. A `VOICE###.AI`
+record made on a computer shows its state on the list and the AI hub, and a
+finished record opens its result; there ● only goes back.
 
 ## EPUB scope
 

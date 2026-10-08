@@ -4,6 +4,69 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 6 result (2026-10-08)
+
+Branch `side-tasks-6` (D29 to D33) was reviewed, merged into `main` together
+with v0.10.0 and released as v0.10.1 (milestone `bible-reader`). This round
+followed the device path better: the Bible place, the Tetris tick and
+`AI.TXT` are wired in `main.rs`, and the tests go through `AppState::apply`
+and the catalog. No pull request was opened, and `main` was not merged in
+first; the merge had no conflicts.
+
+What the main developer changed at merge time:
+
+- **D29:** a stale `.idx` offset that lands inside a character made the
+  read fail instead of falling back to the scan.
+- **D30:**
+  - ▲ turned to the next page; the Reader uses ▼ for that, so the Bible
+    does too.
+  - The title showed the short name (`Gén 1`); it is now the full name, large
+    (`Génesis 1`). Headings are bold capitals as in the mockup, and book rows
+    say `50 cap.`, not `50 ch.`.
+  - The menu listed `Versículo del día` and `Traducción`, which only closed
+    it. They are hidden until they work.
+  - The place reached the card only before sleep; leaving the reading view
+    saves it too. With two translations, the one of the saved place opens.
+- **D31:**
+  - The mode list drew over its last frame: after one move the Zen row
+    stayed black and its text disappeared. It now redraws from a clear
+    canvas, under the `Tetris` title bar that Sudoku's list has.
+  - A game started from the list showed `BEST 0`; it now gets its mode's
+    saved best.
+  - Classic kept falling while the panel was powered down (a minute without
+    keys), so a game could end unseen; it now pauses with the panel.
+  - The player's digits followed the Reader's font and size; they are now
+    Literata at the size closest to the givens, as the task asked.
+  - The flaky test: two tests could read the same clock tick and share a
+    temp folder. A counter keeps them apart.
+- **D32:** the group labels sat on the row lines; each has its own band.
+- **Doc comments:** three new items were inserted between an existing doc
+  comment and its function, so `apply_photos_boot_short_press`,
+  `apply_ai_settings` and `TetrisStart` described the wrong thing.
+
+Verdict per task:
+
+- **D29:** done.
+- **D30:** done after the paging, title, menu and save fixes. Open: the verse
+  of the day, the translation switch and hyphenation.
+- **D31:** done after the list, best and pause fixes.
+- **D32:** done after the layout fix.
+- **D33:** the record, labels and result screen are done. Open: the queue on
+  save, the worker and the requests (main line, Phase 7), the note's
+  `Process` menu and the result's ● actions.
+
+Do differently next time:
+
+- **New code goes after the doc comment above it.** Read the three lines
+  above every function you add.
+- **Redraw from a clear canvas.** A game screen that draws again must call
+  `clear_frame()` first; test that a move keeps the command count.
+- **Keys match the rest of the device.** ▼ is next in the Reader, so it is
+  next everywhere.
+- **No dead options.** A row that does nothing reads as a bug; leave it out
+  and list it as open.
+- **Merge `main` before handing over**, as the round's note asked.
+
 ## Round 5 result (2026-10-08)
 
 Pull request #5 (D24 to D28) was reviewed, merged into `main` and released as
@@ -199,7 +262,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 6 tasks (branch `side-tasks-6`)
+## Round 6 tasks (done in v0.10.1)
 
 Start from `main` at v0.9.7. Five tasks, in this order; D30 uses D29, and
 D33 uses D32's `AI.TXT`.
