@@ -1,5 +1,6 @@
-//! Sudoku resume file: `/RUSTMIX/GAMES/SUDOKU.TXT`, written once when the
-//! player leaves a game, deleted when the puzzle is solved.
+//! Sudoku resume file: `/RUSTMIX/GAMES/SUDOKU.TXT`, written each time a
+//! number is placed or erased and when the player leaves, deleted when the
+//! puzzle is solved.
 
 use std::path::Path;
 

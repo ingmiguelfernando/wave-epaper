@@ -204,6 +204,11 @@ Do differently next time:
 Start from `main` at v0.9.7. Five tasks, in this order; D30 uses D29, and
 D33 uses D32's `AI.TXT`.
 
+**v0.10.0 on main.** Phase 3b and a Sudoku autosave landed during this
+round. Merge `main` into `side-tasks-6` before opening the pull request: it
+changed `src/lua_runtime/mod.rs` (Sudoku saves go through `store_sudoku`),
+`src/app/state.rs`, `src/app/screens/settings.rs` and `src/main.rs`.
+
 **Main line during this round.** The main developer builds Phase 3b (clock
 and weather sleep screens, refreshed while the device sleeps) and redraws
 Weather and the sleep screens like the mockup. Leave these files alone:

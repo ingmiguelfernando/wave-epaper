@@ -3,6 +3,28 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.10.0 — Clock and weather sleep screens
+
+- **Sleep screen modes.** Settings › Sleep screen lists five modes, each with
+  what it shows and its estimated battery cost a day: Photo (as before),
+  Clock & date, Weather, Clock + weather, and Verse of the day (not ready
+  yet, marked `SOON`). Below the modes are the options of the one in use:
+  Source, Order and Fit for Photo; Refresh (every minute or every 5 minutes)
+  for the clock modes. A short BOOT press previews the chosen mode.
+- **Live while asleep.** The clock changes on the minute without a flash; a
+  full refresh every 30 minutes clears ghosting. The panel keeps its memory
+  (its rail stays on) in these modes; Photo still turns the rail off. The
+  weather modes turn Wi-Fi on for each weather update and redraw after it;
+  a forecast older than six hours is marked `stale`. Until the first update
+  the Weather mode shows the clock.
+- **Sudoku saves itself** each time you place or erase a number, not only
+  when you leave with hold BOOT, so a restart or a flat battery no longer
+  loses the game. Solving deletes the save and records the best time at once.
+  A game left open behind an alarm is now closed and saved when a game opens
+  again; before, reopening dropped it.
+- Settings shows the sleep mode: `Photo · 2 starred`, `Clock · 1 min`,
+  `Weather`, `Clock + weather`.
+
 ## v0.9.7 — Hubs, Sudoku saves and reading stats
 
 - **Sudoku** opens on a start list: continue the saved game, or a new Easy,

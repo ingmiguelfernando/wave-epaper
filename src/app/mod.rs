@@ -27,7 +27,9 @@ pub mod widgets;
 
 pub use router::ScreenRoute;
 pub use screens::sleep_card::SleepCard;
-pub use screens::sleep_screens::{SleepClock, SleepWeather, SleepWeatherDay, SleepWeatherLine};
+pub use screens::sleep_screens::{
+    SleepClock, SleepLayout, SleepWeather, SleepWeatherDay, SleepWeatherLine,
+};
 pub use state::AppState;
 
 /// Idle interval before the panel controller and ALDO3 rail enter sleep.
@@ -88,6 +90,17 @@ pub fn render_sleep_weather(
     frame.clear_white();
     let mut display = OrientedFrameBuffer::new(frame, DisplayOrientation::Portrait);
     screens::sleep_screens::render_sleep_weather(&mut display, preferences, weather)
+}
+
+/// Clear the native frame and draw the live sleep screen of the sleep mode
+/// in use, in portrait.
+pub fn render_sleep_mode(
+    frame: &mut FrameBuffer,
+    state: &AppState,
+) -> Result<SleepLayout, Infallible> {
+    frame.clear_white();
+    let mut display = OrientedFrameBuffer::new(frame, DisplayOrientation::Portrait);
+    screens::sleep_screens::render_sleep_mode(&mut display, state)
 }
 
 #[cfg(test)]

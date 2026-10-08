@@ -44,6 +44,7 @@ use crate::{
         ReadingTheme,
     },
     rtc::RtcDateTime,
+    sleep_screen::SleepMode,
     weather::{parse_open_meteo_response, WeatherSnapshot, SAMPLE_RESPONSE},
     weather_config::{WeatherConfig, SAMPLE_CONFIG},
 };
@@ -86,6 +87,26 @@ fn render_screen_previews() {
         (
             "sleep-weather",
             render_sample_sleep_weather(sample_state().display),
+        ),
+        (
+            "sleep-live-clock",
+            render_live_sleep(SleepMode::Clock, false),
+        ),
+        (
+            "sleep-live-clock-weather",
+            render_live_sleep(SleepMode::ClockWeather, false),
+        ),
+        (
+            "sleep-live-clock-weather-stale",
+            render_live_sleep(SleepMode::ClockWeather, true),
+        ),
+        (
+            "sleep-live-weather",
+            render_live_sleep(SleepMode::Weather, false),
+        ),
+        (
+            "sleep-live-weather-stale",
+            render_live_sleep(SleepMode::Weather, true),
         ),
         (
             "reading-stats",
@@ -238,6 +259,21 @@ fn render_sample_sleep_weather(preferences: DisplayPreferences) -> FrameBuffer {
         wake_hint: "Press any key to wake",
     };
     render_sleep_weather(&mut frame, preferences, &weather).unwrap();
+    frame
+}
+
+/// The live sleep screen of `mode` over the sample state; `stale` moves the
+/// clock to the next morning, past the last weather update.
+fn render_live_sleep(mode: SleepMode, stale: bool) -> FrameBuffer {
+    let mut state = sample_state();
+    state.sleep_screen.mode = mode;
+    if let Some(rtc) = state.board.rtc.as_mut().filter(|_| stale) {
+        rtc.day = 3;
+        rtc.weekday = 6;
+        rtc.hour = 8;
+    }
+    let mut frame = FrameBuffer::new_white();
+    super::render_sleep_mode(&mut frame, &state).unwrap();
     frame
 }
 
@@ -400,7 +436,18 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
 
     let mut sleep_screen = sample_state();
     sleep_screen.router.navigate_to(ScreenRoute::SleepScreen);
-    states.push(("sleep-screen", sleep_screen));
+    sleep_screen.photos.starred.toggle("IMG_0407.jpg");
+    sleep_screen.photos.starred.toggle("IMG_0409.jpg");
+    states.push(("sleep-screen", sleep_screen.clone()));
+    sleep_screen.sleep_screen.mode = SleepMode::Clock;
+    sleep_screen.sleep_screen_ui.selected = 5;
+    states.push(("sleep-screen-clock", sleep_screen.clone()));
+    sleep_screen.sleep_screen_ui.picker = Some(0);
+    states.push(("sleep-screen-clock-picker", sleep_screen.clone()));
+    sleep_screen.sleep_screen_ui.picker = None;
+    sleep_screen.display.font_size = UiFontSize::Large;
+    sleep_screen.sleep_screen.mode = SleepMode::Photo;
+    states.push(("sleep-screen-large-font", sleep_screen));
 
     let mut weather_picker = sample_state();
     weather_picker

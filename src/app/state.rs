@@ -23,7 +23,7 @@ use crate::{
     reading_stats::{ReadingClock, ReadingStats},
     regional::RegionalPreferences,
     sleep_mode::{LightSleepShare, SleepReport},
-    sleep_screen::{SleepScreenSetting, SleepScreenSettings},
+    sleep_screen::{SleepMode, SleepScreenSetting, SleepScreenSettings},
     storage::StorageSnapshot,
     unit_converter::UnitConverterUiState,
     voice_notes::{VoiceNotesUiRequest, VoiceNotesUiState},
@@ -67,9 +67,11 @@ pub struct SleepScreenUiState {
 }
 
 impl SleepScreenUiState {
+    /// The option row under the cursor; `None` on a mode row.
     #[must_use]
-    pub fn setting(self) -> SleepScreenSetting {
-        SleepScreenSetting::ALL[self.selected % SleepScreenSetting::ALL.len()]
+    pub fn setting(self, settings: SleepScreenSettings) -> Option<SleepScreenSetting> {
+        let row = self.selected.checked_sub(SleepMode::ALL.len())?;
+        settings.option_rows().get(row).copied()
     }
 }
 
@@ -1386,17 +1388,20 @@ impl AppState {
         }
     }
 
-    /// Rows of Settings › Sleep screen, each opening a list of its values.
+    /// Mode rows pick the sleep mode; option rows open a list of values.
     /// Any key closes the preview.
     fn apply_sleep_screen(&mut self, event: ButtonEvent) {
         if self.sleep_preview.take().is_some() {
             self.full_refresh_requested = true;
             return;
         }
-        let setting = self.sleep_screen_ui.setting();
-        let (options, current) = self.sleep_screen.options(setting);
+        let setting = self.sleep_screen_ui.setting(self.sleep_screen);
         if let Some(highlighted) = self.sleep_screen_ui.picker {
-            let count = options.len();
+            let Some(setting) = setting else {
+                self.sleep_screen_ui.picker = None;
+                return;
+            };
+            let count = self.sleep_screen.options(setting).0.len();
             let moved = match event {
                 ButtonEvent::Up => (highlighted + count - 1) % count,
                 ButtonEvent::Down => (highlighted + 1) % count,
@@ -1411,14 +1416,20 @@ impl AppState {
             self.sleep_screen_ui.picker = Some(moved);
             return;
         }
-        let count = SleepScreenSetting::ALL.len();
-        let selected = self.sleep_screen_ui.selected;
+        let count = SleepMode::ALL.len() + self.sleep_screen.option_rows().len();
+        let selected = self.sleep_screen_ui.selected.min(count - 1);
         match event {
             ButtonEvent::Up => self.sleep_screen_ui.selected = (selected + count - 1) % count,
             ButtonEvent::Down => self.sleep_screen_ui.selected = (selected + 1) % count,
             ButtonEvent::Select => {
                 self.note_select_press();
-                self.sleep_screen_ui.picker = Some(current);
+                if let Some(mode) = SleepMode::ALL.get(selected).copied() {
+                    if mode.is_available() {
+                        self.sleep_screen.mode = mode;
+                    }
+                } else if let Some(setting) = setting {
+                    self.sleep_screen_ui.picker = Some(self.sleep_screen.options(setting).1);
+                }
             }
         }
     }

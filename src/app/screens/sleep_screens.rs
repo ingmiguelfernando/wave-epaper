@@ -1,4 +1,5 @@
-//! Drawing-only clock and weather cards for future sleep-mode integration.
+//! Clock and weather sleep screens: the layouts, and the live screen of the
+//! sleep mode in use, built from state.
 
 use core::convert::Infallible;
 
@@ -11,14 +12,24 @@ use embedded_graphics::{
 use crate::{
     app::{
         display::DisplayPreferences,
+        state::AppState,
         typography::{Text, TextBounds, UiTextStyle},
         widgets::{
             big_digits::{big_text_width, draw_big_text},
             icons::weather_icon,
         },
     },
+    civil_date,
     orientation::OrientedFrameBuffer,
+    rtc::RtcDateTime,
+    sleep_screen::SleepMode,
+    weather::{short_degrees_label, CurrentConditions},
 };
+
+use super::weather::percent_label;
+
+/// A forecast older than this reads `stale` on the sleep screens.
+const STALE_MINUTES: i64 = 6 * 60;
 
 pub struct SleepClock<'a> {
     pub time: &'a str,
@@ -206,6 +217,220 @@ pub fn render_sleep_weather(
         weather.wake_hint,
         weather.battery_percent,
     )
+}
+
+/// Which layout a live sleep screen drew.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SleepLayout {
+    Clock,
+    Weather,
+}
+
+impl SleepLayout {
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Clock => "clock",
+            Self::Weather => "weather",
+        }
+    }
+}
+
+/// The live sleep screen of the mode in use: the clock, with the weather
+/// line when the mode has one, or the weather. Without a forecast the
+/// weather mode shows the clock until the first update.
+pub fn render_sleep_mode(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<SleepLayout, Infallible> {
+    let mode = state.sleep_screen.mode;
+    let local = state.board.rtc.map(|rtc| state.regional.localize_rtc(rtc));
+    let battery_percent = state.board.power.and_then(|power| power.battery_percent);
+    let wake_hint = state.power.wake_keys.wake_hint();
+    let forecast = state
+        .weather
+        .current
+        .as_ref()
+        .filter(|_| state.weather_enabled() && mode.shows_weather());
+    if let Some(current) = forecast.filter(|_| mode == SleepMode::Weather) {
+        render_live_weather(display, state, current, local)?;
+        return Ok(SleepLayout::Weather);
+    }
+    let time = local.map_or_else(|| "--:--".into(), RtcDateTime::time_hm);
+    let date = local.map_or_else(|| "Clock not set".into(), long_date);
+    let line = forecast.map(|current| clock_weather_line(state, current, local));
+    let weather = line
+        .as_ref()
+        .map(|(code, summary, details)| SleepWeatherLine {
+            weather_code: *code,
+            summary,
+            details,
+        });
+    let clock = SleepClock {
+        time: &time,
+        date: &date,
+        weather,
+        battery_percent,
+        wake_hint,
+    };
+    render_sleep_clock(display, state.display, &clock)?;
+    Ok(SleepLayout::Clock)
+}
+
+fn render_live_weather(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+    current: &CurrentConditions,
+    local: Option<RtcDateTime>,
+) -> Result<(), Infallible> {
+    let unit = state.regional.temperature_unit;
+    let place = state
+        .weather_config
+        .as_ref()
+        .map_or("", |config| config.location.as_str());
+    let observed = &current.observed_at;
+    let date = observed.get(..10).and_then(short_date).unwrap_or_default();
+    let time = observed.get(11..16).unwrap_or("--:--");
+    let mut updated = format!("{date} · updated {time}");
+    if is_stale(observed, local) {
+        updated.push_str(" · stale");
+    }
+    let today = state.weather.forecast.first();
+    let range = today.map_or_else(String::new, |today| {
+        format!(
+            "H {} · L {} · ",
+            short_degrees_label(today.high_tenths_f, unit),
+            short_degrees_label(today.low_tenths_f, unit)
+        )
+    });
+    let rain = today.and_then(|day| day.precipitation_probability_percent);
+    let rain = percent_label(rain);
+    let wind = current.wind_short_label(unit);
+    let details = format!("{range}Wind {wind} · Rain {rain}");
+    let labels: Vec<(String, String)> = state
+        .weather
+        .forecast
+        .iter()
+        .skip(1)
+        .take(3)
+        .map(|day| {
+            let high = short_degrees_label(day.high_tenths_f, unit);
+            let low = short_degrees_label(day.low_tenths_f, unit);
+            let rain = percent_label(day.precipitation_probability_percent);
+            (format!("{high} / {low}"), rain)
+        })
+        .collect();
+    let days: Vec<SleepWeatherDay<'_>> = state
+        .weather
+        .forecast
+        .iter()
+        .skip(1)
+        .zip(&labels)
+        .map(|(day, (range, rain))| SleepWeatherDay {
+            name: day.weekday_label(),
+            weather_code: day.weather_code,
+            range,
+            rain,
+        })
+        .collect();
+    let temperature = short_degrees_label(current.temperature_tenths_f, unit);
+    let weather = SleepWeather {
+        place,
+        updated: &updated,
+        weather_code: current.weather_code,
+        temperature: &temperature,
+        condition: current.condition_label(),
+        details: &details,
+        days: &days,
+        battery_percent: state.board.power.and_then(|power| power.battery_percent),
+        wake_hint: state.power.wake_keys.wake_hint(),
+    };
+    render_sleep_weather(display, state.display, &weather)
+}
+
+/// The clock's weather line: `18° · Partly cloudy` over today's range and
+/// rain, or when the forecast was last updated once it is stale.
+fn clock_weather_line(
+    state: &AppState,
+    current: &CurrentConditions,
+    local: Option<RtcDateTime>,
+) -> (u16, String, String) {
+    let unit = state.regional.temperature_unit;
+    let temperature = short_degrees_label(current.temperature_tenths_f, unit);
+    let summary = format!("{temperature} · {}", current.condition_label());
+    let details = match state.weather.forecast.first() {
+        _ if is_stale(&current.observed_at, local) => {
+            let time = current.observed_at.get(11..16).unwrap_or("--:--");
+            format!("Updated {time} · stale")
+        }
+        Some(today) => format!(
+            "H {} · L {} · Rain {}",
+            short_degrees_label(today.high_tenths_f, unit),
+            short_degrees_label(today.low_tenths_f, unit),
+            percent_label(today.precipitation_probability_percent)
+        ),
+        None => String::new(),
+    };
+    (current.weather_code, summary, details)
+}
+
+/// `Friday, October 2`.
+#[must_use]
+pub fn long_date(local: RtcDateTime) -> String {
+    let weekday = civil_date::WEEKDAY_LONG.get(usize::from(local.weekday));
+    let month = usize::from(local.month.saturating_sub(1));
+    let month = civil_date::MONTH_LONG.get(month);
+    match (weekday, month) {
+        (Some(weekday), Some(month)) => format!("{weekday}, {month} {}", local.day),
+        _ => "Date unavailable".into(),
+    }
+}
+
+/// `Fri, Oct 2` for `2026-10-02`.
+fn short_date(date: &str) -> Option<String> {
+    let (year, month, day) = parse_date(date)?;
+    let days = civil_date::days_from_civil(year, month, day);
+    let weekday = civil_date::WEEKDAY_SHORT[usize::from(civil_date::weekday(days))];
+    let month = civil_date::MONTH_SHORT.get(usize::from(month.checked_sub(1)?))?;
+    Some(format!("{weekday}, {month} {day}"))
+}
+
+fn parse_date(date: &str) -> Option<(i64, u8, u8)> {
+    let mut parts = date.splitn(3, '-');
+    let year = parts.next()?.parse().ok()?;
+    let month = parts.next()?.parse().ok()?;
+    let day = parts.next()?.parse().ok()?;
+    Some((year, month, day))
+}
+
+/// A forecast observed at `observed` (`2026-10-02T13:30`, provider time) is
+/// stale six hours after it, by the local clock; unknown without a clock.
+fn is_stale(observed: &str, local: Option<RtcDateTime>) -> bool {
+    let Some(local) = local else {
+        return false;
+    };
+    let minutes = |year, month, day, hour: u8, minute: u8| {
+        civil_date::days_from_civil(year, month, day) * 1440
+            + i64::from(hour) * 60
+            + i64::from(minute)
+    };
+    let Some((year, month, day)) = observed.get(..10).and_then(parse_date) else {
+        return false;
+    };
+    let hour = observed.get(11..13).and_then(|text| text.parse().ok());
+    let minute = observed.get(14..16).and_then(|text| text.parse().ok());
+    let (Some(hour), Some(minute)) = (hour, minute) else {
+        return false;
+    };
+    let then = minutes(year, month, day, hour, minute);
+    let now = minutes(
+        i64::from(local.year),
+        local.month,
+        local.day,
+        local.hour,
+        local.minute,
+    );
+    now - then > STALE_MINUTES
 }
 
 fn text_height(text: &str, style: UiTextStyle, width: i32, limit: usize) -> i32 {
@@ -793,5 +1018,62 @@ mod tests {
         );
         assert_eq!(temperature_height("18°"), 110);
         assert!(temperature_height("-123°") < 110);
+    }
+
+    fn at(day: u8, hour: u8, minute: u8) -> RtcDateTime {
+        RtcDateTime {
+            year: 2026,
+            month: 10,
+            day,
+            weekday: (day + 3) % 7,
+            hour,
+            minute,
+            second: 0,
+        }
+    }
+
+    #[test]
+    fn dates_read_in_words_and_forecasts_go_stale_after_six_hours() {
+        assert_eq!(long_date(at(2, 13, 42)), "Friday, October 2");
+        assert_eq!(short_date("2026-10-02").as_deref(), Some("Fri, Oct 2"));
+        assert_eq!(short_date("2026-13-02"), None);
+        assert_eq!(short_date("today"), None);
+        let observed = "2026-10-02T13:30";
+        assert!(!is_stale(observed, Some(at(2, 19, 30))));
+        assert!(is_stale(observed, Some(at(2, 19, 31))));
+        assert!(is_stale(observed, Some(at(3, 8, 0))));
+        assert!(!is_stale(observed, None));
+        assert!(!is_stale("not a time", Some(at(9, 0, 0))));
+    }
+
+    #[test]
+    fn sleep_modes_pick_their_layout() {
+        use crate::weather::{parse_open_meteo_response, SAMPLE_RESPONSE};
+        use crate::weather_config::{WeatherConfig, SAMPLE_CONFIG};
+
+        let mut state = AppState::default();
+        state.board.rtc = Some(at(2, 13, 42));
+        let mut frame = FrameBuffer::new_white();
+        let mut layout =
+            |state: &AppState| crate::app::render_sleep_mode(&mut frame, state).unwrap();
+        state.sleep_screen.mode = SleepMode::Clock;
+        assert_eq!(layout(&state), SleepLayout::Clock);
+        // No forecast yet: the weather mode keeps the clock.
+        state.sleep_screen.mode = SleepMode::Weather;
+        assert_eq!(layout(&state), SleepLayout::Clock);
+        state.set_weather_config(Some(WeatherConfig::parse(SAMPLE_CONFIG).unwrap()));
+        state
+            .weather
+            .record_success(parse_open_meteo_response(SAMPLE_RESPONSE).unwrap());
+        assert_eq!(layout(&state), SleepLayout::Weather);
+        state.sleep_screen.mode = SleepMode::ClockWeather;
+        assert_eq!(layout(&state), SleepLayout::Clock);
+        let (_, summary, details) = clock_weather_line(
+            &state,
+            state.weather.current.as_ref().unwrap(),
+            Some(at(3, 8, 0)),
+        );
+        assert!(summary.contains(" · "));
+        assert_eq!(details, "Updated 13:30 · stale");
     }
 }

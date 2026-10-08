@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.9.7), not an upstream v1.0.0 marker.
+	expected release version (currently v0.10.0), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	XiaoZhi remains SOON. Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
@@ -81,6 +81,23 @@ before tests; never remove the card while writes are active.
 	photo shows each time, without immediate repeats on Shuffle.
 - [ ] With no starred photo, sleep falls back to `/RUSTMIX/SLEEP/`, or to the
 	sleep card that explains why.
+- [ ] Settings › Sleep screen lists five modes with a cost on the right;
+	Select on Verse does nothing (`SOON`). Choosing Clock shows Refresh under
+	`CLOCK OPTIONS`; Settings shows `Clock · 1 min`; `SLEEPSCREEN.TXT`
+	keeps `mode=` and `clock_refresh=` after a reboot. Short BOOT previews
+	the clock.
+- [ ] Clock & date on battery: sleep, then watch a minute change. The time
+	updates within a second of the minute without a black flash; after 30
+	minutes one full refresh. The serial log shows `sleep-redraw
+	layout=clock refresh=partial`. Every 5 minutes: changes on 5, 10, 15.
+- [ ] Power and (with Any key) BOOT/wheel still wake from a clock sleep and
+	restore the screen with one full refresh; an RTC alarm still rings.
+- [ ] Weather mode with weather On: sleep, wait for an update (or set 30 min):
+	the log shows a `wifi-burst` and `weather-fetch status=completed`, then
+	`sleep-redraw layout=weather`. Without Wi-Fi the clock shows until a
+	forecast arrives; a forecast older than six hours says `stale`.
+- [ ] Overnight in Clock & date, Settings › Power's battery chart drops about
+	as the mode's cost says (about 13 mAh a day at 1 min).
 
 ## Power lists, sleep and wake
 
@@ -180,7 +197,9 @@ light sleep. Restore the owner's original preferences afterward.
         The title bar shows `Sudoku · Medium` and the time on the right; the
         time grows between presses (at most a minute per press). Hold BOOT
         mid-game, reopen: `Continue` restores the board and the time, also
-        after a reboot. Solving says `Solved in … · new best`; the hub card
+        after a reboot. Place a number and press the reset key without
+        leaving the game: after the reboot `Continue` keeps that number.
+        Solving says `Solved in … · new best`; the hub card
         shows the best time and `No game in progress`.
 - [ ] Sudoku three-step entry: ▲▼ row (given rows skipped), Select confirms;
         ▲▼ cell (givens skipped), Select confirms; ▲▼ number or erase (×),

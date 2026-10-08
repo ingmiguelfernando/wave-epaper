@@ -12,6 +12,8 @@ use crate::{
         canvas::NativeGameCanvas,
         records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
+        sudoku::SudokuGame,
+        sudoku_puzzles::SudokuDifficulty,
         sudoku_save::SudokuSave,
         tetris::{TetrisMode, GRAVITY_MS},
     },
@@ -54,8 +56,8 @@ pub struct LuaRuntimeUiState {
     records_changed: bool,
     /// Sudoku resume state loaded at boot; `None` when no save exists.
     pub sudoku_save: Option<SudokuSave>,
-    /// Set when closing a Sudoku game changed the save: either a fresh
-    /// resume in `sudoku_save`, or `None` after a solved puzzle.
+    /// Set when the Sudoku save changed, so `main.rs` writes it: either a
+    /// fresh resume in `sudoku_save`, or `None` after a solved puzzle.
     sudoku_save_changed: bool,
 }
 
@@ -130,6 +132,8 @@ impl LuaRuntimeUiState {
     }
 
     pub fn open_selected(&mut self) -> bool {
+        // An alarm can leave a game open behind its screen.
+        self.close_session();
         self.error = None;
         let Some(entry) = self.selected_entry().cloned() else {
             self.error = Some("No SD Lua application is selected".into());
@@ -261,6 +265,7 @@ impl LuaRuntimeUiState {
                     result.completed(),
                     result.dirty_regions_len(),
                 ));
+                self.autosave_sudoku();
                 true
             }
             Ok(None) => false,
@@ -385,25 +390,42 @@ impl LuaRuntimeUiState {
         self.error = None;
     }
 
-    /// Sudoku on close: a solved puzzle deletes the save and raises the best
-    /// time; unfinished progress becomes the new save.
-    fn close_sudoku(&mut self, game: &crate::games::sudoku::SudokuGame) {
-        let Some(difficulty) = game.difficulty() else {
-            return;
+    /// Sudoku on close: keeps the final time of unfinished progress.
+    fn close_sudoku(&mut self, game: &SudokuGame) {
+        self.store_sudoku(sudoku_outcome(game));
+    }
+
+    /// Autosave after a press: a changed board rewrites the save and a solve
+    /// deletes it, so a restart or a flat battery keeps the game.
+    fn autosave_sudoku(&mut self) {
+        let outcome = match self.session.as_ref().map(|session| &session.event_bridge) {
+            Some(LuaEventBridge::Sudoku(game)) => sudoku_outcome(game),
+            _ => return,
         };
-        if game.completed() {
-            self.sudoku_save = None;
-            self.sudoku_save_changed = true;
-            self.records_changed |= self.records.observe_sudoku(difficulty, game.seconds());
-        } else if game.seconds() > 0 || game.board() != game.puzzle() {
-            self.sudoku_save = Some(SudokuSave {
-                difficulty,
-                puzzle: *game.puzzle(),
-                board: *game.board(),
-                seconds: game.seconds(),
-            });
-            self.sudoku_save_changed = true;
+        let changed = match (&outcome, &self.sudoku_save) {
+            (Some(SudokuOutcome::Progress(save)), Some(saved)) => {
+                save.board != saved.board || save.puzzle != saved.puzzle
+            }
+            (Some(SudokuOutcome::Progress(save)), None) => save.board != save.puzzle,
+            (Some(SudokuOutcome::Solved(..)), saved) => saved.is_some(),
+            (None, _) => false,
+        };
+        if changed {
+            self.store_sudoku(outcome);
         }
+    }
+
+    /// Progress becomes the save; a solve deletes it and raises the best time.
+    fn store_sudoku(&mut self, outcome: Option<SudokuOutcome>) {
+        match outcome {
+            Some(SudokuOutcome::Progress(save)) => self.sudoku_save = Some(save),
+            Some(SudokuOutcome::Solved(difficulty, seconds)) => {
+                self.sudoku_save = None;
+                self.records_changed |= self.records.observe_sudoku(difficulty, seconds);
+            }
+            None => return,
+        }
+        self.sudoku_save_changed = true;
     }
 
     /// Take the changed flag after the records were saved.
@@ -432,6 +454,29 @@ fn button_marker(event: ButtonEvent) -> &'static str {
         ButtonEvent::Select => "select",
         ButtonEvent::Down => "down",
     }
+}
+
+/// What a Sudoku game means for the save.
+enum SudokuOutcome {
+    Progress(SudokuSave),
+    Solved(SudokuDifficulty, u32),
+}
+
+/// `None` on the start list, for the card's own puzzle and for a new game
+/// nobody has touched.
+fn sudoku_outcome(game: &SudokuGame) -> Option<SudokuOutcome> {
+    let difficulty = game.difficulty()?;
+    if game.completed() {
+        return Some(SudokuOutcome::Solved(difficulty, game.seconds()));
+    }
+    (game.seconds() > 0 || game.board() != game.puzzle()).then(|| {
+        SudokuOutcome::Progress(SudokuSave {
+            difficulty,
+            puzzle: *game.puzzle(),
+            board: *game.board(),
+            seconds: game.seconds(),
+        })
+    })
 }
 
 fn sanitize_marker(value: &str) -> String {
@@ -629,6 +674,15 @@ mod tests {
         assert!(runtime.take_records_changed(), "a new best marks one save");
         assert_eq!(runtime.records.tetris_zen, 9001);
         assert!(!runtime.take_records_changed(), "the flag clears after use");
+
+        // Reopening closes a game that was never closed.
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        if let LuaEventBridge::Tetris(app) = &mut runtime.session.as_mut().unwrap().event_bridge {
+            app.set_best(12_000);
+        }
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        assert!(runtime.take_records_changed());
+        assert_eq!(runtime.records.tetris_zen, 12_000);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -670,6 +724,36 @@ mod tests {
             })
             .collect();
         assert!(texts.iter().any(|text| text.starts_with("Continue")));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn placing_a_sudoku_number_saves_without_leaving_the_game() {
+        let root = temp_directory();
+        let app = root.join("SUDOKU");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("APP.TOM"),
+            "id=\"sudoku\"\nname=\"Sudoku\"\nkind=\"game\"\nentry=\"MAIN.LUA\"\n",
+        )
+        .unwrap();
+        std::fs::write(app.join("MAIN.LUA"), "sudoku.init()\n").unwrap();
+        let mut runtime = LuaRuntimeUiState::default();
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        // New · Easy, then the row, the cell and the first allowed number.
+        for now_ms in [1_000, 2_000, 3_000] {
+            assert!(runtime.apply_game_button(ButtonEvent::Select, now_ms));
+            assert!(!runtime.take_sudoku_save_changed());
+        }
+        assert!(runtime.apply_game_button(ButtonEvent::Select, 4_000));
+        assert!(runtime.take_sudoku_save_changed());
+        let save = runtime.sudoku_save.unwrap();
+        assert_eq!(save.difficulty, SudokuDifficulty::Easy);
+        assert_ne!(save.board, save.puzzle);
+
+        assert!(runtime.apply_game_button(ButtonEvent::Down, 5_000));
+        assert!(!runtime.take_sudoku_save_changed(), "moving writes nothing");
         std::fs::remove_dir_all(root).unwrap();
     }
 
