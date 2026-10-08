@@ -42,7 +42,7 @@ const HOME_ENTRIES: [MenuEntry; HOME_ENTRY_COUNT] = [
     MenuEntry {
         label: "Reading Stats",
         subtitle: "Reading time, streaks and finished books",
-        badge: SOON_BADGE,
+        badge: "",
         route: ScreenRoute::ReadingStats,
     },
     MenuEntry {

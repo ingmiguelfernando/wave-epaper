@@ -666,6 +666,14 @@ fn sample_state() -> AppState {
         byte_offset: 240_000,
         epub_chapter: None,
     });
+    // Reading history: 25 min today closing a 5-day streak.
+    let today = crate::civil_date::days_from_civil(2026, 10, 2) as u32;
+    for offset in 1..=4 {
+        state
+            .reading_stats
+            .record(today - offset, 30 * 60, 40, None);
+    }
+    state.reading_stats.record(today, 25 * 60, 22, None);
     state
 }
 

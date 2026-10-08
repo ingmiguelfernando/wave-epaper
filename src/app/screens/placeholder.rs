@@ -45,9 +45,6 @@ fn description(route: ScreenRoute) -> &'static str {
             "Read the Bible from the SD card, with a verse of the day that can also \
              appear on the sleep screen."
         }
-        ScreenRoute::ReadingStats => {
-            "Reading time per day, streaks and finished books, collected while you read."
-        }
         ScreenRoute::XiaoZhi => "Talk with the XiaoZhi voice assistant from xiaozhi.me.",
         _ => "This app is planned for a later update.",
     }

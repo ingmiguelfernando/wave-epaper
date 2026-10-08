@@ -348,7 +348,13 @@ midnight, no save without changes, the Home labels. **Previews:** `home`
 with a streak and reading time. **main.rs:** the boot load, the five-minute
 save, and one line before sleep next to the battery-log save.
 
-**Status:** not started.
+**Status:** done on `side-tasks-5`. Accrual reuses `ReadingClock` (D11) and
+`collect_reading_stats` runs inside the existing five-minute save and the
+Reader-close poll, so main.rs only gained the boot load, one cadence block
+and the sleep-save line next to the battery log's. The streak label needs
+more than today (a single day is not a streak), and the first save creates
+`/RUSTMIX/READER/` like D19's lesson. `ReadingStats` left the placeholder
+set, so its route renders the D14 screen.
 
 ### D28: AI hub (drawing and navigation)
 

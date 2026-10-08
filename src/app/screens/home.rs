@@ -220,9 +220,14 @@ fn draw_reading_card(
 
     let title = title_style.fit(&book.title, width);
     Text::new(&title, Point::new(left, title_baseline), title_style).draw(display)?;
+    let minutes = minutes_read_today(state).map(|minutes| format!("· {minutes} min today"));
     match book.percent {
         Some(percent) => {
-            let label = format!("{percent}%");
+            // `12% · 25 min today` right of the progress bar.
+            let mut label = format!("{percent}%");
+            if let Some(minutes) = minutes.as_deref() {
+                label = format!("{label} {minutes}");
+            }
             let label_left = left + width - body.text_width(&label);
             let bar_width = (label_left - 10 - left).max(0) as u32;
             let bar = Rectangle::new(Point::new(left, progress_top), Size::new(bar_width, 12));
@@ -233,9 +238,26 @@ fn draw_reading_card(
         None => {
             let origin = Point::new(left, progress_baseline);
             Text::new(&book.position, origin, body).draw(display)?;
+            if let Some(minutes) = minutes.as_deref() {
+                let label_left = left + width - body.text_width(minutes);
+                let origin = Point::new(label_left, progress_baseline);
+                Text::new(minutes, origin, body).draw(display)?;
+            }
         }
     }
     Ok(())
+}
+
+/// Whole minutes read today, `None` without a clock or without reading.
+#[must_use]
+pub fn minutes_read_today(state: &AppState) -> Option<u32> {
+    let today = reading_today(state)?;
+    let seconds = state.reading_stats.day(today).seconds;
+    if seconds == 0 {
+        None
+    } else {
+        Some(seconds / 60)
+    }
 }
 
 fn draw_progress_bar(
@@ -338,6 +360,7 @@ fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
     let books = state.reader.books.len();
     match entry.route {
         ScreenRoute::Reader if books > 0 => books.to_string(),
+        ScreenRoute::ReadingStats => reading_stats_meta(state),
         ScreenRoute::Weather => match home_conditions(state) {
             Some(current) => {
                 let unit = state.regional.temperature_unit;
@@ -348,6 +371,26 @@ fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
         },
         _ => entry.badge.to_string(),
     }
+}
+
+/// `5-day streak` when the RTC gives a day and more than today reads.
+fn reading_stats_meta(state: &AppState) -> String {
+    reading_today(state).map_or_else(String::new, |today| {
+        let streak = state.reading_stats.streak(today);
+        if streak > 1 {
+            format!("{streak}-day streak")
+        } else {
+            String::new()
+        }
+    })
+}
+
+/// The RTC's civil day, `None` without a set clock.
+#[must_use]
+pub fn reading_today(state: &AppState) -> Option<u32> {
+    state.board.rtc.map(|rtc| {
+        crate::civil_date::days_from_civil(i64::from(rtc.year), rtc.month, rtc.day) as u32
+    })
 }
 
 fn weather_status_label(state: WeatherFetchState) -> &'static str {
@@ -386,7 +429,10 @@ fn compact_local_date(local: RtcDateTime) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{compact_local_date, home_meta, percent_of, temperature_label};
+    use super::{
+        compact_local_date, home_meta, minutes_read_today, percent_of, reading_stats_meta,
+        temperature_label,
+    };
     use crate::{
         app::{menu::home_entries, router::ScreenRoute, AppState},
         regional::TemperatureUnit,
@@ -440,5 +486,57 @@ mod tests {
         assert_eq!(percent_of(240_000, 2_000_000), 12);
         assert_eq!(percent_of(5, 0), 0);
         assert_eq!(percent_of(9, 4), 100);
+    }
+
+    fn day_at(year: u16, month: u8, day: u8) -> u32 {
+        crate::civil_date::days_from_civil(i64::from(year), month, day) as u32
+    }
+
+    #[test]
+    fn reading_stats_row_shows_the_streak_only_when_there_is_one() {
+        let mut state = AppState::default();
+        let today = day_at(2026, 10, 8);
+        state.board.rtc = Some(RtcDateTime {
+            year: 2026,
+            month: 10,
+            day: 8,
+            ..RtcDateTime::default()
+        });
+        assert_eq!(reading_stats_meta(&state), "");
+        // Four past days above five minutes plus today: a 5-day streak.
+        for offset in 1..=4 {
+            state.reading_stats.record(today - offset, 600, 0, None);
+        }
+        state.reading_stats.record(today, 600, 0, None);
+        assert_eq!(reading_stats_meta(&state), "5-day streak");
+        // Only today read: no streak label.
+        let mut fresh = AppState::default();
+        fresh.board.rtc = state.board.rtc;
+        fresh.reading_stats.record(today, 600, 0, None);
+        assert_eq!(reading_stats_meta(&fresh), "");
+        let entry = home_entries()
+            .iter()
+            .find(|entry| entry.route == ScreenRoute::ReadingStats)
+            .unwrap();
+        assert_eq!(home_meta(entry, &state), "5-day streak");
+    }
+
+    #[test]
+    fn continue_card_minutes_need_a_clock_and_reading_time() {
+        let mut state = AppState::default();
+        assert_eq!(minutes_read_today(&state), None);
+        state.board.rtc = Some(RtcDateTime {
+            year: 2026,
+            month: 10,
+            day: 8,
+            ..RtcDateTime::default()
+        });
+        assert_eq!(minutes_read_today(&state), None);
+        let today = day_at(2026, 10, 8);
+        state.reading_stats.record(today, 25 * 60, 0, None);
+        assert_eq!(minutes_read_today(&state), Some(25));
+        // Fractions of a minute stay hidden.
+        state.reading_stats.record(today, 59, 0, None);
+        assert_eq!(minutes_read_today(&state), Some(25));
     }
 }

@@ -30,16 +30,17 @@ text; settings already applied with Select remain applied.
 
 Home shows time, battery, Wi-Fi burst state, date, weather and a Continue
 Reading summary. Settings › Weather can hide the weather from Home. The
-summary card is informational: use **Library › Continue Reading** to resume.
-Up/Down wraps through the nine application rows; Select opens the highlighted
-one.
+summary card is informational: use **Library › Continue Reading** to resume;
+while you read, the card shows `N% · M min today` when the clock is set and
+today has reading time. Up/Down wraps through the nine application rows;
+Select opens the highlighted one.
 
 | Home row | Current behavior |
 |---|---|
 | Photos | Gallery of the JPEG photos in `/RUSTMIX/PHOTOS`; see [Photos](#photos) |
 | Library | Continue Reading, Books, Bookmarks |
 | Bible | SOON placeholder |
-| Reading Stats | SOON placeholder |
+| Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |
 | AI | XiaoZhi (SOON) and implemented Voice Notes |
@@ -123,6 +124,18 @@ Layout changes may reopen/repaginate the book; wait for loading. Theme and
 progress changes do not rebuild the layout. These are Reader preferences,
 independent of the interface font in Settings › Display. Hold BOOT again
 after closing a picker to leave Reading Preferences.
+
+## Reading Stats
+
+Home › Reading Stats shows today's minutes and pages, the current and best
+streak, this week's minutes, the last twelve weeks and the year so far; the
+book in the Reader appears as the current book. Time counts only while a
+page is open: each key press adds the time since the previous one, at most
+two minutes, and each page turn adds a page. The day comes from the device
+clock; with no clock set, nothing is recorded. History is kept in
+`/RUSTMIX/READER/STATS.TXT`, saved at most every five minutes, when the
+Reader closes and before sleep. The Home row shows `N-day streak` while a
+streak is live; the Continue card adds `· M min today`.
 
 ## Settings
 

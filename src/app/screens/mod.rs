@@ -98,6 +98,10 @@ pub fn render_active_screen(
         ScreenRoute::Display => display::render_display(display, state),
         ScreenRoute::Power => power::render_power(display, state),
         ScreenRoute::SleepScreen => sleep_settings::render_sleep_settings(display, state),
+        ScreenRoute::ReadingStats => {
+            render_reading_stats_from_state(display, state);
+            Ok(())
+        }
         ScreenRoute::Photos => photos::render_photos(display, state),
         ScreenRoute::PhotoViewer => photos::render_photo_viewer(display, state),
         ScreenRoute::PowerKeyMenu => power_key::render_power_key_menu(display, state),
@@ -109,7 +113,32 @@ pub fn render_active_screen(
         | ScreenRoute::Tools
         | ScreenRoute::GamesTbd
         | ScreenRoute::Bible
-        | ScreenRoute::ReadingStats
         | ScreenRoute::XiaoZhi => unreachable!("category and placeholder routes handled above"),
+    }
+}
+
+/// Reading Stats needs the RTC's civil day; without a set clock there is
+/// nothing to show but the header.
+fn render_reading_stats_from_state(display: &mut OrientedFrameBuffer<'_>, state: &AppState) {
+    let today = state.board.rtc.map(|rtc| {
+        crate::civil_date::days_from_civil(i64::from(rtc.year), rtc.month, rtc.day) as u32
+    });
+    let current = state
+        .reader
+        .session
+        .as_ref()
+        .map(|session| reading_stats::CurrentBook {
+            title: &session.book.title,
+            path: &session.book.path,
+            percent: None,
+        });
+    if let Some(today) = today {
+        let _ = reading_stats::render_reading_stats(
+            display,
+            state.display,
+            &state.reading_stats,
+            today,
+            current.as_ref(),
+        );
     }
 }

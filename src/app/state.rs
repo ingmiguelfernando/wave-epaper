@@ -19,6 +19,7 @@ use crate::{
     power_key_menu::{PowerKeyMenuOutcome, PowerKeyMenuUiState},
     power_settings::{PowerPreferences, PowerSetting},
     reader::{ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
+    reading_stats::{ReadingClock, ReadingStats},
     regional::RegionalPreferences,
     sleep_mode::{LightSleepShare, SleepReport},
     sleep_screen::{SleepScreenSetting, SleepScreenSettings},
@@ -160,6 +161,15 @@ pub struct AppState {
     /// Battery use across the most recent sleep, for Settings › Power.
     pub last_sleep: Option<SleepReport>,
     pub light_sleep: LightSleepShare,
+    /// Reading time and page turns, persisted as `/RUSTMIX/READER/STATS.TXT`.
+    pub reading_stats: ReadingStats,
+    /// Key-driven reading time while a Reader page is open.
+    reading_clock: ReadingClock,
+    /// Pages turned since the last accrual into `reading_stats`.
+    reading_pages: u32,
+    /// The day the pending reading time is recorded on, `None` without a
+    /// set clock.
+    reading_day: Option<u32>,
     /// Milliseconds of the last dispatched event, for the games' timers.
     pub event_clock_ms: u64,
 }
@@ -214,6 +224,10 @@ impl Default for AppState {
             full_refresh_requested: false,
             last_sleep: None,
             light_sleep: LightSleepShare::default(),
+            reading_stats: ReadingStats::default(),
+            reading_clock: ReadingClock::default(),
+            reading_pages: 0,
+            reading_day: None,
             event_clock_ms: 0,
         }
     }
@@ -773,10 +787,19 @@ impl AppState {
             }
             ScreenRoute::ReaderLoading => {}
             ScreenRoute::ReaderPage => match event {
-                ButtonEvent::Up => self.reader.previous_page(),
-                ButtonEvent::Down => self.reader.next_page(),
+                ButtonEvent::Up => {
+                    self.note_reading_key();
+                    self.reader.previous_page();
+                    self.note_reading_page_turn();
+                }
+                ButtonEvent::Down => {
+                    self.note_reading_key();
+                    self.reader.next_page();
+                    self.note_reading_page_turn();
+                }
                 ButtonEvent::Select => {
                     self.note_select_press();
+                    self.note_reading_key();
                     self.reader.options_selected = 0;
                     self.router.navigate_to(ScreenRoute::ReaderOptions);
                 }
@@ -851,6 +874,54 @@ impl AppState {
         }
         self.sync_reader_orientation_for_active_route();
         outcome
+    }
+
+    /// A key press while a Reader page is open: time accrues from the
+    /// previous press, capped at two minutes by `ReadingClock`.
+    fn note_reading_key(&mut self) {
+        if self.reader.session.is_some() {
+            self.reading_clock.on_key(self.event_clock_ms);
+        }
+    }
+
+    fn note_reading_page_turn(&mut self) {
+        if self.reader.session.is_some() {
+            self.reading_pages = self.reading_pages.saturating_add(1);
+        }
+    }
+
+    /// Move accrued time and page turns into `reading_stats` for the RTC's
+    /// civil day. Without a set clock nothing is recorded; time already
+    /// accrued before midnight rolls over on the next call. Returns whether
+    /// the day changed under an open session (the caller saves on close).
+    #[must_use]
+    pub fn collect_reading_stats(&mut self, today: Option<u32>) -> bool {
+        let seconds = self.reading_clock.take_seconds(self.event_clock_ms);
+        let pages = core::mem::take(&mut self.reading_pages);
+        let Some(today) = today.or(self.reading_day) else {
+            // No clock at all: reading is not recorded.
+            return false;
+        };
+        let day_changed = self.reading_day.is_some_and(|day| day != today);
+        let book = self
+            .reader
+            .session
+            .as_ref()
+            .map(|session| session.book.path.as_str());
+        self.reading_stats.record(
+            today,
+            seconds,
+            pages,
+            book.filter(|_| seconds > 0 || pages > 0),
+        );
+        self.reading_day = Some(today);
+        day_changed
+    }
+
+    /// Whether a Reader page is open right now.
+    #[must_use]
+    pub fn reader_page_open(&self) -> bool {
+        self.router.current() == ScreenRoute::ReaderPage && self.reader.session.is_some()
     }
 
     #[must_use]
@@ -1416,6 +1487,107 @@ mod tests {
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), route);
         state
+    }
+
+    /// A Reader page open with a session, driven by `apply_with_clock`.
+    fn reading_state() -> AppState {
+        let mut state = open_from_home(ScreenRoute::Reader);
+        state.reader.session = Some(sample_session());
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::ReaderPage);
+        state
+    }
+
+    /// A minimal one-page TXT session; fields are public for tests.
+    fn sample_session() -> crate::reader::ReaderSession {
+        use crate::reader::{
+            BookFont, BookFontSize, ParagraphAlignment, ReaderBook, ReaderLayout,
+            ReaderOrientation, ReaderSession, TextEncoding,
+        };
+        ReaderSession {
+            book: ReaderBook {
+                path: "/sdcard/RUSTMIX/BOOKS/Quijote.txt".into(),
+                title: "Quijote".into(),
+                format: crate::reader::BookFormat::Text,
+                size_bytes: 2_000_000,
+                modified_seconds: 0,
+            },
+            encoding: TextEncoding::Utf8,
+            epub_document: None,
+            layout: ReaderLayout {
+                chars_per_line: 40,
+                lines_per_page: 20,
+                orientation: ReaderOrientation::default(),
+                font_size: BookFontSize::default(),
+                book_font: BookFont::default(),
+                paragraph_alignment: ParagraphAlignment::default(),
+            },
+            language: None,
+            current_page: 41,
+            page_number_base: 0,
+            page_offsets: vec![0, 240_000, 480_000],
+            indexed_through: 480_000,
+            index_complete: false,
+            cache: Vec::new(),
+            epub_chapter_pages: Vec::new(),
+            epub_chapter: None,
+        }
+    }
+
+    #[test]
+    fn reading_session_accrues_capped_time_and_page_turns() {
+        let mut state = reading_state();
+        // Presses 30 s apart, then a 140 s gap capped at 120 s. Time accrues
+        // between presses; the first press has no previous one.
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        state.apply_with_clock(ButtonEvent::Down, 170_000);
+        let day = 20_000;
+        state.collect_reading_stats(Some(day));
+        let stats = state.reading_stats.day(day);
+        assert_eq!(stats.seconds, 150, "30 + capped 120");
+        assert_eq!(stats.pages, 3);
+        // The next call without keys records nothing.
+        state.collect_reading_stats(Some(day));
+        assert_eq!(state.reading_stats.day(day).seconds, 150);
+    }
+
+    #[test]
+    fn reading_session_rolls_over_at_midnight() {
+        let mut state = reading_state();
+        state.apply_with_clock(ButtonEvent::Down, 10_000);
+        let yesterday = 20_000;
+        // 80 s of reading across the two presses after the first collect.
+        assert!(!state.collect_reading_stats(Some(yesterday)));
+        state.apply_with_clock(ButtonEvent::Down, 90_000);
+        let today = 20_001;
+        assert!(state.collect_reading_stats(Some(today)));
+        assert_eq!(state.reading_stats.day(yesterday).seconds, 0);
+        assert_eq!(state.reading_stats.day(today).seconds, 80);
+        // The remaining fraction of the second lands on the next call.
+        state.apply_with_clock(ButtonEvent::Down, 92_000);
+        state.collect_reading_stats(Some(today));
+        assert_eq!(state.reading_stats.day(today).seconds, 82);
+    }
+
+    #[test]
+    fn reading_without_a_clock_records_nothing() {
+        let mut state = reading_state();
+        state.board.rtc = None;
+        state.apply_with_clock(ButtonEvent::Down, 10_000);
+        state.apply_with_clock(ButtonEvent::Down, 70_000);
+        state.collect_reading_stats(None);
+        assert_eq!(state.reading_stats.day(0).seconds, 0);
+        assert!(!state.reading_stats.has_unsaved());
+    }
+
+    #[test]
+    fn reader_page_open_tracks_route_and_session() {
+        let mut state = reading_state();
+        assert!(state.reader_page_open());
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::ReaderOptions);
+        assert!(!state.reader_page_open());
     }
 
     #[test]

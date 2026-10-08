@@ -23,7 +23,13 @@ before tests; never remove the card while writes are active.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
 	expected release version (currently v0.9.4), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
-	Bible, Reading Stats and XiaoZhi remain SOON.
+	Bible and XiaoZhi remain SOON. Reading Stats opens its screen.
+- [ ] Reading Stats: read a page or two, leave the Reader, reopen the screen —
+	today's minutes and pages grow; the Home row shows `N-day streak` from
+	the second day above five minutes; the Continue card shows
+	`· M min today`. With the clock unset, reading records nothing
+	(`STATS.TXT` untouched). `STATS.TXT` appears only after a save (five
+	minutes, Reader close or sleep), never per page.
 - [ ] Every screen ends with the same bottom bar of key caps, and its labels
 	match what the keys do. At Large size in both font families nothing is
 	cut off at the right edge.

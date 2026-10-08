@@ -81,6 +81,7 @@ mod firmware {
         power_settings::{PowerPreferences, WakeKeys, POWER_CONFIG_PATH},
         radio_burst::{RadioBurst, RadioPhase},
         reader::ReaderTickOutcome,
+        reading_stats::{ReadingStats, READING_STATS_PATH},
         regional::RegionalPreferences,
         rtc::RtcDateTime,
         rtc_alarm_interrupt::{espidf::RtcAlarmInterruptMonitor, RTC_ALARM_INTERRUPT_GPIO},
@@ -399,6 +400,10 @@ mod firmware {
             }
             state.lua_runtime.records = GameRecords::load_from_path(RECORDS_PATH);
             state.lua_runtime.sudoku_save = SudokuSave::load_from_path(SUDOKU_SAVE_PATH);
+            match ReadingStats::load_from_path(READING_STATS_PATH) {
+                Ok(stats) => state.reading_stats = stats,
+                Err(error) => info!("rustmix-wave=reading-stats status=new error={error:#}"),
+            }
             info!(
                 "rustmix-wave=game-records status=ready tetris-zen={} sudoku-sav\
 ed={}",
@@ -463,6 +468,7 @@ ed={}",
         // Set by a Power-key or button press that ends sleep mode.
         let mut wake_cause: Option<SleepWakeCause> = None;
         let mut last_battery_sample: Option<Instant> = None;
+        let mut last_stats_save: Option<Instant> = None;
         state.update_audio_snapshot(initial_audio_snapshot);
         log_audio_snapshot(&state.audio);
         if let Some(config) = network_config.as_ref() {
@@ -1261,6 +1267,9 @@ ed={}",
                             if _mounted_sd.is_some() && state.battery_log.has_unsaved() {
                                 save_battery_log(&mut state.battery_log);
                             }
+                            if _mounted_sd.is_some() {
+                                save_reading_stats_if_dirty(&mut state);
+                            }
                             sleep_started = Some((Instant::now(), battery));
                             info!(
                                 "rustmix-wave=light-sleep-share asleep-seconds={} awake-seconds={}",
@@ -1445,6 +1454,14 @@ ed={}",
                     voice_playback.is_some(),
                 );
                 log_reader_persistence_event(&mut state);
+                // The Reader closed (library, home or another book): flush
+                // the session's time instead of waiting for the cadence.
+                if !state.reader_page_open()
+                    && state.reading_stats.has_unsaved()
+                    && _mounted_sd.is_some()
+                {
+                    save_reading_stats_if_dirty(&mut state);
+                }
                 if state.panel_awake
                     && (outcome == ReaderTickOutcome::FirstPageReady
                         || outcome == ReaderTickOutcome::Failed
@@ -1942,6 +1959,14 @@ ed={}",
                 last_battery_sample = Some(Instant::now());
             }
 
+            // Reading stats save at most every five minutes while it changed.
+            if last_stats_save.map_or(true, |at| at.elapsed() >= READING_STATS_SAVE_INTERVAL) {
+                if _mounted_sd.is_some() {
+                    save_reading_stats_if_dirty(&mut state);
+                }
+                last_stats_save = Some(Instant::now());
+            }
+
             // While awake, light-sleep between presses until the next timed job.
             // On USB power stay awake so flashing and the serial console work.
             let reader_open = matches!(
@@ -2034,6 +2059,7 @@ ed={}",
     const IDLE_LIGHT_SLEEP_DELAY: Duration = Duration::from_millis(300);
     const USB_CHECK_INTERVAL: Duration = Duration::from_secs(5);
     const BATTERY_SAMPLE_INTERVAL: Duration = Duration::from_secs(SAMPLE_MINUTES as u64 * 60);
+    const READING_STATS_SAVE_INTERVAL: Duration = Duration::from_secs(300);
 
     fn time_left(since: Instant, period_seconds: u64) -> Duration {
         Duration::from_secs(period_seconds).saturating_sub(since.elapsed())
@@ -2117,6 +2143,25 @@ ed={}",
         match log.save_to_path(BATTERY_LOG_PATH) {
             Ok(()) => info!("rustmix-wave=battery-log status=saved path={BATTERY_LOG_PATH}"),
             Err(error) => warn!("rustmix-wave=battery-log status=save-failed error={error:#}"),
+        }
+    }
+
+    /// Accrue the reading session into the stats and save when changed. The
+    /// first save creates `/RUSTMIX/READER/` (the SD card has no folders).
+    fn save_reading_stats_if_dirty(state: &mut AppState) {
+        let today = state.board.rtc.map(|rtc| {
+            crate::civil_date::days_from_civil(i64::from(rtc.year), rtc.month, rtc.day) as u32
+        });
+        state.collect_reading_stats(today);
+        if !state.reading_stats.has_unsaved() {
+            return;
+        }
+        if let Some(parent) = std::path::Path::new(READING_STATS_PATH).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match state.reading_stats.save_to_path(READING_STATS_PATH) {
+            Ok(()) => info!("rustmix-wave=reading-stats status=saved path={READING_STATS_PATH}"),
+            Err(error) => warn!("rustmix-wave=reading-stats status=save-failed error={error:#}"),
         }
     }
 
