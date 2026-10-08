@@ -444,6 +444,11 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     ai_picker.ai_settings_ui.picker = Some(1);
     ai_picker.router.navigate_to(ScreenRoute::AiSettings);
     states.push(("settings-ai-picker", ai_picker));
+
+    let mut ai_hub = sample_state();
+    ai_hub.ai = Some(sample_ai_config());
+    ai_hub.router.navigate_to(ScreenRoute::Ai);
+    states.push(("ai-providers", ai_hub));
     states
 }
 

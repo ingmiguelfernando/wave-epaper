@@ -204,6 +204,18 @@ fn draw_voice_notes_card(
         detail_style,
     )
     .draw(display)?;
+    // The two providers, right-aligned, once both are set (as in the mockup).
+    if let Some(config) = state.ai.as_ref().filter(|config| config.is_ready()) {
+        let transcription = crate::ai_config::provider_name(&config.transcription_url);
+        let summary = crate::ai_config::provider_name(&config.summary_url);
+        // Both names sit in the top right, clear of the detail line below.
+        for (name, baseline) in [(transcription, top + 30), (summary, top + 52)] {
+            let name = name.to_uppercase();
+            let right = CARD_RIGHT - 16;
+            let left = right - detail_style.text_width(&name);
+            Text::new(&name, Point::new(left, baseline), detail_style).draw(display)?;
+        }
+    }
     Ok(())
 }
 
@@ -408,6 +420,35 @@ mod d28_tests {
         assert_eq!(network_label(&state), "Offline");
         state.network.wifi_state = crate::network::WifiConnectionState::Connected;
         assert_eq!(network_label(&state), "Online");
+    }
+
+    #[test]
+    fn the_voice_notes_card_shows_the_providers_only_once_both_are_set() {
+        use crate::ai_config::AiConfig;
+        let render = |ai: Option<AiConfig>| {
+            let mut state = AppState::default();
+            state.ai = ai;
+            state.router.navigate_to(ScreenRoute::Ai);
+            let mut frame = FrameBuffer::new_white();
+            render_current_screen(&mut frame, &state).unwrap();
+            frame
+        };
+        let ready = AiConfig {
+            transcription_url: "https://api.groq.com/openai/v1".into(),
+            transcription_model: "whisper-large-v3-turbo".into(),
+            summary_url: "https://openrouter.ai/api/v1".into(),
+            summary_model: "llama-3.3-70b".into(),
+            ..AiConfig::default()
+        };
+        let half = AiConfig {
+            summary_url: String::new(),
+            ..ready.clone()
+        };
+        let without = render(None);
+        let with_both = render(Some(ready));
+        let with_one = render(Some(half));
+        assert_ne!(without, with_both, "both set: the providers are drawn");
+        assert_eq!(without, with_one, "one missing: nothing is drawn");
     }
 
     #[test]
