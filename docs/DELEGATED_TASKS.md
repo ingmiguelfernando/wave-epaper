@@ -509,7 +509,9 @@ opening a summarized note from the AI hub through `AppState::apply`.
 **Previews:** `voice-note-summary`, `voice-note-transcript`, and `ai` with
 the three states.
 
-**Status:**
+**Status:** done on `side-tasks-6` for the device-side screens and records, except the open items below. Built: the record (`voice_note_record.rs`, `VOICE###.AI` beside the WAV, round trip, block markers, states, delete removes it); the queue steps (`next_job`, `advance`, `queues_on_save` for `process=online`); the state labels (`state_label`: `SUMMARY`, `TRANSCRIBING…`, `SUMMARIZING…`, `QUEUED`, `QUEUED · OFFLINE`, `FAILED`) on the AI hub chips and the Voice Notes list; the hub info box (mockup text once `AI.TXT` is ready); and the result screen (summary title, meta line, SUMMARY / TRANSCRIPT / AUDIO tabs, scroll, the AI-generated footer; a note without a record opens its details). Text is prepared for the fonts (`☐` becomes `•`, `→` becomes `>`). Previews: `voice-note-summary`, `voice-note-transcript`, `voice-note-audio`, `ai-states`, `ai-states-offline`, `voice-notes-states`.
+
+Open, not built: (1) the device wiring: queued save on recording, the worker that calls `next_job` and the steps, and the network requests from `ai_client.rs` (the main line's network work); (2) the manual `Process` menu on a note; (3) the result's `●` actions (play, rename, export, delete): `●` only goes back; (4) the audio tab shows the file facts, not more. Test gap: a summarized note is opened from the list in the tests, not from the AI hub. Device check: put a hand-made `VOICE###.AI` on the card and check the label, the result and the tabs. Host 729 passed, fmt clean, firmware green.
 
 ## Round 5 tasks (done in v0.9.7)
 

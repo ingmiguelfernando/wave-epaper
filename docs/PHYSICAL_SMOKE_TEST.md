@@ -219,6 +219,10 @@ light sleep. Restore the owner's original preferences afterward.
 	status bar says `Online` or `Offline`.
 - [ ] AI › Voice Notes: record, pause/resume, save, playback, friendly-title
 	edit/cancel, delete confirmation and LAN export; WAV survives reboot.
+- [ ] AI result: a note with a `VOICE###.AI` record shows its state label on
+    the hub and in the list; its result opens with the summary title, tabs
+    switch on BOOT, Up/Down scroll, Select goes back. A note without a
+    record opens its details. Put a hand-made record on the card to check.
 - [ ] Dictionary with a full pack: exact lookup, prefix fallback and `*`
 	cycling; keyboard short BOOT switches H/V without moving the selected key.
 - [ ] Tools › Calendar: day/month, agenda, personal create/edit/delete;

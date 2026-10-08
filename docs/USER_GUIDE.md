@@ -337,7 +337,11 @@ Transcription and summaries are not implemented yet.
 ### Voice Notes
 
 Voice Notes records local PCM16 mono
-16 kHz WAV; it does not transcribe or summarize recordings.
+16 kHz WAV. Each note can have an AI record (`VOICE###.AI`, next to the WAV)
+that shows its state in the list and on the AI hub: `QUEUED`, `QUEUED ·
+OFFLINE`, `TRANSCRIBING…`, `SUMMARIZING…`, `SUMMARY` or `FAILED`. The device
+does not send transcription or summary requests yet; a note's state comes
+only from its record on the card.
 
 - List: Up/Down chooses Record new note, microphone gain or a saved note;
 	Select starts recording, cycles gain or opens details.
@@ -345,6 +349,10 @@ Voice Notes records local PCM16 mono
 	cancels. The screen reports duration, peak and clipping.
 - Saved note: Up/Down chooses Play/Stop, Edit friendly title, Export/download,
 	Delete or Return; Select runs the action. Delete asks for confirmation.
+- Note with an AI record: Select opens its result. The title is the summary
+    title; tabs are SUMMARY, TRANSCRIPT and AUDIO (short BOOT switches);
+    Up/Down scroll the text; Select goes back to the list. A note without
+    a record opens its details.
 - Title keyboard: Up/Down moves in the active axis; short BOOT toggles
 	NAV H / NAV V; Select activates a key, SAVE or CANCEL. Hold BOOT cancels.
 
