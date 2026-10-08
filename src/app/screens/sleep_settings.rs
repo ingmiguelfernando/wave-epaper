@@ -22,7 +22,9 @@ use crate::{
         },
     },
     orientation::OrientedFrameBuffer,
-    sleep_screen::{daily_cost_label, daily_cost_tenths, SleepMode, SleepScreenSetting, SleepSource},
+    sleep_screen::{
+        daily_cost_label, daily_cost_tenths, SleepMode, SleepScreenSetting, SleepSource,
+    },
 };
 
 use super::{games::draw_info_box, settings::hours_text};
@@ -51,7 +53,10 @@ pub fn render_sleep_settings(
     let preferences = state.display;
     let settings = state.sleep_screen;
     draw_status_bar(display, preferences, "Settings › Sleep screen")?;
-    let open = state.sleep_screen_ui.picker.zip(state.sleep_screen_ui.setting(settings));
+    let open = state
+        .sleep_screen_ui
+        .picker
+        .zip(state.sleep_screen_ui.setting(settings));
     if let Some((highlighted, setting)) = open {
         let (options, current) = settings.options(setting);
         let heading = preferences.heading_style();
@@ -275,7 +280,10 @@ mod tests {
         state.apply(ButtonEvent::Select);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
-        assert_eq!(state.sleep_screen.clock_refresh, ClockRefresh::EveryFiveMinutes);
+        assert_eq!(
+            state.sleep_screen.clock_refresh,
+            ClockRefresh::EveryFiveMinutes
+        );
 
         // Verse is not ready yet.
         state.sleep_screen_ui.selected = 4;

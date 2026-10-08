@@ -259,11 +259,13 @@ pub fn render_sleep_mode(
     let time = local.map_or_else(|| "--:--".into(), RtcDateTime::time_hm);
     let date = local.map_or_else(|| "Clock not set".into(), long_date);
     let line = forecast.map(|current| clock_weather_line(state, current, local));
-    let weather = line.as_ref().map(|(code, summary, details)| SleepWeatherLine {
-        weather_code: *code,
-        summary,
-        details,
-    });
+    let weather = line
+        .as_ref()
+        .map(|(code, summary, details)| SleepWeatherLine {
+            weather_code: *code,
+            summary,
+            details,
+        });
     let clock = SleepClock {
         time: &time,
         date: &date,
