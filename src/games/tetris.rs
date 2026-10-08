@@ -24,6 +24,14 @@ pub enum TetrisMode {
     Classic,
 }
 
+/// What one gravity tick did: the piece fell a row, locked, or nothing ran.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TickOutcome {
+    Moved,
+    Locked,
+    Ignored,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TetrisAction {
     Left,
@@ -140,6 +148,27 @@ impl TetrisGame {
                 self.lock_active();
                 true
             }
+        }
+    }
+
+    /// One Classic gravity tick. Zen and finished games ignore it. Reports
+    /// whether the piece moved down or locked, so the caller can count locks.
+    pub fn tick(&mut self) -> TickOutcome {
+        if self.mode != TetrisMode::Classic || self.game_over {
+            return TickOutcome::Ignored;
+        }
+        // Same test `step` makes: the piece can move one row down or it locks.
+        let can_fall = self.fits(
+            self.active,
+            self.rotation,
+            self.box_column,
+            self.box_row + 1,
+        );
+        self.step();
+        if can_fall {
+            TickOutcome::Moved
+        } else {
+            TickOutcome::Locked
         }
     }
 
@@ -545,6 +574,37 @@ impl TetrisApp {
             "drop"
         };
         self.finish_and_render(reason, Some(TetrisAction::Drop), before, canvas)
+    }
+
+    /// A gravity tick, redrawn and counted like a key press. `None` when the
+    /// tick changed nothing (Zen, a finished game), so the caller skips a
+    /// redraw. A lock counts toward the 20-lock full refresh and the best.
+    pub fn tick_and_render(
+        &mut self,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<Option<TetrisEventResult>, String> {
+        let before = (
+            self.game.active_cells(),
+            self.game.ghost_cells(),
+            self.game.lines(),
+        );
+        match self.game.tick() {
+            TickOutcome::Ignored => Ok(None),
+            TickOutcome::Moved => self
+                .finish_and_render("gravity", None, before, canvas)
+                .map(Some),
+            TickOutcome::Locked => {
+                self.locks += 1;
+                self.best = self.best.max(self.game.score());
+                let reason = if self.game.is_over() {
+                    "game-over"
+                } else {
+                    "gravity-lock"
+                };
+                self.finish_and_render(reason, None, before, canvas)
+                    .map(Some)
+            }
+        }
     }
 
     fn finish_and_render(
@@ -1107,6 +1167,54 @@ mod tests {
         assert_eq!(game.cell(4, 19), Some(TetrisPiece::O));
         assert_eq!(game.cell(5, 18), Some(TetrisPiece::O));
         assert_eq!(game.active, next);
+    }
+
+    #[test]
+    fn zen_ignores_gravity_ticks() {
+        let mut game = TetrisGame::new(TetrisMode::Zen, 3);
+        set_active(&mut game, TetrisPiece::O, 0, 4, 5);
+        let start = game.active_cells();
+        assert_eq!(game.tick(), TickOutcome::Ignored);
+        assert_eq!(game.active_cells(), start, "zen never falls");
+    }
+
+    #[test]
+    fn a_finished_classic_game_ignores_gravity_ticks() {
+        let mut game = TetrisGame::new(TetrisMode::Classic, 3);
+        game.game_over = true;
+        assert_eq!(game.tick(), TickOutcome::Ignored);
+    }
+
+    #[test]
+    fn a_classic_tick_moves_the_piece_one_row_down() {
+        let mut game = TetrisGame::new(TetrisMode::Classic, 3);
+        set_active(&mut game, TetrisPiece::O, 0, 4, 5);
+        assert_eq!(game.tick(), TickOutcome::Moved);
+        assert_eq!(game.active_cells(), [(4, 6), (5, 6), (4, 7), (5, 7)]);
+    }
+
+    #[test]
+    fn a_classic_tick_locks_a_piece_that_cannot_fall() {
+        let mut game = TetrisGame::new(TetrisMode::Classic, 3);
+        set_active(&mut game, TetrisPiece::O, 0, 4, 17);
+        assert_eq!(game.tick(), TickOutcome::Moved);
+        assert_eq!(game.tick(), TickOutcome::Locked);
+        assert_eq!(game.cell(4, 19), Some(TetrisPiece::O));
+    }
+
+    #[test]
+    fn a_gravity_lock_can_clear_a_line() {
+        let mut game = TetrisGame::new(TetrisMode::Classic, 3);
+        // Fill the bottom row except the two columns the O piece will cover.
+        for column in 0..TETRIS_WIDTH {
+            if column != 4 && column != 5 {
+                game.board[TETRIS_HEIGHT - 1][column] = Some(TetrisPiece::I);
+            }
+        }
+        set_active(&mut game, TetrisPiece::O, 0, 4, 17);
+        assert_eq!(game.tick(), TickOutcome::Moved);
+        assert_eq!(game.tick(), TickOutcome::Locked);
+        assert_eq!(game.lines(), 1, "the gravity lock cleared the bottom row");
     }
 
     #[test]
