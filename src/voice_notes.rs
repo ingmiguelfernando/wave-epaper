@@ -1051,6 +1051,8 @@ pub fn delete_voice_note(root: &Path, file_name: &str) -> Result<()> {
     if path.exists() {
         fs::remove_file(&path).with_context(|| format!("delete voice note {}", path.display()))?;
     }
+    // A note's AI record goes with its WAV, so no record outlives its note.
+    crate::voice_note_record::delete_record(root, file_name)?;
     delete_voice_note_metadata(root, file_name)?;
     rebuild_index(root)
 }
@@ -1102,6 +1104,31 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn deleting_a_note_deletes_its_ai_record() {
+        let root = std::env::temp_dir().join(format!("wave-voice-delete-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("VOICE001.WAV"), build_pcm_wav_header(0)).unwrap();
+        crate::voice_note_record::save_record(
+            &root,
+            "VOICE001.WAV",
+            &crate::voice_note_record::NoteRecord::queued(),
+        )
+        .unwrap();
+        assert!(
+            root.join("VOICE001.AI").exists(),
+            "the record exists before the delete"
+        );
+        delete_voice_note(&root, "VOICE001.WAV").unwrap();
+        assert!(!root.join("VOICE001.WAV").exists(), "the WAV is gone");
+        assert!(
+            !root.join("VOICE001.AI").exists(),
+            "the record is gone with it"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 
     fn temporary_root(label: &str) -> PathBuf {
         let unique = SystemTime::now()

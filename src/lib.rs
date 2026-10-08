@@ -60,6 +60,7 @@ pub mod sleep_screen;
 pub mod storage;
 pub mod unit_converter;
 pub mod voice_note_metadata;
+pub mod voice_note_record;
 pub mod voice_notes;
 pub mod watchdog;
 pub mod weather;
