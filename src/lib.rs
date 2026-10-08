@@ -5,6 +5,7 @@
 //! remains isolated in `main.rs`.
 
 pub mod ai_client;
+pub mod ai_config;
 pub mod alarm;
 pub mod app;
 pub mod audio;

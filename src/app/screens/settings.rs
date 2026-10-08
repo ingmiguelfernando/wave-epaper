@@ -32,6 +32,10 @@ pub fn group_value(state: &AppState, route: ScreenRoute) -> String {
         ScreenRoute::Display => display_value(state.display),
         ScreenRoute::SleepScreen => sleep_screen_value(state),
         ScreenRoute::WeatherSettings => weather_value(state.weather_config.as_ref()),
+        ScreenRoute::AiSettings => state.ai.as_ref().map_or_else(
+            || "Not set up".into(),
+            |config| config.settings_value().into(),
+        ),
         ScreenRoute::Network => {
             network_value(&state.network.wifi_state, state.network.ssid.as_deref())
         }
@@ -306,4 +310,30 @@ mod tests {
             }
         }
     }
+}
+
+/// Settings › AI, placeholder: the status bar and the provider row. The
+/// provider groups, option lists and their bar come in the next D32 step.
+pub fn render_ai_settings(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let preferences = state.display;
+    draw_status_bar(display, preferences, "AI")?;
+    let value = state
+        .ai
+        .as_ref()
+        .map_or("Not set up", |config| config.settings_value());
+    draw_list_row(
+        display,
+        preferences,
+        STATUS_BAR_HEIGHT + 24,
+        ListRow {
+            title: "Transcription and summary",
+            subtitle: "XiaoZhi, transcription, summary",
+            value,
+            selected: true,
+        },
+    )?;
+    draw_bottom_bar(display, preferences, &OPEN_HINTS)
 }

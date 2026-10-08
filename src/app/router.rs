@@ -69,6 +69,7 @@ pub enum ScreenRoute {
     Weather,
     WeatherDetails,
     WeatherSettings,
+    AiSettings,
 }
 
 impl ScreenRoute {
@@ -140,6 +141,7 @@ impl ScreenRoute {
             Self::Weather => "Weather",
             Self::WeatherDetails => "Weather details",
             Self::WeatherSettings => "Weather settings",
+            Self::AiSettings => "AI settings",
         }
     }
 
@@ -211,6 +213,7 @@ impl ScreenRoute {
             Self::Weather => "weather",
             Self::WeatherDetails => "weather-details",
             Self::WeatherSettings => "weather-settings",
+            Self::AiSettings => "ai-settings",
         }
     }
 
@@ -278,7 +281,8 @@ impl ScreenRoute {
             | Self::Network
             | Self::Power
             | Self::SleepScreen
-            | Self::WeatherSettings => Some(Self::Settings),
+            | Self::WeatherSettings
+            | Self::AiSettings => Some(Self::Settings),
             Self::AudioDetails => Some(Self::Audio),
             Self::ClockDetails => Some(Self::Clock),
             Self::DeviceInfoBoard => Some(Self::DeviceInfo),

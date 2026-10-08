@@ -93,6 +93,7 @@ pub fn render_active_screen(
         ScreenRoute::Weather => weather::render_weather(display, state),
         ScreenRoute::WeatherDetails => weather::render_weather_details(display, state),
         ScreenRoute::WeatherSettings => weather_settings::render_weather_settings(display, state),
+        ScreenRoute::AiSettings => settings::render_ai_settings(display, state),
         ScreenRoute::Alarms => alarms::render_alarms(display, state),
         ScreenRoute::Audio => audio::render_audio(display, state),
         ScreenRoute::AudioDetails => audio::render_audio_details(display, state),

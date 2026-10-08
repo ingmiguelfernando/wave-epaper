@@ -122,6 +122,8 @@ pub struct AppState {
     pub weather: WeatherSnapshot,
     /// WEATHER.TXT; Settings › Weather edits it and main.rs saves it.
     pub weather_config: Option<WeatherConfig>,
+    /// AI.TXT; `None` until the file loads, and then `Not set up` when it is missing.
+    pub ai: Option<crate::ai_config::AiConfig>,
     pub weather_settings_ui: WeatherSettingsUiState,
     /// SD-backed alarm schedules and active-alarm UI snapshot.
     pub alarms: AlarmSnapshot,
@@ -204,6 +206,7 @@ impl Default for AppState {
             network: NetworkSnapshot::default(),
             weather: WeatherSnapshot::default(),
             weather_config: None,
+            ai: None,
             weather_settings_ui: WeatherSettingsUiState::default(),
             alarms: AlarmSnapshot::default(),
             audio: AudioSnapshot::default(),
@@ -1985,14 +1988,45 @@ mod tests {
     }
 
     #[test]
+    fn the_ai_settings_row_reads_its_state_and_opens_the_ai_screen() {
+        use crate::ai_config::AiConfig;
+
+        let mut state = open_from_home(ScreenRoute::Settings);
+        // The AI row is the fourth Settings row: three Down presses from Display.
+        for _ in 0..3 {
+            state.apply(ButtonEvent::Down);
+        }
+        assert!(
+            state.ai.is_none(),
+            "no AI.TXT yet: the row reads Not set up"
+        );
+
+        state.ai = Some(AiConfig {
+            transcription_url: "https://api.groq.com/openai/v1".into(),
+            transcription_model: "whisper-large-v3-turbo".into(),
+            summary_url: "https://openrouter.ai/api/v1".into(),
+            summary_model: "llama-3.3-70b".into(),
+            ..AiConfig::default()
+        });
+        let ready = state.ai.as_ref().map(AiConfig::settings_value);
+        assert_eq!(ready, Some("Ready"), "both providers set");
+
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::AiSettings);
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
+
+    #[test]
     fn settings_groups_open_their_screens_in_mockup_order() {
         let mut state = open_from_home(ScreenRoute::Settings);
-        // Display, Sleep screen, Weather, Wi-Fi & transfer, Clock & alarms,
+        // Display, Sleep screen, Weather, AI, Wi-Fi & transfer, Clock & alarms,
         // Power, System.
         let expected = [
             ScreenRoute::Display,
             ScreenRoute::SleepScreen,
             ScreenRoute::WeatherSettings,
+            ScreenRoute::AiSettings,
             ScreenRoute::Network,
             ScreenRoute::SettingsClockAlarms,
             ScreenRoute::Power,
@@ -2010,8 +2044,8 @@ mod tests {
     #[test]
     fn clock_alarms_sublist_opens_both_screens_and_walks_back() {
         let mut state = open_from_home(ScreenRoute::Settings);
-        // Clock & alarms is the fifth group.
-        for _ in 0..4 {
+        // Clock & alarms is the sixth group, after the AI row.
+        for _ in 0..5 {
             state.apply(ButtonEvent::Down);
         }
         state.apply(ButtonEvent::Select);
@@ -2034,8 +2068,8 @@ mod tests {
     #[test]
     fn system_sublist_opens_all_four_diagnostics_and_walks_back() {
         let mut state = open_from_home(ScreenRoute::Settings);
-        // System is the last group.
-        for _ in 0..6 {
+        // System is the last group, after the AI row.
+        for _ in 0..7 {
             state.apply(ButtonEvent::Down);
         }
         state.apply(ButtonEvent::Select);
