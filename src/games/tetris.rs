@@ -764,7 +764,11 @@ impl TetrisApp {
     fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         canvas.clear_frame();
         canvas.rect(0, 0, GAME_CANVAS_WIDTH, TETRIS_BAR_HEIGHT, true)?;
-        canvas.text(16, 30, "Tetris · Zen".into(), CanvasTextStyle::Inverse)?;
+        let title = match self.game.mode() {
+            TetrisMode::Zen => "Tetris · Zen",
+            TetrisMode::Classic => "Tetris · Classic",
+        };
+        canvas.text(16, 30, title.into(), CanvasTextStyle::Inverse)?;
         let level = format!("Level {}", self.game.level());
         let level_x = GAME_CANVAS_WIDTH - 16 - level.len() as i32 * TETRIS_CHAR_WIDTH;
         canvas.text(level_x, 30, level, CanvasTextStyle::Inverse)?;
@@ -839,11 +843,15 @@ impl TetrisApp {
                 CanvasTextStyle::Detail,
             )?;
         } else {
-            canvas.text(TETRIS_SIDE_X, 379, "Zen".into(), CanvasTextStyle::Body)?;
-            for (index, line) in ["No gravity: the", "piece moves only", "when you press."]
-                .into_iter()
-                .enumerate()
-            {
+            let (name, lines) = match self.game.mode() {
+                TetrisMode::Zen => (
+                    "Zen",
+                    ["No gravity: the", "piece moves only", "when you press."],
+                ),
+                TetrisMode::Classic => ("Classic", ["Slow gravity:", "one row a", "second."]),
+            };
+            canvas.text(TETRIS_SIDE_X, 379, name.into(), CanvasTextStyle::Body)?;
+            for (index, line) in lines.into_iter().enumerate() {
                 canvas.text(
                     TETRIS_SIDE_X,
                     403 + index as i32 * 21,

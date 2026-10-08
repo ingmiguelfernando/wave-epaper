@@ -161,11 +161,16 @@ fn game_details(state: &AppState, manifest: &LuaAppManifest) -> (String, String)
             (first, second)
         }
         "tetris" => {
-            let first = match records.tetris_zen {
-                0 => "Zen".into(),
+            // Zen and Classic each show their own best, one per line.
+            let zen = match records.tetris_zen {
+                0 => "Zen · no best yet".into(),
                 best => format!("Zen · best {}", grouped(best)),
             };
-            (first, "No gravity: pieces move when you press".into())
+            let classic = match records.tetris_classic {
+                0 => "Classic: slow gravity".into(),
+                best => format!("Classic · best {}", grouped(best)),
+            };
+            (zen, classic)
         }
         _ => (
             format!("Version {}", manifest.version),
@@ -360,12 +365,14 @@ mod d25_tests {
             .find(|entry| entry.manifest.id == manifest_id)
             .map(|entry| &entry.manifest)
             .unwrap();
-        let (first, _) = super::game_details(&state, manifest);
-        assert_eq!(first, "Zen");
+        let (first, second) = super::game_details(&state, manifest);
+        assert_eq!(first, "Zen · no best yet");
+        assert_eq!(second, "Classic: slow gravity", "no Classic best yet");
         state.lua_runtime.records.tetris_zen = 18_950;
+        state.lua_runtime.records.tetris_classic = 4_200;
         let (first, second) = super::game_details(&state, manifest);
         assert_eq!(first, "Zen · best 18,950");
-        assert_eq!(second, "No gravity: pieces move when you press");
+        assert_eq!(second, "Classic · best 4,200");
     }
 
     #[test]

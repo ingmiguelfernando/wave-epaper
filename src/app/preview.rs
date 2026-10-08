@@ -400,6 +400,16 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     tetris.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("tetris", tetris));
 
+    let mut tetris_start = sample_state();
+    tetris_start.lua_runtime.session = Some(tetris_start_session());
+    tetris_start.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("tetris-start", tetris_start));
+
+    let mut tetris_classic = sample_state();
+    tetris_classic.lua_runtime.session = Some(tetris_classic_session());
+    tetris_classic.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("tetris-classic", tetris_classic));
+
     let mut sudoku_start = sample_state();
     sudoku_start.lua_runtime.session = Some(sudoku_start_session());
     sudoku_start.router.navigate_to(ScreenRoute::LuaGame);
@@ -553,31 +563,62 @@ fn sample_games_catalog(state: &mut AppState) {
     state.lua_runtime.catalog.warning = None;
 }
 
+/// A session for any `tetris.init` line, loaded through the device bridge.
+fn tetris_session(source: &str) -> (NativeGameCanvas, LuaEventBridge) {
+    let mut canvas = NativeGameCanvas::default();
+    let event_bridge = LuaEventBridge::load(source, &mut canvas).unwrap();
+    (canvas, event_bridge)
+}
+
+/// The Tetris start list as the device opens it: `tetris.init()`, no moves.
+fn tetris_start_session() -> LuaAppSession {
+    let source = "tetris.init()";
+    let (canvas, event_bridge) = tetris_session(source);
+    tetris_app_session(source, canvas, event_bridge)
+}
+
+/// A Classic game a few drops in: slow gravity, the same moves as Zen.
+fn tetris_classic_session() -> LuaAppSession {
+    let source = "tetris.init('classic', 1803)";
+    let (mut canvas, mut event_bridge) = tetris_session(source);
+    play_sample_drops(&mut event_bridge, &mut canvas);
+    tetris_app_session(source, canvas, event_bridge)
+}
+
 /// A Zen Tetris game a few drops in, drawn through the native SD game canvas.
 fn tetris_sample_session() -> LuaAppSession {
     let source = "tetris.init('zen', 1803)";
-    let mut canvas = NativeGameCanvas::default();
-    let mut event_bridge = LuaEventBridge::load(source, &mut canvas).unwrap();
+    let (mut canvas, mut event_bridge) = tetris_session(source);
+    play_sample_drops(&mut event_bridge, &mut canvas);
+    tetris_app_session(source, canvas, event_bridge)
+}
+
+/// Four drops with a sideways move each, the same keys the Zen preview uses.
+fn play_sample_drops(event_bridge: &mut LuaEventBridge, canvas: &mut NativeGameCanvas) {
     for _ in 0..4 {
         event_bridge
-            .apply_button(ButtonEvent::Up, 1_000, &mut canvas)
+            .apply_button(ButtonEvent::Up, 1_000, canvas)
             .unwrap();
         event_bridge
-            .apply_button(ButtonEvent::Up, 1_000, &mut canvas)
+            .apply_button(ButtonEvent::Up, 1_000, canvas)
+            .unwrap();
+        event_bridge.apply_boot_short_press(4_000, canvas).unwrap();
+        event_bridge
+            .apply_button(ButtonEvent::Down, 2_000, canvas)
             .unwrap();
         event_bridge
-            .apply_boot_short_press(4_000, &mut canvas)
+            .apply_button(ButtonEvent::Down, 2_000, canvas)
             .unwrap();
-        event_bridge
-            .apply_button(ButtonEvent::Down, 2_000, &mut canvas)
-            .unwrap();
-        event_bridge
-            .apply_button(ButtonEvent::Down, 2_000, &mut canvas)
-            .unwrap();
-        event_bridge
-            .apply_boot_short_press(4_000, &mut canvas)
-            .unwrap();
+        event_bridge.apply_boot_short_press(4_000, canvas).unwrap();
     }
+}
+
+/// Wrap a loaded Tetris bridge in the session the screens draw from.
+fn tetris_app_session(
+    source: &str,
+    canvas: NativeGameCanvas,
+    event_bridge: LuaEventBridge,
+) -> LuaAppSession {
     LuaAppSession {
         entry: LuaAppEntry {
             directory_name: "TETRIS".into(),
