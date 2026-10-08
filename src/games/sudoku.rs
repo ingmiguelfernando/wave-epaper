@@ -1209,7 +1209,7 @@ mod d24_tests {
     use crate::{
         buttons::ButtonEvent,
         games::{
-            canvas::{DrawCommand, NativeGameCanvas},
+            canvas::{CanvasTextStyle, DrawCommand, NativeGameCanvas},
             records::GameRecords,
             sudoku_puzzles::{generate, SudokuDifficulty},
             sudoku_save::SudokuSave,
@@ -1306,10 +1306,13 @@ mod d24_tests {
         let mut canvas = NativeGameCanvas::default();
         game.render_initial(&mut canvas).unwrap();
         assert!(canvas.commands().len() < crate::games::canvas::MAX_GAME_DRAW_COMMANDS);
-        let clock = |command: &DrawCommand| {
-            matches!(command, DrawCommand::TextRight { text, .. } if text == "0:00")
+        let clock = DrawCommand::TextRight {
+            right: 464,
+            y: 30,
+            text: "0:00".into(),
+            style: CanvasTextStyle::Inverse,
         };
-        assert!(canvas.commands().iter().any(clock));
+        assert!(canvas.commands().contains(&clock));
     }
 
     #[test]

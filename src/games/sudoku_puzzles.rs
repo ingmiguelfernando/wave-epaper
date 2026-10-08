@@ -198,11 +198,7 @@ const fn units(index: usize) -> [usize; 3] {
 /// Fill the empty cell with the fewest candidates first. A sparse Hard grid
 /// then takes thousands of steps instead of millions, so the device's
 /// generator answers within a press.
-fn count_from(
-    grid: &mut [u8; SUDOKU_CELL_COUNT],
-    used: &mut [[u16; 9]; 3],
-    limit: usize,
-) -> usize {
+fn count_from(grid: &mut [u8; SUDOKU_CELL_COUNT], used: &mut [[u16; 9]; 3], limit: usize) -> usize {
     let mut best: Option<(usize, u16, u32)> = None;
     for (index, &value) in grid.iter().enumerate() {
         if value != 0 {

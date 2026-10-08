@@ -503,10 +503,16 @@ mod tests {
         assert_eq!(game.step(), SudokuStep::Start);
         assert_eq!(game.start_options()[0].kind, StartKind::Continue);
         // The first frame was redrawn with the Continue row.
-        let continue_row = |command: &DrawCommand| {
-            matches!(command, DrawCommand::Text { text, .. } if text.starts_with("Continue"))
-        };
-        assert!(session.canvas.commands().iter().any(continue_row));
+        let texts: Vec<&str> = session
+            .canvas
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DrawCommand::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|text| text.starts_with("Continue")));
         std::fs::remove_dir_all(root).unwrap();
     }
 

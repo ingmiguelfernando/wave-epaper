@@ -1630,7 +1630,11 @@ mod tests {
         }
         state.apply_with_clock(ButtonEvent::Up, 5_000);
         state.collect_reading_stats(Some(20_000));
-        assert_eq!(state.reading_stats.day(20_000).pages, 4, "3 turns down, 1 up");
+        assert_eq!(
+            state.reading_stats.day(20_000).pages,
+            4,
+            "3 turns down, 1 up"
+        );
     }
 
     #[test]

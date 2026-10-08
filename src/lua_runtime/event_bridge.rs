@@ -227,10 +227,9 @@ fn parse_single_quoted_init(
             value = Some(None);
             continue;
         }
-        value = Some(Some(
-            parse_quoted(argument, label)
-                .map_err(|error| format!("MAIN.LUA line {line_number}: {error}"))?,
-        ));
+        let parsed = parse_quoted(argument, label)
+            .map_err(|error| format!("MAIN.LUA line {line_number}: {error}"))?;
+        value = Some(Some(parsed));
     }
     Ok(value)
 }
