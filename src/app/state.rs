@@ -164,6 +164,8 @@ pub struct AppState {
     pub light_sleep: LightSleepShare,
     /// Bible app: the card's translation, the picker and the place read.
     pub bible: crate::bible_state::BibleUiState,
+    /// Highlighted row of the Bible reading menu.
+    pub bible_menu_selected: usize,
     /// Reading time and page turns, persisted as `/RUSTMIX/READER/STATS.TXT`.
     pub reading_stats: ReadingStats,
     /// Key-driven reading time while a Reader page is open.
@@ -229,6 +231,7 @@ impl Default for AppState {
             light_sleep: LightSleepShare::default(),
             // Empty root: no card is read until boot loads the real one.
             bible: crate::bible_state::BibleUiState::with_root(""),
+            bible_menu_selected: 0,
             reading_stats: ReadingStats::default(),
             reading_clock: ReadingClock::default(),
             reading_pages: 0,
@@ -271,6 +274,7 @@ impl AppState {
                 | ScreenRoute::BibleBooks
                 | ScreenRoute::BibleChapters
                 | ScreenRoute::BibleReading
+                | ScreenRoute::BibleMenu
         ) {
             self.apply_bible(route, event);
         } else if route == ScreenRoute::SleepScreen {
@@ -1152,9 +1156,48 @@ impl AppState {
             (ScreenRoute::BibleReading, ButtonEvent::Up) => self.turn_bible_page(true),
             (ScreenRoute::BibleReading, ButtonEvent::Down) => self.turn_bible_page(false),
             (ScreenRoute::BibleReading, ButtonEvent::Select) => {
+                self.bible_menu_selected = 0;
                 self.router.navigate_to(ScreenRoute::BibleMenu);
             }
+            (ScreenRoute::BibleMenu, ButtonEvent::Up) => self.move_bible_menu(-1),
+            (ScreenRoute::BibleMenu, ButtonEvent::Down) => self.move_bible_menu(1),
+            (ScreenRoute::BibleMenu, ButtonEvent::Select) => self.open_bible_menu_item(),
             _ => {}
+        }
+    }
+
+    /// ▲▼ in the reading menu: move the highlight, wrapping over the rows the
+    /// card supports.
+    fn move_bible_menu(&mut self, direction: i32) {
+        let count = crate::app::screens::bible::bible_menu_items(self)
+            .len()
+            .max(1);
+        self.bible_menu_selected = if direction < 0 {
+            self.bible_menu_selected.checked_sub(1).unwrap_or(count - 1)
+        } else {
+            (self.bible_menu_selected + 1) % count
+        };
+    }
+
+    /// ● in the reading menu: run the highlighted option. The verse and the
+    /// translation options are listed but not yet built, so they only close.
+    fn open_bible_menu_item(&mut self) {
+        let items = crate::app::screens::bible::bible_menu_items(self);
+        let item = items.get(self.bible_menu_selected).copied();
+        match item {
+            Some("Ir a libro") => {
+                self.router.navigate_to(ScreenRoute::BibleBooks);
+            }
+            Some("Ir a capítulo") => {
+                if let Some(position) = self.bible.position() {
+                    if let Some(book) = self.bible.books().get(position.book) {
+                        let (number, chapter) = (book.number, position.chapter);
+                        self.bible.nav_mut().select_book(number, chapter);
+                    }
+                }
+                self.router.navigate_to(ScreenRoute::BibleChapters);
+            }
+            _ => self.router.back(),
         }
     }
 
@@ -2605,5 +2648,66 @@ mod bible_routing_tests {
             home_entries()[home_index(ScreenRoute::Bible).unwrap()].label,
             "Bible"
         );
+    }
+
+    /// Open the reading view of Genesis 1, then its menu with ●.
+    fn menu_state(root: &PathBuf) -> AppState {
+        let mut state = home_with_card(root);
+        state.apply(ButtonEvent::Select); // picker
+        state.apply(ButtonEvent::Select); // chapter grid
+        state.apply(ButtonEvent::Select); // read Genesis 1
+        state.apply(ButtonEvent::Select); // reading menu
+        assert_eq!(state.active_route(), ScreenRoute::BibleMenu);
+        state
+    }
+
+    #[test]
+    fn the_reading_menu_offers_book_and_chapter_without_a_verse_file() {
+        let root = temp_card("menu-basic");
+        let state = menu_state(&root);
+        let items = crate::app::screens::bible::bible_menu_items(&state);
+        assert_eq!(items, vec!["Ir a libro", "Ir a capítulo"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_verse_option_appears_only_when_verses_txt_exists() {
+        let root = temp_card("menu-verse");
+        fs::write(root.join("VERSES.TXT"), "PSA 23:1-3\n").unwrap();
+        let state = menu_state(&root);
+        let items = crate::app::screens::bible::bible_menu_items(&state);
+        assert!(items.contains(&"Versículo del día"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_menu_cursor_moves_and_wraps() {
+        let root = temp_card("menu-cursor");
+        let mut state = menu_state(&root);
+        state.apply(ButtonEvent::Up); // wraps from the first row to the last
+        assert_eq!(state.bible_menu_selected, 1);
+        state.apply(ButtonEvent::Down); // back to the first
+        assert_eq!(state.bible_menu_selected, 0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ir_a_libro_opens_the_picker_from_the_menu() {
+        let root = temp_card("menu-book");
+        let mut state = menu_state(&root);
+        state.apply(ButtonEvent::Select); // highlighted row: Ir a libro
+        assert_eq!(state.active_route(), ScreenRoute::BibleBooks);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ir_a_capitulo_opens_the_grid_on_the_chapter_being_read() {
+        let root = temp_card("menu-chapter");
+        let mut state = menu_state(&root);
+        state.apply(ButtonEvent::Down); // Ir a capítulo
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleChapters);
+        assert_eq!(state.bible.nav().chapter_cursor(), 1);
+        let _ = fs::remove_dir_all(&root);
     }
 }

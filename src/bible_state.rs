@@ -5,10 +5,11 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    bible::{self, BibleBook},
+    bible::{self, BibleBook, VerseRef},
     bible_nav::BibleNav,
     bible_place::BiblePlace,
     bible_reader::{self, BookShape, Position, Turn},
+    sd_file,
 };
 
 /// What the Bible app found on the card.
@@ -187,7 +188,32 @@ impl BibleUiState {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    /// `VERSES.TXT` sits in the Bible root, next to the translation folders.
+    pub fn verses_path(&self) -> PathBuf {
+        self.root.join(VERSES_FILE)
+    }
+
+    /// The verse-of-the-day list; a missing or malformed file is empty.
+    pub fn verse_list(&self) -> Vec<VerseRef> {
+        sd_file::read_to_string(&self.verses_path())
+            .ok()
+            .and_then(|text| bible::parse_verse_list(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// The menu offers the verse only when the file is on the card.
+    pub fn has_verse_list(&self) -> bool {
+        self.verses_path().is_file()
+    }
+
+    /// Translations on the card; the menu offers a switch only with two or more.
+    pub fn translation_count(&self) -> usize {
+        bible::translations(&self.root).map_or(0, |list| list.len())
+    }
 }
+
+const VERSES_FILE: &str = "VERSES.TXT";
 
 #[cfg(test)]
 mod tests {

@@ -16,12 +16,13 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
-            bottom_bar::{draw_bottom_bar, KeyCap},
+            bottom_bar::{draw_bottom_bar, KeyCap, CHOOSE_HINTS},
             header::draw_header,
+            option_list::draw_option_list,
         },
     },
-    bible::{self, Testament},
-    bible_nav::{BibleNav, BibleNavView, SECTIONS},
+    bible::{self, BibleBook, Testament},
+    bible_nav::{BibleNav, BibleNavView, Section, SECTIONS},
     bible_reader,
     orientation::OrientedFrameBuffer,
 };
@@ -106,7 +107,7 @@ fn render_books(
         large,
     )
     .draw(display)?;
-    draw_tab_strip(display, preferences, nav.section_cursor())?;
+    draw_tab_strip(display, preferences, nav.books(), nav.section_cursor())?;
 
     let books = nav.section_books();
     let selected = nav.book_cursor();
@@ -140,7 +141,7 @@ fn render_chapters(
     translation: &str,
     nav: &BibleNav,
 ) -> Result<(), Infallible> {
-    draw_header(display, preferences, "GO TO · CHAPTER", translation)?;
+    draw_header(display, preferences, "IR A · CAPÍTULO", translation)?;
     let Some(book) = nav.selected_book() else {
         return render_books(display, preferences, translation, nav);
     };
@@ -163,9 +164,9 @@ fn render_chapters(
     let first = (current - 1) / PER_PAGE * PER_PAGE;
     let caption = if total > PER_PAGE {
         let last = (first + PER_PAGE).min(total);
-        format!("Chapters {}–{last} of {total}", first + 1)
+        format!("Capítulos {}–{last} de {total}", first + 1)
     } else {
-        format!("{total} chapters")
+        format!("{total} capítulos")
     };
     Text::new(
         &detail.fit(&caption, RIGHT - LEFT),
@@ -203,26 +204,42 @@ fn render_chapters(
     draw_bottom_bar(display, preferences, &CHAPTERS_HINTS)
 }
 
+/// The thumb-index label of a section: its first book's short name in capitals.
+/// A section with no book on the card keeps its English code, never blank.
+fn thumb_label(books: &[BibleBook], section: &Section) -> String {
+    books
+        .iter()
+        .find(|book| (section.first..=section.last).contains(&book.number))
+        .map_or_else(
+            || section.tab.to_string(),
+            |book| book.short_name.to_uppercase(),
+        )
+}
+
 fn draw_tab_strip(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
+    books: &[BibleBook],
     current: usize,
 ) -> Result<(), Infallible> {
     let detail = preferences.detail_style();
     let inverse = inverse_text(preferences, UiTextRole::Detail);
     let mut x = LEFT;
     for (index, section) in SECTIONS.iter().enumerate() {
-        let width = detail.text_width(section.tab) + 16;
+        // The thumb index names each section by its first book, as a printed
+        // Bible's edge does.
+        let tab = thumb_label(books, section);
+        let width = detail.text_width(&tab) + 16;
         if index == current {
             Rectangle::new(Point::new(x, 216), Size::new(width as u32, 34))
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                 .draw(display)?;
-            Text::new(section.tab, Point::new(x + 8, 240), inverse).draw(display)?;
+            Text::new(&tab, Point::new(x + 8, 240), inverse).draw(display)?;
         } else {
             Rectangle::new(Point::new(x, 216), Size::new(width as u32, 34))
                 .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
                 .draw(display)?;
-            Text::new(section.tab, Point::new(x + 8, 240), detail).draw(display)?;
+            Text::new(&tab, Point::new(x + 8, 240), detail).draw(display)?;
         }
         x += width + 6;
     }
@@ -514,12 +531,39 @@ fn draw_reading_line(
     }
 }
 
-/// Menu of the reading view. Filled in by the menu step.
+/// Options of the reading menu. The verse and translation rows appear only
+/// when the card supports them, so the list and its key handling agree.
+#[must_use]
+pub fn bible_menu_items(state: &AppState) -> Vec<&'static str> {
+    let mut items = vec!["Ir a libro", "Ir a capítulo"];
+    if state.bible.has_verse_list() {
+        items.push("Versículo del día");
+    }
+    if state.bible.translation_count() > 1 {
+        items.push("Traducción");
+    }
+    items
+}
+
+/// Menu of the reading view: one option list, the option at `highlighted`.
 pub fn render_bible_menu(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    render_bible_books_screen(display, state)
+    let preferences = state.display;
+    let items = bible_menu_items(state);
+    let heading = preferences.heading_style();
+    draw_header(display, preferences, "BIBLIA", "Menú")?;
+    Text::new("Menú", Point::new(LEFT, 160), heading).draw(display)?;
+    draw_option_list(
+        display,
+        preferences,
+        184,
+        &items,
+        usize::MAX,
+        state.bible_menu_selected,
+    )?;
+    draw_bottom_bar(display, preferences, &CHOOSE_HINTS)
 }
 
 /// The Spanish message for a card without Bible text.
@@ -548,3 +592,32 @@ pub fn render_bible_missing(
 
 /// Only BOOT is live here: it returns to the previous screen.
 pub const MISSING_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "mantener: volver")];
+
+#[cfg(test)]
+mod thumb_index_tests {
+    use super::{thumb_label, SECTIONS};
+    use crate::bible::{parse_index, short_name};
+
+    /// The thumb index names each section by its first book, in capitals.
+    #[test]
+    fn the_thumb_index_names_each_section_by_its_first_book() {
+        let books = parse_index(&crate::bible_nav::sample_books_txt()).unwrap();
+        let labels: Vec<String> = SECTIONS
+            .iter()
+            .map(|section| thumb_label(&books, section))
+            .collect();
+        assert_eq!(labels[0], short_name("Génesis").to_uppercase());
+        assert!(labels.iter().all(|label| !label.is_empty()));
+        assert!(
+            labels.iter().all(|label| label == &label.to_uppercase()),
+            "every tab is in capitals: {labels:?}"
+        );
+    }
+
+    /// A section with no book on the card keeps its English code, never blank.
+    #[test]
+    fn an_empty_section_keeps_its_code() {
+        let label = thumb_label(&[], &SECTIONS[0]);
+        assert_eq!(label, SECTIONS[0].tab);
+    }
+}
