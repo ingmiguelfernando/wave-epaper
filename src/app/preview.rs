@@ -336,6 +336,21 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         states.push((name, state));
     }
 
+    // The AI state labels, one note per state, online and offline.
+    let mut ai_states = sample_state();
+    ai_states.router.navigate_to(ScreenRoute::Ai);
+    ai_states.voice_notes.notes = sample_ai_state_notes();
+    states.push(("ai-states", ai_states.clone()));
+    ai_states.network.wifi_state = WifiConnectionState::Failed;
+    // Offline, the newest note (shown first on the hub) waits for a connection.
+    ai_states.voice_notes.notes[3].ai_state = Some(crate::voice_note_record::NoteState::Queued);
+    states.push(("ai-states-offline", ai_states));
+
+    let mut list_states = sample_state();
+    list_states.router.navigate_to(ScreenRoute::VoiceNotes);
+    list_states.voice_notes.notes = sample_ai_state_notes();
+    states.push(("voice-notes-states", list_states));
+
     let mut page = sample_state();
     open_sample_book(&mut page);
     states.push(("reader-page", page));
@@ -537,6 +552,25 @@ fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
 
 /// Notes oldest first, as the catalog scans them, so the AI hub's recent
 /// list reads newest first.
+/// Four notes, one in each AI state, so the labels show side by side.
+fn sample_ai_state_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
+    use crate::voice_note_record::NoteState;
+    let mut notes = sample_voice_notes();
+    notes[0].ai_state = Some(NoteState::Queued);
+    notes[1].ai_state = Some(NoteState::Summarizing);
+    notes[2].ai_state = Some(NoteState::Done);
+    notes.push(crate::voice_notes::VoiceNoteEntry {
+        file_name: "NOTE_004.WAV".into(),
+        title: "Voice note 004".into(),
+        recorded_at: "2026-10-03  18:20:01".into(),
+        wav_bytes: 3_400_000,
+        pcm_bytes: 1_900_000,
+        duration_seconds: 95,
+        ai_state: Some(NoteState::Failed),
+    });
+    notes
+}
+
 fn sample_voice_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
     let note =
         |name: &str, title: &str, stamp: &str, seconds: u32| crate::voice_notes::VoiceNoteEntry {
