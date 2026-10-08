@@ -68,6 +68,22 @@ impl ResultUiState {
     }
 }
 
+/// The audio tab's text: what the saved WAV is and where it stays. The format
+/// is the recorder's own: 16 kHz, mono, 16-bit PCM.
+#[must_use]
+pub fn audio_text(file_name: &str, duration_seconds: u32, pcm_bytes: u32) -> String {
+    // Whole kilobytes in integers: the device path avoids float formatting.
+    let kilobytes = pcm_bytes / 1_000;
+    format!(
+        "{file_name}\n\
+         {minutes}:{seconds:02} · 16 kHz · mono · 16-bit\n\
+         {kilobytes} KB of PCM\n\
+         Kept on the SD card. Sent only to the providers you configure.",
+        minutes = duration_seconds / 60,
+        seconds = duration_seconds % 60,
+    )
+}
+
 /// Make text drawable with the device fonts: `☐` becomes `•`, and any
 /// character the font set cannot draw becomes `?`. Spanish accents stay.
 #[must_use]
@@ -152,6 +168,15 @@ mod tests {
     fn characters_outside_the_font_become_question_marks() {
         assert_eq!(prepare_text("ok ✓ fin"), "ok ? fin");
         assert_eq!(prepare_text("hola 🙂"), "hola ?");
+    }
+
+    #[test]
+    fn audio_tab_states_the_file_length_format_and_storage() {
+        assert_eq!(
+            audio_text("VOICE001.WAV", 185, 5_920_000),
+            "VOICE001.WAV\n3:05 · 16 kHz · mono · 16-bit\n5920 KB of PCM\n\
+             Kept on the SD card. Sent only to the providers you configure."
+        );
     }
 
     #[test]

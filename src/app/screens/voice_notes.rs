@@ -359,13 +359,14 @@ const RESULT_HINTS: [(KeyCap, &str); 3] = [
 fn result_body_lines(
     state: &AppState,
     record: &crate::voice_note_record::NoteRecord,
+    audio: &str,
     width: i32,
 ) -> Vec<String> {
     use crate::voice_note_result::{prepare_text, ResultTab};
     let text = match state.voice_notes_result.tab {
         ResultTab::Summary => record.summary.as_str(),
         ResultTab::Transcript => record.transcript.as_str(),
-        ResultTab::Audio => "",
+        ResultTab::Audio => audio,
     };
     let body = state.display.body_style();
     let mut lines = Vec::new();
@@ -415,7 +416,10 @@ pub fn render_voice_note_result(
         None => format!("{} · {}", when, format_duration(note.duration_seconds)),
     };
     let meta = crate::voice_note_result::prepare_text(&meta);
-    Text::new(&detail.fit(&meta, 436), Point::new(22, 186), detail).draw(display)?;
+    // The provider line may need two rows; both show in full, as the mockup has them.
+    for (row, line) in detail.wrap(&meta, 436).iter().take(2).enumerate() {
+        Text::new(line, Point::new(22, 186 + row as i32 * 20), detail).draw(display)?;
+    }
 
     // Tabs: the active one is filled, the others outlined.
     let tabs = [ResultTab::Summary, ResultTab::Transcript, ResultTab::Audio];
@@ -428,7 +432,7 @@ pub fn render_voice_note_result(
             PrimitiveStyle::with_stroke(BinaryColor::On, 2)
         };
         let tab_width = body.text_width(tab.label()) + 20;
-        Rectangle::new(Point::new(tab_left, 208), Size::new(tab_width as u32, 30))
+        Rectangle::new(Point::new(tab_left, 230), Size::new(tab_width as u32, 30))
             .into_styled(tab_style)
             .draw(display)?;
         let text_style = state.display.text_style(
@@ -439,18 +443,23 @@ pub fn render_voice_note_result(
                 BinaryColor::On
             },
         );
-        Text::new(tab.label(), Point::new(tab_left + 10, 228), text_style).draw(display)?;
+        Text::new(tab.label(), Point::new(tab_left + 10, 250), text_style).draw(display)?;
         tab_left += tab_width + 8;
     }
 
     // Body: wrapped lines from the scroll offset, between the tabs and the footer.
-    let body_top = 258;
+    let body_top = 280;
     let footer_top = 700;
     let line_step = i32::from(body.line_height()) + 4;
     let visible = ((footer_top - body_top) / line_step).max(1) as usize;
     match state.voice_notes_result.record.as_ref() {
         Some(record) => {
-            let lines = result_body_lines(state, &record, 436);
+            let audio = crate::voice_note_result::audio_text(
+                &note.file_name,
+                note.duration_seconds,
+                note.pcm_bytes,
+            );
+            let lines = result_body_lines(state, &record, &audio, 436);
             // Clamp to the last page here: input has no line count, so it scrolls freely.
             let last_start = lines.len().saturating_sub(visible);
             let scroll = state.voice_notes_result.scroll.min(last_start);

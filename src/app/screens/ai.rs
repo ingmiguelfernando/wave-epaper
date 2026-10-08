@@ -80,12 +80,7 @@ pub fn render_ai_hub(
         )
         .draw(display)?;
     }
-    draw_info_box(
-        display,
-        state.display,
-        "Recordings stay on the SD card.",
-        INFO_TOP,
-    )?;
+    draw_info_box(display, state.display, hub_info_text(state), INFO_TOP)?;
     draw_bottom_bar(display, state.display, &AI_HINTS)
 }
 
@@ -102,6 +97,17 @@ pub fn network_label(state: &AppState) -> String {
         "Online".into()
     } else {
         "Offline".into()
+    }
+}
+
+/// The hub's info box: once the AI setup is ready it says where audio goes, as
+/// the mockup does; before that it keeps the plain SD-card line. "Ready" is the
+/// same rule the providers card uses, so a half-set config does not change it.
+pub fn hub_info_text(state: &AppState) -> &'static str {
+    if state.ai.as_ref().is_some_and(|ai| ai.is_ready()) {
+        "Audio is sent only to the providers you configure. Notes, transcripts and summaries stay on the SD card."
+    } else {
+        "Recordings stay on the SD card."
     }
 }
 
@@ -395,7 +401,7 @@ fn draw_mic_icon(
 
 #[cfg(test)]
 mod d28_tests {
-    use super::{ai_row_count, network_label, note_meta, recent_notes, split_stamp};
+    use super::{ai_row_count, hub_info_text, network_label, note_meta, recent_notes, split_stamp};
     use crate::{
         app::{render_current_screen, router::ScreenRoute, AppState},
         buttons::ButtonEvent,
@@ -444,6 +450,29 @@ mod d28_tests {
         assert_eq!(note_meta(&short), "Sep 30 · 09:15 · 45 s");
         let unknown = note("NOTE_003.WAV", "T", "unknown", 120);
         assert_eq!(note_meta(&unknown), "2 min");
+    }
+
+    #[test]
+    fn hub_info_says_where_audio_goes_once_ai_txt_is_loaded() {
+        let mut state = AppState::default();
+        assert_eq!(hub_info_text(&state), "Recordings stay on the SD card.");
+
+        state.ai = Some(crate::ai_config::AiConfig {
+            transcription_url: "https://api.groq.com/openai/v1".into(),
+            transcription_model: "whisper-large-v3-turbo".into(),
+            language: crate::ai_config::AiLanguage::Auto,
+            summary_url: "https://openrouter.ai/api/v1".into(),
+            summary_model: "llama-3.3-70b-instruct".into(),
+            style: crate::ai_config::SummaryStyle::BulletsTodos,
+            process: crate::ai_config::AiProcess::Online,
+        });
+        assert!(hub_info_text(&state).starts_with("Audio is sent only to the providers"));
+
+        // A half-set config is not ready, so the box keeps the plain line.
+        if let Some(ai) = state.ai.as_mut() {
+            ai.summary_url.clear();
+        }
+        assert_eq!(hub_info_text(&state), "Recordings stay on the SD card.");
     }
 
     #[test]
