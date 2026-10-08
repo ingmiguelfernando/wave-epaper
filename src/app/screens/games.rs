@@ -407,6 +407,7 @@ mod d25_tests {
         });
         state.lua_runtime.records = GameRecords {
             tetris_zen: 18_950,
+            tetris_classic: 4_200,
             sudoku_easy: 0,
             sudoku_medium: 761,
             sudoku_hard: 0,
