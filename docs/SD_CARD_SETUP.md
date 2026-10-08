@@ -98,6 +98,26 @@ show_on_home=yes|no
 - `units=imperial` shows °F and mph; `metric` (default) shows °C and km/h.
 - `show_on_home=no` keeps the forecast in the Weather app only.
 
+## AI
+
+Optional `/RUSTMIX/AI.TXT`, read by Settings › AI. The example uses Groq for
+transcription and OpenRouter for summaries:
+
+```text
+transcription_url=https://api.groq.com/openai/v1
+transcription_model=whisper-large-v3-turbo
+language=auto
+summary_url=https://openrouter.ai/api/v1
+summary_model=llama-3.3-70b-instruct
+style=bullets-todos
+process=manual
+```
+
+- `language` is `auto`, `es` or `en`; `style` is `bullets-todos`, `bullets` or
+  `paragraph`; `process` is `online` or `manual`.
+- The Settings row reads `Ready` once both URLs and models are set.
+- API keys are never read from this card. Keys are typed in the Wi-Fi portal.
+
 ## Alarms
 
 Optional `/RUSTMIX/ALARMS.TXT` example:

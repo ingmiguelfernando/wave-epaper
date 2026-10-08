@@ -1,0 +1,9 @@
+# AI providers for Voice Notes. Copy to /RUSTMIX/AI.TXT and edit.
+# API keys are never stored here; they are typed in the Wi-Fi portal.
+transcription_url=https://api.groq.com/openai/v1
+transcription_model=whisper-large-v3-turbo
+language=auto
+summary_url=https://openrouter.ai/api/v1
+summary_model=llama-3.3-70b-instruct
+style=bullets-todos
+process=manual

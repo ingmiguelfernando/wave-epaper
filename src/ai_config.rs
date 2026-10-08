@@ -350,6 +350,18 @@ mod tests {
     }
 
     #[test]
+    fn the_shipped_example_parses_and_is_ready() {
+        let text = include_str!("../examples/sd-card/RUSTMIX/AI.TXT.example");
+        let config = AiConfig::parse(text).expect("the example is valid");
+        assert!(config.is_ready(), "both providers are set in the example");
+        assert_eq!(config.transcription_model, "whisper-large-v3-turbo");
+        assert_eq!(config.summary_model, "llama-3.3-70b-instruct");
+        assert_eq!(config.process, AiProcess::Manual);
+        assert_eq!(provider_name(&config.transcription_url), "Groq");
+        assert_eq!(provider_name(&config.summary_url), "OpenRouter");
+    }
+
+    #[test]
     fn a_missing_file_means_not_set_up() {
         let path = std::env::temp_dir().join("wave-ai-config-missing.txt");
         let _ = std::fs::remove_file(&path);
