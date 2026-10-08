@@ -419,7 +419,7 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
 
 /// The Bible picker previews: the books list and Psalms' chapter grid.
 fn render_sample_bible(with_chapters: bool, preferences: DisplayPreferences) -> FrameBuffer {
-    let books = crate::bible::parse_books(&crate::bible_nav::sample_books_txt()).unwrap();
+    let books = crate::bible::parse_index(&crate::bible_nav::sample_books_txt()).unwrap();
     let mut nav = BibleNav::new(books);
     if with_chapters {
         nav.next_section_cyclic();

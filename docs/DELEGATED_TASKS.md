@@ -270,7 +270,16 @@ and with a stale offset; a malformed record names its file and line; USFM
 and numbered references in `VERSES.TXT`; `translations` skips folders
 without `index.tsv`.
 
-**Status:**
+**Status:** done on `side-tasks-6`, data layer and docs. `bible.rs` now reads
+the script's layout: `index.tsv` for books (USFM codes mapped to 1 to 66,
+unknown codes skipped), `.idx` seeks with a scan fallback, `meta.txt`,
+`translations` on `index.tsv`, and `VERSES.TXT` with USFM codes; the old
+`BOOKS.TXT` reader is gone. `reference_text` serves the sleep screen's verse
+mode. Deviation: a bad record names its file and byte offset, not its line,
+because an index seek cannot count lines. SD_CARD_SETUP has a Bible
+section. Open: the fixture with a few public-domain verses is not in the repo
+yet; the parser tests use inline text. Device check after D30: a book's last
+chapter and a heading read from the owner's card.
 
 ### D30: Bible reading view, in Spanish
 

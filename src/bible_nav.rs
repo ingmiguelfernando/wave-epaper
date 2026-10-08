@@ -75,7 +75,7 @@ pub enum BibleNavView {
 /// Picker state over the books the card actually provides.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BibleNav {
-    /// Books present in `BOOKS.TXT`, ascending by number.
+    /// Books present in `index.tsv`, ascending by number.
     books: Vec<BibleBook>,
     view: BibleNavView,
     /// Index into the section's book list, not the book number.
@@ -272,95 +272,96 @@ impl BibleNav {
     }
 }
 
-/// The 66 Reina-Valera names as `BOOKS.TXT` text, one line per book:
-/// `number|name|short name|chapters`. Test sample shared with the screen
+/// The 66 Reina-Valera names as `index.tsv` text, one line per book:
+/// `usfm<TAB>name<TAB>chapters<TAB>file`. Test sample shared with the screen
 /// previews so both draw the real data.
 #[cfg(test)]
 pub(crate) fn sample_books_txt() -> String {
-    const NAMES: [(&str, &str, u16); 66] = [
-        ("Génesis", "Gn", 50),
-        ("Éxodo", "Ex", 40),
-        ("Levítico", "Lv", 27),
-        ("Números", "Nm", 36),
-        ("Deuteronomio", "Dt", 34),
-        ("Josué", "Jos", 24),
-        ("Jueces", "Jue", 21),
-        ("Rut", "Rt", 4),
-        ("1 Samuel", "1S", 31),
-        ("2 Samuel", "2S", 24),
-        ("1 Reyes", "1R", 22),
-        ("2 Reyes", "2R", 25),
-        ("1 Crónicas", "1Cr", 29),
-        ("2 Crónicas", "2Cr", 36),
-        ("Esdras", "Esd", 10),
-        ("Nehemías", "Neh", 13),
-        ("Ester", "Est", 10),
-        ("Job", "Job", 42),
-        ("Salmos", "Sal", 150),
-        ("Proverbios", "Pr", 31),
-        ("Eclesiastés", "Ec", 12),
-        ("Cantares", "Cant", 8),
-        ("Isaías", "Is", 66),
-        ("Jeremías", "Jer", 52),
-        ("Lamentaciones", "Lm", 5),
-        ("Ezequiel", "Ez", 48),
-        ("Daniel", "Dn", 12),
-        ("Oseas", "Os", 14),
-        ("Joel", "Jl", 3),
-        ("Amós", "Am", 9),
-        ("Obadías", "Ob", 1),
-        ("Jonás", "Jon", 4),
-        ("Miqueas", "Mi", 7),
-        ("Nahúm", "Nah", 3),
-        ("Habacuc", "Hab", 3),
-        ("Sofonías", "Sof", 3),
-        ("Hageo", "Hag", 2),
-        ("Zacarías", "Zac", 14),
-        ("Malaquías", "Mal", 4),
-        ("Mateo", "Mt", 28),
-        ("Marcos", "Mr", 16),
-        ("Lucas", "Lc", 24),
-        ("Juan", "Jn", 21),
-        ("Hechos", "Hch", 28),
-        ("Romanos", "Ro", 16),
-        ("1 Corintios", "1Co", 16),
-        ("2 Corintios", "2Co", 13),
-        ("Gálatas", "Ga", 6),
-        ("Efesios", "Ef", 6),
-        ("Filipenses", "Fil", 4),
-        ("Colosenses", "Col", 4),
-        ("1 Tesalonicenses", "1Ts", 5),
-        ("2 Tesalonicenses", "2Ts", 3),
-        ("1 Timoteo", "1Ti", 6),
-        ("2 Timoteo", "2Ti", 4),
-        ("Tito", "Tit", 3),
-        ("Filemón", "Flm", 1),
-        ("Hebreos", "He", 13),
-        ("Santiago", "Stg", 5),
-        ("1 Pedro", "1P", 5),
-        ("2 Pedro", "2P", 3),
-        ("1 Juan", "1Jn", 5),
-        ("2 Juan", "2Jn", 1),
-        ("3 Juan", "3Jn", 1),
-        ("Judas", "Jud", 1),
-        ("Apocalipsis", "Ap", 22),
+    const NAMES: [(&str, u16); 66] = [
+        ("Génesis", 50),
+        ("Éxodo", 40),
+        ("Levítico", 27),
+        ("Números", 36),
+        ("Deuteronomio", 34),
+        ("Josué", 24),
+        ("Jueces", 21),
+        ("Rut", 4),
+        ("1 Samuel", 31),
+        ("2 Samuel", 24),
+        ("1 Reyes", 22),
+        ("2 Reyes", 25),
+        ("1 Crónicas", 29),
+        ("2 Crónicas", 36),
+        ("Esdras", 10),
+        ("Nehemías", 13),
+        ("Ester", 10),
+        ("Job", 42),
+        ("Salmos", 150),
+        ("Proverbios", 31),
+        ("Eclesiastés", 12),
+        ("Cantares", 8),
+        ("Isaías", 66),
+        ("Jeremías", 52),
+        ("Lamentaciones", 5),
+        ("Ezequiel", 48),
+        ("Daniel", 12),
+        ("Oseas", 14),
+        ("Joel", 3),
+        ("Amós", 9),
+        ("Obadías", 1),
+        ("Jonás", 4),
+        ("Miqueas", 7),
+        ("Nahúm", 3),
+        ("Habacuc", 3),
+        ("Sofonías", 3),
+        ("Hageo", 2),
+        ("Zacarías", 14),
+        ("Malaquías", 4),
+        ("Mateo", 28),
+        ("Marcos", 16),
+        ("Lucas", 24),
+        ("Juan", 21),
+        ("Hechos", 28),
+        ("Romanos", 16),
+        ("1 Corintios", 16),
+        ("2 Corintios", 13),
+        ("Gálatas", 6),
+        ("Efesios", 6),
+        ("Filipenses", 4),
+        ("Colosenses", 4),
+        ("1 Tesalonicenses", 5),
+        ("2 Tesalonicenses", 3),
+        ("1 Timoteo", 6),
+        ("2 Timoteo", 4),
+        ("Tito", 3),
+        ("Filemón", 1),
+        ("Hebreos", 13),
+        ("Santiago", 5),
+        ("1 Pedro", 5),
+        ("2 Pedro", 3),
+        ("1 Juan", 5),
+        ("2 Juan", 1),
+        ("3 Juan", 1),
+        ("Judas", 1),
+        ("Apocalipsis", 22),
     ];
     let mut text = String::from("# Wave Bible books sample\n");
-    for (index, (name, short, chapters)) in NAMES.iter().enumerate() {
-        text.push_str(&format!("{}|{name}|{short}|{chapters}\n", index + 1));
+    for (index, (name, chapters)) in NAMES.iter().enumerate() {
+        let code = crate::bible::USFM_BOOKS[index];
+        text.push_str(&format!("{code}\t{name}\t{chapters}\t{code}.txt\n"));
     }
     text
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::bible::{parse_books, Testament};
+    use crate::bible::{parse_index, Testament};
 
     use super::{sample_books_txt, BibleNav, BibleNavView, SECTIONS};
 
     /// The 66 Reina-Valera names, matching the module sample.
     fn sample_books() -> Vec<crate::bible::BibleBook> {
-        crate::bible::parse_books(&sample_books_txt()).unwrap()
+        crate::bible::parse_index(&sample_books_txt()).unwrap()
     }
 
     #[test]
@@ -387,8 +388,8 @@ mod tests {
         // Only the Pentateuch and two Psalms-section books, with Isaiah's
         // section populated: History and Poetry stay reachable, empty ones
         // never appear.
-        let text = "1|Génesis|Gn|50\n18|Job|Job|42\n19|Salmos|Sal|150\n23|Isaías|Is|66\n";
-        let mut nav = BibleNav::new(parse_books(text).unwrap());
+        let text = "GEN\tGénesis\t50\tGEN.txt\nJOB\tJob\t42\tJOB.txt\nPSA\tSalmos\t150\tPSA.txt\nISA\tIsaías\t66\tISA.txt\n";
+        let mut nav = BibleNav::new(parse_index(text).unwrap());
         assert_eq!(nav.section_books().len(), 1);
         nav.next_section_cyclic();
         assert_eq!(nav.section_cursor(), 2, "Job and Psalms are Poetry");

@@ -209,6 +209,26 @@ The device creates Reader state automatically:
 
 Reader writes use `.TMP` and `.BAK` siblings for recovery.
 
+## Bible
+
+Convert a Bible JSON file on a computer with
+`folloup-waveshare/scripts/bible_json_to_sd.py` (Python 3.8+, stdlib only).
+The script writes a `bible/<abbr>/` folder with these files:
+
+```text
+meta.txt
+index.tsv
+<USFM>.txt
+<USFM>.idx
+charset.txt
+```
+
+Copy the `<abbr>` folder into `/RUSTMIX/BIBLE/` on the SD card, so the device
+reads `/RUSTMIX/BIBLE/<abbr>/meta.txt` and the rest from the same folder. The Bible text is not part of this repository: it stays with
+the copy you are entitled to use. Optional `/RUSTMIX/BIBLE/VERSES.TXT` holds
+one reference per line for the verse of the day, as a book number or a USFM
+code: `19 23:1-3` or `PSA 23:1-3`.
+
 ## Voice Notes
 
 The device creates:

@@ -261,14 +261,14 @@ mod tests {
     use super::*;
     use crate::{
         app::display::{DisplayPreferences, UiFontFamily, UiFontSize},
-        bible::parse_books,
+        bible::parse_index,
         bible_nav::BibleNav,
         framebuffer::FrameBuffer,
         orientation::{DisplayOrientation, OrientedFrameBuffer},
     };
 
     fn sample_nav() -> BibleNav {
-        BibleNav::new(parse_books(&crate::bible_nav::sample_books_txt()).unwrap())
+        BibleNav::new(parse_index(&crate::bible_nav::sample_books_txt()).unwrap())
     }
 
     fn render(preferences: DisplayPreferences, nav: &BibleNav) -> FrameBuffer {

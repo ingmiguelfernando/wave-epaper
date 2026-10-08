@@ -1,14 +1,25 @@
-//! Offline Bible text data; chapter reads retain only the requested chapter.
+//! Offline Bible text in the layout of `scripts/bible_json_to_sd.py`
+//! (folloup-waveshare). Only the requested chapter stays in RAM.
 
 use std::{
     fs::{self, File},
-    io::{self, BufRead, BufReader},
+    io::{self, BufRead, BufReader, Seek, SeekFrom},
     path::{Component, Path},
 };
 
 use anyhow::{bail, ensure, Context, Result};
 
 pub const BIBLE_ROOT: &str = "/sdcard/RUSTMIX/BIBLE";
+
+/// Canonical order; the position plus one is the book number.
+pub(crate) const USFM_BOOKS: [&str; 66] = [
+    "GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI", "1CH",
+    "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO", "ECC", "SNG", "ISA", "JER", "LAM", "EZK",
+    "DAN", "HOS", "JOL", "AMO", "OBA", "JON", "MIC", "NAM", "HAB", "ZEP", "HAG", "ZEC", "MAL",
+    "MAT", "MRK", "LUK", "JHN", "ACT", "ROM", "1CO", "2CO", "GAL", "EPH", "PHP", "COL", "1TH",
+    "2TH", "1TI", "2TI", "TIT", "PHM", "HEB", "JAS", "1PE", "2PE", "1JN", "2JN", "3JN", "JUD",
+    "REV",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Testament {
@@ -26,139 +37,265 @@ impl Testament {
     }
 }
 
+/// Book number (1 to 66) for a USFM code, `None` for anything else.
+pub fn book_number(usfm: &str) -> Option<u8> {
+    USFM_BOOKS
+        .iter()
+        .position(|code| *code == usfm)
+        .map(|index| index as u8 + 1)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BibleBook {
     pub number: u8,
+    pub usfm: String,
     pub name: String,
     pub short_name: String,
     pub chapters: u16,
+    pub file: String,
 }
 
-pub fn parse_books(text: &str) -> Result<Vec<BibleBook>> {
-    let mut books = Vec::new();
-    let mut seen = [false; 67];
+/// Short label from a book name: the first three letters of the first word,
+/// keeping a leading number (`1 Corintios` gives `1 Cor`).
+pub fn short_name(name: &str) -> String {
+    let mut words = name.split_whitespace();
+    let first = words.next().unwrap_or_default();
+    let (number, word) = match first.chars().next() {
+        Some(digit) if digit.is_ascii_digit() => (Some(digit), words.next().unwrap_or_default()),
+        _ => (None, first),
+    };
+    let letters: String = word.chars().take(3).collect();
+    match number {
+        Some(digit) => format!("{digit} {letters}"),
+        None => letters,
+    }
+}
+
+/// Parse `index.tsv`: `usfm<TAB>name<TAB>chapters<TAB>file` per line. Codes
+/// outside the canonical 66 are skipped.
+pub fn parse_index(text: &str) -> Result<Vec<BibleBook>> {
+    let mut books: Vec<BibleBook> = Vec::new();
     for (index, raw) in text.lines().enumerate() {
         let line = clean_line(raw);
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let number = index + 1;
-        let fields: Vec<_> = line.split('|').map(str::trim).collect();
+        let fields: Vec<&str> = line.split('\t').map(str::trim).collect();
         ensure!(
             fields.len() == 4,
-            "line {number}: expected four book fields"
+            "index line {number}: expected four fields"
         );
         ensure!(
             fields.iter().all(|field| !field.is_empty()),
-            "line {number}: missing book field"
+            "index line {number}: missing field"
         );
-        let book = parse_book_number(fields[0], number)?;
+        let Some(book) = book_number(fields[0]) else {
+            continue;
+        };
         ensure!(
-            !seen[book as usize],
-            "line {number}: duplicate book number {book}"
+            !books.iter().any(|known| known.number == book),
+            "index line {number}: duplicate book {}",
+            fields[0]
         );
-        let chapters = positive_number(fields[3], "chapters", number)?;
-        seen[book as usize] = true;
+        let chapters = positive_number(fields[2], "chapters", number)?;
         books.push(BibleBook {
             number: book,
+            usfm: fields[0].into(),
             name: fields[1].into(),
-            short_name: fields[2].into(),
+            short_name: short_name(fields[1]),
             chapters,
+            file: fields[3].into(),
         });
     }
+    books.sort_by_key(|book| book.number);
     Ok(books)
 }
 
-pub fn book_file_name(number: u8) -> String {
-    format!("{number:02}.TXT")
+/// One line of `<USFM>.idx`: chapter, byte offset of its `C` record, verses.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ChapterIndex {
+    pub chapter: u16,
+    pub offset: u64,
+    pub verses: u16,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Verse {
-    pub number: u16,
-    pub text: String,
-}
-
-pub fn read_chapter(mut reader: impl BufRead, chapter: u16) -> Result<Vec<Verse>> {
-    ensure!(chapter > 0, "chapter must be positive");
-    let mut verses = Vec::new();
-    let mut buffer = String::new();
-    let mut line_number = 0;
-    let mut previous_chapter = 0;
-    loop {
-        buffer.clear();
-        let number = line_number + 1;
-        if reader
-            .read_line(&mut buffer)
-            .with_context(|| format!("line {number}: reading Bible text"))?
-            == 0
-        {
-            break;
-        }
-        line_number = number;
-        let line = clean_line(&buffer);
+pub fn parse_chapter_index(text: &str) -> Result<Vec<ChapterIndex>> {
+    let mut chapters = Vec::new();
+    for (index, raw) in text.lines().enumerate() {
+        let line = clean_line(raw);
         if line.is_empty() {
             continue;
         }
-        let (reference, text) = line
-            .split_once('\t')
-            .with_context(|| format!("line {number}: missing verse text separator"))?;
-        let (current, verse) = reference
-            .split_once(':')
-            .with_context(|| format!("line {number}: expected chapter:verse"))?;
-        let current = positive_number(current, "chapter", number)?;
-        let verse = positive_number(verse, "verse", number)?;
-        ensure!(!text.trim().is_empty(), "line {number}: missing verse text");
+        let number = index + 1;
+        let fields: Vec<&str> = line.split('\t').collect();
         ensure!(
-            current >= previous_chapter,
-            "line {number}: chapters are not sorted"
+            fields.len() == 3,
+            "idx line {number}: expected three fields"
         );
-        previous_chapter = current;
-        // One boundary line establishes that the requested chapter has ended.
-        if current > chapter {
-            break;
-        }
-        if current == chapter {
-            verses.push(Verse {
-                number: verse,
-                text: text.into(),
-            });
-        }
+        let chapter = positive_number(fields[0], "chapter", number)?;
+        let offset = fields[1]
+            .parse::<u64>()
+            .with_context(|| format!("idx line {number}: bad offset"))?;
+        let verses = fields[2]
+            .parse::<u16>()
+            .with_context(|| format!("idx line {number}: bad verse count"))?;
+        chapters.push(ChapterIndex {
+            chapter,
+            offset,
+            verses,
+        });
     }
-    Ok(verses)
+    Ok(chapters)
 }
 
-pub fn load_chapter(root: &Path, code: &str, book: u8, chapter: u16) -> Result<Vec<Verse>> {
-    let mut components = Path::new(code).components();
+/// One record of a chapter: a heading, or a verse whose label is `3` or
+/// `3-4`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ChapterItem {
+    Heading(String),
+    Verse {
+        label: String,
+        paragraph: bool,
+        text: String,
+    },
+}
+
+/// Read one chapter of a book. The `.idx` offset is used when it lands on
+/// the chapter's `C` record; otherwise the book file is scanned.
+pub fn load_chapter(
+    root: &Path,
+    translation: &str,
+    book: &BibleBook,
+    chapter: u16,
+) -> Result<Vec<ChapterItem>> {
     ensure!(
-        matches!(components.next(), Some(Component::Normal(name)) if name == code)
-            && components.next().is_none()
-            && !code.contains(['/', '\\', '\0']),
+        is_single_component(translation),
         "translation code must be one normal path component"
     );
     ensure!(
-        Testament::from_book_number(book).is_some(),
-        "book must be in 1..=66"
+        chapter > 0 && chapter <= book.chapters,
+        "chapter outside the book"
     );
-    ensure!(chapter > 0, "chapter must be positive");
-    let path = root.join(code).join(book_file_name(book));
-    let file =
-        File::open(&path).with_context(|| format!("opening Bible book {}", path.display()))?;
-    read_chapter(BufReader::new(file), chapter)
+    let folder = root.join(translation);
+    let text_path = folder.join(&book.file);
+    let mut file = File::open(&text_path)
+        .with_context(|| format!("opening Bible text {}", text_path.display()))?;
+    let offset = fs::read_to_string(folder.join(index_file_name(&book.file)))
+        .ok()
+        .and_then(|text| parse_chapter_index(&text).ok())
+        .and_then(|entries| entries.into_iter().find(|entry| entry.chapter == chapter))
+        .map(|entry| entry.offset);
+    if let Some(offset) = offset {
+        file.seek(SeekFrom::Start(offset))
+            .with_context(|| format!("seeking {}", text_path.display()))?;
+        let mut reader = BufReader::new(&mut file);
+        let mut first = String::new();
+        reader
+            .read_line(&mut first)
+            .with_context(|| format!("{}: reading", text_path.display()))?;
+        if clean_line(&first) == format!("C\t{chapter}") {
+            let start = offset + first.len() as u64;
+            return collect_records(reader, &text_path, start);
+        }
+        file.seek(SeekFrom::Start(0))
+            .with_context(|| format!("rewinding {}", text_path.display()))?;
+    }
+    scan_chapter(BufReader::new(file), chapter, &text_path)
 }
 
+/// Find the `C` record of `chapter` by reading from the start of the file.
+fn scan_chapter(mut reader: impl BufRead, chapter: u16, path: &Path) -> Result<Vec<ChapterItem>> {
+    let wanted = format!("C\t{chapter}");
+    let mut line = String::new();
+    let mut offset: u64 = 0;
+    loop {
+        line.clear();
+        let read = reader
+            .read_line(&mut line)
+            .with_context(|| format!("{}: reading", path.display()))?;
+        if read == 0 {
+            return Ok(Vec::new());
+        }
+        offset += read as u64;
+        if clean_line(&line) == wanted {
+            return collect_records(reader, path, offset);
+        }
+    }
+}
+
+/// Records after the `C` line, up to the next `C` line or the end. `start` is
+/// the absolute byte offset of the first record, so errors name a position in
+/// the file on both the indexed and the scanned path.
+fn collect_records(mut reader: impl BufRead, path: &Path, start: u64) -> Result<Vec<ChapterItem>> {
+    let mut items = Vec::new();
+    let mut line = String::new();
+    let mut offset = start;
+    loop {
+        line.clear();
+        let read = reader
+            .read_line(&mut line)
+            .with_context(|| format!("{}: reading", path.display()))?;
+        if read == 0 {
+            return Ok(items);
+        }
+        let record_offset = offset;
+        offset += read as u64;
+        let record = clean_line(&line);
+        if record.is_empty() {
+            continue;
+        }
+        if record.starts_with("C\t") {
+            return Ok(items);
+        }
+        items.push(
+            parse_record(record).with_context(|| {
+                format!("{}: bad record at byte {record_offset}", path.display())
+            })?,
+        );
+    }
+}
+
+fn parse_record(record: &str) -> Result<ChapterItem> {
+    let fields: Vec<&str> = record.splitn(4, '\t').collect();
+    match fields.as_slice() {
+        ["H", text] => {
+            ensure!(!text.is_empty(), "empty heading");
+            Ok(ChapterItem::Heading((*text).into()))
+        }
+        ["V", label, paragraph, text] => {
+            ensure!(!label.is_empty(), "missing verse label");
+            ensure!(
+                label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte == b'-'),
+                "bad verse label"
+            );
+            ensure!(
+                matches!(*paragraph, "0" | "1"),
+                "paragraph flag must be 0 or 1"
+            );
+            ensure!(!text.is_empty(), "missing verse text");
+            Ok(ChapterItem::Verse {
+                label: (*label).into(),
+                paragraph: *paragraph == "1",
+                text: (*text).into(),
+            })
+        }
+        _ => bail!("unknown record"),
+    }
+}
+
+/// Folders of the Bible root that hold an `index.tsv`, sorted.
 pub fn translations(root: &Path) -> io::Result<Vec<String>> {
     let mut codes = Vec::new();
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         let name = entry.file_name();
-        if name.as_encoded_bytes().starts_with(b".") {
+        if name.as_encoded_bytes().starts_with(b".") || !entry.file_type()?.is_dir() {
             continue;
         }
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-        match fs::metadata(entry.path().join("BOOKS.TXT")) {
+        match fs::metadata(entry.path().join("index.tsv")) {
             Ok(metadata) if metadata.is_file() => {
                 let code = name.into_string().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidData, "non-UTF-8 translation code")
@@ -174,6 +311,32 @@ pub fn translations(root: &Path) -> io::Result<Vec<String>> {
     Ok(codes)
 }
 
+/// `meta.txt`: `key=value` lines; the fields the Bible screens show.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TranslationMeta {
+    pub abbreviation: String,
+    pub title: String,
+    pub language: String,
+}
+
+pub fn parse_meta(text: &str) -> TranslationMeta {
+    let mut meta = TranslationMeta::default();
+    for raw in text.lines() {
+        let Some((key, value)) = clean_line(raw).split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "abbreviation" => meta.abbreviation = value.trim().into(),
+            "title" => meta.title = value.trim().into(),
+            "language" => meta.language = value.trim().into(),
+            _ => {}
+        }
+    }
+    meta
+}
+
+/// A verse reference from `VERSES.TXT`: a book number or a USFM code, a
+/// chapter, and a verse or range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VerseRef {
     pub book: u8,
@@ -206,7 +369,10 @@ pub fn parse_verse_list(text: &str) -> Result<Vec<VerseRef>> {
         }
         let number = index + 1;
         let mut fields = line.split_whitespace();
-        let book = parse_book_number(fields.next().unwrap_or_default(), number)?;
+        let book_text = fields.next().unwrap_or_default();
+        let Some(book) = book_number_from_text(book_text) else {
+            bail!("line {number}: unknown book {book_text}");
+        };
         let reference = fields
             .next()
             .with_context(|| format!("line {number}: missing verse reference"))?;
@@ -232,6 +398,17 @@ pub fn parse_verse_list(text: &str) -> Result<Vec<VerseRef>> {
     Ok(list)
 }
 
+/// Book number from `23` or from a USFM code such as `PSA`.
+fn book_number_from_text(text: &str) -> Option<u8> {
+    if text.bytes().all(|byte| byte.is_ascii_digit()) {
+        text.parse::<u8>()
+            .ok()
+            .filter(|number| (1..=66).contains(number))
+    } else {
+        book_number(&text.to_ascii_uppercase())
+    }
+}
+
 pub fn verse_of_the_day(list: &[VerseRef], epoch_day: u32) -> Option<&VerseRef> {
     if list.is_empty() {
         None
@@ -240,8 +417,59 @@ pub fn verse_of_the_day(list: &[VerseRef], epoch_day: u32) -> Option<&VerseRef> 
     }
 }
 
+/// The plain text of one reference, for the sleep screen's verse mode.
+/// Verses in a range are joined with a space.
+pub fn reference_text(
+    root: &Path,
+    translation: &str,
+    books: &[BibleBook],
+    reference: &VerseRef,
+) -> Result<String> {
+    let book = books
+        .iter()
+        .find(|book| book.number == reference.book)
+        .context("book missing from the index")?;
+    let items = load_chapter(root, translation, book, reference.chapter)?;
+    let parts: Vec<&str> = items
+        .iter()
+        .filter_map(|item| match item {
+            ChapterItem::Verse { label, text, .. } => verse_span(label)
+                .filter(|(start, end)| *start <= reference.last && *end >= reference.first)
+                .map(|_| text.as_str()),
+            ChapterItem::Heading(_) => None,
+        })
+        .collect();
+    ensure!(!parts.is_empty(), "verse not found in {}", book.usfm);
+    Ok(parts.join(" "))
+}
+
+/// `3` gives (3, 3); `3-4` gives (3, 4).
+fn verse_span(label: &str) -> Option<(u16, u16)> {
+    match label.split_once('-') {
+        Some((start, end)) => Some((start.parse().ok()?, end.parse().ok()?)),
+        None => label.parse().ok().map(|number| (number, number)),
+    }
+}
+
+/// The index of `JOB.txt` is `JOB.idx`.
+fn index_file_name(text_file: &str) -> String {
+    match text_file.rsplit_once('.') {
+        Some((stem, _)) => format!("{stem}.idx"),
+        None => format!("{text_file}.idx"),
+    }
+}
+
+fn is_single_component(code: &str) -> bool {
+    let mut components = Path::new(code).components();
+    matches!(components.next(), Some(Component::Normal(name)) if name == code)
+        && components.next().is_none()
+        && !code.contains(['/', '\\', '\0'])
+}
+
 fn clean_line(line: &str) -> &str {
-    line.trim().trim_start_matches('\u{feff}').trim()
+    line.trim_end_matches(['\r', '\n'])
+        .trim_start_matches('\u{feff}')
+        .trim()
 }
 
 fn positive_number(text: &str, field: &str, line: usize) -> Result<u16> {
@@ -256,55 +484,20 @@ fn positive_number(text: &str, field: &str, line: usize) -> Result<u16> {
     Ok(value)
 }
 
-fn parse_book_number(text: &str, line: usize) -> Result<u8> {
-    let number = positive_number(text, "book number", line)?;
-    if number > 66 {
-        bail!("line {line}: book number outside 1..=66");
-    }
-    Ok(number as u8)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        io::{Cursor, Read},
-        path::PathBuf,
-        sync::atomic::{AtomicUsize, Ordering},
-    };
-
-    const BOOKS: &str =
-        "\u{feff}# Books\r\n\n 1 | Génesis | Gén | 50 \r\n19|Salmos|Sal|150\n66|Apocalipsis|Ap|22";
-    const CHAPTERS: &str = "\u{feff}1:1\tEn el principio.\r\n1:2\tCreación.\n\n2:1\tAsí terminó.\n2:2\tDescansó.\n3:1\tÚltimo capítulo.";
-    const REFERENCES: &str = "\u{feff}# Daily\r\n\n19 23:1\n 19\t23:1-3 \r\n66 22:21";
-
-    fn assert_line_error<T: std::fmt::Debug>(result: Result<T>, line: usize) {
-        let error = result.unwrap_err();
-        assert!(
-            error.to_string().contains(&format!("line {line}:")),
-            "{error:#}"
-        );
-    }
+    use std::path::PathBuf;
 
     struct TempRoot(PathBuf);
 
     impl TempRoot {
-        fn new() -> Self {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "wave-bible-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            fs::create_dir(&path).unwrap();
+        fn new(tag: &str) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("wave-bible-{tag}-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).unwrap();
             Self(path)
-        }
-
-        fn translation(&self, code: &str) -> PathBuf {
-            let path = self.0.join(code);
-            fs::create_dir(&path).unwrap();
-            fs::write(path.join("BOOKS.TXT"), BOOKS).unwrap();
-            path
         }
     }
 
@@ -314,479 +507,226 @@ mod tests {
         }
     }
 
-    #[test]
-    fn testament_classifies_every_valid_book_and_rejects_others() {
-        for number in 0..=u8::MAX {
-            assert_eq!(
-                Testament::from_book_number(number),
-                match number {
-                    1..=39 => Some(Testament::Old),
-                    40..=66 => Some(Testament::New),
-                    _ => None,
-                }
-            );
+    const INDEX: &str =
+        "PSA\tSalmos\t150\tPSA.txt\r\nGEN\tGénesis\t50\tGEN.txt\r\nXXX\tOther\t1\tXXX.txt\r\n";
+
+    const PSA_TEXT: &str = "C\t1\r\nH\tLibro primero\r\nV\t1\t1\tBienaventurado el varón\r\nV\t2-3\t0\tSino en la ley\r\nC\t23\r\nH\tJehová es mi pastor\r\nV\t1\t1\tJehová es mi pastor; nada me faltará.\r\nV\t3-4\t0\tRestaura mi alma. Aunque ande.\r\nC\t24\r\nV\t1\t1\tDe Jehová es la tierra.\r\n";
+
+    fn write_fixture(root: &Path, with_index: bool) -> PathBuf {
+        let folder = root.join("RVR1960");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("index.tsv"), INDEX).unwrap();
+        fs::write(
+            folder.join("meta.txt"),
+            "format=1\nabbreviation=RVR1960\ntitle=Reina-Valera 1960\nlanguage=es\n",
+        )
+        .unwrap();
+        fs::write(folder.join("PSA.txt"), PSA_TEXT).unwrap();
+        if with_index {
+            let c23 = PSA_TEXT.find("C\t23").unwrap();
+            let c24 = PSA_TEXT.find("C\t24").unwrap();
+            fs::write(
+                folder.join("PSA.idx"),
+                format!("1\t0\t3\n23\t{c23}\t2\n24\t{c24}\t1\n"),
+            )
+            .unwrap();
         }
+        folder
+    }
+
+    fn psa(root: &Path) -> BibleBook {
+        parse_index(&fs::read_to_string(root.join("RVR1960/index.tsv")).unwrap())
+            .unwrap()
+            .into_iter()
+            .find(|book| book.usfm == "PSA")
+            .unwrap()
     }
 
     #[test]
-    fn books_trim_fields_skip_comments_and_keep_accents() {
-        let books = parse_books(BOOKS).unwrap();
-        assert_eq!(books.len(), 3);
-        assert_eq!(
-            books[0],
-            BibleBook {
-                number: 1,
-                name: "Génesis".into(),
-                short_name: "Gén".into(),
-                chapters: 50
-            }
-        );
-        assert_eq!(books[2].number, 66);
+    fn index_maps_canonical_order_and_skips_unknown_codes() {
+        let books = parse_index(INDEX).unwrap();
+        assert_eq!(books.len(), 2);
+        assert_eq!(books[0].usfm, "GEN");
+        assert_eq!(books[0].number, 1);
+        assert_eq!(books[1].usfm, "PSA");
+        assert_eq!(books[1].number, 19);
+        assert_eq!(books[1].chapters, 150);
+        assert_eq!(books[1].file, "PSA.txt");
     }
 
     #[test]
-    fn empty_books_and_bom_only_are_valid() {
-        for text in ["", "\u{feff}", "\n # Comment\n\r\n"] {
-            assert!(parse_books(text).unwrap().is_empty());
-        }
-    }
-
-    #[test]
-    fn books_reject_bad_numbers_and_chapter_counts() {
-        for field in ["x", "-1", "+1", "1.0", "65536", "0", "67", "256"] {
-            assert_line_error(parse_books(&format!("# Header\n{field}|Name|N|1")), 2);
-        }
-        for field in ["x", "-1", "+1", "65536", "0"] {
-            assert_line_error(parse_books(&format!("\n1|Name|N|{field}")), 2);
-        }
-    }
-
-    #[test]
-    fn books_reject_missing_and_extra_fields() {
-        for text in [
-            "1",
-            "1|Name",
-            "1|Name|N",
-            "|Name|N|1",
-            "1||N|1",
-            "1|Name||1",
-            "1|Name|N|",
-            "1|Name|N|1|extra",
-        ] {
-            assert_line_error(parse_books(text), 1);
-        }
-    }
-
-    #[test]
-    fn books_reject_duplicate_numbers_after_skipped_lines() {
-        assert_line_error(parse_books("1|One|O|1\n# Comment\n\n01|Again|A|2"), 4);
-    }
-
-    #[test]
-    fn books_accept_maximum_chapter_count() {
-        assert_eq!(
-            parse_books("66|Last|L|65535").unwrap()[0].chapters,
-            u16::MAX
-        );
-    }
-
-    #[test]
-    fn file_names_are_two_digits_for_every_valid_book() {
-        for number in 1..=66 {
-            let name = book_file_name(number);
-            assert_eq!(name.len(), 6);
-            assert_eq!(name, format!("{number:02}.TXT"));
-        }
-        assert_eq!(book_file_name(1), "01.TXT");
-        assert_eq!(book_file_name(66), "66.TXT");
-    }
-
-    #[test]
-    fn chapters_select_first_middle_and_final_without_final_newline() {
-        assert_eq!(
-            read_chapter(Cursor::new(CHAPTERS), 1).unwrap(),
-            vec![
-                Verse {
-                    number: 1,
-                    text: "En el principio.".into()
-                },
-                Verse {
-                    number: 2,
-                    text: "Creación.".into()
-                },
-            ]
-        );
-        let middle = read_chapter(Cursor::new(CHAPTERS), 2).unwrap();
-        assert_eq!(middle.len(), 2);
-        assert_eq!(middle[1].text, "Descansó.");
-        assert_eq!(
-            read_chapter(Cursor::new(CHAPTERS), 3).unwrap(),
-            vec![Verse {
-                number: 1,
-                text: "Último capítulo.".into()
-            }]
-        );
-    }
-
-    #[test]
-    fn chapters_return_empty_for_missing_and_empty_input() {
-        for text in ["", "\u{feff}\n \r\n", "2:1\tLater."] {
-            assert!(read_chapter(Cursor::new(text), 1).unwrap().is_empty());
-        }
-        assert!(read_chapter(Cursor::new(CHAPTERS), 4).unwrap().is_empty());
-    }
-
-    #[test]
-    fn chapters_reject_zero_target() {
-        assert!(read_chapter(Cursor::new(""), 0).is_err());
-    }
-
-    #[test]
-    fn chapters_reject_malformed_lines_with_physical_line_numbers() {
-        for line in [
-            "1:1 text",
-            "1\tText",
-            "x:1\tText",
-            "1:x\tText",
-            "0:1\tText",
-            "1:0\tText",
-            "65536:1\tText",
-            "1:65536\tText",
-            "1:1:2\tText",
-            "1:1\t",
-            "1:1\t  ",
-            "# Not a verse",
-            "+1:1\tText",
-            "1:-1\tText",
-        ] {
-            assert_line_error(
-                read_chapter(Cursor::new(format!("\u{feff}\n\n{line}")), 1),
-                3,
-            );
-        }
-    }
-
-    #[test]
-    fn chapters_validate_lines_before_target_and_reject_unsorted_chapters() {
-        assert_line_error(read_chapter(Cursor::new("bad\n2:1\tText"), 2), 1);
-        assert_line_error(read_chapter(Cursor::new("2:1\tText\n1:1\tEarlier"), 3), 2);
-    }
-
-    #[test]
-    fn chapters_preserve_embedded_tabs_and_maximum_numbers() {
-        let verses = read_chapter(Cursor::new("65535:65535\tCafé\tcon té"), u16::MAX).unwrap();
-        assert_eq!(verses[0].number, u16::MAX);
-        assert_eq!(verses[0].text, "Café\tcon té");
-    }
-
-    struct BoundaryReader {
-        prefix: Cursor<Vec<u8>>,
-        consumed: usize,
-    }
-
-    impl Read for BoundaryReader {
-        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-            panic!("chapter reader must use buffered reads")
-        }
-    }
-
-    impl BufRead for BoundaryReader {
-        fn fill_buf(&mut self) -> io::Result<&[u8]> {
-            assert!(
-                (self.prefix.position() as usize) < self.prefix.get_ref().len(),
-                "read beyond chapter boundary"
-            );
-            self.prefix.fill_buf()
-        }
-
-        fn consume(&mut self, amount: usize) {
-            self.consumed += amount;
-            self.prefix.consume(amount);
-        }
-    }
-
-    #[test]
-    fn chapters_stop_after_one_boundary_line_without_reading_book_tail() {
-        let prefix = b"1:1\tEarlier\n2:1\tTarget\n2:2\tMore\n3:1\tBoundary\n";
-        let mut reader = BoundaryReader {
-            prefix: Cursor::new(prefix.to_vec()),
-            consumed: 0,
-        };
-        assert_eq!(read_chapter(&mut reader, 2).unwrap().len(), 2);
-        assert_eq!(reader.consumed, prefix.len());
-    }
-
-    #[test]
-    fn chapters_do_not_validate_tail_after_boundary() {
-        assert_eq!(
-            read_chapter(Cursor::new("1:1\tText\n2:1\tBoundary\nmalformed"), 1)
-                .unwrap()
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn missing_chapters_stop_at_the_first_later_chapter() {
-        let prefix = b"1:1\tEarlier\n3:1\tBoundary\n";
-        let mut reader = BoundaryReader {
-            prefix: Cursor::new(prefix.to_vec()),
-            consumed: 0,
-        };
-        assert!(read_chapter(&mut reader, 2).unwrap().is_empty());
-        assert_eq!(reader.consumed, prefix.len());
-    }
-
-    #[test]
-    fn chapters_validate_the_boundary_line() {
-        assert_line_error(read_chapter(Cursor::new("1:1\tText\n2:0\tInvalid"), 1), 2);
-    }
-
-    #[test]
-    fn chapters_report_invalid_utf8_and_io_errors_with_line() {
-        assert_line_error(read_chapter(Cursor::new(b"1:1\tText\n1:2\t\xff"), 1), 2);
-        struct FailingReader;
-        impl Read for FailingReader {
-            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-                Err(io::ErrorKind::PermissionDenied.into())
-            }
-        }
-        impl BufRead for FailingReader {
-            fn fill_buf(&mut self) -> io::Result<&[u8]> {
-                Err(io::ErrorKind::PermissionDenied.into())
-            }
-            fn consume(&mut self, _: usize) {}
-        }
-        let error = read_chapter(FailingReader, 1).unwrap_err();
-        assert!(error.to_string().contains("line 1:"));
-        assert_eq!(
-            error.downcast_ref::<io::Error>().unwrap().kind(),
-            io::ErrorKind::PermissionDenied
-        );
-    }
-
-    #[test]
-    fn load_chapter_uses_translation_and_padded_file_name() {
-        let root = TempRoot::new();
-        let path = root.translation("RV1909");
-        fs::write(path.join("01.TXT"), CHAPTERS).unwrap();
-        assert_eq!(
-            load_chapter(&root.0, "RV1909", 1, 3).unwrap()[0].text,
-            "Último capítulo."
-        );
-    }
-
-    #[test]
-    fn load_chapter_rejects_traversal_and_invalid_numbers_before_io() {
-        let root = Path::new("/nonexistent-wave-bible");
-        for code in [
-            "",
-            ".",
-            "..",
-            "../RV",
-            "/RV",
-            "RV/other",
-            "RV/",
-            "RV/.",
-            "./RV",
-            "RV//",
-            "RV\\other",
-            "RV\0other",
-        ] {
-            let error = load_chapter(root, code, 1, 1).unwrap_err();
-            assert!(
-                error.to_string().contains("normal path component"),
-                "{code:?}: {error}"
-            );
-            assert!(error.downcast_ref::<io::Error>().is_none());
-        }
-        for book in [0, 67, u8::MAX] {
-            assert!(load_chapter(root, "RV", book, 1)
-                .unwrap_err()
-                .to_string()
-                .contains("1..=66"));
-        }
-        assert!(load_chapter(root, "RV", 1, 0)
+    fn index_rejects_duplicates_and_bad_fields_with_line_numbers() {
+        let duplicate = "GEN\tGénesis\t50\tGEN.txt\nGEN\tGénesis\t50\tGEN.txt\n";
+        assert!(parse_index(duplicate)
             .unwrap_err()
             .to_string()
-            .contains("positive"));
+            .contains("duplicate"));
+        let missing = "GEN\tGénesis\t50\n";
+        assert!(parse_index(missing)
+            .unwrap_err()
+            .to_string()
+            .contains("line 1"));
+        let zero = "GEN\tGénesis\t0\tGEN.txt\n";
+        assert!(parse_index(zero)
+            .unwrap_err()
+            .to_string()
+            .contains("zero chapters"));
     }
 
     #[test]
-    fn load_chapter_preserves_open_error_kind() {
-        let root = TempRoot::new();
-        let error = load_chapter(&root.0, "missing", 1, 1).unwrap_err();
+    fn short_names_keep_leading_numbers() {
+        assert_eq!(short_name("Salmos"), "Sal");
+        assert_eq!(short_name("Génesis"), "Gén");
+        assert_eq!(short_name("1 Corintios"), "1 Cor");
+    }
+
+    #[test]
+    fn usfm_codes_map_to_canonical_numbers() {
+        assert_eq!(book_number("GEN"), Some(1));
+        assert_eq!(book_number("PSA"), Some(19));
+        assert_eq!(book_number("REV"), Some(66));
+        assert_eq!(book_number("XXX"), None);
+    }
+
+    #[test]
+    fn chapter_is_read_through_the_index_offset() {
+        let temp = TempRoot::new("indexed");
+        write_fixture(&temp.0, true);
+        let items = load_chapter(&temp.0, "RVR1960", &psa(&temp.0), 23).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0], ChapterItem::Heading("Jehová es mi pastor".into()));
         assert_eq!(
-            error.downcast_ref::<io::Error>().unwrap().kind(),
-            io::ErrorKind::NotFound
+            items[2],
+            ChapterItem::Verse {
+                label: "3-4".into(),
+                paragraph: false,
+                text: "Restaura mi alma. Aunque ande.".into(),
+            }
         );
     }
 
     #[test]
-    fn translations_sort_only_visible_directories_with_books_file() {
-        let root = TempRoot::new();
-        root.translation("ZZ");
-        root.translation("AA");
-        root.translation("Á");
-        root.translation(".hidden");
-        root.translation("._resource");
-        fs::create_dir(root.0.join("empty")).unwrap();
-        fs::create_dir(root.0.join("directory-books")).unwrap();
-        fs::create_dir(root.0.join("directory-books/BOOKS.TXT")).unwrap();
-        fs::write(root.0.join("not-a-directory"), BOOKS).unwrap();
-        assert_eq!(translations(&root.0).unwrap(), vec!["AA", "ZZ", "Á"]);
+    fn chapter_is_scanned_without_an_index_and_stops_at_next_chapter() {
+        let temp = TempRoot::new("scanned");
+        write_fixture(&temp.0, false);
+        let first = load_chapter(&temp.0, "RVR1960", &psa(&temp.0), 1).unwrap();
+        assert_eq!(first.len(), 3);
+        assert_eq!(first[0], ChapterItem::Heading("Libro primero".into()));
+        let last = load_chapter(&temp.0, "RVR1960", &psa(&temp.0), 24).unwrap();
+        assert_eq!(last.len(), 1);
     }
 
     #[test]
-    fn translations_empty_missing_and_file_root_report_accurately() {
-        let root = TempRoot::new();
-        assert!(translations(&root.0).unwrap().is_empty());
-        assert_eq!(
-            translations(&root.0.join("missing")).unwrap_err().kind(),
-            io::ErrorKind::NotFound
+    fn stale_offset_falls_back_to_a_scan() {
+        let temp = TempRoot::new("stale");
+        let folder = write_fixture(&temp.0, false);
+        fs::write(folder.join("PSA.idx"), "23\t3\t2\n").unwrap();
+        let items = load_chapter(&temp.0, "RVR1960", &psa(&temp.0), 23).unwrap();
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn chapter_outside_the_book_is_rejected_before_io() {
+        let temp = TempRoot::new("range");
+        write_fixture(&temp.0, false);
+        let book = psa(&temp.0);
+        assert!(load_chapter(&temp.0, "RVR1960", &book, 0).is_err());
+        assert!(load_chapter(&temp.0, "RVR1960", &book, 151).is_err());
+    }
+
+    #[test]
+    fn malformed_record_names_its_file_and_line() {
+        let temp = TempRoot::new("malformed");
+        let folder = write_fixture(&temp.0, false);
+        fs::write(folder.join("PSA.txt"), "C\t1\nV\t1\tbad\n").unwrap();
+        let error = load_chapter(&temp.0, "RVR1960", &psa(&temp.0), 1).unwrap_err();
+        let text = format!("{error:#}");
+        assert!(text.contains("PSA.txt"), "{text}");
+        // The bad record starts after the 4-byte "C\t1\n" line.
+        assert!(text.contains("at byte 4"), "{text}");
+    }
+
+    #[test]
+    fn translation_code_must_be_one_path_component() {
+        let temp = TempRoot::new("traversal");
+        write_fixture(&temp.0, false);
+        assert!(load_chapter(&temp.0, "../RVR1960", &psa(&temp.0), 1).is_err());
+    }
+
+    #[test]
+    fn translations_list_folders_with_an_index() {
+        let temp = TempRoot::new("list");
+        write_fixture(&temp.0, false);
+        fs::create_dir_all(temp.0.join("EMPTY")).unwrap();
+        fs::create_dir_all(temp.0.join(".hidden")).unwrap();
+        assert_eq!(translations(&temp.0).unwrap(), ["RVR1960"]);
+    }
+
+    #[test]
+    fn meta_reads_title_language_and_abbreviation() {
+        let meta = parse_meta(
+            "format=1\r\nabbreviation=RVR1960\r\ntitle=Reina-Valera 1960\r\nlanguage=es\r\n",
         );
-        let path = root.0.join("file");
-        fs::write(&path, "text").unwrap();
-        assert!(translations(&path).is_err());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn translations_propagate_metadata_errors_not_empty_results() {
-        use std::os::unix::fs::symlink;
-        let root = TempRoot::new();
-        let path = root.translation("loop");
-        fs::remove_file(path.join("BOOKS.TXT")).unwrap();
-        symlink("BOOKS.TXT", path.join("BOOKS.TXT")).unwrap();
-        assert!(translations(&root.0).is_err());
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn translations_reject_non_utf8_codes_with_invalid_data() {
-        use std::{ffi::OsString, os::unix::ffi::OsStringExt};
-        let root = TempRoot::new();
-        let path = root.0.join(OsString::from_vec(vec![0xff]));
-        fs::create_dir(&path).unwrap();
-        fs::write(path.join("BOOKS.TXT"), BOOKS).unwrap();
-        assert_eq!(
-            translations(&root.0).unwrap_err().kind(),
-            io::ErrorKind::InvalidData
-        );
+        assert_eq!(meta.abbreviation, "RVR1960");
+        assert_eq!(meta.title, "Reina-Valera 1960");
+        assert_eq!(meta.language, "es");
     }
 
     #[test]
-    fn verse_list_parses_singles_ranges_and_retains_duplicates() {
-        let list = parse_verse_list(REFERENCES).unwrap();
-        assert_eq!(
-            list,
-            vec![
-                VerseRef {
-                    book: 19,
-                    chapter: 23,
-                    first: 1,
-                    last: 1
-                },
-                VerseRef {
-                    book: 19,
-                    chapter: 23,
-                    first: 1,
-                    last: 3
-                },
-                VerseRef {
-                    book: 66,
-                    chapter: 22,
-                    first: 21,
-                    last: 21
-                },
-            ]
-        );
-        let duplicates = parse_verse_list("19 23:1\n19 23:1").unwrap();
-        assert_eq!(duplicates.len(), 2);
-        assert_eq!(duplicates[0], duplicates[1]);
-    }
-
-    #[test]
-    fn verse_list_empty_comments_and_bom_are_valid() {
-        for text in ["", "\u{feff}", "\n# Comment\n \r\n"] {
-            assert!(parse_verse_list(text).unwrap().is_empty());
-        }
-    }
-
-    #[test]
-    fn verse_list_rejects_invalid_syntax_numbers_and_ranges() {
-        for text in [
-            "19",
-            "19 23",
-            "19 23:",
-            "19 :1",
-            "19 23:1-",
-            "19 23:-1",
-            "19 23:1-2-3",
-            "19 23:3-1",
-            "19 0:1",
-            "19 23:0",
-            "19 23:1-0",
-            "0 23:1",
-            "67 23:1",
-            "256 23:1",
-            "x 23:1",
-            "19 x:1",
-            "19 23:x",
-            "19 23:1-x",
-            "19 65536:1",
-            "19 23:65536",
-            "19 23:1-65536",
-            "19 23:1 extra",
-            "19 23:1:2",
-            "+19 23:1",
-            "19 +23:1",
-            "19 23:+1",
-            "19 23:1 - 3",
-        ] {
-            assert_line_error(parse_verse_list(&format!("\u{feff}# Header\n\n{text}")), 3);
-        }
-    }
-
-    #[test]
-    fn verse_list_accepts_equal_ranges_and_maximum_numbers() {
-        let list = parse_verse_list("1 65535:65535-65535").unwrap();
+    fn verses_accept_book_numbers_and_usfm_codes() {
+        let list = parse_verse_list("19 23:1\nPSA 23:1-3\n# note\n").unwrap();
         assert_eq!(
             list[0],
             VerseRef {
-                book: 1,
-                chapter: u16::MAX,
-                first: u16::MAX,
-                last: u16::MAX
+                book: 19,
+                chapter: 23,
+                first: 1,
+                last: 1
             }
         );
-    }
-
-    #[test]
-    fn reference_labels_use_short_names_and_unknown_book_fallback() {
-        let books = parse_books(BOOKS).unwrap();
-        let list = parse_verse_list(REFERENCES).unwrap();
-        assert_eq!(list[0].label(&books), "Sal 23:1");
-        assert_eq!(list[1].label(&books), "Sal 23:1-3");
-        assert_eq!(list[1].label(&[]), "Book 19 23:1-3");
-        assert_eq!(list[0].label(&[]), "Book 19 23:1");
-    }
-
-    #[test]
-    fn daily_rotation_handles_empty_single_multiple_and_maximum_day() {
-        assert_eq!(verse_of_the_day(&[], 0), None);
-        assert_eq!(verse_of_the_day(&[], u32::MAX), None);
-        let list = parse_verse_list(REFERENCES).unwrap();
-        for day in 0..12 {
-            assert!(std::ptr::eq(
-                verse_of_the_day(&list, day).unwrap(),
-                &list[day as usize % list.len()]
-            ));
-        }
         assert_eq!(
-            verse_of_the_day(&list, u32::MAX),
-            Some(&list[(u32::MAX as u64 % list.len() as u64) as usize])
+            list[1],
+            VerseRef {
+                book: 19,
+                chapter: 23,
+                first: 1,
+                last: 3
+            }
         );
-        assert_eq!(verse_of_the_day(&list[..1], u32::MAX), Some(&list[0]));
+        assert!(parse_verse_list("ZZZ 1:1").is_err());
+        assert!(parse_verse_list("19 23:3-1").is_err());
+    }
+
+    #[test]
+    fn verse_of_the_day_rotates_through_the_list() {
+        let list = parse_verse_list("19 23:1\n43 3:16\n").unwrap();
+        assert_eq!(verse_of_the_day(&list, 0).map(|r| r.book), Some(19));
+        assert_eq!(verse_of_the_day(&list, 1).map(|r| r.book), Some(43));
+        assert_eq!(verse_of_the_day(&list, 2).map(|r| r.book), Some(19));
+        assert_eq!(verse_of_the_day(&[], 5), None);
+    }
+
+    #[test]
+    fn reference_text_joins_a_range_from_the_chapter() {
+        let temp = TempRoot::new("reference");
+        write_fixture(&temp.0, false);
+        let book = psa(&temp.0);
+        let reference = VerseRef {
+            book: 19,
+            chapter: 23,
+            first: 1,
+            last: 3,
+        };
+        let text =
+            reference_text(&temp.0, "RVR1960", std::slice::from_ref(&book), &reference).unwrap();
+        assert!(text.starts_with("Jehová es mi pastor;"));
+        assert!(text.ends_with("Aunque ande."));
+    }
+
+    #[test]
+    fn testament_split_is_at_book_forty() {
+        assert_eq!(Testament::from_book_number(39), Some(Testament::Old));
+        assert_eq!(Testament::from_book_number(40), Some(Testament::New));
+        assert_eq!(Testament::from_book_number(67), None);
     }
 }
