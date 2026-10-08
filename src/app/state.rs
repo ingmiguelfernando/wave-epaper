@@ -250,6 +250,8 @@ impl AppState {
             self.apply_home(event);
         } else if route == ScreenRoute::Games {
             self.apply_games_hub(event);
+        } else if route == ScreenRoute::Ai {
+            self.apply_ai_hub(event);
         } else if route.is_category() {
             self.apply_category(route, event);
         } else if route == ScreenRoute::Display {
@@ -430,6 +432,40 @@ impl AppState {
                     self.router.navigate_to(ScreenRoute::LuaGame);
                 } else if self.lua_runtime.error.is_some() {
                     self.router.navigate_to(ScreenRoute::LuaGameError);
+                }
+            }
+        }
+    }
+
+    /// Apply one AI-hub event: two cards and the recent notes. Select opens
+    /// the chosen thing; the short BOOT that starts a note is a runtime hook.
+    fn apply_ai_hub(&mut self, event: ButtonEvent) {
+        let count = (2 + self.voice_notes.notes.len().min(3)).max(1);
+        let selected = self.category_selection_mut(ScreenRoute::Ai);
+        match event {
+            ButtonEvent::Up => {
+                *selected = selected.checked_sub(1).unwrap_or(count - 1);
+            }
+            ButtonEvent::Down => {
+                *selected = (*selected + 1) % count;
+            }
+            ButtonEvent::Select => {
+                self.note_select_press();
+                let chosen = self.category_selection(ScreenRoute::Ai);
+                match chosen {
+                    0 => self.router.navigate_to(ScreenRoute::XiaoZhi),
+                    1 => self.router.navigate_to(ScreenRoute::VoiceNotes),
+                    note_index => {
+                        // The hub lists newest first; the Voice Notes list
+                        // sorts oldest first, so aim its cursor at the
+                        // mirrored row: details read `selected - 2`.
+                        let newest = self.voice_notes.notes.len().saturating_sub(1);
+                        let list_row = newest - (note_index - 2) + 2;
+                        self.voice_notes.selected = list_row;
+                        self.voice_notes.detail_selected = 0;
+                        self.voice_notes.clear_transient_details();
+                        self.router.navigate_to(ScreenRoute::VoiceNoteDetails);
+                    }
                 }
             }
         }
@@ -1227,6 +1263,18 @@ impl AppState {
         true
     }
 
+    /// BOOT short press on the AI hub starts a recording the same way the
+    /// Voice Notes screen's `Record new note` row does.
+    pub fn apply_ai_hub_boot_short_press(&mut self) -> bool {
+        if self.router.current() != ScreenRoute::Ai {
+            return false;
+        }
+        self.note_select_press();
+        self.voice_notes.request_start_recording();
+        self.router.navigate_to(ScreenRoute::VoiceNoteRecording);
+        true
+    }
+
     /// Apply one Audio-overview event. Hardware requests are returned to
     /// main.rs so this product state remains independent of ESP-IDF handles.
     pub fn apply_audio_button(&mut self, event: ButtonEvent) -> Option<AudioUiRequest> {
@@ -1543,12 +1591,12 @@ mod tests {
         state.apply_with_clock(ButtonEvent::Down, 30_000);
         state.apply_with_clock(ButtonEvent::Down, 170_000);
         let day = 20_000;
-        state.collect_reading_stats(Some(day));
+        let _ = state.collect_reading_stats(Some(day));
         let stats = state.reading_stats.day(day);
         assert_eq!(stats.seconds, 150, "30 + capped 120");
         assert_eq!(stats.pages, 3);
         // The next call without keys records nothing.
-        state.collect_reading_stats(Some(day));
+        let _ = state.collect_reading_stats(Some(day));
         assert_eq!(state.reading_stats.day(day).seconds, 150);
     }
 
@@ -1566,7 +1614,7 @@ mod tests {
         assert_eq!(state.reading_stats.day(today).seconds, 80);
         // The remaining fraction of the second lands on the next call.
         state.apply_with_clock(ButtonEvent::Down, 92_000);
-        state.collect_reading_stats(Some(today));
+        let _ = state.collect_reading_stats(Some(today));
         assert_eq!(state.reading_stats.day(today).seconds, 82);
     }
 
@@ -1576,7 +1624,7 @@ mod tests {
         state.board.rtc = None;
         state.apply_with_clock(ButtonEvent::Down, 10_000);
         state.apply_with_clock(ButtonEvent::Down, 70_000);
-        state.collect_reading_stats(None);
+        let _ = state.collect_reading_stats(None);
         assert_eq!(state.reading_stats.day(0).seconds, 0);
         assert!(!state.reading_stats.has_unsaved());
     }
@@ -2110,6 +2158,60 @@ mod tests {
             state.take_voice_notes_request(),
             Some(crate::voice_notes::VoiceNotesUiRequest::StartRecording)
         );
+    }
+
+    #[test]
+    fn ai_hub_opens_xiaozhi_placeholder_and_note_details_newest_first() {
+        let mut state = open_from_home(ScreenRoute::Ai);
+        // XiaoZhi is the first hub row.
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::XiaoZhi);
+        state.back();
+        // Two notes: hub order is newest first, list order is oldest first.
+        state.voice_notes.notes = vec![
+            crate::voice_notes::VoiceNoteEntry {
+                file_name: "NOTE_001.WAV".into(),
+                title: "Oldest".into(),
+                recorded_at: "2026-09-28  08:00:00".into(),
+                wav_bytes: 1,
+                pcm_bytes: 1,
+                duration_seconds: 60,
+            },
+            crate::voice_notes::VoiceNoteEntry {
+                file_name: "NOTE_002.WAV".into(),
+                title: "Newest".into(),
+                recorded_at: "2026-10-02  12:04:00".into(),
+                wav_bytes: 1,
+                pcm_bytes: 1,
+                duration_seconds: 1_080,
+            },
+        ];
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::VoiceNoteDetails);
+        assert_eq!(
+            state
+                .voice_notes
+                .selected_note()
+                .map(|note| note.title.as_str()),
+            Some("Newest")
+        );
+    }
+
+    #[test]
+    fn ai_hub_boot_short_starts_a_recording_through_the_request() {
+        let mut state = open_from_home(ScreenRoute::Ai);
+        assert!(state.apply_ai_hub_boot_short_press());
+        assert_eq!(state.active_route(), ScreenRoute::VoiceNoteRecording);
+        assert_eq!(
+            state.take_voice_notes_request(),
+            Some(crate::voice_notes::VoiceNotesUiRequest::StartRecording)
+        );
+        // The hook is hub-specific.
+        let mut elsewhere = AppState::default();
+        elsewhere.router.navigate_to(ScreenRoute::Home);
+        assert!(!elsewhere.apply_ai_hub_boot_short_press());
     }
 
     #[test]

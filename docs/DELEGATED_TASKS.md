@@ -379,7 +379,12 @@ recent notes. Today Home › AI is a two-row category.
 **Tests:** rows and selection, the three newest notes, an empty catalog.
 **Preview:** `ai` with sample notes.
 
-**Status:** not started.
+**Status:** done on `side-tasks-5`. The hub reuses the Games hub's card and
+info-box painters, notes open through the Voice Notes list cursor (details
+read `selected - 2`, so the hub maps newest-first onto the oldest-first
+list), and short BOOT queues the same `StartRecording` request the list's
+first row does. `Ai` left the category list like Games, so it renders as a
+hub; transcription, summaries and Settings › AI wait for Phase 7.
 
 ## Round 4 tasks (done in v0.9.3)
 

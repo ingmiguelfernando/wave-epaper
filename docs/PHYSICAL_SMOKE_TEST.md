@@ -185,6 +185,12 @@ light sleep. Restore the owner's original preferences afterward.
 
 ## Other implemented SD tools
 
+- [ ] Home › AI hub: XiaoZhi card with SOON, Voice Notes card, `RECENT
+	NOTES` with the three newest (newest first, `Oct 2 · 12:04 · 18 min`
+	stamps), the SD-card info box and the `move / open / BOOT new note` bar.
+	Select opens the placeholder, the list or the chosen note's details;
+	short BOOT starts a recording directly. With no notes the hub still
+	renders.
 - [ ] AI › Voice Notes: record, pause/resume, save, playback, friendly-title
 	edit/cancel, delete confirmation and LAN export; WAV survives reboot.
 - [ ] Dictionary with a full pack: exact lookup, prefix fallback and `*`

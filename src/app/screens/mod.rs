@@ -6,6 +6,7 @@ use crate::orientation::OrientedFrameBuffer;
 
 use super::{router::ScreenRoute, state::AppState};
 
+pub mod ai;
 pub mod alarms;
 pub mod audio;
 pub mod bible;
@@ -44,6 +45,7 @@ pub fn render_active_screen(
 ) -> Result<(), Infallible> {
     match state.active_route() {
         ScreenRoute::Home => home::render_home(display, state),
+        ScreenRoute::Ai => ai::render_ai_hub(display, state),
         ScreenRoute::Settings => settings::render_settings(display, state),
         ScreenRoute::SettingsClockAlarms | ScreenRoute::SettingsSystem => {
             settings::render_settings_sublist(display, state)
@@ -109,7 +111,6 @@ pub fn render_active_screen(
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),
         ScreenRoute::DeviceInfoRuntime => device_info::render_device_info_runtime(display, state),
         ScreenRoute::Reader
-        | ScreenRoute::Ai
         | ScreenRoute::Tools
         | ScreenRoute::GamesTbd
         | ScreenRoute::Bible

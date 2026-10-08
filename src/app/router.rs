@@ -204,7 +204,6 @@ impl ScreenRoute {
         matches!(
             self,
             Self::Reader
-                | Self::Ai
                 | Self::Tools
                 | Self::Settings
                 | Self::SettingsClockAlarms
@@ -351,7 +350,8 @@ mod tests {
             ScreenRoute::WeatherSettings.parent(),
             Some(ScreenRoute::Settings)
         );
-        assert!(ScreenRoute::Ai.is_category());
+        // AI is the hub screen now, like Games: not a category list.
+        assert!(!ScreenRoute::Ai.is_category());
         assert_eq!(
             ScreenRoute::CalendarAgenda.parent(),
             Some(ScreenRoute::Calendar)

@@ -98,21 +98,6 @@ const READER_ENTRIES: [MenuEntry; 3] = [
     },
 ];
 
-const AI_ENTRIES: [MenuEntry; 2] = [
-    MenuEntry {
-        label: "XiaoZhi",
-        subtitle: "Voice chat with xiaozhi.me",
-        badge: SOON_BADGE,
-        route: ScreenRoute::XiaoZhi,
-    },
-    MenuEntry {
-        label: "Voice Notes",
-        subtitle: "Record voice notes to the SD card",
-        badge: "",
-        route: ScreenRoute::VoiceNotes,
-    },
-];
-
 const TOOLS_ENTRIES: [MenuEntry; 4] = [
     MenuEntry {
         label: "File Browser",
@@ -238,7 +223,6 @@ pub const fn home_entries() -> &'static [MenuEntry] {
 pub const fn category_entries(route: ScreenRoute) -> &'static [MenuEntry] {
     match route {
         ScreenRoute::Reader => &READER_ENTRIES,
-        ScreenRoute::Ai => &AI_ENTRIES,
         ScreenRoute::Tools => &TOOLS_ENTRIES,
         ScreenRoute::Settings => &SETTINGS_ENTRIES,
         ScreenRoute::SettingsClockAlarms => &SETTINGS_CLOCK_ALARMS_ENTRIES,
@@ -294,8 +278,8 @@ mod tests {
     #[test]
     fn categories_have_entries_without_synthetic_back_rows() {
         assert_eq!(category_entries(ScreenRoute::Reader).len(), 3);
-        assert_eq!(category_entries(ScreenRoute::Ai).len(), 2);
-        // Games is the hub screen now: no static menu entries.
+        // Games and AI are hub screens now: no static menu entries.
+        assert_eq!(category_entries(ScreenRoute::Ai).len(), 0);
         assert_eq!(category_entries(ScreenRoute::Games).len(), 0);
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
         assert_eq!(category_entries(ScreenRoute::Settings).len(), 7);

@@ -122,7 +122,7 @@ fn draw_game_card(
 }
 
 /// Paper-colored text when the card is selected, ink otherwise.
-fn card_text(
+pub(crate) fn card_text(
     preferences: DisplayPreferences,
     selected: bool,
     role: UiTextRole,
@@ -235,7 +235,7 @@ fn draw_icon(
 }
 
 /// The mockup's dashed info box.
-fn draw_info_box(
+pub(crate) fn draw_info_box(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
     text: &str,

@@ -392,6 +392,11 @@ impl VoiceNotesUiState {
         }
     }
 
+    /// Queue a recording start, as the list's `Record new note` row does.
+    pub fn request_start_recording(&mut self) {
+        self.request = Some(VoiceNotesUiRequest::StartRecording);
+    }
+
     #[must_use]
     pub fn take_request(&mut self) -> Option<VoiceNotesUiRequest> {
         self.request.take()

@@ -324,6 +324,9 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
             state.lua_runtime.records.tetris_zen = 18_950;
             state.lua_runtime.records.sudoku_medium = 761;
         }
+        if route == ScreenRoute::Ai {
+            state.voice_notes.notes = sample_voice_notes();
+        }
         states.push((name, state));
     }
 
@@ -439,6 +442,35 @@ fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
         board: grid(puzzle),
         seconds: 761,
     }
+}
+
+/// Notes oldest first, as the catalog scans them, so the AI hub's recent
+/// list reads newest first.
+fn sample_voice_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
+    let note =
+        |name: &str, title: &str, stamp: &str, seconds: u32| crate::voice_notes::VoiceNoteEntry {
+            file_name: name.into(),
+            title: title.into(),
+            recorded_at: stamp.into(),
+            wav_bytes: 3_400_000,
+            pcm_bytes: 1_900_000,
+            duration_seconds: seconds,
+        };
+    vec![
+        note(
+            "NOTE_001.WAV",
+            "Idea: reading club",
+            "2026-09-30  09:15:12",
+            180,
+        ),
+        note("NOTE_002.WAV", "Call with Ana", "2026-10-01  07:30:45", 420),
+        note(
+            "NOTE_003.WAV",
+            "Team meeting: Q4 budget",
+            "2026-10-02  12:04:33",
+            1_080,
+        ),
+    ]
 }
 
 /// Four SD games so the hub preview looks like a card in use.

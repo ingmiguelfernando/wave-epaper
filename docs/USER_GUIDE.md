@@ -43,7 +43,7 @@ Select opens the highlighted one.
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |
-| AI | XiaoZhi (SOON) and implemented Voice Notes |
+| AI | Hub: XiaoZhi (SOON), Voice Notes and its three newest notes |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
 | Settings | One page of groups: Display, Sleep screen, Weather, Wi-Fi & transfer, Clock & alarms, Power, System |
 
@@ -311,9 +311,19 @@ These are button-driven samples. Tetris Classic gravity belongs to Phase 6. A
 missing/invalid SD app reports an error;
 hold BOOT returns to the catalog.
 
-## AI › Voice Notes
+## AI
 
-XiaoZhi remains a SOON placeholder. Voice Notes records local PCM16 mono
+Home › AI opens the hub: the status bar shows the network state, a XiaoZhi
+card (`Voice chat · xiaozhi.me`, SOON), a Voice Notes card (`Record ›
+transcript › summary`), the three newest notes (title, then `Oct 2 · 12:04 ·
+18 min`) and a note that recordings stay on the SD card. ▲▼ moves through
+the cards and notes, ● opens XiaoZhi, Voice Notes or the note's details,
+and a short BOOT starts a new recording from anywhere on the hub.
+Transcription and summaries are not implemented yet.
+
+### Voice Notes
+
+Voice Notes records local PCM16 mono
 16 kHz WAV; it does not transcribe or summarize recordings.
 
 - List: Up/Down chooses Record new note, microphone gain or a saved note;

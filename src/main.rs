@@ -1727,7 +1727,8 @@ ed={}",
                     };
                     let screen_context = state.apply_photos_boot_short_press()
                         || state.apply_sleep_screen_boot_short_press()
-                        || state.apply_weather_boot_short_press();
+                        || state.apply_weather_boot_short_press()
+                        || state.apply_ai_hub_boot_short_press();
                     if calendar_agenda_context
                         || keyboard_context
                         || lua_game_context
