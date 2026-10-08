@@ -131,8 +131,10 @@ Do differently next time:
 
 ### Rules
 
-- English everywhere: UI text, code, comments, commits, docs. The device UI is
-  terse (bottom bar labels such as `move`, `change`, `hold: back`).
+- English everywhere: UI text, code, comments, commits, docs. One exception:
+  the Bible app's screens are in Spanish (D30); its code stays English. The
+  device UI is terse (bottom bar labels such as `move`, `change`, `hold:
+  back`).
 - Follow the existing patterns; the closest reference is named in each task.
   No new dependencies unless a task says so.
 - Do not bump the version (Cargo.toml, sdkconfig.defaults, build_info.rs); the
@@ -270,38 +272,60 @@ without `index.tsv`.
 
 **Status:**
 
-### D30: Bible reading view
+### D30: Bible reading view, in Spanish
 
-**Why.** Phase 5, mockup "Bible: lectura". Home › Bible says SOON, and the
-book and chapter pickers (D20) are drawn only in previews.
+**Why.** Phase 5, mockups "Bible: lectura" and "Bible: elegir libro". Home ›
+Bible says SOON, and the book and chapter pickers (D20) are drawn only in
+previews, in English. The owner wants this app in Spanish.
 
 **Change.**
 
+- **Language.** Every screen from Home › Bible on is in Spanish, bottom bars
+  included; the mockup has the texts. Home's row stays `Bible`. Code,
+  comments and tests stay English.
+- **Book picker** (D20's, translated and easier to read):
+  - status bar `Ir a · Libro` with the translation on the right, then
+    `Antiguo Testamento · sección 3 de 8` (or `Nuevo Testamento`) and the
+    section name large;
+  - sections: `Pentateuco`, `Libros históricos`, `Poesía y sabiduría`,
+    `Profetas mayores`, `Profetas menores`, `Evangelios y Hechos`, `Cartas
+    de Pablo`, `Cartas generales y Apocalipsis`;
+  - the tabs become a thumb index, like the edge of a printed Bible: each
+    shows its section's first book as a D29 short name in capitals (`GÉN JOS
+    JOB ISA OSE MAT ROM HEB`), so no English code (`HIS`, `GOS`) remains;
+  - rows `Salmos` with `150 cap.`, the line `Siguiente (BOOT): Profetas
+    mayores · Isaías, Jeremías…`, and the bottom bar `▲▼ libro ● capítulos
+    BOOT sección ›`;
+  - it opens on the book being read, in its section.
+- **Chapter grid:** `Ir a · Capítulo`, `Capítulos 1–60 de 150`, bottom bar
+  `▲▼ capítulo ● leer BOOT +10`; it opens on the chapter being read.
 - **Routes.** Home › Bible opens the reading view at the last place; on
-  first use, or when that place is gone, the book picker opens. The pickers
-  work as D20 drew them (▲▼ book, BOOT next section, ● chapters), and ● on
-  a chapter opens it. Hold BOOT walks back: chapters, books, then the
-  reading view or Home.
+  first use, or when that place is gone, the book picker opens. ● on a
+  chapter opens it. Hold BOOT walks back: chapters, books, then the reading
+  view or Home.
 - **Reading view** as the mockup:
-  - a header `BIBLE · RVR1960` with the time and battery, like Reader pages;
+  - a header `BIBLIA · RVR1960` with the time and battery, like Reader pages;
   - the chapter title (`Salmos 23`) large, then a rule;
   - headings in bold; each verse starts a line with its number small and
     raised; verse text in the Reader's book font and size
     (`reader_body_style` with the Reader preferences), wrapped and
     hyphenated by language like Reader pages;
-  - the bottom bar `▲▼ page ● menu`, and `Sal 23 · 1/2` above it on the
-    right.
+  - the bottom bar `▲▼ página ● menú BOOT capítulos`, and `Sal 23 · 1/2`
+    above it on the right.
 - **Paging.** ▲▼ turn pages. Past the last page the next chapter opens (the
   next book after the last chapter); before the first page, the previous
-  chapter's last page. Pages are laid out per chapter.
-- **Menu.** ● opens an option list (`widgets/option_list.rs`): `Go to book`,
-  `Go to chapter`, and `Translation` when the card has more than one.
+  chapter's last page. Pages are laid out per chapter. Short BOOT jumps to
+  the chapter grid of the book being read.
+- **Menu.** ● opens an option list (`widgets/option_list.rs`): `Ir a libro`,
+  `Ir a capítulo`, `Versículo del día` when `VERSES.TXT` exists (today's
+  verse through D29's helper), and `Traducción` when the card has more than
+  one.
 - **Place.** `/RUSTMIX/BIBLE/STATE.TXT` (`translation`, `book` as USFM,
   `chapter`, `page`) through `sd_file`, saved when the view closes and before
   sleep, never per page. The Home row shows `Sal 23` the way Reading Stats
   shows its streak, and `Bible` leaves the placeholder set.
-- **No Bible on the card.** The view says how to add one (a line pointing to
-  SD_CARD_SETUP) with `BACK_HINTS`.
+- **No Bible on the card.** The view says, in Spanish, how to add one (a
+  line pointing to SD_CARD_SETUP), with a `BOOT mantener: volver` bar.
 - The Bible state takes its root from a constructor, so tests use a temp
   folder (as `PhotosUiState::with_roots` does).
 - **main.rs:** one line before sleep, next to the reading-stats save, to
@@ -309,9 +333,12 @@ book and chapter pickers (D20) are drawn only in previews.
 
 **Tests:** through `AppState::apply` from Home: first use opens the picker,
 choosing a book and chapter opens the view, paging crosses into the next
-and the previous chapter, the place survives a reload, the Home label; the
-layout fits at every Reader size. **Previews:** `bible-reading` (Psalm 23
-from the fixture), `bible-reading-large`, `bible-menu`, `bible-missing`.
+and the previous chapter, short BOOT opens the chapter grid on the current
+chapter, the place survives a reload, the Home label; the thumb index for
+the sample books; the layout fits at every Reader and UI size.
+**Previews:** `bible-reading` (Psalm 23 from the fixture),
+`bible-reading-large`, `bible-books`, `bible-chapters`, `bible-menu`,
+`bible-missing`.
 
 **Status:**
 

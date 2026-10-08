@@ -236,13 +236,19 @@ its wiring.
   ("Jehová es mi pastor"), the index makes chapter reads cheap, and the
   owner already converts with that script. The `BOOKS.TXT` reader of D10
   goes. The text never goes into this repo.
-- **Navigation.** Home › Bible → book picker → chapter grid → reading view.
-  - The book picker follows the mockup "Go to · Book": eight sections
-    (Pentateuch, History, Poetry & Wisdom, Major Prophets, Minor Prophets,
-    Gospels & Acts, Paul's Letters, General Letters & Revelation). BOOT jumps
-    to the next section, ▲▼ moves through its books, ● opens the chapters.
+- **Language.** The Bible app is the one part of the UI in Spanish (owner's
+  decision, 2026-10-08): every screen from Home › Bible on. Home's row stays
+  `Bible`.
+- **Navigation.** Home › Bible opens the last place; the book picker, then
+  the chapter grid, then the reading view on first use.
+  - The book picker follows the mockup "Bible: elegir libro": eight sections
+    (Pentateuco, Libros históricos, Poesía y sabiduría, Profetas mayores,
+    Profetas menores, Evangelios y Hechos, Cartas de Pablo, Cartas generales
+    y Apocalipsis), with a thumb index of each section's first book (`GÉN JOS
+    JOB ISA OSE MAT ROM HEB`) instead of English codes. BOOT jumps to the
+    next section, ▲▼ moves through its books, ● opens the chapters.
   - The reading view uses the Reader typography and pagination, with small
-    verse numbers.
+    verse numbers; short BOOT jumps to the chapter grid.
   - The last position is remembered, and Home shows it (for example `Sal 23`).
 - **Verse of the day.** Picked from `/RUSTMIX/BIBLE/VERSES.TXT` (one reference
   per line) by date. Used by the sleep screen in Phase 3b.
