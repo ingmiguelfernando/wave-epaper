@@ -89,6 +89,106 @@ pub fn save_record(root: &std::path::Path, wav_name: &str, record: &NoteRecord) 
     crate::sd_file::replace(&root.join(name), &record.serialized()).context("saving the AI record")
 }
 
+/// The oldest queued note: notes sort by WAV name, and the numbers increase
+/// with each recording, so the lowest queued name is the oldest.
+#[must_use]
+pub fn next_job(queued: &[String]) -> Option<String> {
+    queued.iter().min().cloned()
+}
+
+/// Move a note's record from `from` to `to`, saving it. A note that is not in
+/// `from` is an error: the queue never skips a step.
+fn advance(
+    root: &std::path::Path,
+    wav_name: &str,
+    from: NoteState,
+    change: impl FnOnce(&mut NoteRecord),
+    to: NoteState,
+) -> Result<NoteRecord> {
+    let mut record =
+        load_record(root, wav_name)?.with_context(|| format!("no AI record for {wav_name}"))?;
+    if record.state != from {
+        bail!(
+            "{wav_name} is {}, expected {}",
+            record.state.marker(),
+            from.marker()
+        );
+    }
+    change(&mut record);
+    record.state = to;
+    save_record(root, wav_name, &record)?;
+    Ok(record)
+}
+
+/// Queued → transcribing.
+pub fn begin_transcription(root: &std::path::Path, wav_name: &str) -> Result<NoteRecord> {
+    advance(
+        root,
+        wav_name,
+        NoteState::Queued,
+        |_| {},
+        NoteState::Transcribing,
+    )
+}
+
+/// Transcribing → summarizing, keeping the transcript and its language.
+pub fn finish_transcription(
+    root: &std::path::Path,
+    wav_name: &str,
+    transcript: &str,
+    language: &str,
+    transcribed_by: &str,
+) -> Result<NoteRecord> {
+    advance(
+        root,
+        wav_name,
+        NoteState::Transcribing,
+        |record| {
+            record.transcript = transcript.to_string();
+            record.language = language.to_string();
+            record.transcribed_by = transcribed_by.to_string();
+        },
+        NoteState::Summarizing,
+    )
+}
+
+/// Summarizing → done: the title is the first line of the reply, the rest
+/// the summary (through `ai_client::split_title`).
+pub fn finish_summary(
+    root: &std::path::Path,
+    wav_name: &str,
+    content: &str,
+    summarized_by: &str,
+) -> Result<NoteRecord> {
+    let (title, summary) = crate::ai_client::split_title(content);
+    advance(
+        root,
+        wav_name,
+        NoteState::Summarizing,
+        |record| {
+            record.title = title;
+            record.summary = summary;
+            record.summarized_by = summarized_by.to_string();
+            record.error = String::new();
+        },
+        NoteState::Done,
+    )
+}
+
+/// Any working step → failed, keeping the reason. A note already done or
+/// failed is left as it is.
+pub fn fail(root: &std::path::Path, wav_name: &str, error: &str) -> Result<NoteRecord> {
+    let mut record =
+        load_record(root, wav_name)?.with_context(|| format!("no AI record for {wav_name}"))?;
+    if matches!(record.state, NoteState::Done | NoteState::Failed) {
+        return Ok(record);
+    }
+    record.state = NoteState::Failed;
+    record.error = one_line(error);
+    save_record(root, wav_name, &record)?;
+    Ok(record)
+}
+
 /// Delete the record of `wav_name`, if there is one. A note's delete calls
 /// this, so no record outlives its WAV.
 pub fn delete_record(root: &std::path::Path, wav_name: &str) -> Result<()> {
@@ -263,6 +363,72 @@ mod tests {
     fn unknown_header_keys_are_ignored() {
         let parsed = NoteRecord::parse("state=queued\nfuture=1\n").unwrap();
         assert_eq!(parsed.state, NoteState::Queued);
+    }
+
+    #[test]
+    fn a_note_walks_queued_to_done_through_the_steps() {
+        let root = std::env::temp_dir().join(format!("wave-voice-queue-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        save_record(&root, "VOICE002.WAV", &NoteRecord::queued()).unwrap();
+        let note = "VOICE002.WAV";
+        assert_eq!(
+            begin_transcription(&root, note).unwrap().state,
+            NoteState::Transcribing
+        );
+        let after = finish_transcription(&root, note, "Comprar pan.", "es", "Groq").unwrap();
+        assert_eq!(
+            (after.state, after.language.as_str()),
+            (NoteState::Summarizing, "es")
+        );
+        let done = finish_summary(&root, note, "Pan y leche\n- Comprar pan", "OpenRouter").unwrap();
+        assert_eq!(done.state, NoteState::Done);
+        assert_eq!(done.title, "Pan y leche");
+        assert_eq!(done.summary, "- Comprar pan");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_step_out_of_order_is_refused_and_changes_nothing() {
+        let root = std::env::temp_dir().join(format!("wave-voice-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        save_record(&root, "VOICE003.WAV", &NoteRecord::queued()).unwrap();
+        // A summary before any transcript is not a valid step.
+        assert!(finish_summary(&root, "VOICE003.WAV", "Title\nbody", "OpenRouter").is_err());
+        assert_eq!(
+            load_record(&root, "VOICE003.WAV").unwrap().unwrap().state,
+            NoteState::Queued,
+            "the refused step left the note queued"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_failure_keeps_its_reason_and_a_done_note_stays_done() {
+        let root = std::env::temp_dir().join(format!("wave-voice-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        save_record(&root, "VOICE004.WAV", &NoteRecord::queued()).unwrap();
+        let failed = fail(&root, "VOICE004.WAV", "HTTP 429").unwrap();
+        assert_eq!(
+            (failed.state, failed.error.as_str()),
+            (NoteState::Failed, "HTTP 429")
+        );
+        // A note already failed keeps its first reason: the second call is a no-op.
+        assert_eq!(
+            fail(&root, "VOICE004.WAV", "other").unwrap().error,
+            "HTTP 429"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_queue_takes_the_oldest_note_first() {
+        let queued = vec![
+            "VOICE010.WAV".to_string(),
+            "VOICE002.WAV".into(),
+            "VOICE007.WAV".into(),
+        ];
+        assert_eq!(next_job(&queued).as_deref(), Some("VOICE002.WAV"));
+        assert_eq!(next_job(&[]), None);
     }
 
     #[test]

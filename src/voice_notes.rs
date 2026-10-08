@@ -443,6 +443,13 @@ impl VoiceNotesUiState {
         }
     }
 
+    /// Whether a finished recording goes straight to the AI queue. With
+    /// `process=online` it does; `manual` waits for the note's own action.
+    #[must_use]
+    pub const fn queues_on_save(process: crate::ai_config::AiProcess) -> bool {
+        matches!(process, crate::ai_config::AiProcess::Online)
+    }
+
     pub fn complete_recording(&mut self, entry: VoiceNoteEntry) {
         self.mode = VoiceNotesMode::Saved;
         self.active_file = Some(entry.file_name.clone());
@@ -1104,6 +1111,13 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn only_online_processing_queues_a_note_on_save() {
+        use crate::ai_config::AiProcess;
+        assert!(VoiceNotesUiState::queues_on_save(AiProcess::Online));
+        assert!(!VoiceNotesUiState::queues_on_save(AiProcess::Manual));
+    }
 
     #[test]
     fn deleting_a_note_deletes_its_ai_record() {
