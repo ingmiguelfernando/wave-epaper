@@ -2071,7 +2071,8 @@ mod firmware {
     }
 
     fn rtc_line_idle() -> bool {
-        unsafe { sys::gpio_get_level(RTC_ALARM_INTERRUPT_GPIO as i32) } != 0
+        let level = unsafe { sys::gpio_get_level(RTC_ALARM_INTERRUPT_GPIO as i32) };
+        level != 0
     }
 
     /// While asleep, BOOT and the wheel end sleep only when the wake-keys
