@@ -349,7 +349,15 @@ the sample books; the layout fits at every Reader and UI size.
 `bible-reading-large`, `bible-books`, `bible-chapters`, `bible-menu`,
 `bible-missing`.
 
-**Status:**
+**Status:** partial on `side-tasks-6`. Done: place file `STATE.TXT` through
+`sd_file` (`bible_place.rs`), paging model (`bible_reader.rs`), Bible state
+with an empty-root guard (`bible_state.rs`), five Bible sub-routes, Spanish
+picker texts and section names, the Spanish no-Bible view, and the SOON badge
+gone from Home's row. Checked on the script's real output of RVR1960 (an
+ignored test; set `BIBLE_FOLDER`). Open: the reading view (the route still
+shows the picker), the Spanish thumb index (tabs still read `PEN`, `HIS`),
+Home routing and hold-BOOT walk-back, the menu, the place save in `main.rs`,
+previews, User Guide and smoke test. Device check after completion.
 
 ### D31: Tetris Classic
 

@@ -729,4 +729,36 @@ mod tests {
         assert_eq!(Testament::from_book_number(40), Some(Testament::New));
         assert_eq!(Testament::from_book_number(67), None);
     }
+
+    /// Reads a folder the script wrote from the real JSON. Run locally with
+    /// `BIBLE_FOLDER=/path/to/bible/<abbr> cargo test -- --ignored`; the text is
+    /// never stored in the repository.
+    #[test]
+    #[ignore = "needs BIBLE_FOLDER pointing at a script output folder"]
+    fn real_script_output_reads_through_the_device_path() {
+        let folder =
+            std::path::PathBuf::from(std::env::var("BIBLE_FOLDER").expect("set BIBLE_FOLDER"));
+        let text = fs::read_to_string(folder.join("index.tsv")).unwrap();
+        let books = parse_index(&text).unwrap();
+        assert_eq!(books.len(), 66, "every canonical book is on the index");
+        // The reader joins root/translation, so the root is the folder's parent.
+        let root = folder.parent().unwrap().to_path_buf();
+        let translation = folder.file_name().unwrap().to_string_lossy().into_owned();
+        let genesis = &books[0];
+        // The script writes a chapter heading before verse 1.
+        let first = load_chapter(&root, &translation, genesis, 1).unwrap();
+        assert!(matches!(first.first(), Some(ChapterItem::Heading(_))));
+        assert!(first.iter().any(|item| matches!(
+            item,
+            ChapterItem::Verse { label, .. } if label == "1"
+        )));
+        let psalms = books.iter().find(|book| book.usfm == "PSA").unwrap();
+        let twenty_three = load_chapter(&root, &translation, psalms, 23).unwrap();
+        assert!(twenty_three
+            .iter()
+            .any(|item| matches!(item, ChapterItem::Heading(_))));
+        assert!(twenty_three
+            .iter()
+            .any(|item| matches!(item, ChapterItem::Verse { .. })));
+    }
 }

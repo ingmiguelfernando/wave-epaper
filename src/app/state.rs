@@ -162,6 +162,8 @@ pub struct AppState {
     /// Battery use across the most recent sleep, for Settings › Power.
     pub last_sleep: Option<SleepReport>,
     pub light_sleep: LightSleepShare,
+    /// Bible app: the card's translation, the picker and the place read.
+    pub bible: crate::bible_state::BibleUiState,
     /// Reading time and page turns, persisted as `/RUSTMIX/READER/STATS.TXT`.
     pub reading_stats: ReadingStats,
     /// Key-driven reading time while a Reader page is open.
@@ -225,6 +227,8 @@ impl Default for AppState {
             full_refresh_requested: false,
             last_sleep: None,
             light_sleep: LightSleepShare::default(),
+            // Empty root: no card is read until boot loads the real one.
+            bible: crate::bible_state::BibleUiState::with_root(""),
             reading_stats: ReadingStats::default(),
             reading_clock: ReadingClock::default(),
             reading_pages: 0,

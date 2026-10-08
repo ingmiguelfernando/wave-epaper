@@ -15,6 +15,11 @@ pub enum ScreenRoute {
     Photos,
     PhotoViewer,
     Bible,
+    BibleBooks,
+    BibleChapters,
+    BibleReading,
+    BibleMenu,
+    BibleMissing,
     ReadingStats,
     XiaoZhi,
     ContinueReading,
@@ -81,6 +86,11 @@ impl ScreenRoute {
             Self::Photos => "Photos",
             Self::PhotoViewer => "Photo",
             Self::Bible => "Bible",
+            Self::BibleBooks => "Bible books",
+            Self::BibleChapters => "Bible chapters",
+            Self::BibleReading => "Bible reading",
+            Self::BibleMenu => "Bible menu",
+            Self::BibleMissing => "Bible missing",
             Self::ReadingStats => "Reading Stats",
             Self::XiaoZhi => "XiaoZhi",
             Self::ContinueReading => "Continue Reading",
@@ -147,6 +157,11 @@ impl ScreenRoute {
             Self::Photos => "photos",
             Self::PhotoViewer => "photo-viewer",
             Self::Bible => "bible",
+            Self::BibleBooks => "bible-books",
+            Self::BibleChapters => "bible-chapters",
+            Self::BibleReading => "bible-reading",
+            Self::BibleMenu => "bible-menu",
+            Self::BibleMissing => "bible-missing",
             Self::ReadingStats => "reading-stats",
             Self::XiaoZhi => "xiaozhi",
             Self::ContinueReading => "continue-reading",
@@ -213,7 +228,7 @@ impl ScreenRoute {
 
     #[must_use]
     pub const fn is_placeholder(self) -> bool {
-        matches!(self, Self::GamesTbd | Self::Bible | Self::XiaoZhi)
+        matches!(self, Self::GamesTbd | Self::XiaoZhi)
     }
 
     #[must_use]
@@ -227,8 +242,13 @@ impl ScreenRoute {
             | Self::Settings
             | Self::Photos
             | Self::Bible
+            | Self::BibleReading
+            | Self::BibleBooks
+            | Self::BibleMissing
             | Self::ReadingStats
             | Self::Weather => Some(Self::Home),
+            Self::BibleChapters => Some(Self::BibleBooks),
+            Self::BibleMenu => Some(Self::BibleReading),
             Self::SettingsClockAlarms | Self::SettingsSystem => Some(Self::Settings),
             Self::ContinueReading | Self::Library | Self::Bookmarks => Some(Self::Reader),
             Self::PhotoViewer => Some(Self::Photos),

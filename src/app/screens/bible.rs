@@ -12,6 +12,7 @@ use embedded_graphics::{
 use crate::{
     app::{
         display::DisplayPreferences,
+        state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
             bottom_bar::{draw_bottom_bar, KeyCap},
@@ -38,17 +39,27 @@ const ROW_RIGHT: i32 = 464;
 const BOOKS_TOP: i32 = 286;
 const BOOK_ROWS_SHOWN: usize = 7;
 
+/// Spanish bottom bar of the book picker: ▲▼ libro, ● capítulos, BOOT sección.
 pub const BOOKS_HINTS: [(KeyCap, &str); 3] = [
-    (KeyCap::UpDown, "book"),
-    (KeyCap::Select, "chapter"),
-    (KeyCap::Boot, "section >"),
+    (KeyCap::UpDown, "libro"),
+    (KeyCap::Select, "capítulos"),
+    (KeyCap::Boot, "sección ›"),
 ];
 
+/// Spanish bottom bar of the chapter grid: ▲▼ capítulo, ● leer, BOOT +10.
 pub const CHAPTERS_HINTS: [(KeyCap, &str); 3] = [
-    (KeyCap::UpDown, "chapter"),
-    (KeyCap::Select, "read"),
+    (KeyCap::UpDown, "capítulo"),
+    (KeyCap::Select, "leer"),
     (KeyCap::Boot, "+10"),
 ];
+
+/// Spanish testament line of the book picker.
+fn testament_label(testament: Testament) -> &'static str {
+    match testament {
+        Testament::New => "Nuevo Testamento",
+        Testament::Old => "Antiguo Testamento",
+    }
+}
 
 /// Draw the picker view the navigation state currently points at.
 pub fn render_bible_nav(
@@ -69,17 +80,18 @@ fn render_books(
     translation: &str,
     nav: &BibleNav,
 ) -> Result<(), Infallible> {
-    draw_header(display, preferences, "GO TO · BOOK", translation)?;
+    draw_header(display, preferences, "IR A · LIBRO", translation)?;
     let detail = preferences.detail_style();
     let large = preferences.large_style();
     let section = nav.section();
-    let testament = match Testament::from_book_number(section.first) {
-        Some(Testament::New) => "New Testament",
-        _ => "Old Testament",
-    };
+    let testament = Testament::from_book_number(section.first).unwrap_or(Testament::Old);
     Text::new(
         &detail.fit(
-            &format!("{testament} · section {} of 8", nav.section_cursor() + 1),
+            &format!(
+                "{} · sección {} de 8",
+                testament_label(testament),
+                nav.section_cursor() + 1
+            ),
             RIGHT - LEFT,
         ),
         Point::new(LEFT, 132),
@@ -332,3 +344,72 @@ mod tests {
         }
     }
 }
+
+/// Book picker for the Home › Bible route and its book list.
+pub fn render_bible_books_screen(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    match state.bible.translation() {
+        Some(translation) => {
+            render_bible_nav(display, state.display, translation, state.bible.nav())
+        }
+        None => render_bible_missing(display, state),
+    }
+}
+
+/// Chapter grid of the selected book.
+pub fn render_bible_chapters_screen(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    match state.bible.translation() {
+        Some(translation) => {
+            render_bible_nav(display, state.display, translation, state.bible.nav())
+        }
+        None => render_bible_missing(display, state),
+    }
+}
+
+/// Reading view of the open place. Filled in by the reading view step.
+pub fn render_bible_reading(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    render_bible_books_screen(display, state)
+}
+
+/// Menu of the reading view. Filled in by the menu step.
+pub fn render_bible_menu(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    render_bible_books_screen(display, state)
+}
+
+/// The Spanish message for a card without Bible text.
+pub fn render_bible_missing(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let preferences = state.display;
+    draw_header(display, preferences, "BIBLIA", "SIN TEXTO")?;
+    let body = preferences.body_style();
+    let lines = [
+        "No hay Biblia en la tarjeta.",
+        "Copie la carpeta de la Biblia en /RUSTMIX/BIBLE.",
+        "Vea SD_CARD_SETUP para preparar el texto.",
+    ];
+    for (index, line) in lines.iter().enumerate() {
+        Text::new(
+            &body.fit(line, RIGHT - LEFT),
+            Point::new(LEFT, 200 + index as i32 * 40),
+            body,
+        )
+        .draw(display)?;
+    }
+    draw_bottom_bar(display, preferences, &MISSING_HINTS)
+}
+
+/// Only BOOT is live here: it returns to the previous screen.
+pub const MISSING_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "mantener: volver")];

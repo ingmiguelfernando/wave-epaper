@@ -36,7 +36,7 @@ const HOME_ENTRIES: [MenuEntry; HOME_ENTRY_COUNT] = [
     MenuEntry {
         label: "Bible",
         subtitle: "Offline Bible reader",
-        badge: SOON_BADGE,
+        badge: "",
         route: ScreenRoute::Bible,
     },
     MenuEntry {

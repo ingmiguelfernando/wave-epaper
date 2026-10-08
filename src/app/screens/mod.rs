@@ -110,11 +110,16 @@ pub fn render_active_screen(
         ScreenRoute::DeviceInfo => device_info::render_device_info(display, state),
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),
         ScreenRoute::DeviceInfoRuntime => device_info::render_device_info_runtime(display, state),
-        ScreenRoute::Reader
-        | ScreenRoute::Tools
-        | ScreenRoute::GamesTbd
-        | ScreenRoute::Bible
-        | ScreenRoute::XiaoZhi => unreachable!("category and placeholder routes handled above"),
+        ScreenRoute::Bible | ScreenRoute::BibleBooks => {
+            bible::render_bible_books_screen(display, state)
+        }
+        ScreenRoute::BibleChapters => bible::render_bible_chapters_screen(display, state),
+        ScreenRoute::BibleReading => bible::render_bible_reading(display, state),
+        ScreenRoute::BibleMenu => bible::render_bible_menu(display, state),
+        ScreenRoute::BibleMissing => bible::render_bible_missing(display, state),
+        ScreenRoute::Reader | ScreenRoute::Tools | ScreenRoute::GamesTbd | ScreenRoute::XiaoZhi => {
+            unreachable!("category and placeholder routes handled above")
+        }
     }
 }
 
