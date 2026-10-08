@@ -23,9 +23,9 @@ Last updated: 2026-10-08, firmware v0.9.7.
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
 | Phase 3b: sleep screen modes (clock, weather) | | | In progress, with the Weather and sleep-screen mockup pass (display digits, mockup icons) |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
-| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats wired in 0.9.7; the Bible reading view is next |
-| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7; Tetris Classic is next |
-| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | Planned |
+| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats wired in 0.9.7; Bible text and reading view delegated (D29, D30) |
+| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7; Tetris Classic delegated (D31) |
+| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7; Settings › AI and note results delegated (D32, D33) |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
@@ -228,20 +228,14 @@ its wiring.
 
 ### Bible
 
-- **Data.** `/RUSTMIX/BIBLE/<CODE>/`, for example Reina-Valera 1909 (public
-  domain); the owner supplies the text.
-  - `BOOKS.TXT`: one line per book, `number|name|short name|chapters`.
-  - One UTF-8 file per book, `NN.TXT`, with lines
-    `chapter:verse<TAB>text`.
-  - Only this format is documented; conversion happens on a computer.
-  - **Open decision.** The reference project `referencias/folloup-waveshare`
-    already converts a Bible JSON (`scripts/bible_json_to_sd.py`) to
-    `bible/<abbr>/index.tsv`, one `<USFM>.txt` per book with headings,
-    paragraph marks and verses, and a `<USFM>.idx` of chapter byte offsets.
-    Headings are what the mockup's reading view shows ("Jehová es mi
-    pastor"), and the index makes chapter reads cheap. Decide before wiring:
-    read that layout in `bible.rs`, or convert it to `BOOKS.TXT`. The
-    pickers only need book names and chapter counts either way.
+- **Data.** `/RUSTMIX/BIBLE/<ABBR>/` as written by the reference project's
+  `referencias/folloup-waveshare/scripts/bible_json_to_sd.py`: `meta.txt`,
+  `index.tsv`, one `<USFM>.txt` per book with headings, paragraph marks and
+  verses, and a `<USFM>.idx` of chapter byte offsets. Decided on 2026-10-08
+  (task D29): the headings are what the mockup's reading view shows
+  ("Jehová es mi pastor"), the index makes chapter reads cheap, and the
+  owner already converts with that script. The `BOOKS.TXT` reader of D10
+  goes. The text never goes into this repo.
 - **Navigation.** Home › Bible → book picker → chapter grid → reading view.
   - The book picker follows the mockup "Go to · Book": eight sections
     (Pentateuch, History, Poetry & Wisdom, Major Prophets, Minor Prophets,

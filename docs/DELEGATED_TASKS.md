@@ -10,7 +10,7 @@ Pull request #5 (D24 to D28) was reviewed, merged into `main` and released as
 v0.9.7 (milestone `hubs-and-stats`). The screens follow the mockup and the
 round has many tests, but two features never ran on the device: the tested
 path and the device path were different. The `side-tasks-5` branch is
-deleted. Round 6 will be added here with the next main-line release.
+deleted; round 6 is below.
 
 What the main developer changed at merge time:
 
@@ -193,6 +193,250 @@ Do differently next time:
 - **rustfmt call width:** when the arguments of one call add up to more than
   60 characters, they go one per line, even if the line fits in 100. A
   `draw_header(…)` with a 30-character subtitle did.
+- **rustfmt and guards:** rustfmt cannot format `matches!(x, P if guard)`
+  inside a closure and leaves it on one long line. Use `filter_map` with a
+  `match`, or compare with a whole value.
+
+## Round 6 tasks (branch `side-tasks-6`)
+
+Start from `main` at v0.9.7. Five tasks, in this order; D30 uses D29, and
+D33 uses D32's `AI.TXT`.
+
+**Main line during this round.** The main developer builds Phase 3b (clock
+and weather sleep screens, refreshed while the device sleeps) and redraws
+Weather and the sleep screens like the mockup. Leave these files alone:
+
+- `src/main.rs`, except the lines a task names;
+- power and sleep: `src/power*.rs`, `src/sleep_*.rs`,
+  `src/app/screens/sleep_*.rs`, `src/app/screens/power*.rs`;
+- weather: `src/weather*.rs`, `src/app/screens/weather*.rs`;
+- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/big_digits.rs`,
+  `src/app/typography/`, `scripts/fonts/`;
+- photos: `src/photos/`, `src/app/screens/photos.rs`.
+
+The fonts have ASCII, Latin-1 and `– — ‘ ’ ‚ “ ” „ • … ‹ › € ™ −` only: no
+`→`, `✓`, `☐`, `★` or `⌫`. Write `›`, draw the shape, or leave it out.
+
+Every feature needs at least one host test through the path the device
+uses (`AppState::apply` from Home, the catalog and `open_selected`), not
+only through its new type; see the Round 5 result.
+
+### D29: Bible text from the SD card
+
+**Why.** Phase 5. `bible.rs` (D10) reads a `BOOKS.TXT` layout that no card
+has. The owner's Bible is already converted by the reference project's
+`referencias/folloup-waveshare/scripts/bible_json_to_sd.py`; its layout has
+the section headings the mockup shows ("Jehová es mi pastor") and a chapter
+index that makes reads cheap. Decision: Wave reads that layout, and the
+`BOOKS.TXT` reader goes.
+
+**Change.**
+
+- **Files.** `/RUSTMIX/BIBLE/<ABBR>/` holds what the script writes for one
+  translation; the owner copies the script's `bible/<ABBR>/` folder there.
+  Read the script's docstring for the exact rules; do not change it.
+  - `meta.txt`: `key=value` lines (`format`, `abbreviation`, `title`,
+    `language`, `copyright`);
+  - `index.tsv`: one book per line, `usfm<TAB>name<TAB>chapters<TAB>file`;
+  - `<USFM>.txt`: one record per line: `C<TAB>chapter`, `H<TAB>heading` or
+    `V<TAB>label<TAB>paragraph<TAB>text`, with labels like `3` or `3-4` and
+    paragraph `1` when the verse starts one;
+  - `<USFM>.idx`: `chapter<TAB>byte offset of its C line<TAB>verse count`.
+- **Books.** Map USFM codes to 1 to 66 in canonical order (GEN to REV), so
+  the `bible_nav.rs` sections keep working; skip other codes. The short name
+  for labels comes from the name: the first three letters of the first word,
+  keeping a leading number (`Sal`, `Gén`, `1 Cor`).
+- **Chapters.** `load_chapter` seeks to the `.idx` offset and reads records
+  until the next `C` line, returning headings and verses in order (for
+  example `enum ChapterItem { Heading(String), Verse { label, paragraph,
+  text } }`). Without a `.idx`, or when its offset does not land on
+  `C<TAB>chapter`, it scans the file instead. Only that chapter stays in RAM.
+- **Translations.** `translations(root)` lists the folders that hold an
+  `index.tsv`, with the title and language from `meta.txt`.
+- **Verse of the day.** `VERSES.TXT` lines accept a USFM code (`PSA 23:1-3`)
+  besides the book number, and a helper returns the text of one reference
+  for the sleep screen's verse mode (main line).
+- Update `bible_nav.rs`'s sample books and the D20 previews to the new types.
+- **Docs.** `SD_CARD_SETUP.md` gains a Bible section: run the script on a
+  computer, copy the folder, what the device reads. The Bible text never goes
+  into this repo; fixtures use a few public-domain verses (Reina-Valera 1909
+  or the KJV).
+
+**Tests:** a fixture written to a temp folder with two books: headings, a
+`3-4` label, paragraph flags and CRLF lines; reads with and without `.idx`
+and with a stale offset; a malformed record names its file and line; USFM
+and numbered references in `VERSES.TXT`; `translations` skips folders
+without `index.tsv`.
+
+**Status:**
+
+### D30: Bible reading view
+
+**Why.** Phase 5, mockup "Bible: lectura". Home › Bible says SOON, and the
+book and chapter pickers (D20) are drawn only in previews.
+
+**Change.**
+
+- **Routes.** Home › Bible opens the reading view at the last place; on
+  first use, or when that place is gone, the book picker opens. The pickers
+  work as D20 drew them (▲▼ book, BOOT next section, ● chapters), and ● on
+  a chapter opens it. Hold BOOT walks back: chapters, books, then the
+  reading view or Home.
+- **Reading view** as the mockup:
+  - a header `BIBLE · RVR1960` with the time and battery, like Reader pages;
+  - the chapter title (`Salmos 23`) large, then a rule;
+  - headings in bold; each verse starts a line with its number small and
+    raised; verse text in the Reader's book font and size
+    (`reader_body_style` with the Reader preferences), wrapped and
+    hyphenated by language like Reader pages;
+  - the bottom bar `▲▼ page ● menu`, and `Sal 23 · 1/2` above it on the
+    right.
+- **Paging.** ▲▼ turn pages. Past the last page the next chapter opens (the
+  next book after the last chapter); before the first page, the previous
+  chapter's last page. Pages are laid out per chapter.
+- **Menu.** ● opens an option list (`widgets/option_list.rs`): `Go to book`,
+  `Go to chapter`, and `Translation` when the card has more than one.
+- **Place.** `/RUSTMIX/BIBLE/STATE.TXT` (`translation`, `book` as USFM,
+  `chapter`, `page`) through `sd_file`, saved when the view closes and before
+  sleep, never per page. The Home row shows `Sal 23` the way Reading Stats
+  shows its streak, and `Bible` leaves the placeholder set.
+- **No Bible on the card.** The view says how to add one (a line pointing to
+  SD_CARD_SETUP) with `BACK_HINTS`.
+- The Bible state takes its root from a constructor, so tests use a temp
+  folder (as `PhotosUiState::with_roots` does).
+- **main.rs:** one line before sleep, next to the reading-stats save, to
+  save the place.
+
+**Tests:** through `AppState::apply` from Home: first use opens the picker,
+choosing a book and chapter opens the view, paging crosses into the next
+and the previous chapter, the place survives a reload, the Home label; the
+layout fits at every Reader size. **Previews:** `bible-reading` (Psalm 23
+from the fixture), `bible-reading-large`, `bible-menu`, `bible-missing`.
+
+**Status:**
+
+### D31: Tetris Classic
+
+**Why.** Phase 6, mockup "Tetris" and the Games card: Zen has no gravity,
+Classic has slow gravity. `TetrisGame::step()` exists, but nothing calls it.
+
+**Change.**
+
+- **Start.** Tetris opens a mode list like Sudoku's start list: `Zen · best
+  18,950` and `Classic · best 4,200` (`no best yet` before the first).
+  `APPS/TETRIS/MAIN.LUA` becomes `tetris.init()`; an old card's
+  `tetris.init('zen', 1803)` still loads and highlights Zen. The press time
+  seeds every new game.
+- **Gravity.** Classic moves the piece down one row every `GRAVITY_MS`
+  (1 s) and locks it when it cannot move. A tick carries the clock through
+  the same layers as a key: `TetrisApp`, `LuaEventBridge`,
+  `LuaRuntimeUiState::tick_game(now_ms) -> bool` (true when the screen
+  changed) with `next_game_tick_ms()`, and `AppState::tick_lua_game`. Zen,
+  a finished game and the other games never tick; after a long pause one
+  tick steps once.
+- **View.** Title bar `Tetris · Classic`; the Mode block reads `Classic`
+  and `Slow gravity: one row a second.`
+- **Records.** `tetris_classic` in `RECORDS.TXT`, written once on leaving,
+  like Zen's. The Games card: `Zen · best 18,950`, then `Classic · best
+  4,200` (or `Classic: slow gravity` without a best).
+- **main.rs** (only these lines):
+  - next to the Reader tick, when `next_game_tick_ms()` is due, call
+    `state.tick_lua_game(uptime_ms)` and refresh as after a key;
+  - add the time to that tick to `light_sleep_budget(&[…])`.
+  A tick is not a key press: leave `last_activity` alone.
+- **Sudoku digits.** The player's digits draw in the smaller Body size; the
+  mockup draws them as large as the givens, in a lighter face. Add a canvas
+  style that `lua_game.rs` maps to Literata (`reader_body_style`) at the
+  size closest to the givens.
+
+**Tests:** ticks at chosen times (none before 1 s, one per second, none in
+Zen or after game over), a lock and a line clear by gravity, best per mode,
+the mode list, and a tick through `LuaRuntimeUiState` after
+`open_selected`. **Previews:** `tetris-start`, `tetris-classic`, and
+`sudoku-row` with the new digits.
+
+**Status:**
+
+### D32: Settings › AI
+
+**Why.** Phase 7, mockup "Settings › AI". Transcription and summary
+providers need a home before the main line sends any request.
+
+**Change.**
+
+- **Settings.** An `AI` row between Weather and Wi-Fi & transfer:
+  `XiaoZhi, transcription, summary`, value `Ready` when both providers have
+  a URL and a model, otherwise `Not set up`.
+- **Settings › AI** as the mockup: the groups `Transcription ·
+  /audio/transcriptions` (Provider, Model, Language), `Summary ·
+  /chat/completions` (Provider, Model, Style) and `General` (Process, API
+  keys), its info box, and the bottom bar `▲▼ move ● change BOOT hold:
+  back`.
+- **File.** `/RUSTMIX/AI.TXT`, `key=value` through `sd_file`:
+  `transcription_url`, `transcription_model`, `language` (`auto`, `es`,
+  `en`), `summary_url`, `summary_model`, `style` (`bullets-todos`,
+  `bullets`, `paragraph`) and `process` (`online`, `manual`). Unknown keys
+  are ignored; no file means not set up. Add `AI.TXT.example` (Groq for
+  transcription, OpenRouter for summaries) with its installer and
+  SD_CARD_SETUP lines.
+- **Values.** The provider comes from the URL host: `api.groq.com` is Groq,
+  `openrouter.ai` OpenRouter, `api.openai.com` OpenAI, a local address
+  Local, anything else the host itself. ● on Language, Style or Process
+  opens an option list (as in Settings › Weather) and saves; URLs and models
+  are edited in the file. API keys read `Not set` from a state flag that the
+  main line will set: keys never come from the SD card.
+- The AI hub's Voice Notes card shows the two providers on its right, as
+  in the mockup (`GROQ` over `OPENROUTER`), once both are set.
+
+**Tests:** file round trip and defaults, provider names, option lists that
+mark the value in use, the Settings row value, Settings › AI reached from
+Home and back. **Previews:** `settings` with eight rows, `settings-ai`,
+`settings-ai-picker`.
+
+**Status:**
+
+### D33: Voice Notes results
+
+**Why.** Phase 7, mockups "AI" and "Voice Notes: resultado". Each note
+shows whether it is queued, being transcribed or summarized, and a
+summarized note opens on its summary. The requests themselves
+(`ai_client.rs`, D22) go out with the main line's network work; this task
+builds everything around them.
+
+**Change.**
+
+- **Record.** `VOICE###.AI` next to the WAV, through `sd_file`: `state`
+  (`queued`, `transcribing`, `summarizing`, `done`, `failed`), `error`,
+  `title` (UTF-8, from the summary), `language`, `transcribed_by`,
+  `summarized_by`, then a summary block and a transcript block. No file
+  means not processed; deleting a note deletes its record.
+- **Queue.** A saved recording is queued when `AI.TXT` (D32) has
+  `process=online`; with `manual`, the note's menu gains `Process`.
+  `VoiceNotesUiState` gains the steps the network code will call:
+  `next_job()` (the oldest queued note), `begin_transcription`,
+  `finish_transcription(text, language)`, `finish_summary(content)` (title
+  through `ai_client::split_title`) and `fail(error)`.
+- **Labels.** AI hub rows and the Voice Notes list show the state as in the
+  mockup: `SUMMARY`, `TRANSCRIBING…`, `SUMMARIZING…`, `QUEUED · OFFLINE`
+  (queued while Wi-Fi is off), `QUEUED` or `FAILED`. A summarized note shows
+  its summary title. The hub's info box becomes the mockup's text once
+  `AI.TXT` exists.
+- **Result screen** as the mockup: the title, a meta line (`Oct 2 · 12:04 ·
+  Spanish · Groq whisper-large-v3-turbo › OpenRouter llama-3.3-70b`), tabs
+  `SUMMARY`, `TRANSCRIPT` and `AUDIO` (short BOOT switches), ▲▼ scroll, ●
+  the note's existing actions (play, rename, export, delete), and the line
+  `AI-generated · may contain mistakes · audio kept on SD`. A note without
+  a record opens today's details screen.
+- Text the fonts cannot draw (`☐`, `✓`, emoji) is replaced before layout
+  (`☐` becomes `•`).
+
+**Tests:** record round trip (blank lines, a block marker inside the text),
+the steps and the queue order, labels per state, delete removes the record,
+opening a summarized note from the AI hub through `AppState::apply`.
+**Previews:** `voice-note-summary`, `voice-note-transcript`, and `ai` with
+the three states.
+
+**Status:**
 
 ## Round 5 tasks (done in v0.9.7)
 
