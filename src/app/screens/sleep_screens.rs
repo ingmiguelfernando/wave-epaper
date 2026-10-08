@@ -1054,16 +1054,17 @@ mod tests {
         let mut state = AppState::default();
         state.board.rtc = Some(at(2, 13, 42));
         let mut frame = FrameBuffer::new_white();
-        let mut layout = |state: &AppState| {
-            crate::app::render_sleep_mode(&mut frame, state).unwrap()
-        };
+        let mut layout =
+            |state: &AppState| crate::app::render_sleep_mode(&mut frame, state).unwrap();
         state.sleep_screen.mode = SleepMode::Clock;
         assert_eq!(layout(&state), SleepLayout::Clock);
         // No forecast yet: the weather mode keeps the clock.
         state.sleep_screen.mode = SleepMode::Weather;
         assert_eq!(layout(&state), SleepLayout::Clock);
         state.set_weather_config(Some(WeatherConfig::parse(SAMPLE_CONFIG).unwrap()));
-        state.weather.record_success(parse_open_meteo_response(SAMPLE_RESPONSE).unwrap());
+        state
+            .weather
+            .record_success(parse_open_meteo_response(SAMPLE_RESPONSE).unwrap());
         assert_eq!(layout(&state), SleepLayout::Weather);
         state.sleep_screen.mode = SleepMode::ClockWeather;
         assert_eq!(layout(&state), SleepLayout::Clock);

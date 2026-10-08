@@ -88,7 +88,10 @@ fn render_screen_previews() {
             "sleep-weather",
             render_sample_sleep_weather(sample_state().display),
         ),
-        ("sleep-live-clock", render_live_sleep(SleepMode::Clock, false)),
+        (
+            "sleep-live-clock",
+            render_live_sleep(SleepMode::Clock, false),
+        ),
         (
             "sleep-live-clock-weather",
             render_live_sleep(SleepMode::ClockWeather, false),
@@ -97,7 +100,10 @@ fn render_screen_previews() {
             "sleep-live-clock-weather-stale",
             render_live_sleep(SleepMode::ClockWeather, true),
         ),
-        ("sleep-live-weather", render_live_sleep(SleepMode::Weather, false)),
+        (
+            "sleep-live-weather",
+            render_live_sleep(SleepMode::Weather, false),
+        ),
         (
             "sleep-live-weather-stale",
             render_live_sleep(SleepMode::Weather, true),
