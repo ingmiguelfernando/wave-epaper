@@ -414,7 +414,48 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     sudoku_number.lua_runtime.session = Some(sudoku_sample_session(2));
     sudoku_number.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("sudoku-number", sudoku_number));
+
+    states.push((
+        "bible-reading",
+        bible_preview_state(ScreenRoute::BibleReading, 1),
+    ));
+    states.push(("bible-reading-large", bible_preview_state_large()));
+    states.push(("bible-menu", bible_preview_state(ScreenRoute::BibleMenu, 1)));
+    states.push(("bible-missing", AppState::default()));
     states
+}
+
+/// A Bible state over a temp card holding Genesis 1, opened on `route`.
+fn bible_preview_state(route: ScreenRoute, chapter: u16) -> AppState {
+    let root = std::env::temp_dir().join(format!("wave-preview-bible-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let folder = root.join("RVR1960");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("index.tsv"), "GEN\tGénesis\t2\tGEN.txt\n").unwrap();
+    let mut text = String::new();
+    for number in 1..=2 {
+        text.push_str(&format!("C\t{number}\nH\tLa creación\n"));
+        for verse in 1..=12 {
+            text.push_str(&format!("V\t{verse}\t1\tEn el principio creó Dios los cielos y la tierra, y la tierra estaba desordenada y vacía.\n"));
+        }
+    }
+    std::fs::write(folder.join("GEN.txt"), text).unwrap();
+    let mut state = sample_state();
+    state.bible = crate::bible_state::BibleUiState::with_root(&root);
+    state.bible.open_at(crate::bible_reader::Position {
+        book: 0,
+        chapter,
+        page: 0,
+    });
+    state.router.navigate_to(route);
+    state
+}
+
+/// The same reading view at the Large body size, so the fit is seen at its limit.
+fn bible_preview_state_large() -> AppState {
+    let mut state = bible_preview_state(ScreenRoute::BibleReading, 1);
+    state.reader.preferences.font_size = crate::reader::BookFontSize::Large;
+    state
 }
 
 /// The Bible picker previews: the books list and Psalms' chapter grid.

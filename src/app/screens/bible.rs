@@ -16,7 +16,7 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
-            bottom_bar::{draw_bottom_bar, KeyCap, CHOOSE_HINTS},
+            bottom_bar::{draw_bottom_bar, KeyCap},
             header::draw_header,
             option_list::draw_option_list,
         },
@@ -129,7 +129,7 @@ fn render_books(
     if let Some((cursor, name)) = nav.next_section() {
         let body = preferences.body_style();
         let names = nav.next_section_books(cursor);
-        let line = format!("Next section (BOOT): {name} · {}", names.join(", "));
+        let line = format!("Siguiente (BOOT): {name} · {}", names.join(", "));
         Text::new(&body.fit(&line, RIGHT - LEFT), Point::new(LEFT, 730), body).draw(display)?;
     }
     draw_bottom_bar(display, preferences, &BOOKS_HINTS)
@@ -416,7 +416,9 @@ pub fn chapter_pages(state: &AppState, position: bible_reader::Position) -> usiz
         state.reader.preferences.font_size,
         state.reader.preferences.theme,
     );
-    let lines = bible_reader::layout(&items, RIGHT - LEFT, |text| body.text_width(text));
+    let width = RIGHT - LEFT;
+    let first = verse_first_width(body, width);
+    let lines = bible_reader::layout(&items, width, first, |text| body.text_width(text));
     bible_reader::paginate(lines.len(), reading_lines_per_page(body))
 }
 
@@ -447,7 +449,8 @@ pub fn render_bible_reading(
         Ok(items) => items,
         Err(_) => return render_bible_missing(display, state),
     };
-    let lines = bible_reader::layout(&items, width, |text| body.text_width(text));
+    let first = verse_first_width(body, width);
+    let lines = bible_reader::layout(&items, width, first, |text| body.text_width(text));
     let per_page = reading_lines_per_page(body);
     let pages = bible_reader::paginate(lines.len(), per_page);
     // The sentinel from a backward turn means "last page"; clamp it here.
@@ -473,13 +476,18 @@ pub fn render_bible_reading(
 
     let indicator = format!("{chapter_title} · {}/{pages}", page + 1);
     let detail = preferences.detail_style();
-    Text::new(
-        &detail.fit(&indicator, width),
-        Point::new(LEFT, READING_INDICATOR_TOP),
-        detail,
-    )
-    .draw(display)?;
+    let shown = detail.fit(&indicator, width);
+    // Right-aligned above the bottom bar, as the mockup places it.
+    let left = RIGHT - detail.text_width(&shown);
+    Text::new(&shown, Point::new(left, READING_INDICATOR_TOP), detail).draw(display)?;
     draw_bottom_bar(display, preferences, &READING_HINTS)
+}
+
+/// Width left for a verse's first line: the full width less the widest
+/// indent and a three-digit verse number, so the drawn line never overflows.
+fn verse_first_width(body: UiTextStyle, width: i32) -> i32 {
+    let number = body.text_width("999") + 6;
+    width - 24 - number
 }
 
 /// Vertical room for verse lines: from under the title rule down to the
@@ -563,8 +571,15 @@ pub fn render_bible_menu(
         usize::MAX,
         state.bible_menu_selected,
     )?;
-    draw_bottom_bar(display, preferences, &CHOOSE_HINTS)
+    draw_bottom_bar(display, preferences, &MENU_HINTS)
 }
+
+/// Spanish bottom bar of the reading menu.
+pub const MENU_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "mover"),
+    (KeyCap::Select, "elegir"),
+    (KeyCap::Boot, "mantener: volver"),
+];
 
 /// The Spanish message for a card without Bible text.
 pub fn render_bible_missing(

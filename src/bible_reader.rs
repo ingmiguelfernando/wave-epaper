@@ -100,6 +100,7 @@ pub enum Line {
 pub fn layout(
     items: &[crate::bible::ChapterItem],
     width: i32,
+    first_width: i32,
     measure: impl Fn(&str) -> i32,
 ) -> Vec<Line> {
     let mut lines = Vec::new();
@@ -113,7 +114,12 @@ pub fn layout(
                 paragraph,
                 text,
             } => {
-                for (index, piece) in wrap_words(text, width, &measure).into_iter().enumerate() {
+                // The first line also holds the verse number and indent, so it
+                // wraps to the narrower `first_width`; the rest use `width`.
+                for (index, piece) in wrap_verse(text, first_width, width, &measure)
+                    .into_iter()
+                    .enumerate()
+                {
                     lines.push(Line::Verse {
                         number: (index == 0).then(|| label.clone()),
                         paragraph: index == 0 && *paragraph,
@@ -126,21 +132,29 @@ pub fn layout(
     lines
 }
 
-/// Greedy word wrap by measured width. An over-long word keeps its own line,
-/// as `UiTextStyle::wrap` does.
-fn wrap_words(text: &str, width: i32, measure: &impl Fn(&str) -> i32) -> Vec<String> {
+/// Greedy word wrap of one verse: the first line fits `first_width`, every
+/// later line fits `width`. An over-long word keeps its own line, as
+/// `UiTextStyle::wrap` does.
+fn wrap_verse(
+    text: &str,
+    first_width: i32,
+    width: i32,
+    measure: &impl Fn(&str) -> i32,
+) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
+    let mut limit = first_width;
     for word in text.split_whitespace() {
         let candidate = if line.is_empty() {
             word.to_owned()
         } else {
             format!("{line} {word}")
         };
-        if line.is_empty() || measure(&candidate) <= width {
+        if line.is_empty() || measure(&candidate) <= limit {
             line = candidate;
         } else {
             lines.push(core::mem::replace(&mut line, word.to_owned()));
+            limit = width;
         }
     }
     if !line.is_empty() {
@@ -293,7 +307,7 @@ mod tests {
     #[test]
     fn a_verse_number_stays_on_its_first_line_only() {
         let items = [verse("3", false, "uno dos tres cuatro")];
-        let lines = layout(&items, 9, by_chars);
+        let lines = layout(&items, 9, 9, by_chars);
         assert!(lines.len() > 1, "the verse wraps");
         assert!(matches!(&lines[0], Line::Verse { number: Some(n), .. } if n == "3"));
         assert!(lines[1..]
@@ -307,7 +321,7 @@ mod tests {
             crate::bible::ChapterItem::Heading("Salmo".into()),
             verse("1", true, "uno dos tres cuatro"),
         ];
-        let lines = layout(&items, 9, by_chars);
+        let lines = layout(&items, 9, 9, by_chars);
         assert_eq!(lines[0], Line::Heading("Salmo".into()));
         let paragraphs = lines
             .iter()
@@ -328,7 +342,7 @@ mod tests {
     fn wrapping_keeps_every_word_in_order() {
         let text = "uno dos tres cuatro cinco seis";
         let items = [verse("2", false, text)];
-        let rejoined: Vec<String> = layout(&items, 9, by_chars)
+        let rejoined: Vec<String> = layout(&items, 9, 9, by_chars)
             .into_iter()
             .filter_map(|line| match line {
                 Line::Verse { text, .. } => Some(text),
@@ -341,7 +355,7 @@ mod tests {
     #[test]
     fn a_long_word_keeps_its_own_line_without_being_split() {
         let items = [verse("1", false, "ab abcdefghijklmnop cd")];
-        let texts: Vec<String> = layout(&items, 5, by_chars)
+        let texts: Vec<String> = layout(&items, 5, 5, by_chars)
             .into_iter()
             .filter_map(|line| match line {
                 Line::Verse { text, .. } => Some(text),
