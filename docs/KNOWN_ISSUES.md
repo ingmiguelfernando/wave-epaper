@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.9.7. This is not a list of promised mockup features. See
+Firmware v0.10.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -36,18 +36,20 @@ Open-Meteo can fail with transport, TLS, timeout or HTTP errors. Bounded
 retries/backoff retain the last good result in memory; a cold boot without a
 successful request shows "No forecast yet" with the error under it. Once a
 forecast exists, the second Weather page (Down) shows the last error. Wi-Fi
-is normally off between bursts and weather is paused during sleep-image mode;
-neither is a continuous-connection guarantee. The forecast is not saved to the
-SD card, so a reboot starts without one.
+is normally off between bursts and weather is paused during sleep, except in
+the Weather and Clock + weather sleep modes; neither is a continuous-connection
+guarantee. The forecast is not saved to the SD card, so a reboot starts
+without one.
 
 ## MCU deep sleep
 
-The panel deep-sleeps with its rail off, but the CPU uses light sleep in
-bounded intervals. Full MCU deep sleep is not implemented. Power-key wake on
-GPIO1 (also high during an RTC alarm) and GPIO38, and RTC-alarm wake on
-GPIO45 must be preserved; the mockup's deep-sleep current is not a measured
-firmware result. D5 clock/weather layouts are drawing-only, not selectable
-sleep modes or scheduled refreshes.
+The panel deep-sleeps with its rail off (in the clock and weather sleep
+modes the rail stays on so the panel keeps its memory), but the CPU uses
+light sleep in bounded intervals. Full MCU deep sleep is not implemented.
+Power-key wake on GPIO1 (also high during an RTC alarm) and GPIO38, and
+RTC-alarm wake on GPIO45 must be preserved; the mockup's deep-sleep current
+is not a measured firmware result. The sleep modes' battery figures are
+estimates until the battery log confirms them on the device.
 
 ## EPUB scope
 

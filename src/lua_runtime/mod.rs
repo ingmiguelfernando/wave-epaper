@@ -128,6 +128,8 @@ impl LuaRuntimeUiState {
     }
 
     pub fn open_selected(&mut self) -> bool {
+        // An alarm can leave a game open behind its screen.
+        self.close_session();
         self.error = None;
         let Some(entry) = self.selected_entry().cloned() else {
             self.error = Some("No SD Lua application is selected".into());
@@ -515,6 +517,15 @@ mod tests {
         assert!(runtime.take_records_changed(), "a new best marks one save");
         assert_eq!(runtime.records.tetris_zen, 9001);
         assert!(!runtime.take_records_changed(), "the flag clears after use");
+
+        // Reopening closes a game that was never closed.
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        if let LuaEventBridge::Tetris(app) = &mut runtime.session.as_mut().unwrap().event_bridge {
+            app.set_best(12_000);
+        }
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        assert!(runtime.take_records_changed());
+        assert_eq!(runtime.records.tetris_zen, 12_000);
         std::fs::remove_dir_all(root).unwrap();
     }
 

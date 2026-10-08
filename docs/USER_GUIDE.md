@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.9.7: what is implemented, not the future
+This guide describes firmware v0.10.0: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -141,7 +141,8 @@ streak is live; the Continue card adds `· M min today`.
 
 One page with seven groups, each row showing what the group covers and its
 current value: Display (`Inter · Standard`), Sleep screen (`Photo · 2
-starred`), Weather (`On · 2 h`, `Manual`, `Off` or `Not set up`), Wi-Fi &
+starred` or `Clock · 1 min`), Weather (`On · 2 h`, `Manual`, `Off` or
+`Not set up`), Wi-Fi &
 transfer (`Off`, `Not set up`, `Connecting`, `Failed` or the network name),
 Clock & alarms (`2 alarms` or `No alarms`), Power (battery percent) and
 System (the firmware version, also on the status bar). Up/Down chooses a
@@ -182,17 +183,34 @@ Up/Down moves, Select applies, hold BOOT cancels.
 
 ### Sleep screen
 
-Up/Down chooses **Source**, **Order** or **Fit**; Select opens the list,
-Up/Down moves, Select applies, hold BOOT cancels. Choices persist in
-`/RUSTMIX/SLEEPSCREEN.TXT`.
+The first five rows choose what shows while the device sleeps; Select marks
+one. Each row says what it shows and its estimated battery cost a day:
+
+- **Photo** (default): a starred photo or a BMP from `/RUSTMIX/SLEEP/`. The
+  device does not wake to change it.
+- **Clock & date**: a large clock with the date and battery. It changes every
+  minute or every 5 minutes without a flash; a full refresh every 30 minutes
+  clears ghosting.
+- **Weather**: the place, the weather now and the next three days. Wi-Fi
+  turns on for each update, as often as Settings › Weather says; until the
+  first update it shows the clock. A forecast older than six hours says
+  `stale`. Needs Settings › Weather on.
+- **Clock + weather**: the clock with a line of today's weather.
+- **Verse of the day**: not available yet (`SOON`).
+
+Below the modes are the options of the mode in use: **Source**, **Order** and
+**Fit** for Photo; **Refresh** (every minute or every 5 minutes) for the clock
+modes. Select opens the list, Up/Down moves, Select applies, hold BOOT
+cancels. Choices persist in `/RUSTMIX/SLEEPSCREEN.TXT`.
 
 - Source: Starred photos (default) or Sleep folder (`/RUSTMIX/SLEEP/`).
 - Order: Shuffle (default) or In order.
 - Fit: Fill (crop, default) or Whole photo. It also applies to the Photos
   viewer.
 
-A short BOOT press shows the picture the next sleep would use; any key
-returns to the settings.
+A short BOOT press shows what the next sleep would show; any key returns to
+the settings. The costs are estimates; Settings › Power shows what the
+battery really used.
 
 ### Network and Wi-Fi transfer
 
@@ -320,7 +338,7 @@ right. Each press adds the time since the previous one, at most a minute,
 so a game left open does not run up the clock. The game saves itself in
 `/RUSTMIX/GAMES/SUDOKU.TXT` each time you place or erase a number, and
 again when you leave with hold BOOT, so a restart or a flat battery keeps
-it. There is one save, so a new game replaces it once you place a number.
+it. There is one save, so a new game replaces it.
 Solving deletes the save, says `Solved in 12:41 · best
 11:02` (or `new best`) and keeps the best time per difficulty in
 `RECORDS.TXT`. The card's own puzzle (`SD puzzle`) keeps no save and no
@@ -377,29 +395,28 @@ ghosting now** or **Cancel**, Select runs it, and hold BOOT cancels. Clearing
 ghosting performs a full refresh and returns to the underlying screen.
 
 Holding Power for about a second, or reaching the Auto-sleep delay, draws the
-sleep picture set in Settings › Sleep screen: a starred photo once Photos has
-prepared it, or a BMP from `/RUSTMIX/SLEEP/`, which is also the fallback.
-Shuffle avoids showing the same picture twice in a row. If no picture can be
-used, a sleep card shows the reason, battery and wake hint. BMP requirements
-are in [SD-card setup](SD_CARD_SETUP.md#sleep-images).
+sleep screen set in Settings › Sleep screen. In Photo mode that is a starred
+photo once Photos has prepared it, or a BMP from `/RUSTMIX/SLEEP/`, which is
+also the fallback. Shuffle avoids showing the same picture twice in a row. If
+no picture can be used, a sleep card shows the reason, battery and wake hint.
+BMP requirements are in [SD-card setup](SD_CARD_SETUP.md#sleep-images).
 
 If Power does nothing, Settings › System › Device Info shows the Power key
 status and its last error on page 3, and why the device last restarted on
 page 1. The serial log shows `power-key-gpio down=true` each time the key goes
 down.
 
-Sleep mode retains the previous route, stops Wi-Fi/transfer/weather activity,
-turns off the IMU, suspends idle audio, and deep-sleeps the panel with its
-rail off. The CPU uses **light sleep**, not full MCU deep sleep.
+Sleep mode retains the previous route, stops Wi-Fi/transfer activity (the
+weather sleep modes still update the weather), turns off the IMU, suspends
+idle audio, and deep-sleeps the panel with its rail off; the clock and
+weather modes keep the rail on so the screen can change without a flash.
+The CPU uses **light sleep**, not full MCU deep sleep.
 
 Release the entry key and wait for the wake guard. Power always wakes;
 BOOT/Up/Select/Down also wake with **Wake keys: Any key**. With **Power key
 only**, wheel/BOOT presses do not wake. A wake press restores the previous
 screen rather than activating its highlighted action. An RTC alarm is a
 separate wake source.
-
-The clock, clock-with-weather and weather images in `screen-previews` are
-layouts for a later release; they cannot be selected yet.
 
 While awake but idle on battery, the CPU also light-sleeps between work;
 the panel can power down without changing the displayed page. USB power

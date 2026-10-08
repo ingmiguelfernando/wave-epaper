@@ -1329,6 +1329,7 @@ mod firmware {
                                 sleep_last_global = Instant::now();
                             } else {
                                 panel.sleep()?;
+                                sleep_redraw_at = None;
                             }
                             state.panel_awake = false;
                             if _mounted_sd.is_some() && state.battery_log.has_unsaved() {

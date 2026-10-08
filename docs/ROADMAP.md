@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-08, firmware v0.9.7.
+Last updated: 2026-10-08, firmware v0.10.0.
 
 ## Status
 
@@ -21,10 +21,10 @@ Last updated: 2026-10-08, firmware v0.9.7.
 | Phase 1b: idle light sleep, Wi-Fi bursts, IMU and codec off when idle | 0.6.0 | 038269f | Done |
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
-| Phase 3b: sleep screen modes (clock, weather) | | | In progress, with the Weather and sleep-screen mockup pass (display digits, mockup icons) |
+| Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display digits and mockup weather icons follow in 0.10.1 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats wired in 0.9.7; Bible text and reading view delegated (D29, D30) |
-| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7; Tetris Classic delegated (D31) |
+| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0; Tetris Classic delegated (D31) |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7; Settings › AI and note results delegated (D32, D33) |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
@@ -164,11 +164,21 @@ the mockup:
 - Layouts come from tasks D5 and D7 (`src/app/screens/sleep_screens.rs`),
   already close to the mockup: the clock's weather icon and summary centered
   as one group, a rule above the three days, rain chances in Body size.
+- **Built in v0.10.0.** `SleepMode` and `ClockRefresh` in `sleep_screen.rs`
+  (keys `mode=` and `clock_refresh=` in `SLEEPSCREEN.TXT`);
+  `render_sleep_mode` draws the mode from `AppState`. In a live mode the
+  panel sleeps with `Epaper397::sleep_keeping_ram`: deep sleep mode 1 with
+  ALDO3 on, so the controller keeps both RAM planes and the hardware reset in
+  `show_partial_fullscreen` wakes it for a partial update. The loop redraws
+  on the minute (`clock_redraw_wait`, from the RTC seconds) and does a
+  global refresh when 30 minutes have passed since the last one
+  (`SLEEP_GLOBAL_REFRESH`). Light sleep while asleep lasts until the next
+  redraw or weather burst, and not while the radio is on.
 - **Clock.** While asleep the loop already wakes at least every 60 s. When a
   minute is due:
-  1. power the panel (ALDO3) and initialize it;
+  1. wake the panel controller (its rail stays on);
   2. draw the screen and do a partial refresh;
-  3. put the panel back to deep sleep.
+  3. put the controller back to deep sleep.
 
   Do a global refresh every 30 minutes against ghosting. Check the real cost
   with the battery log.
