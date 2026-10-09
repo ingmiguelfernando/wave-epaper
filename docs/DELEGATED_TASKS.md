@@ -331,7 +331,7 @@ orientations (the text never reaches the header or the bar); the right-side
 label for EPUB, TXT, with and without a pace; the corner on a bookmarked
 page; a page turn through `AppState::apply` from Home › Library.
 
-**Status:**
+**Status:** done on `side-tasks-7` (commit `0e39b32`). The Reader page has the shared reading header (`src/app/widgets/reading_header.rs`: title in capitals, clock and battery, a rule) in place of the black bar and the status box. The footer is the shared bottom bar with `▲▼ page` and `● menu`, and the page label on the right: chapter for EPUB, page for TXT, with the percent. A bookmarked page shows a filled corner. The Bible reading view uses the same header with `BIBLIA · RVR1960`. Tests: the body stays between the rule and the bar in both orientations; a TXT page from Home turns with ▼. Open: pace minutes (`9 min left`) until the reading stats have 20 pages; the landscape preview needs the panel, since the host cannot repaginate a book.
 
 ### D35: Library like the mockup
 
@@ -358,7 +358,7 @@ page; a page turn through `AppState::apply` from Home › Library.
 ● on a recent book opens it at its place, `new` and `done`, the author from
 a sample OPF, every row fits at Large size.
 
-**Status:**
+**Status:** built on `side-tasks-7`. Tabs are `RECENT ALL BOOKMARKS FILES` in that order, and short BOOT moves through them and wraps. The Library status shows `Library` with the book count (`1 book` or `N books`). Book rows show the title, the format chip, a bar with the percent of the saved place, or `new` for a book never opened. The `Change tab` row is gone. Select on a recent book opens it at its saved place. Open: the author line (the EPUB reader reads `dc:title` only; `dc:creator` needs a parser change) and `done` (nothing marks a book finished on the device yet; `reading_stats::mark_finished` has no caller). Device check: the four previews and a real book folder with a saved place.
 
 ### D36: Bible translations, hyphenation and one load per chapter
 
@@ -382,7 +382,7 @@ times (`chapter_pages` twice, then the drawing).
 temp folder (place kept, place missing); a hyphenated line; one load per
 chapter across page turns (count the loads).
 
-**Status:**
+**Status:** built on `side-tasks-7`. Menu › Traducción appears when the card has two or more translations: an option list of their `meta.txt` titles with the one in use marked. Choosing another keeps the place when its book is there, and otherwise opens the book picker. Verses wrap with a hyphen by the translation's language (`es`, `en`), as Reader pages do. The chapter open in the reading view is read once when the place moves to it, and page turns inside it read nothing. Tests: the switch through `AppState::apply` (place kept, place missing); a hyphenated line; one load per chapter. Previews: `bible-translation`, `bible-reading`. Device check: two translations on the card; a hyphenated line on the panel.
 
 ### D37: Hold ▲▼ to repeat
 
@@ -405,7 +405,7 @@ take one press per row.
 200 ms, nothing after the release); the route list; merging during a
 refresh.
 
-**Status:**
+**Status:** built on `side-tasks-7`. Holding ▲ or ▼ repeats after 500 ms and every 200 ms, on the screens `ScreenRoute::repeats_keys()` lists (settings, option lists, the Library, the Bible picker and grid, the Dictionary, and others). Reading pages, games and the photo viewer take one press per key. `main.rs` changed on the wheel poll only: it passes the boot clock and the route's flag. Tests: the timing with a fake clock (nothing before 500 ms, then every 200 ms, nothing after release, one repeat after a long pause); the route list. Open: the refresh-time merge (a repeat during a refresh replacing the one waiting) is not built; the wheel poll reports at most one event per call, so the queue stays short without it. Device check: hold ▼ in Settings and in the Bible picker.
 
 ### D38: Alarm edits survive a reboot
 
@@ -425,7 +425,7 @@ a reboot reloads `/RUSTMIX/ALARMS.TXT`.
 `AppState::apply` marks one save and a cancel marks none; the folder is
 created when missing.
 
-**Status:**
+**Status:** built on `side-tasks-7`. A saved editor edit writes `ALARMS.TXT` through `sd_file`, once per save, in the format the loader reads, and the folder is created when missing. A config that was never read is not overwritten. `main.rs` saves on the same outcome path as the RTC alarm. The known issue is removed, and the User Guide and the smoke test say the edit survives a reboot. Comments in a hand-written file are not kept, as the User Guide says. Tests: a round trip of every schedule kind (recurring, named sets, once, a weekday list); one save per saved edit and none before it; the folder creation; the never-read guard. Device check: change an alarm, Save, reboot, and read the time back.
 
 ## Round 6 tasks (done in v0.10.1)
 

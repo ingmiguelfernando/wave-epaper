@@ -118,6 +118,7 @@ pub fn render_active_screen(
         ScreenRoute::BibleChapters => bible::render_bible_chapters_screen(display, state),
         ScreenRoute::BibleReading => bible::render_bible_reading(display, state),
         ScreenRoute::BibleMenu => bible::render_bible_menu(display, state),
+        ScreenRoute::BibleTranslations => bible::render_bible_translations(display, state),
         ScreenRoute::BibleMissing => bible::render_bible_missing(display, state),
         ScreenRoute::Reader | ScreenRoute::Tools | ScreenRoute::GamesTbd | ScreenRoute::XiaoZhi => {
             unreachable!("category and placeholder routes handled above")

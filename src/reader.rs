@@ -215,10 +215,10 @@ impl ReaderLibraryTab {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Recent => "Recent",
-            Self::Books => "Books",
-            Self::Files => "Files",
-            Self::Bookmarks => "Bookmarks",
+            Self::Recent => "RECENT",
+            Self::Books => "ALL",
+            Self::Files => "FILES",
+            Self::Bookmarks => "BOOKMARKS",
         }
     }
 
@@ -226,9 +226,9 @@ impl ReaderLibraryTab {
     pub const fn next(self) -> Self {
         match self {
             Self::Recent => Self::Books,
-            Self::Books => Self::Files,
-            Self::Files => Self::Bookmarks,
-            Self::Bookmarks => Self::Recent,
+            Self::Books => Self::Bookmarks,
+            Self::Bookmarks => Self::Files,
+            Self::Files => Self::Recent,
         }
     }
 }
@@ -1378,7 +1378,13 @@ impl ReaderUiState {
 
     #[must_use]
     pub fn library_row_count(&self) -> usize {
-        self.visible_entries().len().saturating_add(1)
+        self.visible_entries().len()
+    }
+
+    /// Move to the next Library tab and show its first row.
+    pub fn cycle_library_tab(&mut self) {
+        self.library_tab = self.library_tab.next();
+        self.library_selected = 0;
     }
 
     pub fn apply_library_button(&mut self, event: ButtonEvent) -> bool {
@@ -1392,12 +1398,7 @@ impl ReaderUiState {
                 self.library_selected = (self.library_selected + 1) % count;
                 false
             }
-            ButtonEvent::Select if self.library_selected == 0 => {
-                self.library_tab = self.library_tab.next();
-                self.library_selected = 0;
-                false
-            }
-            ButtonEvent::Select => self.request_open_visible(self.library_selected - 1),
+            ButtonEvent::Select => self.request_open_visible(self.library_selected),
         }
     }
 
@@ -3509,7 +3510,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(!reader.has_background_work());
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert!(reader.has_background_work());
@@ -3534,7 +3535,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.next_page();
@@ -3571,7 +3572,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.next_page();
@@ -3618,7 +3619,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.toggle_current_bookmark();
@@ -3770,7 +3771,7 @@ mod tests {
             state_root.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.next_page();
@@ -3847,7 +3848,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
         reader.begin_preferences_edit();
@@ -3882,7 +3883,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         for _ in 0..3 {
             reader.tick();
@@ -3893,7 +3894,7 @@ mod tests {
         assert_eq!(saved.page_index, 2);
 
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         for _ in 0..4 {
             reader.tick();
@@ -4277,7 +4278,7 @@ mod tests {
             state.to_string_lossy().into_owned(),
         );
         reader.refresh_library();
-        reader.library_selected = 1;
+        reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         for _ in 0..8 {
             if reader.tick() == ReaderTickOutcome::FirstPageReady {

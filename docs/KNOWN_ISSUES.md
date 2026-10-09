@@ -70,8 +70,3 @@ full browser: CSS layout, images, interactive hyperlinks/footnotes,
 fixed-layout EPUB, DRM and ZIP64 are not supported. Long books are loaded
 chapter by chapter; layout changes can still require repagination.
 
-## Runtime alarm edits do not persist
-
-The Alarms editor saves to the running engine only. Edit `/RUSTMIX/ALARMS.TXT`
-and reboot for durable schedules. Calendar personal events are separate and
-do not arm RTC alarms; U.S. holiday rows are read-only.

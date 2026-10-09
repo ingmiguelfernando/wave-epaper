@@ -180,6 +180,22 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Runtime alarm edits work, but reboot reloads `ALARMS.TXT`; durable edits
 	are made in that file. Calendar events do not create RTC alarms.
 
+## Round 7 (D36 to D38)
+
+- [ ] Alarms: change an alarm's time in the editor and Save; reboot; the
+    new time is still there. `ALARMS.TXT` on the card shows the saved line.
+- [ ] Library: short BOOT moves RECENT, ALL, BOOKMARKS, FILES in order; each
+    book shows its percent or `new`; Select opens a recent book at its place.
+- [ ] Hold ▲ or ▼ on a long list (Settings, Library, Bible books): the cursor
+    keeps moving after half a second. On a reading page, one press turns one
+    page, with no repeat.
+- [ ] Bible: with a second translation on the card, Menu › Traducción lists
+    both with the one in use marked; choosing another keeps the place when
+    its book is there.
+- [ ] Bible: a verse that does not fit a line breaks with a hyphen on a
+    Spanish translation; the next page turn does not stall (one chapter read
+    per chapter).
+
 ## Remaining games and diagnostics (D3)
 
 - [ ] Install current examples; Home › Games lists one card per game —

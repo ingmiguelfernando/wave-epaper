@@ -37,9 +37,9 @@ const RESUME_HINTS: [(KeyCap, &str); 2] =
     [(KeyCap::Select, "resume"), (KeyCap::Boot, "hold: back")];
 
 const LIBRARY_HINTS: [(KeyCap, &str); 3] = [
-    (KeyCap::UpDown, "move"),
-    (KeyCap::Select, "open / tab"),
-    (KeyCap::Boot, "hold: back"),
+    (KeyCap::UpDown, "book"),
+    (KeyCap::Select, "read"),
+    (KeyCap::Boot, "tab"),
 ];
 
 const LOADING_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "hold: cancel")];
@@ -114,8 +114,6 @@ pub fn render_library(
 ) -> Result<(), Infallible> {
     let reader = &state.reader;
     let body = state.display.body_style();
-    let detail = state.display.detail_style();
-    draw_header(display, state.display, "LIBRARY", "TXT / REFLOWABLE EPUB")?;
     let status = library_status(reader.library_tab, reader.visible_entries().len());
     draw_status_row(
         display,
@@ -123,21 +121,11 @@ pub fn render_library(
         StatusRow {
             left: status.left,
             middle: &status.middle,
-            right: status.right,
+            right: &status.right,
         },
     )?;
     draw_tabs(display, state, reader.library_tab)?;
 
-    let control_selected = reader.library_selected == 0;
-    draw_row(
-        display,
-        state,
-        188,
-        control_selected,
-        "Change tab",
-        "SELECT",
-        "TABS",
-    )?;
     let visible = reader.visible_entries();
     if visible.is_empty() {
         let message = reader
@@ -151,25 +139,22 @@ pub fn render_library(
         Text::new(&truncate(message, 54), Point::new(26, 302), body).draw(display)?;
     }
     for (index, entry) in visible.iter().take(7).enumerate() {
-        let selected = reader.library_selected == index + 1;
-        let columns = library_entry_columns(reader, entry);
-        draw_row(
-            display,
-            state,
-            248 + index as i32 * 58,
-            selected,
-            &truncate(&entry.book.title, 25),
-            columns.badge.as_str(),
-            columns.suffix.as_str(),
-        )?;
-    }
-    if reader.library_tab != ReaderLibraryTab::Bookmarks {
-        Text::new(
-            "TXT and EPUB open with staged first-page loading.",
-            Point::new(24, 716),
-            detail,
-        )
-        .draw(display)?;
+        let selected = reader.library_selected == index;
+        let top = 248 + index as i32 * 58;
+        if reader.library_tab == ReaderLibraryTab::Bookmarks {
+            let columns = library_entry_columns(reader, entry);
+            draw_row(
+                display,
+                state,
+                top,
+                selected,
+                &truncate(&entry.book.title, 25),
+                columns.badge.as_str(),
+                columns.suffix.as_str(),
+            )?;
+        } else {
+            draw_book_row(display, state, top, selected, entry)?;
+        }
     }
     draw_bottom_bar(display, state.display, &LIBRARY_HINTS)
 }
@@ -178,7 +163,7 @@ pub fn render_library(
 struct LibraryStatus {
     left: &'static str,
     middle: String,
-    right: &'static str,
+    right: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -192,13 +177,17 @@ fn library_status(tab: ReaderLibraryTab, entry_count: usize) -> LibraryStatus {
         LibraryStatus {
             left: "Bookmarks",
             middle: format!("{entry_count} saved"),
-            right: "MARKS.TXT",
+            right: "MARKS.TXT".into(),
         }
     } else {
         LibraryStatus {
-            left: tab.label(),
-            middle: format!("{entry_count} books"),
-            right: "SD BOOKS",
+            left: "Library",
+            middle: String::new(),
+            right: if entry_count == 1 {
+                "1 book".into()
+            } else {
+                format!("{entry_count} books")
+            },
         }
     }
 }
@@ -703,8 +692,8 @@ fn draw_tabs(
     let tabs = [
         ReaderLibraryTab::Recent,
         ReaderLibraryTab::Books,
-        ReaderLibraryTab::Files,
         ReaderLibraryTab::Bookmarks,
+        ReaderLibraryTab::Files,
     ];
     for (index, tab) in tabs.iter().copied().enumerate() {
         let left = 10 + index as i32 * 117;
@@ -720,6 +709,82 @@ fn draw_tabs(
             .draw(display)?;
         } else {
             Text::new(tab.label(), Point::new(left + 8, 161), body).draw(display)?;
+        }
+    }
+    Ok(())
+}
+
+/// A book row: the title, the format chip, and a bar with the percent, or
+/// `new` for a book never opened. The author line waits for the EPUB parser.
+fn draw_book_row(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+    top: i32,
+    selected: bool,
+    entry: &crate::reader::ReaderLibraryEntry,
+) -> Result<(), Infallible> {
+    let body = if selected {
+        state.display.text_style(UiTextRole::Body, BinaryColor::Off)
+    } else {
+        state.display.body_style()
+    };
+    let detail = if selected {
+        state
+            .display
+            .text_style(UiTextRole::Detail, BinaryColor::Off)
+    } else {
+        state.display.detail_style()
+    };
+    let style = if selected {
+        PrimitiveStyle::with_fill(BinaryColor::On)
+    } else {
+        PrimitiveStyle::with_stroke(BinaryColor::On, 1)
+    };
+    Rectangle::new(Point::new(20, top), Size::new(440, 52))
+        .into_styled(style)
+        .draw(display)?;
+    let chip = entry.book.format.badge();
+    let chip_width = detail.text_width(chip) + 12;
+    let title_width = 440 - 24 - chip_width - 16;
+    Text::new(
+        &body.fit(&entry.book.title, title_width),
+        Point::new(34, top + 22),
+        body,
+    )
+    .draw(display)?;
+    Text::new(
+        chip,
+        Point::new(20 + 440 - 12 - chip_width + 6, top + 22),
+        detail,
+    )
+    .draw(display)?;
+    match entry.location.as_ref() {
+        None => {
+            Text::new("new", Point::new(34, top + 44), detail).draw(display)?;
+        }
+        Some(location) => {
+            let size = entry.book.size_bytes.max(1);
+            let percent = (location.byte_offset.saturating_mul(100) / size).min(100) as u32;
+            let bar_left = 34;
+            let bar_width = 300;
+            Rectangle::new(
+                Point::new(bar_left, top + 36),
+                Size::new(bar_width as u32, 8),
+            )
+            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+            .draw(display)?;
+            Rectangle::new(
+                Point::new(bar_left, top + 36),
+                Size::new(bar_width as u32 * percent / 100, 8),
+            )
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
+            Text::new(
+                &format!("{percent}%"),
+                Point::new(bar_left + bar_width + 10, top + 44),
+                detail,
+            )
+            .draw(display)?;
         }
     }
     Ok(())
@@ -892,7 +957,7 @@ mod tests {
             super::LibraryStatus {
                 left: "Bookmarks",
                 middle: "9 saved".into(),
-                right: "MARKS.TXT",
+                right: "MARKS.TXT".into(),
             }
         );
         assert_eq!(

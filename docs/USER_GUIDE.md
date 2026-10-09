@@ -81,9 +81,11 @@ Put `.TXT`, `.EPUB` or `.EPU` books in `/RUSTMIX/BOOKS/` on the SD card.
 See [SD-card setup](SD_CARD_SETUP.md) for formats and generated state files.
 Long file names are supported; hidden macOS `._` files are ignored.
 
-1. Open **Home › Library › Books**.
-2. Up/Down selects a row. Select on **Change tab** cycles Recent, Books,
-	 Files and Bookmarks; Select on a book or bookmark opens it.
+1. Open **Home › Library**. The tabs are RECENT, ALL, BOOKMARKS and FILES;
+         a short BOOT press moves to the next tab.
+2. Up/Down selects a book. Each book shows its format and a bar with its
+         percent read, or `new` when it has never been opened. Select opens a
+         book at its saved place; on BOOKMARKS, Select opens a bookmark.
 3. During Opening Book, wait for the first page or hold BOOT to cancel.
 	 EPUB text is loaded chapter by chapter, rather than loading an entire
 	 long book into memory.
@@ -241,13 +243,13 @@ are in [SD-card setup](SD_CARD_SETUP.md).
 
 ### Alarms
 
-Persistent schedules and snooze minutes come from `/RUSTMIX/ALARMS.TXT`.
+Schedules and snooze minutes come from `/RUSTMIX/ALARMS.TXT`, and saved edits are written back to it.
 Calendar events do not create alarms.
 
-- List: Up/Down chooses a schedule; Select opens the runtime editor.
+- List: Up/Down chooses a schedule; Select opens the editor.
 - Editor: Up/Down changes hour, minute, enable state, recurrence or schedule;
-	Select advances fields. On **Save runtime edit**, Select applies it to the
-	running session. For changes that survive reboot, edit `ALARMS.TXT`.
+        Select advances fields. On **Save alarm**, Select writes the edit to
+        `ALARMS.TXT` on the card; the edit survives a reboot.
 - Hold BOOT leaves the screen; short BOOT is not an alarm-editor Back action.
 - Active alarm: Up/Down chooses Snooze or Dismiss; Select runs it.
 

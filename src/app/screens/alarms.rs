@@ -134,7 +134,7 @@ pub fn render_alarms(
             body,
         )?;
         Text::new(
-            "Edit ALARMS.TXT for persistent changes.",
+            "Saved edits are written to ALARMS.TXT.",
             Point::new(22, 632),
             body,
         )

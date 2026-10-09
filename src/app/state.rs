@@ -316,6 +316,7 @@ impl AppState {
                 | ScreenRoute::BibleChapters
                 | ScreenRoute::BibleReading
                 | ScreenRoute::BibleMenu
+                | ScreenRoute::BibleTranslations
         ) {
             self.apply_bible(route, event);
         } else if route == ScreenRoute::SleepScreen {
@@ -848,6 +849,9 @@ impl AppState {
     pub fn apply_keyboard_boot_short_press(&mut self) -> bool {
         if self.router.current() == ScreenRoute::CalendarEventEditor {
             self.calendar.toggle_editor_navigation_axis()
+        } else if self.router.current() == ScreenRoute::Library {
+            self.reader.cycle_library_tab();
+            true
         } else if self.router.current() == ScreenRoute::VoiceNoteResult {
             self.voice_notes_result.cycle_tab();
             true
@@ -1270,6 +1274,20 @@ impl AppState {
             (ScreenRoute::BibleMenu, ButtonEvent::Up) => self.move_bible_menu(-1),
             (ScreenRoute::BibleMenu, ButtonEvent::Down) => self.move_bible_menu(1),
             (ScreenRoute::BibleMenu, ButtonEvent::Select) => self.open_bible_menu_item(),
+            (ScreenRoute::BibleTranslations, ButtonEvent::Up) => self.bible.move_translation(false),
+            (ScreenRoute::BibleTranslations, ButtonEvent::Down) => {
+                self.bible.move_translation(true)
+            }
+            (ScreenRoute::BibleTranslations, ButtonEvent::Select) => {
+                match self.bible.choose_translation() {
+                    crate::bible_state::SwitchOutcome::Kept => {
+                        self.router.navigate_to(ScreenRoute::BibleReading)
+                    }
+                    crate::bible_state::SwitchOutcome::Picker => {
+                        self.router.navigate_to(ScreenRoute::BibleBooks)
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1303,6 +1321,10 @@ impl AppState {
                     }
                 }
                 self.router.navigate_to(ScreenRoute::BibleChapters);
+            }
+            Some("Traducción") => {
+                self.bible.open_translation_picker();
+                self.router.navigate_to(ScreenRoute::BibleTranslations);
             }
             Some("Versículo del día") => {
                 let today = self
@@ -2645,6 +2667,55 @@ mod tests {
     }
 
     #[test]
+    fn a_recent_book_opens_at_its_saved_place() {
+        let mut state = open_from_home(ScreenRoute::Reader);
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        // RECENT is the first tab; a recent book carries its saved place.
+        state.reader.library_tab = crate::reader::ReaderLibraryTab::Recent;
+        state.reader.library_selected = 0;
+        let place = crate::reader::ReaderLocation {
+            path: "/sdcard/RUSTMIX/BOOKS/Quijote.txt".into(),
+            title: "Quijote".into(),
+            format: crate::reader::BookFormat::Text,
+            size_bytes: 1_000,
+            modified_seconds: 1,
+            page_index: 3,
+            byte_offset: 420,
+            epub_chapter: None,
+        };
+        state.reader.recent = vec![place.clone()];
+        state.apply(ButtonEvent::Select);
+        let loading = state
+            .reader
+            .loading
+            .as_ref()
+            .expect("the book is requested");
+        assert_eq!(
+            loading.resume.as_ref().map(|location| location.byte_offset),
+            Some(420)
+        );
+    }
+
+    #[test]
+    fn library_boot_short_press_cycles_the_tabs_in_order() {
+        let mut state = open_from_home(ScreenRoute::Reader);
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        use crate::reader::ReaderLibraryTab::{Bookmarks, Books, Files, Recent};
+        // The Library opens on ALL; BOOT walks the strip in order and wraps.
+        assert_eq!(state.reader.library_tab, Books);
+        let mut order = vec![state.reader.library_tab];
+        for _ in 0..4 {
+            assert!(state.apply_keyboard_boot_short_press());
+            order.push(state.reader.library_tab);
+        }
+        assert_eq!(order, vec![Books, Bookmarks, Files, Recent, Books]);
+    }
+
+    #[test]
     fn reader_continue_shell_routes_to_library_when_no_session() {
         let mut state = open_from_home(ScreenRoute::Reader);
         state.apply(ButtonEvent::Select);
@@ -3030,6 +3101,62 @@ mod bible_routing_tests {
             second: 0,
         });
         state
+    }
+
+    /// A second translation on the card: the same books, in English.
+    fn add_second_translation(root: &PathBuf, folder: &str, index: &str) {
+        let dir = root.join(folder);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("index.tsv"), index).unwrap();
+        fs::write(
+            dir.join("meta.txt"),
+            format!("format=1\nabbreviation={folder}\nlanguage=en\n"),
+        )
+        .unwrap();
+        fs::write(dir.join("GEN.txt"), chapter_text()).unwrap();
+        fs::write(dir.join("PSA.txt"), chapter_text()).unwrap();
+    }
+
+    /// The reading menu on Genesis 1, with Traducción chosen.
+    fn open_translation_picker(root: &PathBuf) -> AppState {
+        let mut state = menu_state(root);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleTranslations);
+        state
+    }
+
+    #[test]
+    fn the_translation_switch_keeps_the_place_when_its_book_is_there() {
+        let root = temp_card("switch-kept");
+        add_second_translation(&root, "VUL", INDEX);
+        let mut state = open_translation_picker(&root);
+        assert_eq!(
+            state.bible.translation_selected(),
+            0,
+            "the translation in use is marked"
+        );
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.bible.translation(), Some("VUL"));
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        let position = state.bible.position().expect("the place is kept");
+        assert_eq!(state.bible.books()[position.book].usfm, "GEN");
+        assert_eq!(position.chapter, 1);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_translation_switch_opens_the_picker_when_the_book_is_missing() {
+        let root = temp_card("switch-missing");
+        add_second_translation(&root, "VUL", "PSA\tSalmos\t150\tPSA.txt\n");
+        let mut state = open_translation_picker(&root);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.bible.translation(), Some("VUL"));
+        assert_eq!(state.active_route(), ScreenRoute::BibleBooks);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

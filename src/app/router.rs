@@ -19,6 +19,7 @@ pub enum ScreenRoute {
     BibleChapters,
     BibleReading,
     BibleMenu,
+    BibleTranslations,
     BibleMissing,
     ReadingStats,
     XiaoZhi,
@@ -92,6 +93,7 @@ impl ScreenRoute {
             Self::BibleChapters => "Bible chapters",
             Self::BibleReading => "Bible reading",
             Self::BibleMenu => "Bible menu",
+            Self::BibleTranslations => "Bible translations",
             Self::BibleMissing => "Bible missing",
             Self::ReadingStats => "Reading Stats",
             Self::XiaoZhi => "XiaoZhi",
@@ -165,6 +167,7 @@ impl ScreenRoute {
             Self::BibleChapters => "bible-chapters",
             Self::BibleReading => "bible-reading",
             Self::BibleMenu => "bible-menu",
+            Self::BibleTranslations => "bible-translations",
             Self::BibleMissing => "bible-missing",
             Self::ReadingStats => "reading-stats",
             Self::XiaoZhi => "xiaozhi",
@@ -232,6 +235,35 @@ impl ScreenRoute {
         )
     }
 
+    /// Screens where holding ▲ or ▼ repeats: lists, grids and option lists.
+    /// Reading pages, games and the photo viewer take one press per key.
+    #[must_use]
+    pub const fn repeats_keys(self) -> bool {
+        matches!(
+            self,
+            Self::Settings
+                | Self::SettingsClockAlarms
+                | Self::SettingsSystem
+                | Self::Tools
+                | Self::Display
+                | Self::Power
+                | Self::Alarms
+                | Self::WeatherSettings
+                | Self::AiSettings
+                | Self::Library
+                | Self::ReaderPreferences
+                | Self::ReaderOptions
+                | Self::ReaderToc
+                | Self::ReaderBookmarks
+                | Self::BibleBooks
+                | Self::BibleChapters
+                | Self::BibleMenu
+                | Self::BibleTranslations
+                | Self::Photos
+                | Self::Dictionary
+        )
+    }
+
     #[must_use]
     pub const fn is_placeholder(self) -> bool {
         matches!(self, Self::GamesTbd | Self::XiaoZhi)
@@ -255,6 +287,7 @@ impl ScreenRoute {
             | Self::Weather => Some(Self::Home),
             Self::BibleChapters => Some(Self::BibleBooks),
             Self::BibleMenu => Some(Self::BibleReading),
+            Self::BibleTranslations => Some(Self::BibleReading),
             Self::SettingsClockAlarms | Self::SettingsSystem => Some(Self::Settings),
             Self::ContinueReading | Self::Library | Self::Bookmarks => Some(Self::Reader),
             Self::PhotoViewer => Some(Self::Photos),
@@ -349,6 +382,18 @@ impl ScreenRouter {
 #[cfg(test)]
 mod tests {
     use super::{ScreenRoute, ScreenRouter};
+
+    #[test]
+    fn lists_repeat_held_arrows_and_pages_do_not() {
+        assert!(ScreenRoute::Settings.repeats_keys());
+        assert!(ScreenRoute::Library.repeats_keys());
+        assert!(ScreenRoute::BibleBooks.repeats_keys());
+        assert!(ScreenRoute::Dictionary.repeats_keys());
+        assert!(!ScreenRoute::ReaderPage.repeats_keys());
+        assert!(!ScreenRoute::BibleReading.repeats_keys());
+        assert!(!ScreenRoute::PhotoViewer.repeats_keys());
+        assert!(!ScreenRoute::LuaGame.repeats_keys());
+    }
 
     #[test]
     fn router_exposes_static_parent_hierarchy() {

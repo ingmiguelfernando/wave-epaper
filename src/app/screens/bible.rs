@@ -430,10 +430,7 @@ fn chapter_lines(
     state: &AppState,
     position: bible_reader::Position,
 ) -> Option<(Vec<bible_reader::Line>, usize)> {
-    let translation = state.bible.translation()?;
-    let book = state.bible.books().get(position.book)?;
-    let loaded = bible::load_chapter(state.bible.root(), translation, book, position.chapter);
-    let items = loaded.ok()?;
+    let items = state.bible.chapter_items_at(position)?;
     let body = reader_body_style(
         state.reader.preferences.book_font,
         state.reader.preferences.font_size,
@@ -441,7 +438,9 @@ fn chapter_lines(
     );
     let width = RIGHT - LEFT;
     let first = verse_first_width(body, width);
-    let lines = bible_reader::layout(&items, width, first, |text| body.text_width(text));
+    let lines = bible_reader::layout(items, width, first, state.bible.language(), |text| {
+        body.text_width(text)
+    });
     Some((lines, reading_lines_per_page(body)))
 }
 
@@ -468,12 +467,13 @@ pub fn render_bible_reading(
     );
     let large = preferences.large_style();
     let width = RIGHT - LEFT;
-    let items = match bible::load_chapter(state.bible.root(), translation, book, position.chapter) {
-        Ok(items) => items,
-        Err(_) => return render_bible_missing(display, state),
+    let Some(items) = state.bible.chapter_items_at(position) else {
+        return render_bible_missing(display, state);
     };
     let first = verse_first_width(body, width);
-    let lines = bible_reader::layout(&items, width, first, |text| body.text_width(text));
+    let lines = bible_reader::layout(items, width, first, state.bible.language(), |text| {
+        body.text_width(text)
+    });
     let per_page = reading_lines_per_page(body);
     let pages = bible_reader::paginate(lines.len(), per_page);
     // The sentinel from a backward turn means "last page"; clamp it here.
@@ -572,6 +572,10 @@ fn draw_reading_line(
 #[must_use]
 pub fn bible_menu_items(state: &AppState) -> Vec<&'static str> {
     let mut items = vec!["Ir a libro", "Ir a capítulo"];
+    // Offered only when the card has a second translation to switch to.
+    if state.bible.translation_count() >= 2 {
+        items.push("Traducción");
+    }
     let verse_today = state
         .local_day()
         .and_then(|day| state.bible.verse_of_day(day));
@@ -580,6 +584,38 @@ pub fn bible_menu_items(state: &AppState) -> Vec<&'static str> {
     }
     items
 }
+
+/// Translation picker: each translation on the card by its title, the one in
+/// use marked.
+pub fn render_bible_translations(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let preferences = state.display;
+    let list = state.bible.translation_list();
+    let titles: Vec<&str> = list.iter().map(|option| option.title.as_str()).collect();
+    let current = state
+        .bible
+        .translation()
+        .and_then(|translation| list.iter().position(|option| option.folder == translation))
+        .unwrap_or(0);
+    draw_header(display, preferences, "TRADUCCIÓN", "Biblia")?;
+    draw_option_list(
+        display,
+        preferences,
+        184,
+        &titles,
+        current,
+        state.bible.translation_selected(),
+    )?;
+    draw_bottom_bar(display, preferences, &TRANSLATION_HINTS)
+}
+
+const TRANSLATION_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "move"),
+    (KeyCap::Select, "choose"),
+    (KeyCap::Boot, "hold: back"),
+];
 
 /// Menu of the reading view: one option list, the option at `highlighted`.
 pub fn render_bible_menu(

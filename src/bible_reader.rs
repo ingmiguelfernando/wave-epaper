@@ -113,6 +113,7 @@ pub fn layout(
     items: &[crate::bible::ChapterItem],
     width: i32,
     first_width: i32,
+    language: Option<crate::hyphenation::Language>,
     measure: impl Fn(&str) -> i32,
 ) -> Vec<Line> {
     let mut lines = Vec::new();
@@ -128,7 +129,7 @@ pub fn layout(
             } => {
                 // The first line also holds the verse number and indent, so it
                 // wraps to the narrower `first_width`; the rest use `width`.
-                for (index, piece) in wrap_verse(text, first_width, width, &measure)
+                for (index, piece) in wrap_verse(text, first_width, width, language, &measure)
                     .into_iter()
                     .enumerate()
                 {
@@ -151,6 +152,7 @@ fn wrap_verse(
     text: &str,
     first_width: i32,
     width: i32,
+    language: Option<crate::hyphenation::Language>,
     measure: &impl Fn(&str) -> i32,
 ) -> Vec<String> {
     let mut lines = Vec::new();
@@ -164,10 +166,24 @@ fn wrap_verse(
         };
         if line.is_empty() || measure(&candidate) <= limit {
             line = candidate;
-        } else {
-            lines.push(core::mem::replace(&mut line, word.to_owned()));
-            limit = width;
+            continue;
         }
+        // The longest break that leaves room for a hyphen ends this line; the
+        // rest starts the next, the way Reader pages break words.
+        let split = language.and_then(|language| {
+            crate::hyphenation::break_offsets(word, language)
+                .into_iter()
+                .rev()
+                .find(|&offset| measure(&format!("{line} {}-", &word[..offset])) <= limit)
+        });
+        match split {
+            Some(offset) => {
+                lines.push(format!("{line} {}-", &word[..offset]));
+                line = word[offset..].to_owned();
+            }
+            None => lines.push(core::mem::replace(&mut line, word.to_owned())),
+        }
+        limit = width;
     }
     if !line.is_empty() {
         lines.push(line);
@@ -304,6 +320,46 @@ mod tests {
     }
 
     /// Every character is one pixel wide, so line breaks are easy to predict.
+    #[test]
+    fn a_long_word_breaks_with_a_hyphen_when_the_line_has_room() {
+        let language = crate::hyphenation::Language::from_tag("es");
+        let items = vec![verse("1", false, "uno extraordinariamente")];
+        let lines = layout(&items, 20, 20, language, by_chars);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|line| match line {
+                Line::Verse { text, .. } => text.clone(),
+                Line::Heading(_) => String::new(),
+            })
+            .collect();
+        assert_eq!(
+            texts.len(),
+            2,
+            "the word breaks onto a second line: {texts:?}"
+        );
+        assert!(
+            texts[0].ends_with('-'),
+            "the first line ends with a hyphen: {texts:?}"
+        );
+        assert!(texts[0].chars().count() <= 20);
+        let rejoined = texts.concat().replace(['-', ' '], "");
+        assert_eq!(rejoined, "unoextraordinariamente");
+    }
+
+    #[test]
+    fn without_a_language_the_word_moves_whole() {
+        let items = vec![verse("1", false, "uno extraordinariamente")];
+        let lines = layout(&items, 20, 20, None, by_chars);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|line| match line {
+                Line::Verse { text, .. } => text.clone(),
+                Line::Heading(_) => String::new(),
+            })
+            .collect();
+        assert_eq!(texts, vec!["uno", "extraordinariamente"]);
+    }
+
     fn by_chars(text: &str) -> i32 {
         text.chars().count() as i32
     }
@@ -319,7 +375,7 @@ mod tests {
     #[test]
     fn a_verse_number_stays_on_its_first_line_only() {
         let items = [verse("3", false, "uno dos tres cuatro")];
-        let lines = layout(&items, 9, 9, by_chars);
+        let lines = layout(&items, 9, 9, None, by_chars);
         assert!(lines.len() > 1, "the verse wraps");
         assert!(matches!(&lines[0], Line::Verse { number: Some(n), .. } if n == "3"));
         assert!(lines[1..]
@@ -333,7 +389,7 @@ mod tests {
             crate::bible::ChapterItem::Heading("Salmo".into()),
             verse("1", true, "uno dos tres cuatro"),
         ];
-        let lines = layout(&items, 9, 9, by_chars);
+        let lines = layout(&items, 9, 9, None, by_chars);
         assert_eq!(lines[0], Line::Heading("Salmo".into()));
         let paragraphs = lines
             .iter()
@@ -354,7 +410,7 @@ mod tests {
     fn wrapping_keeps_every_word_in_order() {
         let text = "uno dos tres cuatro cinco seis";
         let items = [verse("2", false, text)];
-        let rejoined: Vec<String> = layout(&items, 9, 9, by_chars)
+        let rejoined: Vec<String> = layout(&items, 9, 9, None, by_chars)
             .into_iter()
             .filter_map(|line| match line {
                 Line::Verse { text, .. } => Some(text),
@@ -367,7 +423,7 @@ mod tests {
     #[test]
     fn a_long_word_keeps_its_own_line_without_being_split() {
         let items = [verse("1", false, "ab abcdefghijklmnop cd")];
-        let texts: Vec<String> = layout(&items, 5, 5, by_chars)
+        let texts: Vec<String> = layout(&items, 5, 5, None, by_chars)
             .into_iter()
             .filter_map(|line| match line {
                 Line::Verse { text, .. } => Some(text),

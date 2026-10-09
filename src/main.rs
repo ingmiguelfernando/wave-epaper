@@ -603,6 +603,7 @@ mod firmware {
         let mut last_status_refresh = Instant::now();
         let mut last_alarm_poll = Instant::now();
         let mut last_power_key_poll = Instant::now();
+        let boot_clock = Instant::now();
         // Milliseconds since boot for the Power key, game and reading clocks.
         let uptime = Instant::now();
         // A key still held from powering on is not a press.
@@ -1937,7 +1938,9 @@ mod firmware {
                 None => {}
             }
 
-            if let Some(event) = buttons.poll(&mut button_delay)? {
+            let now_ms = boot_clock.elapsed().as_millis() as u64;
+            let repeats = state.active_route().repeats_keys();
+            if let Some(event) = buttons.poll(&mut button_delay, now_ms, repeats)? {
                 info!("rustmix-wave=button-event event={event:?}");
                 if sleep_mode.is_sleeping() {
                     wake_cause = button_wake(state.power, "wheel");
@@ -1973,6 +1976,16 @@ mod firmware {
                         sync_alarm_hardware(&mut alarm_engine, &mut board_services, state.regional);
                         state.update_alarm_snapshot(alarm_engine.snapshot());
                         log_alarm_snapshot(&state.alarms);
+                    }
+                    if alarm_engine.take_changed() {
+                        match alarm_engine.save_to_path(ALARMS_CONFIG_PATH) {
+                            Ok(()) => info!(
+                                "rustmix-wave=alarm-config status=saved path={ALARMS_CONFIG_PATH}"
+                            ),
+                            Err(error) => warn!(
+                                "rustmix-wave=alarm-config status=save-failed error={error:#}"
+                            ),
+                        }
                     }
                     if matches!(outcome, AlarmUiOutcome::Snoozed | AlarmUiOutcome::Dismissed) {
                         if let Some(runtime) = audio_runtime.as_mut() {

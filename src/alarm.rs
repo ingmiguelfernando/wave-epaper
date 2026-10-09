@@ -1,9 +1,9 @@
-//! RTC alarm schedules loaded from removable SD storage.
+//! RTC alarm schedules loaded from and saved to removable SD storage.
 //!
 //! The PCF85063 exposes one hardware alarm slot. This module owns a bounded
-//! schedule list, computes the earliest local-time occurrence and exposes
-//! runtime-only UI actions. Persistent edits remain file-based so the mounted
-//! FAT filesystem stays read-only.
+//! schedule list, computes the earliest local-time occurrence and exposes the
+//! UI actions. A saved editor edit is written back to `ALARMS.TXT`, so it
+//! survives a reboot.
 
 use std::{fs, path::Path};
 
@@ -148,7 +148,7 @@ impl AlarmEditField {
             Self::Enabled => "Enabled",
             Self::ScheduleKind => "Mode",
             Self::WeekdaysOrDate => "Weekdays / date",
-            Self::Save => "Save runtime edit",
+            Self::Save => "Save alarm",
         }
     }
 }
@@ -265,6 +265,7 @@ pub struct AlarmEngine {
     hardware_programmed: bool,
     error: Option<String>,
     last_trigger_key: Option<u64>,
+    changed: bool,
 }
 
 impl Default for AlarmEngine {
@@ -281,6 +282,7 @@ impl Default for AlarmEngine {
             hardware_programmed: false,
             error: None,
             last_trigger_key: None,
+            changed: false,
         }
     }
 }
@@ -331,6 +333,40 @@ impl AlarmEngine {
             }
         }
         Ok(engine)
+    }
+
+    /// The file the loader reads back: a header, the snooze, then one line per
+    /// alarm.
+    #[must_use]
+    pub fn serialized(&self) -> String {
+        let mut text = String::from("# Saved by the device; comments are not kept.\n");
+        text.push_str(&format!("snooze_minutes={}\n", self.snooze_minutes));
+        for alarm in &self.alarms {
+            text.push_str(&format!("alarm={}\n", alarm_value(alarm)));
+        }
+        text
+    }
+
+    /// Write the alarms to `path`, creating its folder. Nothing is written when
+    /// the config was never read, so a broken file is not overwritten.
+    pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        if !self.config_loaded {
+            bail!(
+                "alarm config was not loaded; not overwriting {}",
+                path.display()
+            );
+        }
+        if let Some(folder) = path.parent() {
+            fs::create_dir_all(folder).with_context(|| format!("create {}", folder.display()))?;
+        }
+        crate::sd_file::replace(path, &self.serialized())
+            .with_context(|| format!("write alarm config {}", path.display()))
+    }
+
+    /// Whether a saved edit is waiting to be written; `main.rs` saves once.
+    pub fn take_changed(&mut self) -> bool {
+        core::mem::take(&mut self.changed)
     }
 
     #[must_use]
@@ -539,6 +575,7 @@ impl AlarmEngine {
                     self.selected = editor.alarm_index;
                     self.alarms[editor.alarm_index] = editor.draft;
                     self.recompute_next(now_local);
+                    self.changed = true;
                     AlarmUiOutcome::Saved
                 } else {
                     if let Some(editor) = self.editor.as_mut() {
@@ -644,6 +681,48 @@ fn cycle_weekday_mask(current: u8, delta: i32) -> u8 {
         .position(|value| *value == current)
         .unwrap_or(0) as i32;
     OPTIONS[(index + delta).rem_euclid(OPTIONS.len() as i32) as usize]
+}
+
+/// One `alarm=` value in the form `parse_alarm` reads back.
+fn alarm_value(alarm: &AlarmDefinition) -> String {
+    let (schedule, kind) = match alarm.schedule {
+        AlarmScheduleKind::Recurring { weekdays } => (weekday_field(weekdays), "recurring"),
+        AlarmScheduleKind::OneTime { year, month, day } => {
+            (format!("{year:04}-{month:02}-{day:02}"), "once")
+        }
+    };
+    let enabled = if alarm.enabled { "on" } else { "off" };
+    // A comma or line break in the name would split the line; keep the name whole.
+    let name = alarm
+        .name
+        .replace(|c: char| matches!(c, ',' | '\n' | '\r'), " ");
+    format!(
+        "{name},{:02}:{:02},{schedule},{enabled},{kind}",
+        alarm.hour, alarm.minute
+    )
+}
+
+/// The weekday field `parse_weekdays` reads: a named set, or tokens joined by `|`.
+fn weekday_field(mask: u8) -> String {
+    match mask {
+        EVERY_DAY => "daily".into(),
+        WEEKDAYS => "weekdays".into(),
+        WEEKENDS => "weekends".into(),
+        _ => [
+            (SUN, "sun"),
+            (MON, "mon"),
+            (TUE, "tue"),
+            (WED, "wed"),
+            (THU, "thu"),
+            (FRI, "fri"),
+            (SAT, "sat"),
+        ]
+        .iter()
+        .filter(|(bit, _)| mask & *bit != 0)
+        .map(|(_, token)| *token)
+        .collect::<Vec<_>>()
+        .join("|"),
+    }
 }
 
 fn parse_alarm(value: &str) -> Result<AlarmDefinition> {
@@ -954,6 +1033,62 @@ alarm=Flight,05:45,2026-06-10,on,once\n",
         engine.apply_button(ButtonEvent::Down, due);
         engine.apply_button(ButtonEvent::Select, due);
         assert!(!engine.snapshot().alarms[0].enabled);
+    }
+
+    #[test]
+    fn one_saved_edit_marks_one_save_and_unsaved_edits_mark_none() {
+        let mut engine = AlarmEngine::parse("alarm=Daily,07:30,daily,on,recurring\n").unwrap();
+        let now = local(2026, 6, 3, 3, 6, 0);
+        engine.recompute_next(now);
+        engine.apply_button(ButtonEvent::Select, now); // open the editor
+        engine.apply_button(ButtonEvent::Up, now); // change the hour, not saved yet
+        assert!(
+            !engine.take_changed(),
+            "an edit that is not saved writes nothing"
+        );
+        // Walk the fields to Save: five Selects move on, the sixth saves.
+        for _ in 0..6 {
+            engine.apply_button(ButtonEvent::Select, now);
+        }
+        assert!(engine.take_changed(), "the saved edit waits for one write");
+        assert!(!engine.take_changed(), "taken once, not again");
+    }
+
+    #[test]
+    fn saved_alarms_read_back_the_same_for_every_schedule_kind() {
+        let engine = AlarmEngine::parse(
+            "snooze_minutes=7\nalarm=Gym,06:30,weekdays,on,recurring\nalarm=Rest,22:00,daily,off,recurring\nalarm=Dentist,09:15,2026-10-20,on,once\nalarm=Weekend,08:00,sat|sun,on,recurring\n",
+        )
+        .unwrap();
+        let text = engine.serialized();
+        assert!(text.contains("alarm=Gym,06:30,weekdays,on,recurring\n"));
+        assert!(text.contains("alarm=Dentist,09:15,2026-10-20,on,once\n"));
+        let reread = AlarmEngine::parse(&text).unwrap();
+        assert_eq!(reread.snooze_minutes, 7);
+        assert_eq!(reread.alarms, engine.alarms);
+    }
+
+    #[test]
+    fn saving_creates_the_folder_and_the_file_reads_back() {
+        let root = std::env::temp_dir().join(format!("wave-alarm-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let path = root.join("RUSTMIX").join("ALARMS.TXT");
+        let engine = AlarmEngine::parse("alarm=Gym,06:30,weekdays,on,recurring\n").unwrap();
+        engine.save_to_path(&path).unwrap();
+        let reread = AlarmEngine::load_from_path(&path).unwrap();
+        assert_eq!(reread.alarms, engine.alarms);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_config_that_was_never_read_is_not_overwritten() {
+        let root = std::env::temp_dir().join(format!("wave-alarm-guard-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let path = root.join("ALARMS.TXT");
+        assert!(AlarmEngine::unavailable("missing")
+            .save_to_path(&path)
+            .is_err());
+        assert!(!path.exists(), "nothing written");
     }
 
     #[test]

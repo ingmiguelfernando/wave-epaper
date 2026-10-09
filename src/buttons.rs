@@ -23,6 +23,7 @@ pub struct Buttons<UP, SELECT, DOWN> {
     up: UP,
     select: SELECT,
     down: DOWN,
+    repeat: KeyRepeat,
 }
 
 impl<UP, SELECT, DOWN> Buttons<UP, SELECT, DOWN>
@@ -36,21 +37,52 @@ where
 {
     #[must_use]
     pub fn new(up: UP, select: SELECT, down: DOWN) -> Self {
-        Self { up, select, down }
+        Self {
+            up,
+            select,
+            down,
+            repeat: KeyRepeat::default(),
+        }
     }
 
-    /// Return one debounced press. Keys are active low on the Waveshare board.
-    pub fn poll<D: DelayNs>(&mut self, delay: &mut D) -> Result<Option<ButtonEvent>> {
+    /// Return one debounced press, or a repeat of a held ▲ or ▼ that is due.
+    /// Keys are active low on the Waveshare board. `now_ms` is any clock that
+    /// keeps running; `repeats` says whether the current screen repeats arrows.
+    pub fn poll<D: DelayNs>(
+        &mut self,
+        delay: &mut D,
+        now_ms: u64,
+        repeats: bool,
+    ) -> Result<Option<ButtonEvent>> {
         if self.is_pressed(ButtonEvent::Up)? {
-            return self.confirm(delay, ButtonEvent::Up);
+            return self.arrow(delay, ButtonEvent::Up, now_ms, repeats);
         }
         if self.is_pressed(ButtonEvent::Select)? {
+            self.repeat.step(None, now_ms, false);
             return self.confirm(delay, ButtonEvent::Select);
         }
         if self.is_pressed(ButtonEvent::Down)? {
-            return self.confirm(delay, ButtonEvent::Down);
+            return self.arrow(delay, ButtonEvent::Down, now_ms, repeats);
         }
+        self.repeat.step(None, now_ms, false);
         Ok(None)
+    }
+
+    /// ▲ and ▼ report at the press, after the debounce, and repeat while held.
+    fn arrow<D: DelayNs>(
+        &mut self,
+        delay: &mut D,
+        event: ButtonEvent,
+        now_ms: u64,
+        repeats: bool,
+    ) -> Result<Option<ButtonEvent>> {
+        if !self.repeat.is_held(event) {
+            delay.delay_ms(DEBOUNCE_MS);
+            if !self.is_pressed(event)? {
+                return Ok(None);
+            }
+        }
+        Ok(self.repeat.step(Some(event), now_ms, repeats))
     }
 
     fn confirm<D: DelayNs>(
@@ -85,6 +117,53 @@ where
                 .is_low()
                 .map_err(|error| anyhow!("GPIO6 DOWN read failed: {error:?}")),
         }
+    }
+}
+
+/// First repeat after a held ▲ or ▼, in milliseconds.
+pub const REPEAT_FIRST_MS: u64 = 500;
+/// Gap between repeats while the arrow stays down.
+pub const REPEAT_EVERY_MS: u64 = 200;
+
+/// Hold-to-repeat timer for ▲ and ▼. A press reports at once; while the key
+/// stays down, a repeat is due `REPEAT_FIRST_MS` after the press and every
+/// `REPEAT_EVERY_MS` after the last one. The next repeat counts from when it
+/// is reported, so a long pause gives one repeat, not a burst.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct KeyRepeat {
+    held: Option<ButtonEvent>,
+    next_at_ms: u64,
+}
+
+impl KeyRepeat {
+    #[must_use]
+    pub fn is_held(&self, event: ButtonEvent) -> bool {
+        self.held == Some(event)
+    }
+
+    /// The event to report at `now_ms` for the key that is down, if any.
+    /// `pressed` is `None` when no arrow is down. Without `repeats`, a held
+    /// key reports only its press.
+    pub fn step(
+        &mut self,
+        pressed: Option<ButtonEvent>,
+        now_ms: u64,
+        repeats: bool,
+    ) -> Option<ButtonEvent> {
+        let Some(key) = pressed else {
+            self.held = None;
+            return None;
+        };
+        if self.held != Some(key) {
+            self.held = Some(key);
+            self.next_at_ms = now_ms + REPEAT_FIRST_MS;
+            return Some(key);
+        }
+        if repeats && now_ms >= self.next_at_ms {
+            self.next_at_ms = now_ms + REPEAT_EVERY_MS;
+            return Some(key);
+        }
+        None
     }
 }
 
@@ -146,5 +225,74 @@ where
         self.back
             .is_low()
             .map_err(|error| anyhow!("GPIO0 BOOT read failed: {error:?}"))
+    }
+}
+
+#[cfg(test)]
+mod repeat_tests {
+    use super::*;
+
+    #[test]
+    fn a_press_reports_at_once_and_holding_waits_before_repeating() {
+        let mut keys = KeyRepeat::default();
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Down), 0, true),
+            Some(ButtonEvent::Down)
+        );
+        assert_eq!(keys.step(Some(ButtonEvent::Down), 499, true), None);
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Down), 500, true),
+            Some(ButtonEvent::Down)
+        );
+    }
+
+    #[test]
+    fn the_repeat_comes_every_200_ms_while_held_and_stops_at_release() {
+        let mut keys = KeyRepeat::default();
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Up), 0, true),
+            Some(ButtonEvent::Up)
+        );
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Up), 700, true),
+            Some(ButtonEvent::Up)
+        );
+        assert_eq!(keys.step(Some(ButtonEvent::Up), 899, true), None);
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Up), 900, true),
+            Some(ButtonEvent::Up)
+        );
+        assert_eq!(keys.step(None, 950, true), None, "released");
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Up), 1_000, true),
+            Some(ButtonEvent::Up),
+            "a new press reports"
+        );
+    }
+
+    #[test]
+    fn a_long_refresh_gives_one_repeat_not_a_burst() {
+        let mut keys = KeyRepeat::default();
+        keys.step(Some(ButtonEvent::Down), 0, true);
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Down), 2_600, true),
+            Some(ButtonEvent::Down)
+        );
+        assert_eq!(keys.step(Some(ButtonEvent::Down), 2_700, true), None);
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Down), 2_800, true),
+            Some(ButtonEvent::Down)
+        );
+    }
+
+    #[test]
+    fn a_screen_without_repeat_takes_one_press_per_key() {
+        let mut keys = KeyRepeat::default();
+        assert_eq!(
+            keys.step(Some(ButtonEvent::Down), 0, false),
+            Some(ButtonEvent::Down)
+        );
+        assert_eq!(keys.step(Some(ButtonEvent::Down), 500, false), None);
+        assert_eq!(keys.step(Some(ButtonEvent::Down), 900, false), None);
     }
 }

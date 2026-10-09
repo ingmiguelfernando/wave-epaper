@@ -407,6 +407,17 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut bookmarked = page;
     bookmarked.reader.toggle_current_bookmark();
     states.push(("reader-page-bookmarked", bookmarked));
+    states.push(("bible-translation", bible_translation_preview_state()));
+    for (name, tab) in [
+        ("library", crate::reader::ReaderLibraryTab::Books),
+        ("library-all", crate::reader::ReaderLibraryTab::Books),
+        ("library-files", crate::reader::ReaderLibraryTab::Files),
+    ] {
+        states.push((name, library_preview_state(tab)));
+    }
+    let mut large_library = library_preview_state(crate::reader::ReaderLibraryTab::Recent);
+    large_library.display.font_size = UiFontSize::Large;
+    states.push(("library-large-font", large_library));
 
     let mut power = sample_state();
     power.router.navigate_to(ScreenRoute::Power);
@@ -616,6 +627,55 @@ fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
 
 /// Notes oldest first, as the catalog scans them, so the AI hub's recent
 /// list reads newest first.
+/// The Library on a folder with two TXT books: one opened part way, one new.
+fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
+    let root = std::env::temp_dir().join(format!("wave-preview-library-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let books = root.join("BOOKS");
+    let state_root = root.join("READER");
+    fs::create_dir_all(&books).unwrap();
+    fs::create_dir_all(&state_root).unwrap();
+    fs::write(books.join("Quijote.txt"), QUIJOTE.repeat(3)).unwrap();
+    fs::write(books.join("Cien anos.txt"), QUIJOTE.repeat(2)).unwrap();
+    let mut reader = crate::reader::ReaderUiState::with_roots(
+        books.to_string_lossy().into_owned(),
+        state_root.to_string_lossy().into_owned(),
+    );
+    reader.refresh_library();
+    reader.library_tab = tab;
+    reader.library_selected = 0;
+    let mut state = sample_state();
+    state.reader = reader;
+    state.router.navigate_to(ScreenRoute::Library);
+    state
+}
+
+/// The translation picker on a card with two translations; the one in use is
+/// marked.
+fn bible_translation_preview_state() -> AppState {
+    let root =
+        std::env::temp_dir().join(format!("wave-preview-translations-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    for (folder, title, language) in [
+        ("RVR1960", "Reina-Valera 1960", "es"),
+        ("KJV", "King James Version", "en"),
+    ] {
+        let dir = root.join(folder);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("index.tsv"), "GEN\tGénesis\t50\tGEN.txt\n").unwrap();
+        fs::write(
+            dir.join("meta.txt"),
+            format!("format=1\nabbreviation={folder}\ntitle={title}\nlanguage={language}\n"),
+        )
+        .unwrap();
+    }
+    let mut state = sample_state();
+    state.bible = crate::bible_state::BibleUiState::with_root(&root);
+    state.bible.open_translation_picker();
+    state.router.navigate_to(ScreenRoute::BibleTranslations);
+    state
+}
+
 /// A finished record in the mockup's words, with a checkbox to exercise the
 /// device text rule (`☐` becomes `•`).
 fn sample_result_record() -> crate::voice_note_record::NoteRecord {
@@ -920,7 +980,7 @@ fn open_sample_book(state: &mut AppState) {
         reader_state.to_string_lossy().into_owned(),
     );
     reader.refresh_library();
-    reader.library_selected = 1;
+    reader.library_selected = 0;
     assert!(reader.apply_library_button(ButtonEvent::Select));
     assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
     state.reader = reader;
