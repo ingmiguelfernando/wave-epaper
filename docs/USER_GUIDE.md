@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.10.2: what is implemented, not the future
+This guide describes firmware v0.10.3: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -82,15 +82,18 @@ See [SD-card setup](SD_CARD_SETUP.md) for formats and generated state files.
 Long file names are supported; hidden macOS `._` files are ignored.
 
 1. Open **Home › Library**. The tabs are RECENT, ALL, BOOKMARKS and FILES;
-         a short BOOT press moves to the next tab.
-2. Up/Down selects a book. Each book shows its format and a bar with its
-         percent read, or `new` when it has never been opened. Select opens a
-         book at its saved place; on BOOKMARKS, Select opens a bookmark.
+	 a short BOOT press moves to the next tab.
+2. Up/Down selects a book; hold to move faster. Each book shows its format
+	 and a bar with its percent read (an EPUB shows its chapter), or `new`
+	 when it has never been opened; FILES shows file sizes. Select opens a
+	 book at its saved place; on BOOKMARKS, Select opens a bookmark.
 3. During Opening Book, wait for the first page or hold BOOT to cancel.
 	 EPUB text is loaded chapter by chapter, rather than loading an entire
 	 long book into memory.
 4. In the reading view, Up goes back a page, Down goes forward, Select opens
-	 Reader Options, and hold BOOT returns to the book list.
+	 Reader Options, and hold BOOT returns to the book list. The bar at the
+	 bottom shows the page (or chapter) and how far into the book you are; a
+	 ribbon at the top right marks a bookmarked page.
 
 **Continue Reading** resumes the saved book position (or returns to the list
 when nothing is saved). **Bookmarks** opens saved anchors. Positions, recent

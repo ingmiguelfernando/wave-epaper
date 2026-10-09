@@ -3,6 +3,27 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.10.3 — Reader page, Library, Bible translations, hold to repeat
+
+- **Reader page** as in the mockup: a thin header with the title, time and
+  battery; the text fills the page down to the shared bottom bar, which
+  shows `p. 41 · 12%` (TXT) or `Ch. 8 · 12%` (EPUB), the place in the book.
+  A bookmarked page hangs a ribbon at the top right. Landscape too. Books
+  paginate again on their first open, since a page now holds more lines.
+- **Library**: the status bar with the book count, tab chips RECENT, ALL,
+  BOOKMARKS and FILES (short BOOT moves between them), and book rows with
+  the title, the format, a bar with the percent read or `new`. FILES shows
+  sizes. ● opens a book at its place. Long lists scroll.
+- **Bible**: Menu › Traducción switches between the translations on the
+  card and keeps the place when the book is there. Verses break long words
+  with a hyphen in the translation's language. A chapter is read from the
+  card once, not on every page turn.
+- **Hold ▲ or ▼** to repeat on lists, grids and option lists: after half a
+  second, then five times a second. Reading pages and games take one press
+  at a time.
+- **Alarms**: a saved edit is written to `/RUSTMIX/ALARMS.TXT` and survives
+  a reboot.
+
 ## v0.10.2 — Bible navigation and verse of the day
 
 - **Bible.** Hold BOOT in the chapter grid goes back to the book list; it

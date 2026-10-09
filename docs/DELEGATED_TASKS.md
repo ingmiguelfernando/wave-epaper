@@ -4,6 +4,82 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 7 result (2026-10-09)
+
+Branch `side-tasks-7` (D34 to D38) came as pull request #6, with `main`
+merged in first and CI green. It was reviewed on `review-7`, merged and
+released as v0.10.3 (milestone `reader-library`). The alarm save (D38) and
+hold to repeat (D37) were wired in `main.rs` and well tested. The screens
+(D34, D35) were drawn without looking at their previews, and parts of both
+tasks were left out of the status.
+
+What the main developer changed at merge time:
+
+- **D34:**
+  - The text box moved up under the new header, but the Reader's lines per
+    page still fit the old one, so about 100 px stayed blank above the bar.
+    The table now fills the box: two to four more lines in portrait, one in
+    landscape. A test checks every size, face and orientation fits. Books
+    paginate again on their first open, as after a font change.
+  - The bar's percent was the index progress (`CACHE 34%` before), so page
+    1 read `34%`. It is now the place in the book (`place_percent`).
+  - `draw_bottom_bar` drew at y 752 in every orientation, so a landscape
+    page had no bar and no page label. The bar now sits along the bottom of
+    either orientation, and `reader-page-landscape` shows it.
+  - The bookmark corner covered the battery's `%`. It is now a ribbon at
+    the edge and the status moves left to make room.
+  - The Bible header had no clock or battery and left 70 px blank above
+    the title; both fixed.
+- **D35:**
+  - The header was removed with nothing in its place: the top 80 px were
+    blank, and the count sat in a boxed status row. The Library now has the
+    black status bar (`Library`, `2 books`) the mockup shows.
+  - At Large size `BOOKMARKS` ran into `FILES`. The chips are sized by
+    their labels and drop to the detail size when they would not fit.
+  - The selected row drew its bar black on black, so it vanished. Rows draw
+    in the selection's ink, titles are in the Reader's book face, and FILES
+    shows file sizes as the task asked.
+  - An EPUB's percent divided a text offset by the zipped file's size. EPUB
+    rows show the chapter until the place stores a percent.
+  - Only seven rows were drawn, so ▼ past the seventh book moved off screen
+    (hold to repeat made it easy). The list now scrolls.
+  - `library` and `library-all` were the same picture and no book was part
+    read, so no bar was ever drawn. The previews now differ and show one.
+- **D36:** `verse_page` now reads the kept chapter, but the menu asked for
+  the page before opening the chapter, so the verse of the day opened on
+  page 1 again. The chapter now opens first; a test covers a verse on a
+  later page.
+- **D37:** `boot_clock` duplicated `uptime`; it is gone.
+- **Doc comments (again):** `language()` was inserted under the doc comment
+  of `translation_count`, and `library_preview_state` under the one of
+  `sample_result_record`.
+- **Docs:** the smoke test still said alarm edits are lost at reboot.
+
+Verdict per task:
+
+- **D34:** done after the fixes. Open: the EPUB chapter title on a
+  chapter's first page (not in the status, though the task asked for it),
+  the pace (`9 min left`), and tests for the label with and without a pace.
+- **D35:** done after the fixes. Open: the author line, `done`, and an EPUB
+  percent.
+- **D36:** done after the verse fix.
+- **D37:** done. The refresh-time merge is not needed: the wheel reports at
+  most one event per poll, so nothing queues.
+- **D38:** done.
+
+Do differently next time:
+
+- **Look at every preview you add, at every size.** Blank bands, chips
+  that overlap and a bar that vanishes on the selected row are visible in
+  the PNG.
+- **Check a number's source.** `progress_percent` was the index, not the
+  place; a page-1 preview reading `34%` shows it.
+- **When you move a layout, move what depends on it**: lines per page,
+  scroll windows, the landscape case.
+- **List every part of the task in the status**, done or open.
+- **Doc comments, again.** Read the three lines above every function you
+  add.
+
 ## Round 6 result (2026-10-08)
 
 Branch `side-tasks-6` (D29 to D33) was reviewed, merged into `main` together
@@ -273,7 +349,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 7 tasks (branch `side-tasks-7`)
+## Round 7 tasks (done in v0.10.3)
 
 Start from `main` at v0.10.2. Five tasks, in this order; D35 and D36 reuse
 D34's reading header. When they are done, merge `main` into the branch and

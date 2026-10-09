@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-09, firmware v0.10.2.
+Last updated: 2026-10-09, firmware v0.10.3.
 
 ## Status
 
@@ -23,7 +23,7 @@ Last updated: 2026-10-09, firmware v0.10.2.
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
 | Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display digits and mockup weather icons follow in 0.10.1 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
-| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation delegated (D36) |
+| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3 |
 | Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1 |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1; requests from the device open |
 | Phase 8: OTA updates | | | Planned |
@@ -37,6 +37,7 @@ Last updated: 2026-10-09, firmware v0.10.2.
 | Fix: Power key read on GPIO1 (`PWR_OUT`), PMIC interrupt as backup | 0.9.6 | e0fc071 | Done, tested on the device |
 | Delegated tasks D24 to D28: Sudoku difficulty, timer and saves, Games hub, Settings groups, Reading Stats wiring, AI hub | 0.9.7 | PR #5 | Done, waiting for device test |
 | Delegated tasks D29 to D33: Bible data and reading view, Tetris Classic, Settings › AI, Voice Notes results | 0.10.1 | side-tasks-6 | Done, waiting for device test; D33 device processing open |
+| Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, waiting for device test; EPUB chapter titles, pace, authors and `done` open |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
