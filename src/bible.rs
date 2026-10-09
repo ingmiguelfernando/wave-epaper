@@ -443,7 +443,7 @@ pub fn reference_text(
 }
 
 /// `3` gives (3, 3); `3-4` gives (3, 4).
-fn verse_span(label: &str) -> Option<(u16, u16)> {
+pub(crate) fn verse_span(label: &str) -> Option<(u16, u16)> {
     match label.split_once('-') {
         Some((start, end)) => Some((start.parse().ok()?, end.parse().ok()?)),
         None => label.parse().ok().map(|number| (number, number)),

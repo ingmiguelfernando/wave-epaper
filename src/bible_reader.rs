@@ -94,6 +94,18 @@ pub enum Line {
     },
 }
 
+impl Line {
+    /// The verse number this line starts; `None` for headings and the later
+    /// lines of a verse.
+    #[must_use]
+    pub fn verse_label(&self) -> Option<&str> {
+        match self {
+            Self::Verse { number, .. } => number.as_deref(),
+            Self::Heading(_) => None,
+        }
+    }
+}
+
 /// Lay a chapter's items out as lines of at most `width` pixels, measuring
 /// with `measure`. Verses wrap and a heading keeps one line; a verse's
 /// number stays on its first line only.

@@ -364,15 +364,14 @@ mod tests {
     }
 }
 
-/// Book picker for the Home › Bible route and its book list.
+/// Book picker for the Home › Bible route and its book list. The route, not
+/// the picker's own view, decides what is drawn.
 pub fn render_bible_books_screen(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
     match state.bible.translation() {
-        Some(translation) => {
-            render_bible_nav(display, state.display, translation, state.bible.nav())
-        }
+        Some(translation) => render_books(display, state.display, translation, state.bible.nav()),
         None => render_bible_missing(display, state),
     }
 }
@@ -384,7 +383,7 @@ pub fn render_bible_chapters_screen(
 ) -> Result<(), Infallible> {
     match state.bible.translation() {
         Some(translation) => {
-            render_bible_nav(display, state.display, translation, state.bible.nav())
+            render_chapters(display, state.display, translation, state.bible.nav())
         }
         None => render_bible_missing(display, state),
     }
@@ -401,16 +400,39 @@ pub const READING_HINTS: [(KeyCap, &str); 3] = [
 /// The turn path and the drawing both use this, so they agree on the count.
 #[must_use]
 pub fn chapter_pages(state: &AppState, position: bible_reader::Position) -> usize {
-    let Some(translation) = state.bible.translation() else {
+    let Some((lines, per_page)) = chapter_lines(state, position) else {
         return 1;
     };
-    let Some(book) = state.bible.books().get(position.book) else {
-        return 1;
+    bible_reader::paginate(lines.len(), per_page)
+}
+
+/// The page of the chapter at `position` where verse `verse` begins; the
+/// first page when the chapter or the verse is not found.
+#[must_use]
+pub fn verse_page(state: &AppState, position: bible_reader::Position, verse: u16) -> usize {
+    let Some((lines, per_page)) = chapter_lines(state, position) else {
+        return 0;
     };
-    let Ok(items) = bible::load_chapter(state.bible.root(), translation, book, position.chapter)
-    else {
-        return 1;
+    let starts_verse = |line: &bible_reader::Line| {
+        let span = line.verse_label().and_then(bible::verse_span);
+        matches!(span, Some((first, last)) if first <= verse && verse <= last)
     };
+    lines
+        .iter()
+        .position(starts_verse)
+        .map_or(0, |index| index / per_page)
+}
+
+/// The chapter's laid-out lines and the lines per page, at the Reader's body
+/// style; `None` when the chapter cannot load.
+fn chapter_lines(
+    state: &AppState,
+    position: bible_reader::Position,
+) -> Option<(Vec<bible_reader::Line>, usize)> {
+    let translation = state.bible.translation()?;
+    let book = state.bible.books().get(position.book)?;
+    let loaded = bible::load_chapter(state.bible.root(), translation, book, position.chapter);
+    let items = loaded.ok()?;
     let body = reader_body_style(
         state.reader.preferences.book_font,
         state.reader.preferences.font_size,
@@ -419,7 +441,7 @@ pub fn chapter_pages(state: &AppState, position: bible_reader::Position) -> usiz
     let width = RIGHT - LEFT;
     let first = verse_first_width(body, width);
     let lines = bible_reader::layout(&items, width, first, |text| body.text_width(text));
-    bible_reader::paginate(lines.len(), reading_lines_per_page(body))
+    Some((lines, reading_lines_per_page(body)))
 }
 
 /// Reading view of the open place: the chapter's verses in the Reader's body
@@ -550,7 +572,7 @@ pub fn bible_menu_items(state: &AppState) -> Vec<&'static str> {
     let mut items = vec!["Ir a libro", "Ir a capítulo"];
     let verse_today = state
         .local_day()
-        .and_then(|day| state.bible.verse_of_day_position(day));
+        .and_then(|day| state.bible.verse_of_day(day));
     if verse_today.is_some() {
         items.push("Versículo del día");
     }

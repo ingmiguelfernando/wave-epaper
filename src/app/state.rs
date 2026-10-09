@@ -1305,10 +1305,12 @@ impl AppState {
                 self.router.navigate_to(ScreenRoute::BibleChapters);
             }
             Some("Versículo del día") => {
-                let position = self
+                let today = self
                     .local_day()
-                    .and_then(|day| self.bible.verse_of_day_position(day));
-                if let Some(position) = position {
+                    .and_then(|day| self.bible.verse_of_day(day));
+                if let Some((position, verse)) = today {
+                    let page = crate::app::screens::bible::verse_page(self, position, verse);
+                    let position = crate::bible_reader::Position { page, ..position };
                     self.bible.open_at(position);
                     self.router.navigate_to(ScreenRoute::BibleReading);
                 }
@@ -1374,11 +1376,20 @@ impl AppState {
         self.bible.resolve_last_page(|_| pages);
     }
 
-    /// BOOT short press in the reading view: the chapter grid of this book.
+    /// Short BOOT: the next section in the book picker, ten chapters on in the
+    /// grid, and the chapter grid of the book being read.
     pub fn apply_bible_boot_short_press(&mut self) -> bool {
-        if self.router.current() != ScreenRoute::BibleReading {
-            return false;
+        match self.router.current() {
+            ScreenRoute::BibleBooks => self.bible.nav_mut().next_section_cyclic(),
+            ScreenRoute::BibleChapters => self.bible.nav_mut().jump_chapter(1),
+            ScreenRoute::BibleReading => return self.open_bible_chapter_grid(),
+            _ => return false,
         }
+        true
+    }
+
+    /// The chapter grid of the book being read, on its chapter.
+    fn open_bible_chapter_grid(&mut self) -> bool {
         let Some(position) = self.bible.position() else {
             return false;
         };
@@ -1742,6 +1753,9 @@ impl AppState {
         }
         if self.router.current() == ScreenRoute::BibleReading {
             self.bible.remember_place();
+        }
+        if self.router.current() == ScreenRoute::BibleChapters {
+            self.bible.nav_mut().back();
         }
         if self.router.current() == ScreenRoute::ReaderPreferences {
             if self.reader.finish_preferences_edit() {
@@ -2798,10 +2812,12 @@ mod bible_routing_tests {
     use crate::{
         app::{
             menu::{home_entries, home_index},
+            render_current_screen,
             router::ScreenRoute,
         },
         bible_state::BibleUiState,
         buttons::ButtonEvent,
+        framebuffer::FrameBuffer,
     };
     use std::{fs, path::PathBuf};
 
@@ -2988,11 +3004,7 @@ mod bible_routing_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn the_verse_of_the_day_opens_its_chapter_from_the_reading_menu() {
-        let root = temp_card("menu-verse-day");
-        fs::write(root.join("VERSES.TXT"), "PSA 23:1-3\n").unwrap();
-        let mut state = menu_state(&root);
+    fn with_clock(mut state: AppState) -> AppState {
         state.board.rtc = Some(crate::rtc::RtcDateTime {
             year: 2026,
             month: 10,
@@ -3002,6 +3014,14 @@ mod bible_routing_tests {
             minute: 0,
             second: 0,
         });
+        state
+    }
+
+    #[test]
+    fn the_verse_of_the_day_opens_its_chapter_from_the_reading_menu() {
+        let root = temp_card("menu-verse-day");
+        fs::write(root.join("VERSES.TXT"), "PSA 2:2-3\n").unwrap();
+        let mut state = with_clock(menu_state(&root));
         let items = crate::app::screens::bible::bible_menu_items(&state);
         assert_eq!(items.last(), Some(&"Versículo del día"));
         state.apply(ButtonEvent::Down);
@@ -3013,17 +3033,53 @@ mod bible_routing_tests {
             .position()
             .expect("verse opens a reading position");
         assert_eq!(state.bible.books()[position.book].usfm, "PSA");
-        assert_eq!(position.chapter, 23);
+        assert_eq!((position.chapter, position.page), (2, 0));
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn the_menu_offers_only_working_options_even_with_a_verse_file() {
+    fn the_verse_option_needs_a_clock_and_a_chapter_on_the_card() {
         let root = temp_card("menu-verse");
+        fs::write(root.join("VERSES.TXT"), "PSA 2:1\n").unwrap();
+        let items = crate::app::screens::bible::bible_menu_items(&menu_state(&root));
+        assert_eq!(items, vec!["Ir a libro", "Ir a capítulo"], "no clock");
+        // The card's Psalms have two chapters, so Psalm 23 cannot open.
         fs::write(root.join("VERSES.TXT"), "PSA 23:1-3\n").unwrap();
-        let state = menu_state(&root);
+        let state = with_clock(menu_state(&root));
         let items = crate::app::screens::bible::bible_menu_items(&state);
-        assert_eq!(items, vec!["Ir a libro", "Ir a capítulo"]);
+        assert_eq!(items, vec!["Ir a libro", "Ir a capítulo"], "no chapter");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hold_boot_in_the_chapter_grid_returns_to_the_book_picker() {
+        let root = temp_card("grid-back");
+        let mut state = home_with_card(&root);
+        state.apply(ButtonEvent::Select); // picker
+        let mut books = FrameBuffer::new_white();
+        render_current_screen(&mut books, &state).unwrap();
+        state.apply(ButtonEvent::Select); // chapter grid
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::BibleBooks);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        assert!(frame == books, "the picker shows its books again");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn short_boot_moves_a_section_in_the_picker_and_ten_chapters_in_the_grid() {
+        let root = temp_card("grid-boot");
+        let index = "GEN\tGénesis\t2\tGEN.txt\nPSA\tSalmos\t150\tPSA.txt\n";
+        fs::write(root.join("RVR1960/index.tsv"), index).unwrap();
+        let mut state = home_with_card(&root);
+        state.apply(ButtonEvent::Select); // picker, Génesis
+        assert!(state.apply_bible_boot_short_press());
+        let selected = state.bible.nav().selected_book().unwrap();
+        assert_eq!(selected.usfm, "PSA");
+        state.apply(ButtonEvent::Select); // chapter grid of Salmos
+        assert!(state.apply_bible_boot_short_press());
+        assert_eq!(state.bible.nav().chapter_cursor(), 11);
         let _ = fs::remove_dir_all(&root);
     }
 
