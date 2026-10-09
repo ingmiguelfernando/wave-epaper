@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.10.1. This is not a list of promised mockup features. See
+Firmware v0.10.2. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -54,8 +54,7 @@ estimates until the battery log confirms them on the device.
 ## Bible
 
 The reading view wraps verses by words, without the Reader's hyphenation.
-The menu has `Ir a libro` and `Ir a capítulo` only: the verse of the day
-and the translation switch come later. With two translations on the card,
+The menu has no translation switch yet: with two translations on the card,
 the one of the last place opens.
 
 ## Voice Notes AI

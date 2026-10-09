@@ -67,6 +67,17 @@ Do differently next time:
   and list it as open.
 - **Merge `main` before handing over**, as the round's note asked.
 
+**Follow-up branch** `side-tasks-6-open` (the verse of the day in the reading
+menu, ● on a note's result opens its actions) was merged in v0.10.2. At
+merge, two new functions were again inserted under the doc comment of
+`translation_count`; a verse whose chapter is not on the card opened an
+empty view, so the option now needs the chapter; and the verse opens on the
+page that holds it, not on the chapter's first page. The owner found that
+hold BOOT in the chapter grid stayed on the grid (the picker drew from its
+own view, not from the route) and that short BOOT did nothing in the picker
+and the grid, though their bars promise `sección ›` and `+10`; both are
+fixed.
+
 ## Round 5 result (2026-10-08)
 
 Pull request #5 (D24 to D28) was reviewed, merged into `main` and released as
@@ -261,6 +272,160 @@ Do differently next time:
 - **rustfmt and guards:** rustfmt cannot format `matches!(x, P if guard)`
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
+
+## Round 7 tasks (branch `side-tasks-7`)
+
+Start from `main` at v0.10.2. Five tasks, in this order; D35 and D36 reuse
+D34's reading header. When they are done, merge `main` into the branch and
+open a pull request (`gh pr create`).
+
+**Main line during this round.** The main developer draws the display
+digits and the mockup's weather icons (Weather, the sleep screens and
+Home), then sends voice notes for transcription and summary (Phase 7).
+Leave these files alone:
+
+- `src/main.rs`, except the lines a task names;
+- power and sleep: `src/power*.rs`, `src/sleep_*.rs`,
+  `src/app/screens/sleep_*.rs`, `src/app/screens/power*.rs`;
+- weather: `src/weather*.rs`, `src/app/screens/weather*.rs`;
+- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/big_digits.rs`,
+  `src/app/typography/`, `scripts/fonts/`;
+- voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
+  `src/ai_*.rs`, `src/app/screens/voice_notes.rs`, `src/app/screens/ai.rs`.
+
+Read the Round 6 result first: new code goes after the doc comment above
+it, a screen that draws again starts from a clear canvas, ▼ is "next"
+everywhere, and a menu row that does nothing stays out. The fonts have
+ASCII, Latin-1 and `– — ‘ ’ ‚ “ ” „ • … ‹ › € ™ −` only.
+
+### D34: Reader page like the mockup
+
+**Why.** Mockup "Lector: libro en español". The most used screen still has
+rustmix's layout: a black header with the format name, a status box
+(`UTF-8 PAGE 1+ CACHE 34%`) and a text footer (`UP previous DOWN next
+SELECT options`) instead of the shared bottom bar.
+
+**Change.**
+
+- **Header.** A reading header as the mockup's: the book title in capitals
+  on the left, the time and battery on the right, a rule under it, no black
+  bar. Put it in `src/app/widgets/reading_header.rs`; the Bible reading view
+  uses it too, with `BIBLIA · RVR1960` on the left.
+- **Chapter title.** On the first page of an EPUB chapter, the chapter's
+  title from the table of contents, large, then a rule. Other pages and TXT
+  books start with the text.
+- **Bottom bar.** `draw_bottom_bar` with `▲▼ page` and `● menu`, and on the
+  right `Ch. 8 · 12% · 9 min left` for an EPUB, `p. 41 · 12%` for a TXT.
+  The percent is the place in the whole book. Minutes left count the pages
+  left in the chapter at the reader's own pace from `reading_stats` (seconds
+  per page over the last seven days); without 20 recorded pages, leave them
+  out. With `show_progress` off the right side stays empty.
+- **Bookmark.** A bookmarked page shows a small filled corner at the top
+  right of the text (no `★` glyph).
+- The text takes the room of the old status box. Portrait and landscape.
+- **Previews:** `reader-page` (EPUB with a chapter title), `reader-page-txt`,
+  `reader-page-landscape`, `bible-reading` with the new header.
+
+**Tests:** the geometry at every Reader size and UI size in both
+orientations (the text never reaches the header or the bar); the right-side
+label for EPUB, TXT, with and without a pace; the corner on a bookmarked
+page; a page turn through `AppState::apply` from Home › Library.
+
+**Status:**
+
+### D35: Library like the mockup
+
+**Why.** Mockup "Library". Home › Library opens a list of three rows
+(Continue Reading, Books, Bookmarks); the mockup shows the books.
+
+**Change.**
+
+- Status bar `Library` with `24 books` on the right, then tab chips
+  `RECENT ALL BOOKMARKS FILES`. Short BOOT moves to the next tab; the
+  `Change tab` row goes.
+- **Book rows** (RECENT and ALL): the title in the Reader's book face, the
+  author under it (EPUB `dc:creator`; nothing for TXT), then the format chip
+  (`EPUB`, `TXT`), a progress bar and the percent, `done` for a finished
+  book (draw a check mark: there is no `✓` glyph) or `new` for a book never
+  opened. ● opens the book at its place.
+- BOOKMARKS lists the saved bookmarks as today; FILES lists the files of
+  `/RUSTMIX/BOOKS` with their sizes.
+- Bottom bar `▲▼ book ● read BOOT tab`. Home's Continue card stays.
+- **Previews:** `library`, `library-all`, `library-files`,
+  `library-large-font`.
+
+**Tests:** from Home through `AppState::apply`: short BOOT cycles the tabs,
+● on a recent book opens it at its place, `new` and `done`, the author from
+a sample OPF, every row fits at Large size.
+
+**Status:**
+
+### D36: Bible translations, hyphenation and one load per chapter
+
+**Why.** Left from D30: the menu has no `Traducción`, verses wrap without
+hyphenation, and every page turn reads the chapter from the card three
+times (`chapter_pages` twice, then the drawing).
+
+**Change.**
+
+- **Traducción** in the reading menu when the card has two or more
+  translations: an option list of their `meta.txt` titles with the one in
+  use marked. Choosing another loads its books, keeps the place when that
+  book is there, and otherwise opens the picker.
+- Verses wrap and hyphenate by the translation's `language` (`es`, `en`)
+  the way Reader pages do.
+- `BibleUiState` keeps the open chapter's items and loads a chapter once,
+  when the place moves to it; drawing and paging use the kept items.
+- **Previews:** `bible-translation`, `bible-reading` hyphenated.
+
+**Tests:** the switch through `AppState::apply` with two translations in a
+temp folder (place kept, place missing); a hyphenated line; one load per
+chapter across page turns (count the loads).
+
+**Status:**
+
+### D37: Hold ▲▼ to repeat
+
+**Why.** Backlog. Long lists (150 Psalms, a long Library, the Dictionary)
+take one press per row.
+
+**Change.**
+
+- `buttons.rs` reports ▲ or ▼ when it goes down, then repeats it after
+  500 ms and every 200 ms while it is held. ● and BOOT do not repeat.
+- Repeats count only on lists and grids: `ScreenRoute::repeats_keys()` is
+  true for Settings lists and option lists, the Library, the Bible picker
+  and grid, the Photos gallery and the Dictionary; false for Reader and
+  Bible pages, games, the photo viewer and every screen not listed.
+- **main.rs** (only the wheel polling): a repeat that arrives while a
+  refresh runs replaces the one waiting, so one refresh shows the latest
+  cursor and repeats never queue up.
+
+**Tests:** the timing with a fake clock (nothing before 500 ms, then every
+200 ms, nothing after the release); the route list; merging during a
+refresh.
+
+**Status:**
+
+### D38: Alarm edits survive a reboot
+
+**Why.** Known issue: the Alarms editor changes only the running engine;
+a reboot reloads `/RUSTMIX/ALARMS.TXT`.
+
+**Change.**
+
+- Saving an alarm in the editor writes `ALARMS.TXT` through `sd_file`, in
+  the format the loader reads, once per saved edit (a changed flag that
+  `main.rs` takes and saves next to the `AI.TXT` save; only those lines).
+  The RTC alarm is programmed as today.
+- Comments in a hand-written file are not kept; the User Guide says so.
+- Remove the known issue; update the User Guide and the smoke test.
+
+**Tests:** a round trip of every schedule kind; an edit through
+`AppState::apply` marks one save and a cancel marks none; the folder is
+created when missing.
+
+**Status:**
 
 ## Round 6 tasks (done in v0.10.1)
 

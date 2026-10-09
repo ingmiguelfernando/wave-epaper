@@ -21,14 +21,17 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.10.1), not an upstream v1.0.0 marker.
+	expected release version (currently v0.10.2), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	XiaoZhi remains SOON. Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
-	picker first; choose a book and chapter, page with ▼ (next) and ▲
-	(back) across a chapter boundary, hold BOOT to leave, power-cycle, and
-	Home › Bible reopens the same page. Without a card it shows the Spanish
-	missing view.
+	picker first; short BOOT moves to the next section, ● opens a book's
+	chapters, short BOOT jumps ten chapters and hold BOOT returns to the
+	books. Choose a chapter, page with ▼ (next) and ▲ (back) across a
+	chapter boundary, hold BOOT to leave, power-cycle, and Home › Bible
+	reopens the same page. With `VERSES.TXT` and the clock set, the menu's
+	`Versículo del día` opens the page with today's verse. Without a card it
+	shows the Spanish missing view.
 - [ ] Reading Stats: read a page or two, leave the Reader, reopen the screen —
 	today's minutes and pages grow; the Home row shows `N-day streak` from
 	the second day above five minutes; the Continue card shows

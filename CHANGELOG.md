@@ -3,6 +3,17 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.10.2 — Bible navigation and verse of the day
+
+- **Bible.** Hold BOOT in the chapter grid goes back to the book list; it
+  kept showing the chapters. Short BOOT now does what the bars say: the next
+  section in the book list, ten chapters on in the grid.
+- **Verse of the day.** With `/RUSTMIX/BIBLE/VERSES.TXT` and the clock set,
+  the reading menu offers `Versículo del día`, which opens today's verse at
+  its page.
+- **Voice Notes.** On a note's result, ● opens the note's actions (play,
+  rename, export, delete).
+
 ## v0.10.1 — Bible reader, Tetris Classic and AI settings
 
 - **Bible**, in Spanish. Home › Bible opens where you stopped, or the book

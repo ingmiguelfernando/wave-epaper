@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-08, firmware v0.10.1.
+Last updated: 2026-10-09, firmware v0.10.2.
 
 ## Status
 
@@ -23,7 +23,7 @@ Last updated: 2026-10-08, firmware v0.10.1.
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
 | Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display digits and mockup weather icons follow in 0.10.1 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
-| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1; verse of the day, translation switch and hyphenation open |
+| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation delegated (D36) |
 | Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1 |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1; requests from the device open |
 | Phase 8: OTA updates | | | Planned |
