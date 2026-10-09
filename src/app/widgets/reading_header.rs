@@ -90,16 +90,29 @@ mod tests {
             let mut frame = FrameBuffer::new_white();
             let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
             let preferences = DisplayPreferences::default();
-            draw_reading_header(&mut display, preferences, 480, "Quijote", "18:42  BAT 78%", marked)
-                .unwrap();
+            draw_reading_header(
+                &mut display,
+                preferences,
+                480,
+                "Quijote",
+                "18:42  BAT 78%",
+                marked,
+            )
+            .unwrap();
             drop(display);
             // Portrait logical (x, y) is native (y, 479 - x).
             let ink = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(true);
             let ribbon_left = 480 - 12 - RIBBON_WIDTH;
-            assert_eq!(ink(ribbon_left + 2, 4), marked, "ribbon drawn only when marked");
+            assert_eq!(
+                ink(ribbon_left + 2, 4),
+                marked,
+                "ribbon drawn only when marked"
+            );
             // With the ribbon, the gap between the status and it stays white.
             let gap = (480 - 24 - RIBBON_ROOM + 1)..ribbon_left;
-            let touched = gap.clone().any(|x| (0..READING_HEADER_HEIGHT).any(|y| ink(x, y)));
+            let touched = gap
+                .clone()
+                .any(|x| (0..READING_HEADER_HEIGHT).any(|y| ink(x, y)));
             assert!(!(marked && touched), "nothing in the gap {gap:?}");
         }
     }

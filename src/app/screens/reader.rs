@@ -806,12 +806,10 @@ fn draw_book_row(
         return Ok(());
     };
     if entry.book.format != BookFormat::Text {
-        let label = location
-            .epub_chapter
-            .as_ref()
-            .map_or_else(|| "opened".into(), |chapter| {
-                format!("Ch. {}", chapter.chapter_number)
-            });
+        let label = location.epub_chapter.as_ref().map_or_else(
+            || "opened".into(),
+            |chapter| format!("Ch. {}", chapter.chapter_number),
+        );
         Text::new(&label, Point::new(34, line), detail).draw(display)?;
         return Ok(());
     }
@@ -919,8 +917,14 @@ mod tests {
             let width = orientation.screen_width();
             let height = 1280 - width;
             let body = page_body_geometry(width, height);
-            assert!(body.text.top > READING_HEADER_HEIGHT, "{width}: under the rule");
-            assert!(body.frame.bottom < height - BOTTOM_BAR_HEIGHT, "{width}: above the bar");
+            assert!(
+                body.text.top > READING_HEADER_HEIGHT,
+                "{width}: under the rule"
+            );
+            assert!(
+                body.frame.bottom < height - BOTTOM_BAR_HEIGHT,
+                "{width}: above the bar"
+            );
             for font_size in BookFontSize::ALL {
                 for book_font in BookFont::ALL {
                     let preferences = ReaderPreferences {
@@ -1008,7 +1012,10 @@ mod tests {
             book: bookmark.as_book(),
             location: Some(bookmark),
         };
-        assert_eq!(library_count(ReaderLibraryTab::Bookmarks, 24, 9), "9 bookmarks");
+        assert_eq!(
+            library_count(ReaderLibraryTab::Bookmarks, 24, 9),
+            "9 bookmarks"
+        );
         assert_eq!(library_count(ReaderLibraryTab::Recent, 24, 9), "24 books");
         assert_eq!(library_count(ReaderLibraryTab::Books, 1, 0), "1 book");
         assert_eq!(

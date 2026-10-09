@@ -140,7 +140,9 @@ fn render_screen_previews() {
             let orientation = landscape
                 .iter()
                 .find(|(landscape_name, _)| *landscape_name == name)
-                .map_or(DisplayOrientation::Portrait, |(_, orientation)| *orientation);
+                .map_or(DisplayOrientation::Portrait, |(_, orientation)| {
+                    *orientation
+                });
             let png = encode_png(&frame, orientation);
             fs::write(Path::new(directory).join(format!("{name}.png")), png).unwrap();
         }

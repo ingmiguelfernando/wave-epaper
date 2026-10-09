@@ -244,6 +244,9 @@ mod tests {
         let ink = |x: i32, y: i32| frame.is_black(Point::new(x, y)) == Some(true);
         let rule = 480 - BOTTOM_BAR_HEIGHT;
         assert!(ink(20, rule) && ink(780, rule), "the rule spans the width");
-        assert!((rule + 3..480).any(|y| ink(LEFT + 4, y)), "the first cap is drawn");
+        assert!(
+            (rule + 3..480).any(|y| ink(LEFT + 4, y)),
+            "the first cap is drawn"
+        );
     }
 }

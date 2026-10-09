@@ -2020,7 +2020,11 @@ mod tests {
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         let session = state.reader.session.as_ref().expect("session");
-        assert_eq!(session.place_percent(), 24, "page 3 starts at 480 000 of 2 000 000");
+        assert_eq!(
+            session.place_percent(),
+            24,
+            "page 3 starts at 480 000 of 2 000 000"
+        );
     }
 
     #[test]
@@ -3209,7 +3213,10 @@ mod bible_routing_tests {
         state.apply(ButtonEvent::Select);
         let position = state.bible.position().expect("the verse opens");
         assert_eq!(position.chapter, 2);
-        let first_page = crate::bible_reader::Position { page: 0, ..position };
+        let first_page = crate::bible_reader::Position {
+            page: 0,
+            ..position
+        };
         let expected = crate::app::screens::bible::verse_page(&state, first_page, 70);
         assert!(expected > 0, "verse 70 is past the first page");
         assert_eq!(position.page, expected);
