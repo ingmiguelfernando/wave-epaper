@@ -371,7 +371,7 @@ only from its record on the card.
 	Delete or Return; Select runs the action. Delete asks for confirmation.
 - Note with an AI record: Select opens its result. The title is the summary
     title; tabs are SUMMARY, TRANSCRIPT and AUDIO (short BOOT switches);
-    Up/Down scroll the text; Select goes back to the list. A note without
+    Up/Down scroll the text; Select opens the note's actions. A note without
     a record opens its details.
 - Title keyboard: Up/Down moves in the active axis; short BOOT toggles
 	NAV H / NAV V; Select activates a key, SAVE or CANCEL. Hold BOOT cancels.
