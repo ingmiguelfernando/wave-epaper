@@ -10,6 +10,8 @@ slash. Inter Compact and Large and every Atkinson size are fine. Task D6 found
 no `fonts.toml` setting that fixes it without changing other glyphs, so
 screens show percentages in Body size instead (sleep card battery, weather
 rain chances). Do not infer a battery-reading failure from the glyph.
+In v0.10.3 the Reader page (clock and battery, page label) and the Library
+rows still use the Detail size; delegated tasks D39 and D40 move them.
 
 ## USB flashing and disappearing serial port
 
@@ -51,17 +53,11 @@ RTC-alarm wake on GPIO45 must be preserved; the mockup's deep-sleep current
 is not a measured firmware result. The sleep modes' battery figures are
 estimates until the battery log confirms them on the device.
 
-## Bible
-
-The reading view wraps verses by words, without the Reader's hyphenation.
-The menu has no translation switch yet: with two translations on the card,
-the one of the last place opens.
-
 ## Voice Notes AI
 
 Notes are not sent for transcription or summary yet. A `VOICE###.AI`
 record made on a computer shows its state on the list and the AI hub, and a
-finished record opens its result; there ● only goes back.
+finished record opens its result; there ● opens the note's actions.
 
 ## EPUB scope
 

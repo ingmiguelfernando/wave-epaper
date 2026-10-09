@@ -62,6 +62,9 @@ Verdict per task:
   the pace (`9 min left`), and tests for the label with and without a pace.
 - **D35:** done after the fixes. Open: the author line, `done`, and an EPUB
   percent.
+- **D34 and D35:** the header's battery, the page label and the row
+  percents use the Detail size, where Inter Standard draws `%` without its
+  slash (KNOWN_ISSUES). The review missed it too; D39 and D40 fix it.
 - **D36:** done after the verse fix.
 - **D37:** done. The refresh-time merge is not needed: the wheel reports at
   most one event per poll, so nothing queues.
@@ -79,6 +82,8 @@ Do differently next time:
 - **List every part of the task in the status**, done or open.
 - **Doc comments, again.** Read the three lines above every function you
   add.
+- **Read KNOWN_ISSUES before drawing.** It holds rules such as percentages
+  in Body size.
 
 ## Round 6 result (2026-10-08)
 
@@ -348,6 +353,181 @@ Do differently next time:
 - **rustfmt and guards:** rustfmt cannot format `matches!(x, P if guard)`
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
+
+## Round 8 tasks (branch `side-tasks-8`)
+
+Start from `main` at v0.10.3. Five tasks, in this order; D39 and D40 finish
+D34 and D35. When they are done, merge `main` into the branch and open a
+pull request (`gh pr create`).
+
+**Main line during this round.** The main developer draws the display
+digits and the mockup's weather icons (Weather, the sleep screens and
+Home), then sends voice notes for transcription and summary (Phase 7).
+Leave these files alone:
+
+- `src/main.rs`, except the lines a task names;
+- power and sleep: `src/power*.rs`, `src/sleep_*.rs`,
+  `src/app/screens/sleep_*.rs`, `src/app/screens/power*.rs`;
+- weather and Home: `src/weather*.rs`, `src/app/screens/weather*.rs`,
+  `src/app/screens/home.rs`;
+- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/big_digits.rs`,
+  `src/app/typography/`, `scripts/fonts/`;
+- voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
+  `src/ai_*.rs`, `src/app/screens/voice_notes.rs`, `src/app/screens/ai.rs`.
+
+Read the Round 7 result first: look at every preview you add at Compact,
+Standard and Large; check where each number comes from; when a layout
+moves, move what depends on it; list every part of a task in its Status,
+done or open. Percentages are drawn in Body size (KNOWN_ISSUES). New code
+goes after the doc comment above it. The fonts have ASCII, Latin-1 and
+`– — ‘ ’ ‚ “ ” „ • … ‹ › € ™ −` only.
+
+### D39: Reader page: chapter titles and minutes left
+
+**Why.** Left from D34. The mockup's page opens a chapter with its title
+(`Capítulo VIII`) and the bar says how long the chapter will take
+(`Ch. 8 · 12% · 9 min left`). The header's battery and the page label use
+the Detail size, so Inter Standard draws a broken `%`.
+
+**Change.**
+
+- **Chapter title.** On the first page of an EPUB chapter: the chapter's
+  label (`EpubChapter::label`) in the large style, a rule, then the text.
+  The room comes from pagination, not drawing: the first page of a chapter
+  holds fewer lines, so no line is lost or drawn under the bar. Bump the
+  page cache version so old caches rebuild. TXT books and later pages are
+  unchanged.
+- **Minutes left** (EPUB only): the pages left in the chapter times the
+  seconds per page of the last seven days (`ReadingStats::total`), rounded
+  up: `9 min left`, or `< 1 min left`. Leave it out with fewer than 20
+  pages recorded in those days, and when the label would not fit beside
+  the bar's hints.
+- **Percent size.** The page label and the header's clock and battery in
+  Body size.
+- **Previews:** `reader-page-epub` (a chapter's first page with its title)
+  and `reader-page-epub-pace` (a later page with minutes left), from
+  `epub::sample_epub` with reading stats set; `reader-page` stays TXT.
+
+**Tests:** the first page of a chapter holds the title and fewer lines, at
+every Reader size in both orientations, and the lines still end above the
+bar; the label with and without a pace (19 and 20 pages recorded); the
+label fits beside the hints at Large; a page turn from Home › Library
+through `AppState::apply` crosses into a new chapter and shows its title.
+
+**Status:**
+
+### D40: Library: authors, finished books and EPUB percent
+
+**Why.** Left from D35. The mockup's rows show the author under the title,
+a check for a finished book, and a percent for EPUBs; today an EPUB row
+shows `Ch. 8`, because the saved place has no percent. Row percents use
+the Detail size (broken `%`).
+
+**Change.**
+
+- **Author.** The Library scan already opens each EPUB's OPF for its title
+  (`read_epub_title_on_worker`); read the first `dc:creator` in the same
+  pass. `ReaderBook` gets an `author`, empty for TXT. RECENT and BOOKMARKS
+  rows take it from the scanned book with the same path.
+- **Rows** as in the mockup: the title, the author under it, and on the
+  right the format chip over the percent, a drawn check (no `✓` glyph) or
+  `new`; the bar under the author for a book in progress. Fit seven rows,
+  or fewer at Large, and keep the scrolling.
+- **Finished.** Reaching the last page of a book (index complete) calls
+  `ReadingStats::mark_finished`; `main.rs` already saves the stats. A
+  finished book shows the check, also after it is opened again.
+- **EPUB percent.** The saved place keeps the percent of the book
+  (`ReaderSession::place_percent`) in STATE.TXT and RECENT.TXT, as an
+  optional field: old files still read (7, 10 or 11 fields). EPUB rows draw
+  the bar from it, and `Ch. N` only for an old place without one.
+- Row percents in Body size.
+- **Previews:** `library` (an EPUB in progress with its author, a finished
+  book, a new book), `library-all`, `library-large-font`.
+
+**Tests:** the author from a sample OPF (`epub::sample_epub` with a
+`dc:creator`); `done` after the last page through `AppState::apply`; the
+percent round trip in STATE.TXT and RECENT.TXT, and an old line without
+it; every row fits at Large.
+
+**Status:**
+
+### D41: Settings › Reading
+
+**Why.** Mockup "Settings": a `Reading` group (`Hyphenation, margins,
+stats`, value `Auto ES/EN`) between Display and Sleep screen. Reader
+preferences open only from inside a book today, and margins and
+hyphenation cannot be changed at all.
+
+**Change.**
+
+- **Settings row** `Reading`, subtitle `Hyphenation, margins, stats`,
+  value `Auto ES/EN` or `Hyphenation off`. Nine rows must still fit.
+- **Screen** `SettingsReading` (parent Settings), an option list like
+  Settings › Display: Book font, Size, Alignment, Margins (`Narrow`,
+  `Normal`, `Wide`), Hyphenation (`Auto ES/EN`, `Off`), Show progress,
+  Reading stats (`On`, `Off`).
+- **Margins and hyphenation** are new `ReaderPreferences` fields saved in
+  `PREFS.TXT`; a file without them reads as Normal and Auto. Margins set
+  the text inset (16, 24 or 40 px) for `line_width` and the page box;
+  lines per page stay as they are. Hyphenation Off wraps whole words. Both
+  are part of the layout: a change repaginates the open book the next
+  time it shows, the way `finish_preferences_edit` does.
+- **Reading stats Off** records no time and no pages and writes nothing.
+- Reader Options › Reading Preferences lists the new options too.
+- **Previews:** `settings` (nine rows), `settings-reading`,
+  `reader-page-wide-margins`.
+
+**Tests:** Home › Settings › Reading through `AppState::apply`; the PREFS
+round trip with and without the new fields; margins change `line_width`
+and the cache fingerprint; Off leaves no hyphen at a line's end; stats Off
+records nothing; the row's value.
+
+**Status:**
+
+### D42: Add and delete alarms on the device
+
+**Why.** Since D38 edits are saved, but the list holds only the alarms in
+`ALARMS.TXT`: a new alarm or a deletion still needs a computer. Without
+the file, nothing can be saved at all.
+
+**Change.**
+
+- The Alarms list ends with a `New alarm` row while fewer than
+  `MAX_ALARMS` exist. It opens the editor on a new alarm (07:00, on,
+  weekdays, named `Alarm N`); Save adds it and writes the file.
+- The editor's last field chooses with ▲▼ between `Save alarm` and
+  `Delete alarm`; ● runs the choice. Delete removes the alarm, writes the
+  file and recomputes the next alarm for the RTC; on a new alarm it only
+  discards it.
+- A missing `ALARMS.TXT` is an empty list that can be saved; a file that
+  does not parse still blocks saving. `main.rs` loads through a new
+  `AlarmEngine::load_or_empty` (only that call).
+- **Previews:** `alarms-new`, `alarms-delete`.
+
+**Tests:** add up to six and no more; delete and save; a missing file and
+a new alarm write the file; a broken file is never overwritten; the next
+alarm after a delete.
+
+**Status:**
+
+### D43: Bible: no card reads while drawing
+
+**Why.** Each draw of the reading menu lists the translation folders
+(`translation_count`) and reads `VERSES.TXT` (`verse_list`), and so does
+each key press in it.
+
+**Change.**
+
+- `BibleUiState` keeps the translation list and the verse list, read when
+  the state is built; `bible_menu_items` and the picker use the kept ones.
+- The Traducción list leaves out a translation whose `index.tsv` does not
+  read, so choosing one never lands on the old translation's book picker.
+
+**Tests:** count card reads as D36's `loads()` does: drawing the menu and
+pressing keys in it read nothing; a translation with a broken index is not
+listed.
+
+**Status:**
 
 ## Round 7 tasks (done in v0.10.3)
 

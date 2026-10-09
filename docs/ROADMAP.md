@@ -349,9 +349,6 @@ Done in v0.9.7 (D27); kept as the reference.
 
 ## Backlog
 
-- **Hold ▲▼ to repeat** (mockup): first repeat after 500 ms, then every
-  200 ms. `buttons.rs` has to report the press before the release, and the
-  loop has to merge repeats while a refresh runs.
 - **Deeper sleep.** The mockup's 8 µA needs deep sleep in sleep mode. Deep
   sleep can only wake from RTC GPIOs (0 to 21). BOOT and the wheel qualify,
   and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
@@ -361,5 +358,5 @@ Done in v0.9.7 (D27); kept as the reference.
   override in the generator. Until then, show percentages in Body size.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
-  Environment move under System as diagnostics.
-- **Settings › Reading.** Hyphenation, margins, stats.
+  Environment move under System as diagnostics. Reading is delegated (D41).
+- **Verse of the day sleep mode** (mockup: "Photo, clock, weather, verse").
