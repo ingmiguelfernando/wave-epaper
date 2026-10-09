@@ -15,19 +15,23 @@ use crate::{
         typography::{Text, TextBounds, UiTextRole},
         widgets::{
             bottom_bar::{
-                draw_bottom_bar, KeyCap, BACK_HINTS, CHANGE_HINTS, CHOOSE_HINTS, OPEN_HINTS,
+                draw_bottom_bar, KeyCap, BACK_HINTS, BOTTOM_BAR_TOP, CHANGE_HINTS, CHOOSE_HINTS,
+                OPEN_HINTS,
             },
             header::draw_header,
             option_list::draw_option_list,
+            reading_header::{draw_reading_header, READING_HEADER_HEIGHT},
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
     reader::{
-        BookFormat, ParagraphAlignment, ReaderLibraryTab, ReaderLoadingStage, ReaderOption,
+        ParagraphAlignment, ReaderLibraryTab, ReaderLoadingStage, ReaderOption, ReaderSession,
         ReadingPreference, ReadingTheme, READER_BODY_INSET,
     },
 };
+
+const READER_PAGE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "page"), (KeyCap::Select, "menu")];
 
 const RESUME_HINTS: [(KeyCap, &str); 2] =
     [(KeyCap::Select, "resume"), (KeyCap::Boot, "hold: back")];
@@ -345,9 +349,11 @@ pub fn render_page(
     let width = size.width as i32;
     let height = size.height as i32;
     let landscape = width > height;
-    let header_height = if landscape { 52 } else { 70 };
-    let status_top = header_height + 10;
-    let status_height = if landscape { 34 } else { 42 };
+    // The reading header takes the place of the old black bar and status box:
+    // the text starts right under its rule.
+    let header_height = READING_HEADER_HEIGHT;
+    let status_top = header_height + 6;
+    let status_height = 0;
     let footer_line = height - 54;
     let body = ReaderBodyGeometry::new(width, status_top, status_height, footer_line);
     let body_style = reader_body_style(
@@ -355,89 +361,26 @@ pub fn render_page(
         state.reader.preferences.font_size,
         state.reader.preferences.theme,
     );
-    let ui_body = state.display.body_style();
     let ui_detail = state.display.detail_style();
 
-    Rectangle::new(
-        Point::new(0, 0),
-        Size::new(size.width, header_height as u32),
-    )
-    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-    .draw(display)?;
-    Text::new(
-        &truncate(&session.book.title, if landscape { 52 } else { 27 }),
-        Point::new(18, if landscape { 28 } else { 32 }),
-        state.display.header_title_style(),
-    )
-    .draw(display)?;
-    Text::new(
-        if session.book.format == BookFormat::Text {
-            "TXT READER"
-        } else {
-            "EPUB REFLOWABLE"
-        },
-        Point::new(18, if landscape { 48 } else { 60 }),
-        state.display.header_subtitle_style(),
-    )
-    .draw(display)?;
-
-    Rectangle::new(
-        Point::new(14, status_top),
-        Size::new((width - 28) as u32, status_height as u32),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-    .draw(display)?;
-    let status_baseline = status_top + status_height - 10;
     let marked = state.reader.current_page_is_bookmarked();
-    if state.reader.preferences.show_progress {
-        Text::new(
-            if session.book.format == BookFormat::Text {
-                session.encoding.label()
-            } else {
-                "EPUB"
-            },
-            Point::new(24, status_baseline),
-            ui_body,
-        )
-        .draw(display)?;
-        Text::new(
-            &session.display_page_label(),
-            Point::new(if landscape { 274 } else { 176 }, status_baseline),
-            ui_body,
-        )
-        .draw(display)?;
-        let cache_label = format!("CACHE {}%", session.progress_percent());
-        Text::new(
-            if marked {
-                "MARKED"
-            } else {
-                cache_label.as_str()
-            },
-            Point::new(if landscape { 590 } else { 358 }, status_baseline),
-            ui_body,
-        )
-        .draw(display)?;
-    } else {
-        Text::new(
-            state.reader.preferences.book_font.label(),
-            Point::new(24, status_baseline),
-            ui_body,
-        )
-        .draw(display)?;
-        Text::new(
-            session.content_badge(),
-            Point::new(if landscape { 370 } else { 210 }, status_baseline),
-            ui_body,
-        )
-        .draw(display)?;
-        if marked {
-            Text::new(
-                "MARKED",
-                Point::new(if landscape { 590 } else { 358 }, status_baseline),
-                ui_body,
-            )
+    let status = format!(
+        "{}  {}",
+        state.board.time_label(state.regional),
+        state.board.battery_label()
+    );
+    draw_reading_header(
+        display,
+        state.display,
+        width,
+        &truncate(&session.book.title, if landscape { 52 } else { 30 }),
+        &status,
+    )?;
+    if marked {
+        // A bookmarked page carries a small filled corner at the top right.
+        Rectangle::new(Point::new(width - 30, 14), Size::new(16, 16))
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
             .draw(display)?;
-        }
     }
 
     if state.reader.preferences.theme == ReadingTheme::HighContrast {
@@ -483,23 +426,36 @@ pub fn render_page(
         .draw_clipped(display, body.text)?;
     }
 
-    Rectangle::new(
-        Point::new(14, footer_line),
-        Size::new((width - 28) as u32, 1),
-    )
-    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-    .draw(display)?;
-    Text::new(
-        if landscape {
-            "UP PREV  DOWN NEXT  SELECT OPTIONS"
-        } else {
-            "UP previous   DOWN next   SELECT options"
-        },
-        Point::new(18, height - 18),
-        if landscape { ui_detail } else { ui_body },
-    )
-    .draw(display)?;
+    let footer_label = if state.reader.preferences.show_progress {
+        reader_progress_label(session)
+    } else {
+        String::new()
+    };
+    if !footer_label.is_empty() {
+        // Same baseline as the bar's words: centred on the bar, cap height down.
+        let label_style = ui_detail;
+        let label_width = label_style.text_width(&footer_label);
+        let bar_center = (BOTTOM_BAR_TOP + 3 + height) / 2;
+        let baseline = bar_center + label_style.cap_height() / 2;
+        Text::new(
+            &footer_label,
+            Point::new(width - 18 - label_width, baseline),
+            label_style,
+        )
+        .draw(display)?;
+    }
+    draw_bottom_bar(display, state.display, &READER_PAGE_HINTS)?;
     Ok(())
+}
+
+/// Footer label for a page: the chapter and percent for an EPUB, the page and
+/// percent for a TXT book.
+fn reader_progress_label(session: &ReaderSession) -> String {
+    let percent = session.progress_percent();
+    match session.current_epub_chapter_page_label() {
+        Some(chapter) => format!("Ch. {} · {percent}%", chapter.chapter_number),
+        None => format!("p. {} · {percent}%", session.current_absolute_page() + 1),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -840,6 +796,34 @@ mod tests {
             ReaderLibraryEntry, ReaderLibraryTab, ReaderLoadingStage, ReaderLocation, ReadingTheme,
         },
     };
+
+    /// The text box stays between the reading header's rule and the bottom
+    /// bar, in both orientations, the way `render_page` lays it out.
+    #[test]
+    fn the_page_text_stays_between_the_header_and_the_bar() {
+        use crate::app::widgets::{
+            bottom_bar::BOTTOM_BAR_TOP, reading_header::READING_HEADER_HEIGHT,
+        };
+        for (width, height) in [(480, 800), (800, 480)] {
+            let footer_line = height - 54;
+            let status_top = READING_HEADER_HEIGHT + 6;
+            let body = ReaderBodyGeometry::new(width, status_top, 0, footer_line);
+            assert!(
+                body.text.top > READING_HEADER_HEIGHT,
+                "{width}x{height}: text under the rule"
+            );
+            assert!(
+                body.text.bottom <= footer_line,
+                "{width}x{height}: text above the rule"
+            );
+            if height > BOTTOM_BAR_TOP {
+                assert!(
+                    footer_line < BOTTOM_BAR_TOP,
+                    "portrait: the rule sits above the bar"
+                );
+            }
+        }
+    }
 
     #[test]
     fn preference_picker_wraps_applies_and_draws() {

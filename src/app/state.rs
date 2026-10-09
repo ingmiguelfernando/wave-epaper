@@ -1973,6 +1973,21 @@ mod tests {
     }
 
     #[test]
+    fn a_txt_page_from_home_shows_its_page_label_and_turns() {
+        let mut state = reading_state();
+        assert_eq!(state.active_route(), ScreenRoute::ReaderPage);
+        let session = state.reader.session.as_ref().expect("session");
+        assert_eq!(session.current_absolute_page(), 0);
+        state.apply(ButtonEvent::Down);
+        let session = state.reader.session.as_ref().expect("session");
+        assert_eq!(
+            session.current_absolute_page(),
+            1,
+            "▼ turns to the next page"
+        );
+    }
+
+    #[test]
     fn a_press_past_the_last_page_is_not_a_turn() {
         let mut state = reading_state();
         for now_ms in [0, 1_000, 2_000, 3_000, 4_000] {

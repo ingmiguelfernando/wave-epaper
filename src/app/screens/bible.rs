@@ -19,6 +19,7 @@ use crate::{
             bottom_bar::{draw_bottom_bar, KeyCap},
             header::draw_header,
             option_list::draw_option_list,
+            reading_header::draw_reading_header,
         },
     },
     bible::{self, BibleBook, Testament},
@@ -479,7 +480,8 @@ pub fn render_bible_reading(
     let page = position.page.min(pages - 1);
     let chapter_title = format!("{} {}", book.short_name, position.chapter);
 
-    draw_header(display, preferences, "BIBLIA", translation)?;
+    let header_title = format!("BIBLIA \u{00b7} {translation}");
+    draw_reading_header(display, preferences, width + LEFT * 2, &header_title, "")?;
     let title = format!("{} {}", book.name, position.chapter);
     Text::new(&large.fit(&title, width), Point::new(LEFT, 150), large).draw(display)?;
     Rectangle::new(Point::new(LEFT, 166), Size::new(width as u32, 2))

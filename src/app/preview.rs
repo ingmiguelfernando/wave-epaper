@@ -403,7 +403,10 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
 
     let mut page = sample_state();
     open_sample_book(&mut page);
-    states.push(("reader-page", page));
+    states.push(("reader-page", page.clone()));
+    let mut bookmarked = page;
+    bookmarked.reader.toggle_current_bookmark();
+    states.push(("reader-page-bookmarked", bookmarked));
 
     let mut power = sample_state();
     power.router.navigate_to(ScreenRoute::Power);
