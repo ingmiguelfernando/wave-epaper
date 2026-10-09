@@ -120,6 +120,12 @@ impl UiTextStyle {
         Self { font, color }
     }
 
+    /// The same face in another color, for text on a selected (black) row.
+    #[must_use]
+    pub const fn with_color(self, color: BinaryColor) -> Self {
+        Self { color, ..self }
+    }
+
     #[must_use]
     pub const fn line_height(self) -> u8 {
         self.font.line_height

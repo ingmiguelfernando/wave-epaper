@@ -277,7 +277,6 @@ impl BibleUiState {
         self.verse_position(verse)
     }
 
-    /// Translations on the card; the menu offers a switch only with two or more.
     /// The open translation's language, for hyphenation.
     pub fn language(&self) -> Option<Language> {
         self.language
@@ -436,6 +435,7 @@ impl BibleUiState {
         }
     }
 
+    /// Translations on the card; the menu offers a switch only with two or more.
     pub fn translation_count(&self) -> usize {
         bible::translations(&self.root).map_or(0, |list| list.len())
     }

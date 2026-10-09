@@ -525,57 +525,58 @@ impl ReaderPreferences {
     pub const fn layout(self) -> ReaderLayout {
         // Reader pages share one bounded body viewport across Classic and
         // High Contrast. Lines wrap by pixel width; the character budgets only
-        // bound how much text is read for one page.
+        // bound how much text is read for one page. Line counts fill the text
+        // box under the reading header (`render_page` checks they fit).
         let (chars_per_line, lines_per_page) =
             match (self.orientation, self.font_size, self.book_font) {
                 (
                     ReaderOrientation::Portrait,
                     BookFontSize::Small,
                     BookFont::Serif | BookFont::Literata,
-                ) => (39, 25),
+                ) => (39, 29),
                 (
                     ReaderOrientation::Portrait,
                     BookFontSize::Medium,
                     BookFont::Serif | BookFont::Literata,
-                ) => (35, 22),
+                ) => (35, 24),
                 (
                     ReaderOrientation::Portrait,
                     BookFontSize::Large,
                     BookFont::Serif | BookFont::Literata,
-                ) => (30, 19),
+                ) => (30, 21),
                 (
                     ReaderOrientation::Portrait,
                     BookFontSize::XLarge,
                     BookFont::Serif | BookFont::Literata,
-                ) => (25, 16),
-                (ReaderOrientation::Portrait, BookFontSize::Small, _) => (43, 25),
-                (ReaderOrientation::Portrait, BookFontSize::Medium, _) => (38, 22),
-                (ReaderOrientation::Portrait, BookFontSize::Large, _) => (33, 19),
-                (ReaderOrientation::Portrait, BookFontSize::XLarge, _) => (27, 16),
+                ) => (25, 18),
+                (ReaderOrientation::Portrait, BookFontSize::Small, _) => (43, 29),
+                (ReaderOrientation::Portrait, BookFontSize::Medium, _) => (38, 24),
+                (ReaderOrientation::Portrait, BookFontSize::Large, _) => (33, 21),
+                (ReaderOrientation::Portrait, BookFontSize::XLarge, _) => (27, 18),
                 (
                     ReaderOrientation::Landscape,
                     BookFontSize::Small,
                     BookFont::Serif | BookFont::Literata,
-                ) => (68, 13),
+                ) => (68, 14),
                 (
                     ReaderOrientation::Landscape,
                     BookFontSize::Medium,
                     BookFont::Serif | BookFont::Literata,
-                ) => (58, 11),
+                ) => (58, 12),
                 (
                     ReaderOrientation::Landscape,
                     BookFontSize::Large,
                     BookFont::Serif | BookFont::Literata,
-                ) => (49, 10),
+                ) => (49, 11),
                 (
                     ReaderOrientation::Landscape,
                     BookFontSize::XLarge,
                     BookFont::Serif | BookFont::Literata,
-                ) => (41, 8),
-                (ReaderOrientation::Landscape, BookFontSize::Small, _) => (72, 13),
-                (ReaderOrientation::Landscape, BookFontSize::Medium, _) => (64, 11),
-                (ReaderOrientation::Landscape, BookFontSize::Large, _) => (55, 10),
-                (ReaderOrientation::Landscape, BookFontSize::XLarge, _) => (45, 8),
+                ) => (41, 9),
+                (ReaderOrientation::Landscape, BookFontSize::Small, _) => (72, 14),
+                (ReaderOrientation::Landscape, BookFontSize::Medium, _) => (64, 12),
+                (ReaderOrientation::Landscape, BookFontSize::Large, _) => (55, 11),
+                (ReaderOrientation::Landscape, BookFontSize::XLarge, _) => (45, 9),
             };
         ReaderLayout {
             chars_per_line,
@@ -824,6 +825,22 @@ impl ReaderSession {
             return 100;
         }
         ((self.indexed_through.saturating_mul(100) / source_size).min(100)) as u8
+    }
+
+    /// How far into the book the current page starts, in percent of its text.
+    #[must_use]
+    pub fn place_percent(&self) -> u8 {
+        let source_size = self.source_size_bytes();
+        if source_size == 0 {
+            return 0;
+        }
+        let offset = self
+            .page_offsets
+            .get(self.current_page)
+            .copied()
+            .or_else(|| self.current_cached_page().map(|page| page.byte_offset))
+            .unwrap_or(0);
+        ((offset.saturating_mul(100) / source_size).min(100)) as u8
     }
 
     #[must_use]

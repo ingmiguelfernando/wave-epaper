@@ -17,8 +17,10 @@ use crate::{
     orientation::OrientedFrameBuffer,
 };
 
-/// Top edge of the bottom bar; screen content should stay above it.
-pub const BOTTOM_BAR_TOP: i32 = 752;
+/// Height of the bar from its rule to the bottom edge.
+pub const BOTTOM_BAR_HEIGHT: i32 = 48;
+/// Top edge of the bottom bar in portrait; screen content should stay above it.
+pub const BOTTOM_BAR_TOP: i32 = 800 - BOTTOM_BAR_HEIGHT;
 const CAP_HEIGHT: i32 = 22;
 const LEFT: i32 = 14;
 const RIGHT: i32 = 480 - 14;
@@ -74,12 +76,16 @@ pub const KEYBOARD_HINTS: [(KeyCap, &str); 4] = [
 ];
 
 /// Draw the bar with Body labels, or Detail labels when Body would not fit.
+/// It sits along the bottom edge of the display's orientation.
 pub fn draw_bottom_bar(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
     hints: &[(KeyCap, &str)],
 ) -> Result<(), Infallible> {
-    Rectangle::new(Point::new(0, BOTTOM_BAR_TOP), Size::new(480, 3))
+    let size = display.orientation().logical_size();
+    let height = size.height as i32;
+    let top = height - BOTTOM_BAR_HEIGHT;
+    Rectangle::new(Point::new(0, top), Size::new(size.width, 3))
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
         .draw(display)?;
     let cap_style = preferences.text_style(UiTextRole::Detail, BinaryColor::Off);
@@ -93,7 +99,7 @@ pub fn draw_bottom_bar(
         hints_width(hints, label_style, cap_style) <= RIGHT - LEFT,
         "bottom bar hints are too wide: {hints:?}"
     );
-    let center = (BOTTOM_BAR_TOP + 3 + 800) / 2;
+    let center = (top + 3 + height) / 2;
     let mut x = LEFT;
     for &(cap, label) in hints {
         x = draw_key_cap(display, cap, Point::new(x, center), cap_style)? + CAP_GAP;
@@ -226,5 +232,18 @@ mod tests {
         assert_eq!(GAME_BOTTOM_BAR_RECT.y, BOTTOM_BAR_TOP);
         assert_eq!(GAME_BOTTOM_BAR_RECT.bottom(), 800);
         assert_eq!(GAME_BOTTOM_BAR_RECT.width, 480);
+    }
+
+    #[test]
+    fn in_landscape_the_bar_runs_along_the_bottom_of_the_panel() {
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Landscape);
+        draw_bottom_bar(&mut display, DisplayPreferences::default(), &WIDEST).unwrap();
+        drop(display);
+        // Landscape logical (x, y) is native (x, y).
+        let ink = |x: i32, y: i32| frame.is_black(Point::new(x, y)) == Some(true);
+        let rule = 480 - BOTTOM_BAR_HEIGHT;
+        assert!(ink(20, rule) && ink(780, rule), "the rule spans the width");
+        assert!((rule + 3..480).any(|y| ink(LEFT + 4, y)), "the first cap is drawn");
     }
 }

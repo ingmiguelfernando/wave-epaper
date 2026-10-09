@@ -481,12 +481,33 @@ pub fn render_bible_reading(
     let chapter_title = format!("{} {}", book.short_name, position.chapter);
 
     let header_title = format!("BIBLIA \u{00b7} {translation}");
-    draw_reading_header(display, preferences, width + LEFT * 2, &header_title, "")?;
+    let status = format!(
+        "{}  {}",
+        state.board.time_label(state.regional),
+        state.board.battery_label()
+    );
+    draw_reading_header(
+        display,
+        preferences,
+        width + LEFT * 2,
+        &header_title,
+        &status,
+        false,
+    )?;
     let title = format!("{} {}", book.name, position.chapter);
-    Text::new(&large.fit(&title, width), Point::new(LEFT, 150), large).draw(display)?;
-    Rectangle::new(Point::new(LEFT, 166), Size::new(width as u32, 2))
-        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-        .draw(display)?;
+    let title_baseline = READING_TOP - 36;
+    Text::new(
+        &large.fit(&title, width),
+        Point::new(LEFT, title_baseline),
+        large,
+    )
+    .draw(display)?;
+    Rectangle::new(
+        Point::new(LEFT, title_baseline + 16),
+        Size::new(width as u32, 2),
+    )
+    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+    .draw(display)?;
 
     let small = preferences.detail_style();
     // Section headings in bold capitals, at the compact size like the mockup.
@@ -517,8 +538,9 @@ fn verse_first_width(body: UiTextStyle, width: i32) -> i32 {
 }
 
 /// Vertical room for verse lines: from under the title rule down to the
-/// indicator line above the bottom bar.
-const READING_TOP: i32 = 186;
+/// indicator line above the bottom bar. The title sits right under the
+/// reading header.
+const READING_TOP: i32 = 136;
 const READING_INDICATOR_TOP: i32 = 716;
 
 /// Whole verse lines that fit between `READING_TOP` and the indicator, at the

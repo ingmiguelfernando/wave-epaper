@@ -5,29 +5,31 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{PrimitiveStyle, Rectangle, RoundedRectangle},
 };
 
 use crate::{
     app::{
+        display::UiFontSize,
         reader_typography::reader_body_style,
         state::AppState,
-        typography::{Text, TextBounds, UiTextRole},
+        typography::{Text, TextBounds, UiTextRole, UiTextStyle},
         widgets::{
             bottom_bar::{
-                draw_bottom_bar, KeyCap, BACK_HINTS, BOTTOM_BAR_TOP, CHANGE_HINTS, CHOOSE_HINTS,
+                draw_bottom_bar, KeyCap, BACK_HINTS, BOTTOM_BAR_HEIGHT, CHANGE_HINTS, CHOOSE_HINTS,
                 OPEN_HINTS,
             },
             header::draw_header,
             option_list::draw_option_list,
             reading_header::{draw_reading_header, READING_HEADER_HEIGHT},
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
     reader::{
-        ParagraphAlignment, ReaderLibraryTab, ReaderLoadingStage, ReaderOption, ReaderSession,
-        ReadingPreference, ReadingTheme, READER_BODY_INSET,
+        BookFontSize, BookFormat, ParagraphAlignment, ReaderLibraryTab, ReaderLoadingStage,
+        ReaderOption, ReaderSession, ReadingPreference, ReadingTheme, READER_BODY_INSET,
     },
 };
 
@@ -108,22 +110,26 @@ pub fn render_continue_reading(
     draw_bottom_bar(display, state.display, &RESUME_HINTS)
 }
 
+/// Top of the tab chips, under the status bar.
+const LIBRARY_TABS_TOP: i32 = STATUS_BAR_HEIGHT + 14;
+/// Top of the first row, under the chips.
+const LIBRARY_ROWS_TOP: i32 = LIBRARY_TABS_TOP + 54;
+/// A book row holds the title line and the place line.
+const LIBRARY_BOOK_ROW_HEIGHT: i32 = 72;
+
 pub fn render_library(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
     let reader = &state.reader;
     let body = state.display.body_style();
-    let status = library_status(reader.library_tab, reader.visible_entries().len());
-    draw_status_row(
-        display,
-        state.display,
-        StatusRow {
-            left: status.left,
-            middle: &status.middle,
-            right: &status.right,
-        },
-    )?;
+    draw_status_bar(display, state.display, "Library")?;
+    let count = library_count(
+        reader.library_tab,
+        reader.books.len(),
+        reader.bookmarks.len(),
+    );
+    draw_status_text(display, state.display, &count, STATUS_BAR_RIGHT)?;
     draw_tabs(display, state, reader.library_tab)?;
 
     let visible = reader.visible_entries();
@@ -136,12 +142,25 @@ pub fn render_library(
                 ReaderLibraryTab::Bookmarks => "No saved bookmarks yet.",
                 _ => "Copy TXT or EPUB books into /RUSTMIX/BOOKS.",
             });
-        Text::new(&truncate(message, 54), Point::new(26, 302), body).draw(display)?;
+        Text::new(
+            &truncate(message, 54),
+            Point::new(26, LIBRARY_ROWS_TOP + 40),
+            body,
+        )
+        .draw(display)?;
     }
-    for (index, entry) in visible.iter().take(7).enumerate() {
+    let bookmarks = reader.library_tab == ReaderLibraryTab::Bookmarks;
+    let (step, rows) = if bookmarks {
+        (58, 10)
+    } else {
+        (LIBRARY_BOOK_ROW_HEIGHT + 8, 7)
+    };
+    // Scroll so the selected row stays on screen.
+    let first = reader.library_selected.saturating_sub(rows - 1);
+    for (index, entry) in visible.iter().enumerate().skip(first).take(rows) {
         let selected = reader.library_selected == index;
-        let top = 248 + index as i32 * 58;
-        if reader.library_tab == ReaderLibraryTab::Bookmarks {
+        let top = LIBRARY_ROWS_TOP + (index - first) as i32 * step;
+        if bookmarks {
             let columns = library_entry_columns(reader, entry);
             draw_row(
                 display,
@@ -160,36 +179,20 @@ pub fn render_library(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct LibraryStatus {
-    left: &'static str,
-    middle: String,
-    right: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 struct LibraryEntryColumns {
     badge: String,
     suffix: String,
 }
 
-fn library_status(tab: ReaderLibraryTab, entry_count: usize) -> LibraryStatus {
-    if tab == ReaderLibraryTab::Bookmarks {
-        LibraryStatus {
-            left: "Bookmarks",
-            middle: format!("{entry_count} saved"),
-            right: "MARKS.TXT".into(),
-        }
+/// The status bar's count: the books on the card, or the saved bookmarks on
+/// the BOOKMARKS tab.
+fn library_count(tab: ReaderLibraryTab, books: usize, bookmarks: usize) -> String {
+    let (count, one, many) = if tab == ReaderLibraryTab::Bookmarks {
+        (bookmarks, "bookmark", "bookmarks")
     } else {
-        LibraryStatus {
-            left: "Library",
-            middle: String::new(),
-            right: if entry_count == 1 {
-                "1 book".into()
-            } else {
-                format!("{entry_count} books")
-            },
-        }
-    }
+        (books, "book", "books")
+    };
+    format!("{count} {}", if count == 1 { one } else { many })
 }
 
 fn library_entry_columns(
@@ -338,13 +341,7 @@ pub fn render_page(
     let width = size.width as i32;
     let height = size.height as i32;
     let landscape = width > height;
-    // The reading header takes the place of the old black bar and status box:
-    // the text starts right under its rule.
-    let header_height = READING_HEADER_HEIGHT;
-    let status_top = header_height + 6;
-    let status_height = 0;
-    let footer_line = height - 54;
-    let body = ReaderBodyGeometry::new(width, status_top, status_height, footer_line);
+    let body = page_body_geometry(width, height);
     let body_style = reader_body_style(
         state.reader.preferences.book_font,
         state.reader.preferences.font_size,
@@ -364,13 +361,8 @@ pub fn render_page(
         width,
         &truncate(&session.book.title, if landscape { 52 } else { 30 }),
         &status,
+        marked,
     )?;
-    if marked {
-        // A bookmarked page carries a small filled corner at the top right.
-        Rectangle::new(Point::new(width - 30, 14), Size::new(16, 16))
-            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-            .draw(display)?;
-    }
 
     if state.reader.preferences.theme == ReadingTheme::HighContrast {
         Rectangle::new(
@@ -424,7 +416,7 @@ pub fn render_page(
         // Same baseline as the bar's words: centred on the bar, cap height down.
         let label_style = ui_detail;
         let label_width = label_style.text_width(&footer_label);
-        let bar_center = (BOTTOM_BAR_TOP + 3 + height) / 2;
+        let bar_center = (height - BOTTOM_BAR_HEIGHT + 3 + height) / 2;
         let baseline = bar_center + label_style.cap_height() / 2;
         Text::new(
             &footer_label,
@@ -438,9 +430,9 @@ pub fn render_page(
 }
 
 /// Footer label for a page: the chapter and percent for an EPUB, the page and
-/// percent for a TXT book.
+/// percent for a TXT book. The percent is the place in the whole book.
 fn reader_progress_label(session: &ReaderSession) -> String {
-    let percent = session.progress_percent();
+    let percent = session.place_percent();
     match session.current_epub_chapter_page_label() {
         Some(chapter) => format!("Ch. {} · {percent}%", chapter.chapter_number),
         None => format!("p. {} · {percent}%", session.current_absolute_page() + 1),
@@ -451,6 +443,12 @@ fn reader_progress_label(session: &ReaderSession) -> String {
 struct ReaderBodyGeometry {
     text: TextBounds,
     frame: ReaderFrameBounds,
+}
+
+/// The text box of a Reader page: right under the reading header's rule and
+/// above the bottom bar, in either orientation.
+const fn page_body_geometry(width: i32, height: i32) -> ReaderBodyGeometry {
+    ReaderBodyGeometry::new(width, READING_HEADER_HEIGHT + 6, 0, height - 54)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -683,39 +681,66 @@ fn justified_runs(
     runs
 }
 
+/// The tab chips in the order short BOOT walks them; the open tab is filled.
+/// Labels drop to the detail size when the body size would not fit.
 fn draw_tabs(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
     active: ReaderLibraryTab,
 ) -> Result<(), Infallible> {
-    let body = state.display.body_style();
-    let tabs = [
+    const TABS: [ReaderLibraryTab; 4] = [
         ReaderLibraryTab::Recent,
         ReaderLibraryTab::Books,
         ReaderLibraryTab::Bookmarks,
         ReaderLibraryTab::Files,
     ];
-    for (index, tab) in tabs.iter().copied().enumerate() {
-        let left = 10 + index as i32 * 117;
-        if tab == active {
-            Rectangle::new(Point::new(left, 132), Size::new(112, 42))
-                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+    const PAD: i32 = 10;
+    const GAP: i32 = 8;
+    const HEIGHT: i32 = 36;
+    let chips_width = |style: UiTextStyle| {
+        TABS.iter()
+            .map(|tab| style.text_width(tab.label()) + 2 * PAD)
+            .sum::<i32>()
+            + GAP * (TABS.len() as i32 - 1)
+    };
+    let body = state.display.body_style();
+    let style = if chips_width(body) <= 448 {
+        body
+    } else {
+        state.display.detail_style()
+    };
+    let baseline = LIBRARY_TABS_TOP + (HEIGHT + style.cap_height()) / 2;
+    let mut left = 16;
+    for tab in TABS {
+        let width = style.text_width(tab.label()) + 2 * PAD;
+        let chip = RoundedRectangle::with_equal_corners(
+            Rectangle::new(
+                Point::new(left, LIBRARY_TABS_TOP),
+                Size::new(width as u32, HEIGHT as u32),
+            ),
+            Size::new(6, 6),
+        );
+        let ink = if tab == active {
+            chip.into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                 .draw(display)?;
-            Text::new(
-                tab.label(),
-                Point::new(left + 8, 161),
-                state.display.text_style(UiTextRole::Body, BinaryColor::Off),
-            )
-            .draw(display)?;
+            BinaryColor::Off
         } else {
-            Text::new(tab.label(), Point::new(left + 8, 161), body).draw(display)?;
-        }
+            chip.into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+                .draw(display)?;
+            BinaryColor::On
+        };
+        let origin = Point::new(left + PAD, baseline);
+        Text::new(tab.label(), origin, style.with_color(ink)).draw(display)?;
+        left += width + GAP;
     }
     Ok(())
 }
 
-/// A book row: the title, the format chip, and a bar with the percent, or
-/// `new` for a book never opened. The author line waits for the EPUB parser.
+/// A book row: the title in the Reader's book face and the format chip, then
+/// the place. A TXT book shows a bar and its percent; an EPUB shows its
+/// chapter, since its saved offset counts the book's text, not the file; a
+/// book never opened shows `new`. FILES shows the file size instead. The
+/// author line waits for the EPUB parser.
 fn draw_book_row(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -723,70 +748,88 @@ fn draw_book_row(
     selected: bool,
     entry: &crate::reader::ReaderLibraryEntry,
 ) -> Result<(), Infallible> {
-    let body = if selected {
-        state.display.text_style(UiTextRole::Body, BinaryColor::Off)
+    let ink = if selected {
+        BinaryColor::Off
     } else {
-        state.display.body_style()
+        BinaryColor::On
     };
-    let detail = if selected {
-        state
-            .display
-            .text_style(UiTextRole::Detail, BinaryColor::Off)
+    let book_size = if state.display.font_size == UiFontSize::Large {
+        BookFontSize::Medium
     } else {
-        state.display.detail_style()
+        BookFontSize::Small
     };
-    let style = if selected {
+    let title_style = reader_body_style(
+        state.reader.preferences.book_font,
+        book_size,
+        ReadingTheme::Classic,
+    )
+    .with_color(ink);
+    let detail = state.display.detail_style().with_color(ink);
+    let frame = if selected {
         PrimitiveStyle::with_fill(BinaryColor::On)
     } else {
         PrimitiveStyle::with_stroke(BinaryColor::On, 1)
     };
-    Rectangle::new(Point::new(20, top), Size::new(440, 52))
-        .into_styled(style)
-        .draw(display)?;
+    Rectangle::new(
+        Point::new(20, top),
+        Size::new(440, LIBRARY_BOOK_ROW_HEIGHT as u32),
+    )
+    .into_styled(frame)
+    .draw(display)?;
+
+    let title_baseline = top + 30;
     let chip = entry.book.format.badge();
     let chip_width = detail.text_width(chip) + 12;
-    let title_width = 440 - 24 - chip_width - 16;
-    Text::new(
-        &body.fit(&entry.book.title, title_width),
-        Point::new(34, top + 22),
-        body,
+    let chip_left = 20 + 440 - 12 - chip_width;
+    let cap = detail.cap_height();
+    RoundedRectangle::with_equal_corners(
+        Rectangle::new(
+            Point::new(chip_left, title_baseline - cap - 6),
+            Size::new(chip_width as u32, (cap + 12) as u32),
+        ),
+        Size::new(4, 4),
     )
+    .into_styled(PrimitiveStyle::with_stroke(ink, 1))
     .draw(display)?;
-    Text::new(
-        chip,
-        Point::new(20 + 440 - 12 - chip_width + 6, top + 22),
-        detail,
-    )
-    .draw(display)?;
-    match entry.location.as_ref() {
-        None => {
-            Text::new("new", Point::new(34, top + 44), detail).draw(display)?;
-        }
-        Some(location) => {
-            let size = entry.book.size_bytes.max(1);
-            let percent = (location.byte_offset.saturating_mul(100) / size).min(100) as u32;
-            let bar_left = 34;
-            let bar_width = 300;
-            Rectangle::new(
-                Point::new(bar_left, top + 36),
-                Size::new(bar_width as u32, 8),
-            )
-            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-            .draw(display)?;
-            Rectangle::new(
-                Point::new(bar_left, top + 36),
-                Size::new(bar_width as u32 * percent / 100, 8),
-            )
-            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-            .draw(display)?;
-            Text::new(
-                &format!("{percent}%"),
-                Point::new(bar_left + bar_width + 10, top + 44),
-                detail,
-            )
-            .draw(display)?;
-        }
+    Text::new(chip, Point::new(chip_left + 6, title_baseline), detail).draw(display)?;
+    let title = title_style.fit(&entry.book.title, chip_left - 12 - 34);
+    Text::new(&title, Point::new(34, title_baseline), title_style).draw(display)?;
+
+    let line = top + 58;
+    if state.reader.library_tab == ReaderLibraryTab::Files {
+        let size = crate::storage::format_bytes(entry.book.size_bytes);
+        Text::new(&size, Point::new(34, line), detail).draw(display)?;
+        return Ok(());
     }
+    let Some(location) = entry.location.as_ref() else {
+        Text::new("new", Point::new(34, line), detail).draw(display)?;
+        return Ok(());
+    };
+    if entry.book.format != BookFormat::Text {
+        let label = location
+            .epub_chapter
+            .as_ref()
+            .map_or_else(|| "opened".into(), |chapter| {
+                format!("Ch. {}", chapter.chapter_number)
+            });
+        Text::new(&label, Point::new(34, line), detail).draw(display)?;
+        return Ok(());
+    }
+    let size = entry.book.size_bytes.max(1);
+    let percent = (location.byte_offset.saturating_mul(100) / size).min(100) as u32;
+    let bar_width: u32 = 300;
+    let bar_top = line - 9;
+    Rectangle::new(Point::new(34, bar_top), Size::new(bar_width, 8))
+        .into_styled(PrimitiveStyle::with_stroke(ink, 1))
+        .draw(display)?;
+    Rectangle::new(
+        Point::new(34, bar_top),
+        Size::new(bar_width * percent / 100, 8),
+    )
+    .into_styled(PrimitiveStyle::with_fill(ink))
+    .draw(display)?;
+    let label = format!("{percent}%");
+    Text::new(&label, Point::new(34 + bar_width as i32 + 10, line), detail).draw(display)?;
     Ok(())
 }
 
@@ -847,9 +890,10 @@ fn truncate(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        bookmark_entry_columns, library_entry_columns, library_status, reader_line_runs,
-        render_bookmarks, render_continue_reading, render_library, render_loading, render_options,
-        render_preferences, render_toc, ReaderBodyGeometry,
+        bookmark_entry_columns, library_count, library_entry_columns, page_body_geometry,
+        reader_body_style, reader_line_runs, render_bookmarks, render_continue_reading,
+        render_library, render_loading, render_options, render_preferences, render_toc,
+        ReaderBodyGeometry,
     };
     use crate::{
         app::{render_current_screen, AppState, ScreenRoute},
@@ -862,30 +906,42 @@ mod tests {
         },
     };
 
-    /// The text box stays between the reading header's rule and the bottom
-    /// bar, in both orientations, the way `render_page` lays it out.
+    /// Every Reader size, book face and orientation: the page's lines start
+    /// under the header's rule, all of them fit the text box, and the box ends
+    /// above the bottom bar.
     #[test]
-    fn the_page_text_stays_between_the_header_and_the_bar() {
-        use crate::app::widgets::{
-            bottom_bar::BOTTOM_BAR_TOP, reading_header::READING_HEADER_HEIGHT,
+    fn every_page_size_fits_between_the_header_and_the_bar() {
+        use crate::{
+            app::widgets::{bottom_bar::BOTTOM_BAR_HEIGHT, reading_header::READING_HEADER_HEIGHT},
+            reader::{BookFont, BookFontSize, ReaderOrientation, ReaderPreferences},
         };
-        for (width, height) in [(480, 800), (800, 480)] {
-            let footer_line = height - 54;
-            let status_top = READING_HEADER_HEIGHT + 6;
-            let body = ReaderBodyGeometry::new(width, status_top, 0, footer_line);
-            assert!(
-                body.text.top > READING_HEADER_HEIGHT,
-                "{width}x{height}: text under the rule"
-            );
-            assert!(
-                body.text.bottom <= footer_line,
-                "{width}x{height}: text above the rule"
-            );
-            if height > BOTTOM_BAR_TOP {
-                assert!(
-                    footer_line < BOTTOM_BAR_TOP,
-                    "portrait: the rule sits above the bar"
-                );
+        for orientation in ReaderOrientation::ALL {
+            let width = orientation.screen_width();
+            let height = 1280 - width;
+            let body = page_body_geometry(width, height);
+            assert!(body.text.top > READING_HEADER_HEIGHT, "{width}: under the rule");
+            assert!(body.frame.bottom < height - BOTTOM_BAR_HEIGHT, "{width}: above the bar");
+            for font_size in BookFontSize::ALL {
+                for book_font in BookFont::ALL {
+                    let preferences = ReaderPreferences {
+                        orientation,
+                        font_size,
+                        book_font,
+                        ..ReaderPreferences::default()
+                    };
+                    let lines = preferences.layout().lines_per_page as i32;
+                    let style = reader_body_style(book_font, font_size, ReadingTheme::Classic);
+                    let line_height = i32::from(style.line_height());
+                    let last = body.text.top + line_height + (lines - 1) * (line_height + 2);
+                    assert!(
+                        last < body.text.bottom,
+                        "{} {} {}: line {lines} at {last} passes {}",
+                        orientation.marker(),
+                        font_size.label(),
+                        book_font.label(),
+                        body.text.bottom
+                    );
+                }
             }
         }
     }
@@ -952,14 +1008,9 @@ mod tests {
             book: bookmark.as_book(),
             location: Some(bookmark),
         };
-        assert_eq!(
-            library_status(ReaderLibraryTab::Bookmarks, 9),
-            super::LibraryStatus {
-                left: "Bookmarks",
-                middle: "9 saved".into(),
-                right: "MARKS.TXT".into(),
-            }
-        );
+        assert_eq!(library_count(ReaderLibraryTab::Bookmarks, 24, 9), "9 bookmarks");
+        assert_eq!(library_count(ReaderLibraryTab::Recent, 24, 9), "24 books");
+        assert_eq!(library_count(ReaderLibraryTab::Books, 1, 0), "1 book");
         assert_eq!(
             library_entry_columns(&reader, &entry),
             super::LibraryEntryColumns {

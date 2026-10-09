@@ -1331,6 +1331,8 @@ impl AppState {
                     .local_day()
                     .and_then(|day| self.bible.verse_of_day(day));
                 if let Some((position, verse)) = today {
+                    // The page is found in the chapter, so read it first.
+                    self.bible.open_at(position);
                     let page = crate::app::screens::bible::verse_page(self, position, verse);
                     let position = crate::bible_reader::Position { page, ..position };
                     self.bible.open_at(position);
@@ -2007,6 +2009,18 @@ mod tests {
             1,
             "▼ turns to the next page"
         );
+    }
+
+    #[test]
+    fn the_page_percent_is_the_place_in_the_book_not_the_index() {
+        let mut state = reading_state();
+        let session = state.reader.session.as_ref().expect("session");
+        assert_eq!(session.progress_percent(), 36, "the index is 36% through");
+        assert_eq!(session.place_percent(), 0, "the first page starts the book");
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        let session = state.reader.session.as_ref().expect("session");
+        assert_eq!(session.place_percent(), 24, "page 3 starts at 480 000 of 2 000 000");
     }
 
     #[test]
@@ -3176,6 +3190,29 @@ mod bible_routing_tests {
             .expect("verse opens a reading position");
         assert_eq!(state.bible.books()[position.book].usfm, "PSA");
         assert_eq!((position.chapter, position.page), (2, 0));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_verse_of_the_day_opens_on_the_page_that_holds_it() {
+        let root = temp_card("menu-verse-page");
+        // Psalm 2 runs to many pages, so verse 70 is not on the first.
+        let mut psalms = String::from("C\t1\nV\t1\t1\tUno\nC\t2\n");
+        for verse in 1..=80 {
+            psalms.push_str(&format!("V\t{verse}\t1\tTexto del versículo {verse}\n"));
+        }
+        fs::write(root.join("RVR1960").join("PSA.txt"), psalms).unwrap();
+        fs::write(root.join("VERSES.TXT"), "PSA 2:70\n").unwrap();
+        let mut state = with_clock(menu_state(&root));
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        let position = state.bible.position().expect("the verse opens");
+        assert_eq!(position.chapter, 2);
+        let first_page = crate::bible_reader::Position { page: 0, ..position };
+        let expected = crate::app::screens::bible::verse_page(&state, first_page, 70);
+        assert!(expected > 0, "verse 70 is past the first page");
+        assert_eq!(position.page, expected);
         let _ = fs::remove_dir_all(&root);
     }
 

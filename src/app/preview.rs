@@ -125,14 +125,23 @@ fn render_screen_previews() {
             render_sample_bible(true, sample_state().display),
         ),
     ];
+    // States drawn in landscape (a Reader page) are encoded that way.
+    let mut landscape = Vec::new();
     for (name, state) in preview_states() {
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
+        if state.orientation != DisplayOrientation::Portrait {
+            landscape.push((name, state.orientation));
+        }
         images.push((name, frame));
     }
     if let Some(directory) = output.as_deref() {
         for (name, frame) in images {
-            let png = encode_png(&frame, DisplayOrientation::Portrait);
+            let orientation = landscape
+                .iter()
+                .find(|(landscape_name, _)| *landscape_name == name)
+                .map_or(DisplayOrientation::Portrait, |(_, orientation)| *orientation);
+            let png = encode_png(&frame, orientation);
             fs::write(Path::new(directory).join(format!("{name}.png")), png).unwrap();
         }
     }
@@ -407,15 +416,20 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut bookmarked = page;
     bookmarked.reader.toggle_current_bookmark();
     states.push(("reader-page-bookmarked", bookmarked));
+    let mut landscape = sample_state();
+    landscape.reader.preferences.orientation = crate::reader::ReaderOrientation::Landscape;
+    open_sample_book(&mut landscape);
+    landscape.orientation = DisplayOrientation::Landscape;
+    states.push(("reader-page-landscape", landscape));
     states.push(("bible-translation", bible_translation_preview_state()));
     for (name, tab) in [
-        ("library", crate::reader::ReaderLibraryTab::Books),
+        ("library", crate::reader::ReaderLibraryTab::Recent),
         ("library-all", crate::reader::ReaderLibraryTab::Books),
         ("library-files", crate::reader::ReaderLibraryTab::Files),
     ] {
         states.push((name, library_preview_state(tab)));
     }
-    let mut large_library = library_preview_state(crate::reader::ReaderLibraryTab::Recent);
+    let mut large_library = library_preview_state(crate::reader::ReaderLibraryTab::Books);
     large_library.display.font_size = UiFontSize::Large;
     states.push(("library-large-font", large_library));
 
@@ -625,8 +639,6 @@ fn sample_sudoku_save() -> crate::games::sudoku_save::SudokuSave {
     }
 }
 
-/// Notes oldest first, as the catalog scans them, so the AI hub's recent
-/// list reads newest first.
 /// The Library on a folder with two TXT books: one opened part way, one new.
 fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
     let root = std::env::temp_dir().join(format!("wave-preview-library-{}", std::process::id()));
@@ -642,6 +654,25 @@ fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
         state_root.to_string_lossy().into_owned(),
     );
     reader.refresh_library();
+    // Quijote is a third read: its place is saved and it is the recent book.
+    let quijote = reader
+        .books
+        .iter()
+        .find(|book| book.title == "Quijote")
+        .cloned()
+        .expect("the sample book is listed");
+    let place = crate::reader::ReaderLocation {
+        path: quijote.path.clone(),
+        title: quijote.title.clone(),
+        format: quijote.format,
+        size_bytes: quijote.size_bytes,
+        modified_seconds: quijote.modified_seconds,
+        page_index: 3,
+        byte_offset: quijote.size_bytes / 3,
+        epub_chapter: None,
+    };
+    reader.positions = vec![place.clone()];
+    reader.recent = vec![place];
     reader.library_tab = tab;
     reader.library_selected = 0;
     let mut state = sample_state();
@@ -715,6 +746,8 @@ fn sample_ai_state_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
     notes
 }
 
+/// Notes oldest first, as the catalog scans them, so the AI hub's recent
+/// list reads newest first.
 fn sample_voice_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
     let note =
         |name: &str, title: &str, stamp: &str, seconds: u32| crate::voice_notes::VoiceNoteEntry {
@@ -979,6 +1012,8 @@ fn open_sample_book(state: &mut AppState) {
         books.to_string_lossy().into_owned(),
         reader_state.to_string_lossy().into_owned(),
     );
+    // Keep the caller's orientation, so a landscape page paginates as one.
+    reader.preferences.orientation = state.reader.preferences.orientation;
     reader.refresh_library();
     reader.library_selected = 0;
     assert!(reader.apply_library_button(ButtonEvent::Select));

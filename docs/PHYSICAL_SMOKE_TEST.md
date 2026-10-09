@@ -177,24 +177,29 @@ light sleep. Restore the owner's original preferences afterward.
 	battery, and wait: alarm wakes to Alarms and sounds. Test Snooze and Dismiss.
 - [ ] Repeat the asleep alarm with Power key only; the key policy must not
 	block RTC wake. Confirm alarm UI is not hidden by the maintenance menu.
-- [ ] Runtime alarm edits work, but reboot reloads `ALARMS.TXT`; durable edits
-	are made in that file. Calendar events do not create RTC alarms.
+- [ ] Alarm edits saved in the editor survive a reboot (see Round 7).
+	Calendar events do not create RTC alarms.
 
-## Round 7 (D36 to D38)
+## Round 7 (D34 to D38)
 
+- [ ] Reader page: the header shows the title, time and battery over a rule;
+	the text fills the page down to the bottom bar; the bar shows `p. N · P%`
+	(TXT) or `Ch. N · P%` (EPUB), where P grows as you read. Bookmark a page:
+	a ribbon appears at the top right without covering the battery. Repeat
+	in landscape: the bar and the label sit at the bottom of the panel.
 - [ ] Alarms: change an alarm's time in the editor and Save; reboot; the
-    new time is still there. `ALARMS.TXT` on the card shows the saved line.
+	new time is still there. `ALARMS.TXT` on the card shows the saved line.
 - [ ] Library: short BOOT moves RECENT, ALL, BOOKMARKS, FILES in order; each
-    book shows its percent or `new`; Select opens a recent book at its place.
+	book shows its percent or `new`; Select opens a recent book at its place.
 - [ ] Hold ▲ or ▼ on a long list (Settings, Library, Bible books): the cursor
-    keeps moving after half a second. On a reading page, one press turns one
-    page, with no repeat.
+	keeps moving after half a second. On a reading page, one press turns one
+	page, with no repeat.
 - [ ] Bible: with a second translation on the card, Menu › Traducción lists
-    both with the one in use marked; choosing another keeps the place when
-    its book is there.
+	both with the one in use marked; choosing another keeps the place when
+	its book is there.
 - [ ] Bible: a verse that does not fit a line breaks with a hyphen on a
-    Spanish translation; the next page turn does not stall (one chapter read
-    per chapter).
+	Spanish translation; the next page turn does not stall (one chapter read
+	per chapter). Versículo del día opens on the page that holds the verse.
 
 ## Remaining games and diagnostics (D3)
 

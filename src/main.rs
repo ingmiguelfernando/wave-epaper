@@ -603,7 +603,6 @@ mod firmware {
         let mut last_status_refresh = Instant::now();
         let mut last_alarm_poll = Instant::now();
         let mut last_power_key_poll = Instant::now();
-        let boot_clock = Instant::now();
         // Milliseconds since boot for the Power key, game and reading clocks.
         let uptime = Instant::now();
         // A key still held from powering on is not a press.
@@ -1938,7 +1937,7 @@ mod firmware {
                 None => {}
             }
 
-            let now_ms = boot_clock.elapsed().as_millis() as u64;
+            let now_ms = uptime.elapsed().as_millis() as u64;
             let repeats = state.active_route().repeats_keys();
             if let Some(event) = buttons.poll(&mut button_delay, now_ms, repeats)? {
                 info!("rustmix-wave=button-event event={event:?}");
