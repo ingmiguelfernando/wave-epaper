@@ -543,11 +543,18 @@ fn draw_reading_line(
     }
 }
 
-/// Options of the reading menu. The verse of the day and the translation
-/// switch come later; the list offers only what works.
+/// Options of the reading menu. The verse of the day shows only when today's
+/// verse resolves on this card; the translation switch comes later.
 #[must_use]
-pub fn bible_menu_items(_state: &AppState) -> Vec<&'static str> {
-    vec!["Ir a libro", "Ir a capítulo"]
+pub fn bible_menu_items(state: &AppState) -> Vec<&'static str> {
+    let mut items = vec!["Ir a libro", "Ir a capítulo"];
+    let verse_today = state
+        .local_day()
+        .and_then(|day| state.bible.verse_of_day_position(day));
+    if verse_today.is_some() {
+        items.push("Versículo del día");
+    }
+    items
 }
 
 /// Menu of the reading view: one option list, the option at `highlighted`.

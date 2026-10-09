@@ -209,6 +209,28 @@ impl BibleUiState {
     }
 
     /// Translations on the card; the menu offers a switch only with two or more.
+    /// The reading position of `verse`, when its book is on this card.
+    #[must_use]
+    pub fn verse_position(&self, verse: &bible::VerseRef) -> Option<Position> {
+        let book = self
+            .books
+            .iter()
+            .position(|book| book.number == verse.book)?;
+        Some(Position {
+            book,
+            chapter: verse.chapter,
+            page: 0,
+        })
+    }
+
+    /// Today's verse of the day from `VERSES.TXT`, as a reading position.
+    #[must_use]
+    pub fn verse_of_day_position(&self, epoch_day: u32) -> Option<Position> {
+        let list = self.verse_list();
+        let verse = bible::verse_of_the_day(&list, epoch_day)?;
+        self.verse_position(verse)
+    }
+
     pub fn translation_count(&self) -> usize {
         bible::translations(&self.root).map_or(0, |list| list.len())
     }

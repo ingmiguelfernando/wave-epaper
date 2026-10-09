@@ -643,7 +643,11 @@ impl AppState {
             ScreenRoute::VoiceNoteResult => match event {
                 ButtonEvent::Up => self.voice_notes_result.step(-1),
                 ButtonEvent::Down => self.voice_notes_result.step(1),
-                ButtonEvent::Select => self.router.navigate_to(ScreenRoute::VoiceNotes),
+                // Select opens the note's actions: play, rename, export, delete.
+                ButtonEvent::Select => {
+                    self.voice_notes.clear_transient_details();
+                    self.router.navigate_to(ScreenRoute::VoiceNoteDetails);
+                }
             },
             ScreenRoute::VoiceNoteDetails => {
                 if event == ButtonEvent::Select {
@@ -1299,6 +1303,15 @@ impl AppState {
                     }
                 }
                 self.router.navigate_to(ScreenRoute::BibleChapters);
+            }
+            Some("Versículo del día") => {
+                let position = self
+                    .local_day()
+                    .and_then(|day| self.bible.verse_of_day_position(day));
+                if let Some(position) = position {
+                    self.bible.open_at(position);
+                    self.router.navigate_to(ScreenRoute::BibleReading);
+                }
             }
             _ => self.router.back(),
         }
@@ -2455,7 +2468,7 @@ mod tests {
     }
 
     #[test]
-    fn result_boot_cycles_tabs_scroll_moves_and_select_goes_back_to_the_list() {
+    fn result_boot_cycles_tabs_scroll_moves_and_select_opens_the_actions() {
         use crate::voice_note_result::ResultTab;
         let mut state = voice_list_with_note(Some(crate::voice_note_record::NoteState::Done));
         state.apply(ButtonEvent::Select);
@@ -2474,6 +2487,8 @@ mod tests {
         );
 
         state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::VoiceNoteDetails);
+        state.back();
         assert_eq!(state.active_route(), ScreenRoute::VoiceNotes);
     }
 
@@ -2970,6 +2985,35 @@ mod bible_routing_tests {
         let state = menu_state(&root);
         let items = crate::app::screens::bible::bible_menu_items(&state);
         assert_eq!(items, vec!["Ir a libro", "Ir a capítulo"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_verse_of_the_day_opens_its_chapter_from_the_reading_menu() {
+        let root = temp_card("menu-verse-day");
+        fs::write(root.join("VERSES.TXT"), "PSA 23:1-3\n").unwrap();
+        let mut state = menu_state(&root);
+        state.board.rtc = Some(crate::rtc::RtcDateTime {
+            year: 2026,
+            month: 10,
+            day: 8,
+            weekday: 4,
+            hour: 12,
+            minute: 0,
+            second: 0,
+        });
+        let items = crate::app::screens::bible::bible_menu_items(&state);
+        assert_eq!(items.last(), Some(&"Versículo del día"));
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        let position = state
+            .bible
+            .position()
+            .expect("verse opens a reading position");
+        assert_eq!(state.bible.books()[position.book].usfm, "PSA");
+        assert_eq!(position.chapter, 23);
         let _ = fs::remove_dir_all(&root);
     }
 

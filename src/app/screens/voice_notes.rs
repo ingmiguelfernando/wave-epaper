@@ -352,7 +352,7 @@ fn render_voice_note_delete_confirmation(
 const RESULT_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "scroll"),
     (KeyCap::Boot, "tab"),
-    (KeyCap::Select, "back"),
+    (KeyCap::Select, "actions"),
 ];
 
 /// The active tab's text, cleaned for the device fonts and wrapped to width.
