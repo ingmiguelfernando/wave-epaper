@@ -230,8 +230,7 @@ where
 {
     /// One round pen mark centred at a pixel position.
     fn stamp(&mut self, at: (f32, f32)) -> Result<(), D::Error> {
-        let centre = Point::new(at.0.round() as i32, at.1.round() as i32);
-        Circle::with_center(centre, self.pen.width)
+        disc(at, self.pen.width)
             .into_styled(PrimitiveStyle::with_fill(self.pen.ink))
             .draw(self.display)
     }
@@ -297,9 +296,8 @@ where
     fn cloud(&mut self, shift: Spot, factor: f32) -> Result<(), D::Error> {
         let place = |at: Spot| (shift.0 + at.0 * factor, shift.1 + at.1 * factor);
         for (centre, radius, _, _) in CLOUD_LOBES {
-            let (cx, cy) = self.pen.pixel(place(centre));
             let diameter = (2.0 * radius * factor * self.pen.scale).round() as u32;
-            Circle::with_center(Point::new(cx.round() as i32, cy.round() as i32), diameter)
+            disc(self.pen.pixel(place(centre)), diameter)
                 .into_styled(PrimitiveStyle::with_fill(self.pen.paper))
                 .draw(self.display)?;
         }
@@ -321,6 +319,17 @@ where
         }
         Ok(())
     }
+}
+
+/// A disc of `diameter` pixels around a float centre. `Circle::with_center`
+/// would put an even diameter half a pixel off towards the bottom right.
+fn disc(centre: (f32, f32), diameter: u32) -> Circle {
+    let half = diameter as f32 / 2.0;
+    let top_left = Point::new(
+        (centre.0 - half).round() as i32,
+        (centre.1 - half).round() as i32,
+    );
+    Circle::new(top_left, diameter)
 }
 
 #[cfg(test)]
@@ -377,12 +386,11 @@ mod tests {
             for size in [24, 52, 130] {
                 let black = ink(icon, size);
                 assert!(!black.is_empty(), "{icon:?} at {size} draws nothing");
-                let margin = (STROKE * size as f32 / 24.0).ceil() as i32;
-                let (low, high) = (40 - margin, 40 + size as i32 + margin);
+                let inside = 40..40 + size as i32;
                 assert!(
                     black
                         .iter()
-                        .all(|&(x, y)| (low..high).contains(&x) && (low..high).contains(&y)),
+                        .all(|(x, y)| inside.contains(x) && inside.contains(y)),
                     "{icon:?} at {size} leaves its square"
                 );
             }
