@@ -1978,6 +1978,58 @@ mod tests {
         }
     }
 
+    /// Home › Library with one two-chapter EPUB on the card, ready to open.
+    fn home_library_with_epub(tag: &str) -> AppState {
+        let root =
+            std::env::temp_dir().join(format!("wave-epub-routing-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let books = root.join("BOOKS");
+        let state_root = root.join("READER");
+        std::fs::create_dir_all(&books).unwrap();
+        std::fs::create_dir_all(&state_root).unwrap();
+        let bodies = ["uno ".repeat(500), "dos ".repeat(500)];
+        std::fs::write(books.join("Libro.epub"), crate::epub::sample_epub(&bodies)).unwrap();
+        let mut reader = crate::reader::ReaderUiState::with_roots(
+            books.to_string_lossy().into_owned(),
+            state_root.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        let mut state = AppState::default();
+        state.reader = reader;
+        state.home_selected = home_index(ScreenRoute::Reader).expect("Library row on Home");
+        state
+    }
+
+    #[test]
+    fn a_page_turn_crosses_into_a_new_chapter_with_its_title() {
+        let mut state = home_library_with_epub("cross");
+        state.apply(ButtonEvent::Select); // Home's Library row
+        state.apply(ButtonEvent::Select); // the Reader landing's continue shell
+        state.apply(ButtonEvent::Select); // the shell opens the Library list
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        state.apply(ButtonEvent::Select); // open the EPUB
+        assert_eq!(state.active_route(), ScreenRoute::ReaderLoading);
+        for _ in 0..8 {
+            if state.tick_reader() == crate::reader::ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        assert_eq!(state.active_route(), ScreenRoute::ReaderPage);
+        let pages = state.reader.session.as_ref().unwrap().page_offsets.len();
+        assert!(pages > 1, "the chapter paginates");
+        for _ in 0..pages {
+            state.apply(ButtonEvent::Down);
+        }
+        let session = state.reader.session.as_ref().unwrap();
+        let label = session
+            .current_epub_chapter_page_label()
+            .expect("chapter label");
+        assert_eq!((label.chapter_number, label.page_number), (2, 1));
+        // The new chapter's first page draws its title.
+        assert_eq!(session.current_epub_chapter_label(), Some("Capítulo 2"));
+    }
+
     #[test]
     fn reading_session_accrues_capped_time_and_page_turns() {
         let mut state = reading_state();

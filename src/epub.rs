@@ -1197,7 +1197,7 @@ pub(crate) fn sample_epub(bodies: &[String]) -> Vec<u8> {
     }
     let manifest = format!("<manifest>{manifest}</manifest>");
     let spine = format!("<spine>{spine}</spine>");
-    let metadata = "<metadata><dc:language>es</dc:language></metadata>";
+    let metadata = "<metadata><dc:title>Libro</dc:title><dc:language>es</dc:language></metadata>";
     let package = format!("<package>{metadata}{manifest}{spine}</package>");
     let container = "<container><rootfile full-path='OEBPS/book.opf'/></container>";
     let mut entries = vec![

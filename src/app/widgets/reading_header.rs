@@ -34,7 +34,8 @@ pub fn draw_reading_header(
     marked: bool,
 ) -> Result<(), Infallible> {
     let title_style = preferences.heading_style();
-    let status_style = preferences.detail_style();
+    // Body size keeps the battery's percent glyph whole (KNOWN_ISSUES).
+    let status_style = preferences.body_style();
     let baseline = READING_HEADER_HEIGHT - 18;
     let status_right = width - 24 - if marked { RIBBON_ROOM } else { 0 };
     let status_width = status_style.text_width(status);

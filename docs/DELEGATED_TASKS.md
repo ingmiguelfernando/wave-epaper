@@ -414,7 +414,7 @@ bar; the label with and without a pace (19 and 20 pages recorded); the
 label fits beside the hints at Large; a page turn from Home › Library
 through `AppState::apply` crosses into a new chapter and shows its title.
 
-**Status:**
+**Status:** done on `side-tasks-8`. Built: the chapter title in the large style with its rule on a chapter first page only, its room kept by pagination (three body lines fewer there; `READER_CACHE_VERSION` bumped so old caches rebuild), and a leading copy of the label dropped from the text so it is not said twice; minutes left on the label (EPUB only: the chapter pages left times the week seconds per page, rounded up, `< 1 min left` under a minute, left out below 20 recorded pages or when it would run into the hints); the page label and the header clock and battery in Body size (the KNOWN_ISSUES percent). Previews `reader-page-epub`, `reader-page-epub-pace` (`sample_epub` gained a `dc:title`; both looked at Compact, Standard and Large) and `reader-page` stays TXT. Tests: the title band and fewer lines at every Reader size in both orientations with the lines above the bar; the label at 19 and 20 pages; the fit beside the hints at Large; a crossing into chapter 2 through `AppState::apply` from Home; and a pixel check that the rule draws on a chapter first page only. Open: nothing known.
 
 ### D40: Library: authors, finished books and EPUB percent
 

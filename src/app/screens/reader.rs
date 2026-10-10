@@ -10,14 +10,14 @@ use embedded_graphics::{
 
 use crate::{
     app::{
-        display::UiFontSize,
+        display::{DisplayPreferences, UiFontSize},
         reader_typography::reader_body_style,
         state::AppState,
         typography::{Text, TextBounds, UiTextRole, UiTextStyle},
         widgets::{
             bottom_bar::{
-                draw_bottom_bar, KeyCap, BACK_HINTS, BOTTOM_BAR_HEIGHT, CHANGE_HINTS, CHOOSE_HINTS,
-                OPEN_HINTS,
+                draw_bottom_bar, hints_right_edge, KeyCap, BACK_HINTS, BOTTOM_BAR_HEIGHT,
+                CHANGE_HINTS, CHOOSE_HINTS, OPEN_HINTS,
             },
             header::draw_header,
             option_list::draw_option_list,
@@ -28,9 +28,11 @@ use crate::{
     },
     orientation::OrientedFrameBuffer,
     reader::{
-        BookFontSize, BookFormat, ParagraphAlignment, ReaderLibraryTab, ReaderLoadingStage,
-        ReaderOption, ReaderSession, ReadingPreference, ReadingTheme, READER_BODY_INSET,
+        BookFontSize, BookFormat, ParagraphAlignment, ReaderChapterPageLabel, ReaderLibraryTab,
+        ReaderLoadingStage, ReaderOption, ReaderSession, ReadingPreference, ReadingTheme,
+        CHAPTER_TITLE_LINES, READER_BODY_INSET,
     },
+    reading_stats::DayStats,
 };
 
 const READER_PAGE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "page"), (KeyCap::Select, "menu")];
@@ -347,7 +349,6 @@ pub fn render_page(
         state.reader.preferences.font_size,
         state.reader.preferences.theme,
     );
-    let ui_detail = state.display.detail_style();
 
     let marked = state.reader.current_page_is_bookmarked();
     let status = format!(
@@ -373,9 +374,45 @@ pub fn render_page(
         .draw(display)?;
     }
 
+    // A chapter's first page opens with its title; pagination kept its room.
+    let line_step = i32::from(body_style.line_height()) + 2;
+    let chapter_first_page = session
+        .current_epub_chapter_page_label()
+        .is_some_and(|label| label.page_number == 1);
+    let title_band = if chapter_first_page {
+        CHAPTER_TITLE_LINES as i32 * line_step
+    } else {
+        0
+    };
+    if chapter_first_page {
+        if let Some(chapter_title) = session.current_epub_chapter_label() {
+            let large = state.display.large_style();
+            let text_width = body.text.right - body.text.left;
+            Text::new(
+                &large.fit(chapter_title, text_width),
+                Point::new(
+                    body.text.left,
+                    body.text.top + i32::from(large.line_height()) - 4,
+                ),
+                large,
+            )
+            .draw(display)?;
+            // The rule sits close under the title, as in the mockup; the text
+            // starts after the band pagination kept free.
+            Rectangle::new(
+                Point::new(
+                    body.text.left,
+                    body.text.top + i32::from(large.line_height()) + 8,
+                ),
+                Size::new(text_width as u32, 2),
+            )
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
+        }
+    }
+
     if let Some(page) = session.current_cached_page() {
-        let line_step = i32::from(body_style.line_height()) + 2;
-        let first_baseline = body.text.top + i32::from(body_style.line_height());
+        let first_baseline = body.text.top + title_band + i32::from(body_style.line_height());
         for (index, line) in page
             .lines
             .iter()
@@ -408,13 +445,25 @@ pub fn render_page(
     }
 
     let footer_label = if state.reader.preferences.show_progress {
-        reader_progress_label(session)
+        // The label may carry the minutes left in the chapter; it drops them
+        // when it would run into the bar's hints.
+        let week = state.local_day().map_or_else(DayStats::default, |today| {
+            state.reading_stats.total(today.saturating_sub(6), today)
+        });
+        // Body size keeps the percent glyph whole (KNOWN_ISSUES).
+        let label_style = state.display.body_style();
+        let full = reader_progress_label(session, week);
+        if fits_beside_hints(&full, label_style, width, state.display) {
+            full
+        } else {
+            reader_progress_label(session, DayStats::default())
+        }
     } else {
         String::new()
     };
     if !footer_label.is_empty() {
         // Same baseline as the bar's words: centred on the bar, cap height down.
-        let label_style = ui_detail;
+        let label_style = state.display.body_style();
         let label_width = label_style.text_width(&footer_label);
         let bar_center = (height - BOTTOM_BAR_HEIGHT + 3 + height) / 2;
         let baseline = bar_center + label_style.cap_height() / 2;
@@ -429,14 +478,67 @@ pub fn render_page(
     Ok(())
 }
 
+/// Whether a right-aligned footer label ends before the bar's hints begin.
+fn fits_beside_hints(
+    label: &str,
+    style: UiTextStyle,
+    width: i32,
+    preferences: DisplayPreferences,
+) -> bool {
+    width - 18 - style.text_width(label) >= hints_right_edge(&READER_PAGE_HINTS, preferences)
+}
+
 /// Footer label for a page: the chapter and percent for an EPUB, the page and
-/// percent for a TXT book. The percent is the place in the whole book.
-fn reader_progress_label(session: &ReaderSession) -> String {
-    let percent = session.place_percent();
-    match session.current_epub_chapter_page_label() {
+/// percent for a TXT book. The percent is the place in the whole book. The
+/// minutes left count an EPUB chapter's remaining pages at the week's pace.
+fn reader_progress_label(session: &ReaderSession, week: DayStats) -> String {
+    progress_label(
+        session.current_epub_chapter_page_label().as_ref(),
+        session.current_absolute_page() + 1,
+        session.place_percent(),
+        week,
+    )
+}
+
+/// The footer label from its parts: `Ch. 8 · 12% · 9 min left` for an EPUB
+/// chapter, `p. 41 · 12%` for a page of a TXT book.
+fn progress_label(
+    chapter: Option<&ReaderChapterPageLabel>,
+    page: usize,
+    percent: u8,
+    week: DayStats,
+) -> String {
+    let base = match chapter {
         Some(chapter) => format!("Ch. {} · {percent}%", chapter.chapter_number),
-        None => format!("p. {} · {percent}%", session.current_absolute_page() + 1),
+        None => format!("p. {page} · {percent}%"),
+    };
+    match pace_text(chapter, week) {
+        Some(pace) => format!("{base} · {pace}"),
+        None => base,
     }
+}
+
+/// Recorded pages in the week needed before the pace is worth showing.
+const MIN_PACE_PAGES: u32 = 20;
+
+/// Minutes left in an EPUB chapter at the week's own pace: the pages left in
+/// the chapter times the week's seconds per page, rounded up. A remainder
+/// under a minute reads `< 1 min left`. `None` for a TXT book or when the
+/// week recorded fewer than `MIN_PACE_PAGES` pages.
+fn pace_text(chapter: Option<&ReaderChapterPageLabel>, week: DayStats) -> Option<String> {
+    let chapter = chapter?;
+    if week.pages < MIN_PACE_PAGES {
+        return None;
+    }
+    let pages_left = chapter.page_count.saturating_sub(chapter.page_number) as u64;
+    // Minutes left = ceil(pages_left × week seconds / (week pages × 60)).
+    let numerator = pages_left * u64::from(week.seconds);
+    let denominator = u64::from(week.pages) * 60;
+    if numerator < denominator {
+        return Some("< 1 min left".to_string());
+    }
+    let minutes = (numerator + denominator - 1) / denominator;
+    Some(format!("{minutes} min left"))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -948,6 +1050,227 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A chapter's first page keeps room for its title: it holds fewer lines
+    /// than a later page, the title and its rule fit the band, and the lines
+    /// still end above the bar, at every Reader size in both orientations.
+    #[test]
+    fn a_chapter_first_page_holds_its_title_and_fewer_lines() {
+        use crate::{
+            app::{
+                display::{DisplayPreferences, UiFontFamily, UiFontSize},
+                widgets::{bottom_bar::BOTTOM_BAR_HEIGHT, reading_header::READING_HEADER_HEIGHT},
+            },
+            reader::{BookFont, BookFontSize, ReaderOrientation, ReaderPreferences},
+        };
+        for orientation in ReaderOrientation::ALL {
+            let width = orientation.screen_width();
+            let height = 1280 - width;
+            let body = super::page_body_geometry(width, height);
+            assert!(
+                body.text.top > READING_HEADER_HEIGHT,
+                "{width}: under the rule"
+            );
+            assert!(
+                body.frame.bottom < height - BOTTOM_BAR_HEIGHT,
+                "{width}: above the bar"
+            );
+            for font_size in BookFontSize::ALL {
+                for book_font in BookFont::ALL {
+                    let preferences = ReaderPreferences {
+                        orientation,
+                        font_size,
+                        book_font,
+                        ..ReaderPreferences::default()
+                    };
+                    let lines = preferences.layout().lines_per_page;
+                    let style = reader_body_style(book_font, font_size, ReadingTheme::Classic);
+                    let line_height = i32::from(style.line_height());
+                    let line_step = line_height + 2;
+                    let first_lines = lines.saturating_sub(super::CHAPTER_TITLE_LINES);
+                    let where_ = format!(
+                        "{} {} {}",
+                        orientation.marker(),
+                        font_size.label(),
+                        book_font.label()
+                    );
+                    assert!(first_lines > 0, "{where_}: the first page keeps text");
+                    assert!(
+                        first_lines < lines,
+                        "{where_}: fewer lines than a later page"
+                    );
+                    let band = super::CHAPTER_TITLE_LINES as i32 * line_step;
+                    let last =
+                        body.text.top + band + line_height + (first_lines as i32 - 1) * line_step;
+                    assert!(
+                        last < body.text.bottom,
+                        "{where_}: line at {last} passes {}",
+                        body.text.bottom
+                    );
+                    // The title and its rule fit the band at every UI font size.
+                    for family in UiFontFamily::ALL {
+                        for ui_size in UiFontSize::ALL {
+                            let display = DisplayPreferences {
+                                font_family: family,
+                                font_size: ui_size,
+                            };
+                            let title_height = i32::from(display.large_style().line_height()) + 10;
+                            assert!(
+                                title_height <= band,
+                                "{where_} {:?} {:?}: title of {title_height} passes the {band} band",
+                                family,
+                                ui_size
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The pace joins the label at twenty recorded pages: `9 min left` at the
+    /// week's own speed, `< 1 min left` under a minute, and nothing before.
+    #[test]
+    fn the_page_label_keeps_its_pace_only_with_twenty_pages() {
+        use crate::reading_stats::DayStats;
+        let chapter = ReaderChapterPageLabel {
+            chapter_number: 8,
+            page_number: 3,
+            page_count: 12,
+        };
+        // Twenty pages at a minute each: nine pages left, nine minutes.
+        let week = DayStats {
+            seconds: 1_200,
+            pages: 20,
+        };
+        assert_eq!(
+            super::progress_label(Some(&chapter), 1, 12, week),
+            "Ch. 8 · 12% · 9 min left"
+        );
+        let quiet = DayStats {
+            seconds: 1_140,
+            pages: 19,
+        };
+        assert_eq!(
+            super::progress_label(Some(&chapter), 1, 12, quiet),
+            "Ch. 8 · 12%"
+        );
+        // A TXT page carries no pace, and a short remainder reads its words.
+        assert_eq!(super::progress_label(None, 41, 12, week), "p. 41 · 12%");
+        let last_page = ReaderChapterPageLabel {
+            chapter_number: 8,
+            page_number: 11,
+            page_count: 12,
+        };
+        let half_minute = DayStats {
+            seconds: 30,
+            pages: 20,
+        };
+        assert_eq!(
+            super::progress_label(Some(&last_page), 1, 12, half_minute),
+            "Ch. 8 · 12% · < 1 min left"
+        );
+    }
+
+    /// At the Large size the drawn label ends before the bar's hints: the
+    /// minutes are dropped when the full label would run into them.
+    #[test]
+    fn the_label_fits_beside_the_hints_at_large() {
+        use crate::app::display::{DisplayPreferences, UiFontFamily, UiFontSize};
+        for family in UiFontFamily::ALL {
+            let preferences = DisplayPreferences {
+                font_family: family,
+                font_size: UiFontSize::Large,
+            };
+            let style = preferences.body_style();
+            let full = "Ch. 8 · 12% · 9 min left";
+            let short = "Ch. 8 · 12%";
+            assert!(
+                super::fits_beside_hints(short, style, 480, preferences),
+                "{family:?}: the label without minutes must fit"
+            );
+            let chosen = if super::fits_beside_hints(full, style, 480, preferences) {
+                full
+            } else {
+                short
+            };
+            assert!(
+                480 - 18 - style.text_width(chosen)
+                    >= crate::app::widgets::bottom_bar::hints_right_edge(
+                        &super::READER_PAGE_HINTS,
+                        preferences,
+                    ),
+                "{family:?}: {chosen:?} runs into the hints"
+            );
+        }
+    }
+
+    /// The chapter title's rule draws on a chapter's first page and not on a
+    /// later one: its row is solid across the text width only there.
+    #[test]
+    fn the_title_rule_draws_only_on_a_chapters_first_page() {
+        use crate::app::widgets::reading_header::READING_HEADER_HEIGHT;
+        use embedded_graphics::prelude::Point;
+        let root = std::env::temp_dir().join(format!("wave-rule-{}", std::process::id()));
+        let books = root.join("BOOKS");
+        let state_root = root.join("READER");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&books).unwrap();
+        std::fs::create_dir_all(&state_root).unwrap();
+        let bodies = ["uno ".repeat(500), "dos ".repeat(500)];
+        std::fs::write(books.join("Libro.epub"), crate::epub::sample_epub(&bodies)).unwrap();
+        let mut reader = crate::reader::ReaderUiState::with_roots(
+            books.to_string_lossy().into_owned(),
+            state_root.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        for _ in 0..8 {
+            if reader.tick() == crate::reader::ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        let mut state = AppState::default();
+        state.reader = reader;
+        state.router.navigate_to(ScreenRoute::ReaderPage);
+        let rule_row = READING_HEADER_HEIGHT
+            + 6
+            + 18
+            + i32::from(state.display.large_style().line_height())
+            + 8;
+        let rule_runs_across = |state: &AppState| {
+            let mut frame = FrameBuffer::new_white();
+            render_current_screen(&mut frame, state).unwrap();
+            // Portrait logical (x, y) is native (y, 479 - x).
+            (24 + 2..480 - 24 - 2)
+                .all(|x| frame.is_black(Point::new(rule_row, 479 - x)) == Some(true))
+        };
+        assert!(
+            rule_runs_across(&state),
+            "the first page of the chapter draws the title's rule"
+        );
+        // The precondition: a later page exists inside the same chapter.
+        let label = state
+            .reader
+            .session
+            .as_ref()
+            .unwrap()
+            .current_epub_chapter_page_label()
+            .unwrap();
+        assert!(label.page_count > 1, "the chapter has a later page");
+        state.reader.next_page();
+        let later = state
+            .reader
+            .session
+            .as_ref()
+            .unwrap()
+            .current_epub_chapter_page_label()
+            .unwrap();
+        assert_eq!(later.page_number, 2, "the turn stays inside the chapter");
+        assert!(!rule_runs_across(&state), "a later page draws no rule");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

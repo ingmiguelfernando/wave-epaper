@@ -89,12 +89,7 @@ pub fn draw_bottom_bar(
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
         .draw(display)?;
     let cap_style = preferences.text_style(UiTextRole::Detail, BinaryColor::Off);
-    let body = preferences.body_style();
-    let label_style = if hints_width(hints, body, cap_style) <= RIGHT - LEFT {
-        body
-    } else {
-        preferences.detail_style()
-    };
+    let label_style = hint_label_style(hints, preferences);
     debug_assert!(
         hints_width(hints, label_style, cap_style) <= RIGHT - LEFT,
         "bottom bar hints are too wide: {hints:?}"
@@ -117,6 +112,25 @@ fn hints_width(hints: &[(KeyCap, &str)], label_style: UiTextStyle, cap_style: Ui
         .map(|&(cap, label)| cap_width(cap, cap_style) + CAP_GAP + label_style.text_width(label))
         .sum();
     items + HINT_GAP * (hints.len() as i32 - 1).max(0)
+}
+
+/// Label style for the hints: Body when they fit the bar, Detail when not.
+fn hint_label_style(hints: &[(KeyCap, &str)], preferences: DisplayPreferences) -> UiTextStyle {
+    let cap_style = preferences.text_style(UiTextRole::Detail, BinaryColor::Off);
+    let body = preferences.body_style();
+    if hints_width(hints, body, cap_style) <= RIGHT - LEFT {
+        body
+    } else {
+        preferences.detail_style()
+    }
+}
+
+/// X where a right-aligned label must start to sit beside the bar's hints.
+/// A label whose right edge is at `width - 18` fits when
+/// `width - 18 - text_width(label)` is not left of this edge.
+pub(crate) fn hints_right_edge(hints: &[(KeyCap, &str)], preferences: DisplayPreferences) -> i32 {
+    let cap_style = preferences.text_style(UiTextRole::Detail, BinaryColor::Off);
+    LEFT + hints_width(hints, hint_label_style(hints, preferences), cap_style) + HINT_GAP
 }
 
 const fn cap_text(cap: KeyCap) -> &'static str {

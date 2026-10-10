@@ -70,9 +70,12 @@ pub const READER_CACHE_CHECKPOINT_PAGES: usize = 4;
 pub const READER_EPUB_PAGE_ANCHOR_LIMIT: usize = 8192;
 /// Horizontal inset of Reader body text from each screen edge.
 pub const READER_BODY_INSET: i32 = 24;
+/// Body lines a chapter's first page gives to the chapter title; its page
+/// holds that many fewer lines of text. The title and its rule fit this band.
+pub const CHAPTER_TITLE_LINES: usize = 3;
 
 const READER_PERSISTENCE_VERSION: &str = "1";
-const READER_CACHE_VERSION: &str = "4";
+const READER_CACHE_VERSION: &str = "5";
 const READER_EPUB_INDEX_VERSION: &str = "2";
 const READER_PREFS_VERSION: &str = "1";
 const CACHE_FNV_OFFSET: u64 = 0xcbf29ce484222325;
@@ -904,6 +907,16 @@ impl ReaderSession {
         })
     }
 
+    /// Label of the open EPUB chapter, for the title on its first page.
+    #[must_use]
+    pub fn current_epub_chapter_label(&self) -> Option<&str> {
+        let chapter = self.epub_chapter.as_ref()?;
+        self.epub_document
+            .as_ref()
+            .and_then(|document| document.chapters.get(chapter.index))
+            .map(|chapter| chapter.label.as_str())
+    }
+
     fn push_cached_page(&mut self, page: ReaderCachedPage) {
         if let Some(existing) = self
             .cache
@@ -1051,10 +1064,14 @@ impl ReaderSession {
             text_end_offset: chapter.text_end_offset,
             page_offsets: Vec::new(),
         };
+        // The chapter's label draws as its title; drop a leading copy so the
+        // text does not say it twice.
+        let mut text = document.chapter_text(index)?;
+        let skip = leading_label_bytes(&text, &chapter.label);
         let loaded = LoadedEpubChapter {
             index,
-            text_offset: chapter.text_offset,
-            text: document.chapter_text(index)?,
+            text_offset: chapter.text_offset + skip as u64,
+            text: text.split_off(skip),
         };
         let setter = Typesetter::new(self.layout, self.language);
         pages.page_offsets = paginate_epub_chapter(&loaded, &setter)?;
@@ -2367,6 +2384,16 @@ fn detect_txt_language(path: &str, encoding: TextEncoding) -> Option<Language> {
 }
 
 /// Page start offsets of one loaded EPUB chapter.
+/// Bytes of a leading copy of `label` to drop from a chapter's text, with the
+/// whitespace around it. Zero when the text does not start with the label.
+fn leading_label_bytes(text: &str, label: &str) -> usize {
+    let leading = text.len() - text.trim_start().len();
+    let Some(rest) = text.trim_start().strip_prefix(label) else {
+        return 0;
+    };
+    leading + label.len() + (rest.len() - rest.trim_start().len())
+}
+
 fn paginate_epub_chapter(
     chapter: &LoadedEpubChapter,
     setter: &Typesetter,
@@ -2423,14 +2450,26 @@ fn read_epub_chapter_page(
         .ok_or_else(|| "page offset is outside the open EPUB chapter".to_string())?;
     let start = next_utf8_boundary(bytes, local);
     let base = chapter.text_offset + start as u64;
+    // The chapter's first page holds fewer lines: the title takes the rest.
+    let max_lines = if base == chapter.text_offset {
+        setter.lines_per_page.saturating_sub(CHAPTER_TITLE_LINES)
+    } else {
+        setter.lines_per_page
+    };
     let mut window = setter.window_bytes;
     loop {
         let window_end = start.saturating_add(window);
         let end = previous_utf8_boundary(bytes, window_end).max(start);
         let at_end = end == bytes.len();
         let decoded = decode_with_offsets(&bytes[start..end], TextEncoding::Utf8, base);
-        let (lines, consumed) = compose_page(&normalize_decoded(&decoded), base, at_end, setter);
-        if lines.len() < setter.lines_per_page && !at_end && window < READER_PAGE_READ_BYTES {
+        let (lines, consumed) = compose_page(
+            &normalize_decoded(&decoded),
+            base,
+            at_end,
+            setter,
+            max_lines,
+        );
+        if lines.len() < max_lines && !at_end && window < READER_PAGE_READ_BYTES {
             window = READER_PAGE_READ_BYTES;
             continue;
         }
@@ -2491,7 +2530,13 @@ fn read_txt_page(
         };
         let base = byte_offset + skip as u64;
         let decoded = decode_with_offsets(&bytes[skip..], encoding, base);
-        let (lines, consumed) = compose_page(&normalize_decoded(&decoded), base, at_end, setter);
+        let (lines, consumed) = compose_page(
+            &normalize_decoded(&decoded),
+            base,
+            at_end,
+            setter,
+            setter.lines_per_page,
+        );
         if lines.len() < setter.lines_per_page && !at_end && window < READER_PAGE_READ_BYTES {
             window = READER_PAGE_READ_BYTES;
             continue;
@@ -2620,11 +2665,13 @@ fn compose_page(
     base: u64,
     at_end: bool,
     setter: &Typesetter,
+    max_lines: usize,
 ) -> (Vec<ReaderPageLine>, u64) {
     let mut page = PageComposer {
         text,
         base,
         setter,
+        max_lines,
         lines: Vec::new(),
         line: String::new(),
         width: 0,
@@ -2672,6 +2719,8 @@ struct PageComposer<'a> {
     text: &'a [(char, u64)],
     base: u64,
     setter: &'a Typesetter,
+    /// Lines this page holds; a chapter's first page leaves room for its title.
+    max_lines: usize,
     lines: Vec<ReaderPageLine>,
     line: String,
     width: i32,
@@ -2696,7 +2745,7 @@ impl PageComposer<'_> {
             paragraph_end,
         });
         self.width = 0;
-        self.lines.len() >= self.setter.lines_per_page
+        self.lines.len() >= self.max_lines
     }
 
     /// Close the last line of the text, if it has any content.
@@ -4138,7 +4187,11 @@ mod tests {
             text: "\u{1F4D6}".repeat(4096),
         };
         let page = super::read_epub_chapter_page(&chapter, &setter, 0, 0).unwrap();
-        assert_eq!(page.lines.len(), setter.lines_per_page);
+        // The chapter's first page holds its budget minus the title's room.
+        assert_eq!(
+            page.lines.len(),
+            setter.lines_per_page - super::CHAPTER_TITLE_LINES
+        );
     }
 
     fn typesetter(language: Option<Language>) -> super::Typesetter {
@@ -4167,7 +4220,8 @@ mod tests {
     fn lines_wrap_by_pixel_width_between_whole_words() {
         let setter = typesetter(None);
         let text = "uno dos tres cuatro cinco seis siete ocho nueve diez ".repeat(6);
-        let (lines, next) = super::compose_page(&characters(&text), 0, true, &setter);
+        let (lines, next) =
+            super::compose_page(&characters(&text), 0, true, &setter, setter.lines_per_page);
         assert_eq!(next, text.len() as u64);
         assert_eq!(rejoin(&lines), text.trim_end());
         for line in &lines {
@@ -4192,12 +4246,24 @@ mod tests {
             text.push_str("a ");
         }
         text.push_str(long);
-        let (lines, _) = super::compose_page(&characters(&text), 0, true, &spanish);
+        let (lines, _) = super::compose_page(
+            &characters(&text),
+            0,
+            true,
+            &spanish,
+            spanish.lines_per_page,
+        );
         assert!(lines[0].text.ends_with('-'), "{lines:?}");
         assert!(style.text_width(&lines[0].text) <= spanish.line_width);
         assert_eq!(rejoin(&lines), text);
 
-        let (lines, _) = super::compose_page(&characters(&text), 0, true, &typesetter(None));
+        let (lines, _) = super::compose_page(
+            &characters(&text),
+            0,
+            true,
+            &typesetter(None),
+            typesetter(None).lines_per_page,
+        );
         assert_eq!(lines[1].text, long);
     }
 
@@ -4205,7 +4271,8 @@ mod tests {
     fn words_wider_than_a_line_split_where_they_overflow() {
         let setter = typesetter(None);
         let token = "x".repeat(200);
-        let (lines, _) = super::compose_page(&characters(&token), 0, true, &setter);
+        let (lines, _) =
+            super::compose_page(&characters(&token), 0, true, &setter, setter.lines_per_page);
         assert!(lines.len() > 1);
         assert_eq!(
             lines
@@ -4222,7 +4289,13 @@ mod tests {
     #[test]
     fn newlines_end_paragraphs_and_keep_blank_lines() {
         let text = characters("uno\n\ndos");
-        let (lines, _) = super::compose_page(&text, 0, true, &typesetter(None));
+        let (lines, _) = super::compose_page(
+            &text,
+            0,
+            true,
+            &typesetter(None),
+            typesetter(None).lines_per_page,
+        );
         let lines: Vec<_> = lines
             .iter()
             .map(|line| (line.text.as_str(), line.paragraph_end))
@@ -4233,7 +4306,13 @@ mod tests {
     #[test]
     fn a_word_cut_by_the_read_window_waits_for_the_next_page() {
         let text = characters("uno dos tres");
-        let (lines, next) = super::compose_page(&text[..10], 0, false, &typesetter(None));
+        let (lines, next) = super::compose_page(
+            &text[..10],
+            0,
+            false,
+            &typesetter(None),
+            typesetter(None).lines_per_page,
+        );
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].text, "uno dos");
         assert_eq!(next, 8);
@@ -4249,7 +4328,8 @@ mod tests {
         let mut lines = Vec::new();
         while offset < text.len() as u64 {
             let start = all.partition_point(|(_, next)| *next <= offset);
-            let (page, next) = super::compose_page(&all[start..], offset, true, &setter);
+            let (page, next) =
+                super::compose_page(&all[start..], offset, true, &setter, setter.lines_per_page);
             assert!(next > offset);
             assert!(text.is_char_boundary(next as usize));
             assert!(page.len() <= setter.lines_per_page);
@@ -4282,6 +4362,38 @@ mod tests {
             ..book
         };
         assert!(super::parse_epub_index(&text, &changed).is_err());
+    }
+
+    #[test]
+    fn the_chapter_label_is_not_repeated_in_the_body() {
+        let root = temp_dir("epub-title");
+        let state = temp_dir("epub-title-state");
+        let bodies = ["uno ".repeat(50)];
+        fs::write(root.join("Libro.epub"), crate::epub::sample_epub(&bodies)).unwrap();
+        let mut reader = ReaderUiState::with_roots(
+            root.to_string_lossy().into_owned(),
+            state.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        for _ in 0..8 {
+            if reader.tick() == ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        let session = reader.session.as_ref().unwrap();
+        let chapter = session.epub_chapter.as_ref().unwrap();
+        assert!(
+            !chapter.text.trim_start().starts_with("Capítulo 1"),
+            "the title is not repeated in the body"
+        );
+        let page = session.current_cached_page().unwrap();
+        assert!(
+            page.lines[0].text.starts_with("uno"),
+            "the page starts with the prose: {:?}",
+            page.lines[0].text
+        );
     }
 
     #[test]

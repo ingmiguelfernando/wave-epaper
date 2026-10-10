@@ -423,6 +423,12 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     open_sample_book(&mut landscape);
     landscape.orientation = DisplayOrientation::Landscape;
     states.push(("reader-page-landscape", landscape));
+    let mut epub = sample_state();
+    open_sample_epub(&mut epub, false);
+    states.push(("reader-page-epub", epub));
+    let mut epub_pace = sample_state();
+    open_sample_epub(&mut epub_pace, true);
+    states.push(("reader-page-epub-pace", epub_pace));
     states.push(("bible-translation", bible_translation_preview_state()));
     for (name, tab) in [
         ("library", crate::reader::ReaderLibraryTab::Recent),
@@ -1021,6 +1027,40 @@ fn open_sample_book(state: &mut AppState) {
     assert!(reader.apply_library_button(ButtonEvent::Select));
     assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
     state.reader = reader;
+    state.router.navigate_to(ScreenRoute::ReaderPage);
+}
+
+/// Open a sample EPUB and give the week a reading pace, so the chapter title
+/// and the minutes-left label both show. `later_page` turns past the chapter's
+/// first page, where the title would take the band.
+fn open_sample_epub(state: &mut AppState, later_page: bool) {
+    let root = std::env::temp_dir().join(format!("wave-preview-epub-{}", std::process::id()));
+    let books = root.join("BOOKS");
+    let reader_state = root.join("READER");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&books).unwrap();
+    fs::create_dir_all(&reader_state).unwrap();
+    let bodies = [QUIJOTE.repeat(4), QUIJOTE.repeat(4)];
+    fs::write(books.join("Libro.epub"), crate::epub::sample_epub(&bodies)).unwrap();
+    let mut reader = ReaderUiState::with_roots(
+        books.to_string_lossy().into_owned(),
+        reader_state.to_string_lossy().into_owned(),
+    );
+    reader.refresh_library();
+    reader.library_selected = 0;
+    assert!(reader.apply_library_button(ButtonEvent::Select));
+    for _ in 0..8 {
+        if reader.tick() == ReaderTickOutcome::FirstPageReady {
+            break;
+        }
+    }
+    if later_page {
+        reader.next_page();
+    }
+    state.reader = reader;
+    // A week of half a minute a page, so the label carries its minutes.
+    let today = state.local_day().unwrap_or(20_000);
+    state.reading_stats.record(today, 600, 30, None);
     state.router.navigate_to(ScreenRoute::ReaderPage);
 }
 
