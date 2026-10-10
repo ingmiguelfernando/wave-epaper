@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.10.4), not an upstream v1.0.0 marker.
+	expected release version (currently v0.10.5), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	XiaoZhi remains SOON. Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
@@ -200,6 +200,16 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Bible: a verse that does not fit a line breaks with a hyphen on a
 	Spanish translation; the next page turn does not stall (one chapter read
 	per chapter). Versículo del día opens on the page that holds the verse.
+
+## Display numerals and weather icons (v0.10.5)
+
+- [ ] Clock sleep mode: the bold digits change every minute without a
+	shadow of the previous time worth worrying about, and the 30-minute
+	full refresh clears what is left. The time stays centred as digits
+	change (11:11, 18:48).
+- [ ] Weather and the weather sleep mode: the large icon and the
+	temperature are smooth, a below-zero temperature shows its minus sign,
+	and a clear night shows the moon.
 
 ## Round 8 (D39 to D43)
 

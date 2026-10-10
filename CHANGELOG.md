@@ -3,6 +3,17 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.10.5 — Display numerals and weather icons
+
+- **Sleep clock and temperatures** are drawn in Inter ExtraBold, as in the
+  mockup, instead of seven-segment digits. Digits keep equal widths, so
+  the clock does not shift as the minutes change, and a negative
+  temperature shows a true minus sign.
+- **Weather icons** on the Weather screen and the sleep screens are drawn
+  from the mockup's symbols at any size, so the large ones are smooth
+  instead of stepped. Clear and partly cloudy nights show the moon on the
+  sleep screens too.
+
 ## v0.10.4 — Chapter titles, Settings › Reading, new alarms
 
 - **Reader page.** An EPUB chapter opens with its title and a rule, and the

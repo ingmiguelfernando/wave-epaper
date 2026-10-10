@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.10.4: what is implemented, not the future
+This guide describes firmware v0.10.5: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
