@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub mod display;
+pub mod display_assets;
 pub mod menu;
 #[cfg(test)]
 mod preview;

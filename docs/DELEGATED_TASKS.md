@@ -415,7 +415,8 @@ Leave these files alone:
 - weather and Home: `src/weather*.rs`, `src/app/screens/weather*.rs`,
   `src/app/screens/home.rs` (D45 may change its two `ScreenRoute::Reader`
   arms, nothing else);
-- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/big_digits.rs`,
+- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/weather_icons.rs`,
+  `src/app/widgets/display_numerals.rs`, `src/app/display_assets.rs`,
   `src/app/typography/`, `scripts/fonts/`;
 - voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
   `src/ai_*.rs`, `src/app/screens/voice_notes.rs`, `src/app/screens/ai.rs`.

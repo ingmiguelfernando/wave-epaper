@@ -16,6 +16,7 @@ use super::{
     display::{DisplayPreferences, UiFontFamily},
     render_sleep_clock, render_sleep_weather,
     screens::reading_stats::{render_reading_stats, CurrentBook},
+    widgets::weather_icons::WeatherIcon,
     SleepClock, SleepWeather, SleepWeatherDay, SleepWeatherLine,
 };
 use crate::bible_nav::BibleNav;
@@ -226,7 +227,7 @@ fn render_sample_sleep_clock(preferences: DisplayPreferences, with_weather: bool
         time: "13:42",
         date: "Friday, October 2",
         weather: with_weather.then_some(SleepWeatherLine {
-            weather_code: 2,
+            icon: WeatherIcon::PartlyCloudy,
             summary: "18° · Partly cloudy",
             details: "H 21° · L 11° · Rain 10%",
         }),
@@ -242,26 +243,26 @@ fn render_sample_sleep_weather(preferences: DisplayPreferences) -> FrameBuffer {
     let weather = SleepWeather {
         place: "Madrid",
         updated: "Fri, Oct 2 · updated 13:30",
-        weather_code: 2,
+        icon: WeatherIcon::PartlyCloudy,
         temperature: "18°",
         condition: "Partly cloudy",
         details: "H 21° · L 11° · Wind 12 km/h · Rain 10%",
         days: &[
             SleepWeatherDay {
                 name: "Sat",
-                weather_code: 0,
+                icon: WeatherIcon::Sun,
                 range: "23° / 12°",
                 rain: "0%",
             },
             SleepWeatherDay {
                 name: "Sun",
-                weather_code: 61,
+                icon: WeatherIcon::Rain,
                 range: "17° / 10°",
                 rain: "80%",
             },
             SleepWeatherDay {
                 name: "Mon",
-                weather_code: 95,
+                icon: WeatherIcon::Thunder,
                 range: "15° / 9°",
                 rain: "60%",
             },

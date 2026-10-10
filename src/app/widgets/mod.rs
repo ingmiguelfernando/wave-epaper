@@ -1,5 +1,5 @@
-pub mod big_digits;
 pub mod bottom_bar;
+pub mod display_numerals;
 pub mod header;
 pub mod icons;
 pub mod list_row;
@@ -7,3 +7,4 @@ pub mod option_list;
 pub mod reading_header;
 pub mod status_bar;
 pub mod status_row;
+pub mod weather_icons;

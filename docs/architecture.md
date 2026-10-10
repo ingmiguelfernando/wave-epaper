@@ -33,7 +33,9 @@ work are in [ROADMAP.md](ROADMAP.md).
   - `screens/`: one renderer per route, plus the sleep card and the clock and
     weather sleep layouts (`sleep_card.rs`, `sleep_screens.rs`).
   - `widgets/`: header, status row, list row, option list, bottom bar, icons,
-    big seven-segment digits.
+    vector weather icons (`weather_icons.rs`) and the display numerals of the
+    sleep clock and temperatures (`display_numerals.rs`, Inter ExtraBold
+    strikes in `display_assets.rs`).
   - `typography/`: bitmap fonts and `UiTextStyle` (`text_width`, `wrap`, `fit`).
   - `preview.rs`: host-only PNG previews of the screens (CI artifact
     `screen-previews`).

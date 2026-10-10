@@ -14,10 +14,11 @@ use crate::{
         state::AppState,
         typography::{Text, UiTextStyle},
         widgets::{
-            big_digits::{big_text_width, draw_big_text},
             bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS},
+            display_numerals::{draw_numerals, numerals_width, Numerals},
             header::draw_header,
             icons::{weather_icon_at, ICON_SIZE},
+            weather_icons::{draw_weather_icon, WeatherIcon},
         },
     },
     orientation::OrientedFrameBuffer,
@@ -32,7 +33,8 @@ const PARAGRAPH_WIDTH: i32 = 436;
 const NOW_TOP: i32 = 84;
 /// Left edge of the text beside the big icon.
 const NOW_TEXT: i32 = 162;
-const TEMPERATURE_HEIGHT: i32 = 80;
+/// Edge of the big icon beside the temperature.
+const NOW_ICON: u32 = 130;
 const CHIPS_TOP: i32 = 242;
 const CHIP_HEIGHT: i32 = 58;
 const CHIP_GAP: i32 = 6;
@@ -197,21 +199,29 @@ fn draw_now(
     current: &CurrentConditions,
     unit: TemperatureUnit,
 ) -> Result<(), Infallible> {
-    let icon = weather_icon_at(current.weather_code, current.is_day);
-    icon.draw_scaled(display, Point::new(LEFT, NOW_TOP), 5, BinaryColor::On)?;
+    draw_weather_icon(
+        display,
+        WeatherIcon::for_code(current.weather_code, current.is_day),
+        Point::new(LEFT, NOW_TOP),
+        NOW_ICON,
+        BinaryColor::On,
+        BinaryColor::Off,
+    )?;
     let temperature = short_degrees_label(current.temperature_tenths_f, unit);
-    let width = big_text_width(&temperature, TEMPERATURE_HEIGHT);
-    let top = NOW_TOP + 6;
-    draw_big_text(
+    let width = numerals_width(&temperature, Numerals::Temperature).min(RIGHT - NOW_TEXT);
+    let top = NOW_TOP + 10;
+    let digits = Numerals::Temperature.digit_height();
+    draw_numerals(
         display,
         &temperature,
-        NOW_TEXT + width / 2,
-        top,
-        TEMPERATURE_HEIGHT,
+        Numerals::Temperature,
+        (NOW_TEXT, NOW_TEXT + width),
+        top + digits,
+        BinaryColor::On,
     )?;
     let heading = state.display.heading_style();
     let body = state.display.body_style();
-    let mut baseline = top + TEMPERATURE_HEIGHT + 12 + heading.cap_height();
+    let mut baseline = top + digits + 16 + heading.cap_height();
     let condition = heading.fit(current.condition_label(), RIGHT - NOW_TEXT);
     Text::new(&condition, Point::new(NOW_TEXT, baseline), heading).draw(display)?;
     if let Some(today) = state.weather.forecast.first() {
@@ -284,9 +294,17 @@ fn draw_hours(
                 .draw(display)?;
         }
         centered(display, body, hour.hour_label(), left, width, time_y)?;
-        let icon = weather_icon_at(hour.weather_code, hour.is_day);
+        let icon = WeatherIcon::for_code(hour.weather_code, hour.is_day);
         let icon_top_left = Point::new(left + (width - 2 * ICON_SIZE) / 2, HOURS_TOP + 26);
-        icon.draw_scaled(display, icon_top_left, 2, BinaryColor::On)?;
+        let size = 2 * ICON_SIZE as u32;
+        draw_weather_icon(
+            display,
+            icon,
+            icon_top_left,
+            size,
+            BinaryColor::On,
+            BinaryColor::Off,
+        )?;
         let degrees = short_degrees_label(hour.temperature_tenths_f, unit);
         centered(display, heading, &degrees, left, width, degrees_y)?;
     }

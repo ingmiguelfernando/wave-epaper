@@ -15,8 +15,8 @@ use crate::{
         state::AppState,
         typography::{Text, TextBounds, UiTextStyle},
         widgets::{
-            big_digits::{big_text_width, draw_big_text},
-            icons::weather_icon,
+            display_numerals::{draw_numerals, numerals_width, Numerals},
+            weather_icons::{draw_weather_icon, WeatherIcon},
         },
     },
     civil_date,
@@ -30,6 +30,8 @@ use super::weather::percent_label;
 
 /// A forecast older than this reads `stale` on the sleep screens.
 const STALE_MINUTES: i64 = 6 * 60;
+/// Baseline of the sleep clock's digits, which rise about 92 px above it.
+const CLOCK_BASELINE: i32 = 312;
 
 pub struct SleepClock<'a> {
     pub time: &'a str,
@@ -40,7 +42,7 @@ pub struct SleepClock<'a> {
 }
 
 pub struct SleepWeatherLine<'a> {
-    pub weather_code: u16,
+    pub icon: WeatherIcon,
     pub summary: &'a str,
     pub details: &'a str,
 }
@@ -48,7 +50,7 @@ pub struct SleepWeatherLine<'a> {
 pub struct SleepWeather<'a> {
     pub place: &'a str,
     pub updated: &'a str,
-    pub weather_code: u16,
+    pub icon: WeatherIcon,
     pub temperature: &'a str,
     pub condition: &'a str,
     pub details: &'a str,
@@ -59,7 +61,7 @@ pub struct SleepWeather<'a> {
 
 pub struct SleepWeatherDay<'a> {
     pub name: &'a str,
-    pub weather_code: u16,
+    pub icon: WeatherIcon,
     pub range: &'a str,
     pub rain: &'a str,
 }
@@ -70,7 +72,14 @@ pub fn render_sleep_clock(
     clock: &SleepClock<'_>,
 ) -> Result<(), Infallible> {
     draw_frame(display)?;
-    draw_big_text(display, clock.time, 240, 180, 150)?;
+    draw_numerals(
+        display,
+        clock.time,
+        Numerals::Clock,
+        (36, 444),
+        CLOCK_BASELINE,
+        BinaryColor::On,
+    )?;
     let date_height = text_height(clock.date, preferences.large_style(), 408, 2);
     text_block(
         display,
@@ -92,11 +101,13 @@ pub fn render_sleep_clock(
             12,
             rule_y + 28,
         );
-        weather_icon(weather.weather_code).draw_scaled(
+        draw_weather_icon(
             display,
+            weather.icon,
             Point::new(icon.left, icon.top),
-            2,
+            52,
             BinaryColor::On,
+            BinaryColor::Off,
         )?;
         text_block(
             display,
@@ -142,19 +153,21 @@ pub fn render_sleep_weather(
         2,
         false,
     )?;
-    weather_icon(weather.weather_code).draw_scaled(
+    draw_weather_icon(
         display,
+        weather.icon,
         Point::new(layout.icon.left, layout.icon.top),
-        5,
+        130,
         BinaryColor::On,
+        BinaryColor::Off,
     )?;
-    let height = temperature_height(weather.temperature);
-    draw_big_text(
+    draw_numerals(
         display,
         weather.temperature,
-        layout.condition.left + layout.condition.width() / 2,
-        layout.temperature_top,
-        height,
+        Numerals::Temperature,
+        (layout.condition.left, layout.condition.right),
+        layout.temperature_top + Numerals::Temperature.digit_height(),
+        BinaryColor::On,
     )?;
     text_block(
         display,
@@ -188,11 +201,13 @@ pub fn render_sleep_weather(
             1,
             true,
         )?;
-        weather_icon(day.weather_code).draw_scaled(
+        draw_weather_icon(
             display,
+            day.icon,
             Point::new(left + 42, layout.icon_y),
-            2,
+            52,
             BinaryColor::On,
+            BinaryColor::Off,
         )?;
         text_block(
             display,
@@ -261,8 +276,8 @@ pub fn render_sleep_mode(
     let line = forecast.map(|current| clock_weather_line(state, current, local));
     let weather = line
         .as_ref()
-        .map(|(code, summary, details)| SleepWeatherLine {
-            weather_code: *code,
+        .map(|(icon, summary, details)| SleepWeatherLine {
+            icon: *icon,
             summary,
             details,
         });
@@ -328,7 +343,7 @@ fn render_live_weather(
         .zip(&labels)
         .map(|(day, (range, rain))| SleepWeatherDay {
             name: day.weekday_label(),
-            weather_code: day.weather_code,
+            icon: WeatherIcon::for_code(day.weather_code, true),
             range,
             rain,
         })
@@ -337,7 +352,7 @@ fn render_live_weather(
     let weather = SleepWeather {
         place,
         updated: &updated,
-        weather_code: current.weather_code,
+        icon: WeatherIcon::for_code(current.weather_code, current.is_day),
         temperature: &temperature,
         condition: current.condition_label(),
         details: &details,
@@ -354,7 +369,7 @@ fn clock_weather_line(
     state: &AppState,
     current: &CurrentConditions,
     local: Option<RtcDateTime>,
-) -> (u16, String, String) {
+) -> (WeatherIcon, String, String) {
     let unit = state.regional.temperature_unit;
     let temperature = short_degrees_label(current.temperature_tenths_f, unit);
     let summary = format!("{temperature} · {}", current.condition_label());
@@ -371,7 +386,8 @@ fn clock_weather_line(
         ),
         None => String::new(),
     };
-    (current.weather_code, summary, details)
+    let icon = WeatherIcon::for_code(current.weather_code, current.is_day);
+    (icon, summary, details)
 }
 
 /// `Friday, October 2`.
@@ -483,8 +499,9 @@ struct WeatherLayout {
 
 fn weather_layout(preferences: DisplayPreferences, weather: &SleepWeather<'_>) -> WeatherLayout {
     let hero_top = 70 + text_height(weather.updated, preferences.body_style(), 388, 2) + 22;
-    let temperature_height = temperature_height(weather.temperature);
-    let width = big_text_width(weather.temperature, temperature_height).max(text_width(
+    let temperature_height = Numerals::Temperature.digit_height();
+    let numerals = numerals_width(weather.temperature, Numerals::Temperature).min(240);
+    let width = numerals.max(text_width(
         weather.condition,
         preferences.heading_style(),
         240,
@@ -519,14 +536,6 @@ fn weather_layout(preferences: DisplayPreferences, weather: &SleepWeather<'_>) -
         range_y,
         rain_y,
     }
-}
-
-fn temperature_height(text: &str) -> i32 {
-    let mut height = 110;
-    while height > 0 && big_text_width(text, height) > 240 {
-        height -= 1;
-    }
-    height
 }
 
 fn draw_frame(display: &mut OrientedFrameBuffer<'_>) -> Result<(), Infallible> {
@@ -618,7 +627,7 @@ mod tests {
             time: "13:42",
             date: "Friday, October 2",
             weather: with_weather.then_some(SleepWeatherLine {
-                weather_code: 2,
+                icon: WeatherIcon::PartlyCloudy,
                 summary: "18° · Partly cloudy",
                 details: "H 21° · L 11° · Rain 10%",
             }),
@@ -630,25 +639,25 @@ mod tests {
     const DAYS: [SleepWeatherDay<'static>; 4] = [
         SleepWeatherDay {
             name: "Sat",
-            weather_code: 0,
+            icon: WeatherIcon::Sun,
             range: "23° / 12°",
             rain: "0%",
         },
         SleepWeatherDay {
             name: "Sun",
-            weather_code: 61,
+            icon: WeatherIcon::Rain,
             range: "17° / 10°",
             rain: "80%",
         },
         SleepWeatherDay {
             name: "Mon",
-            weather_code: 95,
+            icon: WeatherIcon::Thunder,
             range: "15° / 9°",
             rain: "60%",
         },
         SleepWeatherDay {
             name: "IGNORED",
-            weather_code: 71,
+            icon: WeatherIcon::Snow,
             range: "-40° / -50°",
             rain: "100%",
         },
@@ -658,7 +667,7 @@ mod tests {
         SleepWeather {
             place: "Madrid",
             updated: "Fri, Oct 2 · updated 13:30",
-            weather_code: 2,
+            icon: WeatherIcon::PartlyCloudy,
             temperature: "18°",
             condition: "Partly cloudy",
             details: "H 21° · L 11° · Wind 12 km/h · Rain 10%",
@@ -670,6 +679,18 @@ mod tests {
 
     fn black(frame: &FrameBuffer, x: i32, y: i32) -> bool {
         frame.is_black(Point::new(y, 479 - x)).unwrap()
+    }
+
+    /// Any ink inside `bounds`.
+    fn inked(frame: &FrameBuffer, bounds: TextBounds) -> bool {
+        (bounds.left..bounds.right).any(|x| (bounds.top..bounds.bottom).any(|y| black(frame, x, y)))
+    }
+
+    /// Ink along the clock's digits, and none just above them.
+    fn check_clock_digits(frame: &FrameBuffer) {
+        let top = CLOCK_BASELINE - Numerals::Clock.digit_height();
+        assert!(inked(frame, TextBounds::new(36, top, 444, CLOCK_BASELINE)), "digits");
+        assert!(!inked(frame, TextBounds::new(36, top - 20, 444, top - 2)), "above the digits");
     }
 
     fn check_frame(frame: &FrameBuffer) {
@@ -691,8 +712,7 @@ mod tests {
         let mut frame = FrameBuffer::from_native_bytes(vec![0; 48_000]).unwrap();
         render_sleep_clock(&mut frame, DisplayPreferences::default(), &clock(false)).unwrap();
         check_frame(&frame);
-        assert!(black(&frame, 169, 189));
-        assert!(!black(&frame, 169, 222));
+        check_clock_digits(&frame);
         let rule_y = 380
             + text_height(
                 clock(false).date,
@@ -709,7 +729,7 @@ mod tests {
         let mut frame = FrameBuffer::new_white();
         render_sleep_clock(&mut frame, DisplayPreferences::default(), &clock(true)).unwrap();
         check_frame(&frame);
-        assert!(black(&frame, 169, 189));
+        check_clock_digits(&frame);
         let preferences = DisplayPreferences::default();
         let rule_y = 380 + text_height(clock(true).date, preferences.large_style(), 408, 2);
         let (icon, _) = centered_group(
@@ -719,8 +739,7 @@ mod tests {
             12,
             rule_y + 28,
         );
-        assert!(black(&frame, icon.left + 16, icon.top + 2));
-        assert!(black(&frame, icon.left + 17, icon.top + 3));
+        assert!(inked(&frame, icon), "the weather icon");
         assert!(!black(&frame, icon.left, icon.top));
     }
 
@@ -730,14 +749,15 @@ mod tests {
         render_sleep_weather(&mut frame, DisplayPreferences::default(), &weather()).unwrap();
         check_frame(&frame);
         let layout = weather_layout(DisplayPreferences::default(), &weather());
-        let digit_left =
-            layout.condition.left + layout.condition.width() / 2 - big_text_width("18°", 110) / 2;
-        assert!(black(&frame, digit_left + 48, layout.temperature_top + 14));
-        assert!(!black(&frame, digit_left + 5, layout.temperature_top + 35));
-        assert!(black(&frame, layout.icon.left + 40, layout.icon.top + 5));
-        assert!(black(&frame, 102, layout.icon_y + 4));
-        assert!(black(&frame, 242, layout.icon_y + 2));
-        assert!(black(&frame, 378, layout.icon_y + 2));
+        let top = layout.temperature_top;
+        let digits = TextBounds::new(layout.condition.left, top, layout.condition.right, top + 70);
+        assert!(inked(&frame, digits), "the temperature");
+        assert!(inked(&frame, layout.icon), "the current icon");
+        for index in 0..3 {
+            let left = 36 + index * 136 + 42;
+            let icon = TextBounds::new(left, layout.icon_y, left + 52, layout.icon_y + 52);
+            assert!(inked(&frame, icon), "day {index} icon");
+        }
         for y in layout.rule_y - 1..=layout.rule_y + 1 {
             assert!(black(&frame, 42, y));
             assert!(black(&frame, 438, y));
@@ -829,25 +849,23 @@ mod tests {
                 sample.wake_hint = long;
                 let days = [SleepWeatherDay {
                     name: long,
-                    weather_code: 95,
+                    icon: WeatherIcon::Thunder,
                     range: "-12345° / -12345°",
                     rain: "Rain 100% with an exceptionallylongunbrokenlabel",
                 }];
                 sample.days = &days;
                 let layout = weather_layout(preferences, &sample);
-                let height = temperature_height(sample.temperature);
-                assert!(height < 110 && height > 0);
-                assert!(big_text_width(sample.temperature, height) <= 240);
+                let height = Numerals::Temperature.digit_height();
                 let mut frame = FrameBuffer::new_white();
                 render_sleep_weather(&mut frame, preferences, &sample).unwrap();
-                let temperature_left = layout.condition.left + layout.condition.width() / 2
-                    - big_text_width(sample.temperature, height) / 2;
+                let minus = TextBounds::new(
+                    layout.condition.left,
+                    layout.temperature_top,
+                    layout.condition.left + 50,
+                    layout.temperature_top + height,
+                );
                 assert!(
-                    black(
-                        &frame,
-                        temperature_left + height / 4,
-                        layout.temperature_top + (height - height / 8) / 2 + height / 16,
-                    ),
+                    inked(&frame, minus),
                     "negative temperature must retain its minus sign"
                 );
                 for y in 19..782 {
@@ -862,9 +880,9 @@ mod tests {
                                 layout.icon,
                                 TextBounds::new(
                                     layout.condition.left,
-                                    layout.temperature_top,
+                                    layout.temperature_top - 2,
                                     layout.condition.right,
-                                    layout.temperature_top + height
+                                    layout.temperature_top + height + 2
                                 ),
                                 layout.condition,
                                 layout.details,
@@ -928,7 +946,7 @@ mod tests {
                             "Updated at an unusually long time with a very long location label";
                         sample.details = "H -40° · L -50° · Wind 999 km/h · Rain 100% with unusually long extra details";
                         let layout = weather_layout(preferences, &sample);
-                        let height = temperature_height(temperature);
+                        let height = Numerals::Temperature.digit_height();
                         assert!((layout.icon.left + layout.condition.right - 480).abs() <= 1);
                         assert!(
                             (layout.icon.top + layout.icon.bottom
@@ -938,7 +956,8 @@ mod tests {
                                 <= 1
                         );
                         assert!(layout.icon.left >= 36 && layout.condition.right <= 444);
-                        assert!(big_text_width(temperature, height) <= layout.condition.width());
+                        let numerals = numerals_width(temperature, Numerals::Temperature);
+                        assert!(numerals.min(240) <= layout.condition.width());
                         assert_eq!(layout.condition.top, layout.temperature_top + height + 8);
                         assert!(layout.details.top >= layout.icon.bottom + 12);
                         assert_eq!(layout.rule_y - layout.details.bottom, 34);
@@ -962,7 +981,7 @@ mod tests {
                 let mut sample = clock(true);
                 sample.date = long;
                 sample.weather = Some(SleepWeatherLine {
-                    weather_code: 95,
+                    icon: WeatherIcon::Thunder,
                     summary: long,
                     details: long,
                 });
@@ -1016,8 +1035,6 @@ mod tests {
             footer_widths(DisplayPreferences::default().body_style(), None),
             (String::new(), 408)
         );
-        assert_eq!(temperature_height("18°"), 110);
-        assert!(temperature_height("-123°") < 110);
     }
 
     fn at(day: u8, hour: u8, minute: u8) -> RtcDateTime {
