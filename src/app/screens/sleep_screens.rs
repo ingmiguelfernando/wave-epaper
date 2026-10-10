@@ -689,8 +689,14 @@ mod tests {
     /// Ink along the clock's digits, and none just above them.
     fn check_clock_digits(frame: &FrameBuffer) {
         let top = CLOCK_BASELINE - Numerals::Clock.digit_height();
-        assert!(inked(frame, TextBounds::new(36, top, 444, CLOCK_BASELINE)), "digits");
-        assert!(!inked(frame, TextBounds::new(36, top - 20, 444, top - 2)), "above the digits");
+        assert!(
+            inked(frame, TextBounds::new(36, top, 444, CLOCK_BASELINE)),
+            "digits"
+        );
+        assert!(
+            !inked(frame, TextBounds::new(36, top - 20, 444, top - 2)),
+            "above the digits"
+        );
     }
 
     fn check_frame(frame: &FrameBuffer) {

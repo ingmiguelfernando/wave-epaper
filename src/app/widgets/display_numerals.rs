@@ -146,7 +146,10 @@ mod tests {
             numerals_width("11:11", Numerals::Clock),
             numerals_width("08:48", Numerals::Clock)
         );
-        assert!(numerals_width("18:42", Numerals::Clock) <= 408, "fits the frame");
+        assert!(
+            numerals_width("18:42", Numerals::Clock) <= 408,
+            "fits the frame"
+        );
     }
 
     #[test]
@@ -180,7 +183,8 @@ mod tests {
         let height = Numerals::Temperature.digit_height();
         let minus = (100..140).any(|x| (baseline - height..baseline).any(|y| black(x, y)));
         assert!(minus, "the minus sign starts the cut text");
-        let outside = (300..480).any(|x| (baseline - height - 8..baseline + 8).any(|y| black(x, y)));
+        let outside =
+            (300..480).any(|x| (baseline - height - 8..baseline + 8).any(|y| black(x, y)));
         assert!(!outside, "nothing past the right edge");
     }
 }

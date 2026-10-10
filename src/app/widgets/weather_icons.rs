@@ -435,7 +435,10 @@ mod tests {
     fn codes_map_as_the_bitmap_icons_did() {
         assert_eq!(WeatherIcon::for_code(0, true), WeatherIcon::Sun);
         assert_eq!(WeatherIcon::for_code(0, false), WeatherIcon::Moon);
-        assert_eq!(WeatherIcon::for_code(2, false), WeatherIcon::PartlyCloudyNight);
+        assert_eq!(
+            WeatherIcon::for_code(2, false),
+            WeatherIcon::PartlyCloudyNight
+        );
         assert_eq!(WeatherIcon::for_code(3, true), WeatherIcon::Cloud);
         assert_eq!(WeatherIcon::for_code(48, true), WeatherIcon::Fog);
         assert_eq!(WeatherIcon::for_code(55, true), WeatherIcon::Drizzle);
