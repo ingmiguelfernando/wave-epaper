@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-09, firmware v0.10.3.
+Last updated: 2026-10-10, firmware v0.10.4.
 
 ## Status
 
@@ -37,7 +37,8 @@ Last updated: 2026-10-09, firmware v0.10.3.
 | Fix: Power key read on GPIO1 (`PWR_OUT`), PMIC interrupt as backup | 0.9.6 | e0fc071 | Done, tested on the device |
 | Delegated tasks D24 to D28: Sudoku difficulty, timer and saves, Games hub, Settings groups, Reading Stats wiring, AI hub | 0.9.7 | PR #5 | Done, waiting for device test |
 | Delegated tasks D29 to D33: Bible data and reading view, Tetris Classic, Settings › AI, Voice Notes results | 0.10.1 | side-tasks-6 | Done, waiting for device test; D33 device processing open |
-| Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, waiting for device test; EPUB chapter titles, pace, authors and `done` open |
+| Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, waiting for device test |
+| Delegated tasks D39 to D43: EPUB chapter titles and minutes left, Library authors and finished books, Settings › Reading, add and delete alarms, Bible menu without card reads | 0.10.4 | PR #7 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -358,5 +359,5 @@ Done in v0.9.7 (D27); kept as the reference.
   override in the generator. Until then, show percentages in Body size.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
-  Environment move under System as diagnostics. Reading is delegated (D41).
+  Environment move under System as diagnostics. Reading is done (0.10.4).
 - **Verse of the day sleep mode** (mockup: "Photo, clock, weather, verse").

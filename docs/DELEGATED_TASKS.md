@@ -4,6 +4,49 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 8 result (2026-10-10)
+
+Branch `side-tasks-8` (D39 to D43) came as pull request #7 from v0.10.3,
+with CI and the firmware build green. It was reviewed on `review-8`, merged
+and released as v0.10.4 (milestone `reading-settings`). This was the best
+round so far: every task is wired to the device, the previews show the new
+states at Standard and Large, percentages are in Body size, and the old
+`library` preview name clash was found and fixed.
+
+What the main developer changed at merge time:
+
+- **D39:** the leading copy of a chapter's label was dropped from the text
+  without a word boundary, so a chapter labelled `I` that starts "In a
+  hole" would lose its `I`. Only a whole label followed by a space or a
+  line break is dropped now; a test covers it.
+- **D41:** hold BOOT in an option list of Settings › Reading left the
+  screen, though the bar says `hold: cancel`, and the list was still open
+  on the next visit. It now closes the list first, as Display does.
+- **D42:** the editor still said `Runtime editor`; it says `Edit alarm` or
+  `New alarm`. The empty list said "New alarm creates one; ALARMS.TXT holds
+  more", which reads as if the file held more than six.
+- **Home** (main line): the Continue card now shows an EPUB's percent from
+  the saved place.
+- **Doc comments, a fourth time:** `leading_label_bytes` went under the doc
+  comment of `paginate_epub_chapter`, `apply_reading_settings` under the
+  one of `apply_display`, and the new doc of `draw_book_row` was stacked
+  under the old one, which still said the author line was not done.
+- **Docs:** the User Guide now covers chapter titles, the minutes left,
+  authors and checks, Settings › Reading, and adding and deleting alarms.
+
+Verdict: D39 to D43 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- **Before each commit, run `git diff` and read the three lines above every
+  added function.** The same mistake in four rounds means the check has to
+  be a habit, not a memory.
+- **Cutting user text needs a boundary test.** Anything that removes text
+  (a label, a prefix, whitespace) needs a test where the text almost
+  matches.
+- **Every option list closes on hold BOOT before the screen does.** Check
+  `AppState::back` when a screen gets a picker.
+
 ## Round 7 result (2026-10-09)
 
 Branch `side-tasks-7` (D34 to D38) came as pull request #6, with `main`
@@ -354,7 +397,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 8 tasks (branch `side-tasks-8`)
+## Round 8 tasks (done in v0.10.4)
 
 Start from `main` at v0.10.3. Five tasks, in this order; D39 and D40 finish
 D34 and D35. When they are done, merge `main` into the branch and open a

@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.10.3. This is not a list of promised mockup features. See
+Firmware v0.10.4. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -10,8 +10,6 @@ slash. Inter Compact and Large and every Atkinson size are fine. Task D6 found
 no `fonts.toml` setting that fixes it without changing other glyphs, so
 screens show percentages in Body size instead (sleep card battery, weather
 rain chances). Do not infer a battery-reading failure from the glyph.
-In v0.10.3 the Reader page (clock and battery, page label) and the Library
-rows still use the Detail size; delegated tasks D39 and D40 move them.
 
 ## USB flashing and disappearing serial port
 

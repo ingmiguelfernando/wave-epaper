@@ -3,6 +3,24 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.10.4 — Chapter titles, Settings › Reading, new alarms
+
+- **Reader page.** An EPUB chapter opens with its title and a rule, and the
+  title is no longer repeated in the text. The bar adds the minutes left in
+  the chapter at your own pace (`Ch. 8 · 12% · 9 min left`) once twenty
+  pages are recorded this week. The clock, battery and page label are drawn
+  in a size whose `%` is whole. Books paginate again on their first open.
+- **Library.** Rows show the author of an EPUB, a check for a finished
+  book (reaching the last page finishes it) and the percent of EPUBs too.
+  Home's Continue card shows an EPUB's percent.
+- **Settings › Reading**: book font, size, alignment, margins (narrow,
+  normal, wide), hyphenation (Auto ES/EN or off), progress and reading
+  stats (off records nothing), without opening a book.
+- **Alarms.** A New alarm row adds an alarm and the editor can delete one;
+  both are saved to `ALARMS.TXT`, which the first alarm creates.
+- **Bible.** The reading menu no longer reads the card on every key, and a
+  translation folder with a broken index is left out.
+
 ## v0.10.3 — Reader page, Library, Bible translations, hold to repeat
 
 - **Reader page** as in the mockup: a thin header with the title, time and
