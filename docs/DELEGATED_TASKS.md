@@ -22,6 +22,7 @@ What the main developer changed at merge time:
 - **D41:** hold BOOT in an option list of Settings › Reading left the
   screen, though the bar says `hold: cancel`, and the list was still open
   on the next visit. It now closes the list first, as Display does.
+  Settings › AI had the same gap (main line); fixed too.
 - **D42:** the editor still said `Runtime editor`; it says `Edit alarm` or
   `New alarm`. The empty list said "New alarm creates one; ALARMS.TXT holds
   more", which reads as if the file held more than six.
@@ -396,6 +397,163 @@ Do differently next time:
 - **rustfmt and guards:** rustfmt cannot format `matches!(x, P if guard)`
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
+
+## Round 9 tasks (branch `side-tasks-9`)
+
+Start from `main` at v0.10.4. Five tasks, in this order; D48 is the
+largest, so skip it rather than rush it. When they are done, merge `main`
+into the branch and open a pull request (`gh pr create`).
+
+**Main line during this round.** The main developer draws the display
+digits and the mockup's weather icons (Weather, the sleep screens and
+Home), then sends voice notes for transcription and summary (Phase 7).
+Leave these files alone:
+
+- `src/main.rs`, except the lines a task names;
+- power and sleep: `src/power*.rs`, `src/sleep_*.rs`,
+  `src/app/screens/sleep_*.rs`, `src/app/screens/power*.rs`;
+- weather and Home: `src/weather*.rs`, `src/app/screens/weather*.rs`,
+  `src/app/screens/home.rs` (D45 may change its two `ScreenRoute::Reader`
+  arms, nothing else);
+- drawing: `src/app/widgets/icons.rs`, `src/app/widgets/big_digits.rs`,
+  `src/app/typography/`, `scripts/fonts/`;
+- voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
+  `src/ai_*.rs`, `src/app/screens/voice_notes.rs`, `src/app/screens/ai.rs`.
+
+Read the Round 8 result first. Before you hand over, run this and fix
+every hit: it prints an old doc comment line followed by added code, the
+mistake of the last four rounds.
+
+```sh
+git diff -U3 main -- src | awk '/^ +\/\/\//{d=$0;n=1;next} n&&/^\+/{print d; print $0} {n=0}'
+```
+
+Every option list closes on hold BOOT before its screen does
+(`AppState::back`). Percentages are drawn in Body size. The fonts have
+ASCII, Latin-1 and `– — ‘ ’ ‚ “ ” „ • … ‹ › € ™ −` only.
+
+### D44: Save the reading place in batches
+
+**Why.** Mockup, "Reglas que seguiría": write progress to the SD card in
+batches, every few minutes and before sleep. Today every page turn
+rewrites `STATE.TXT`, `POSITS.TXT` and `RECENT.TXT`
+(`persist_current_session_best_effort`), so each turn waits for three
+safe writes.
+
+**Change.**
+
+- A page turn updates the place in memory (`resume`, positions, recent),
+  so Home's card and the Library stay right, and marks it unsaved.
+- The files are written when the place has been unsaved for two minutes
+  (checked in `AppState::apply` with `event_clock_ms`), when the reading
+  view is left (back, Home, another book, a layout rebuild), and before
+  sleep: `main.rs` calls a new `ReaderUiState::save_place_if_unsaved` next
+  to each `save_reading_stats_if_dirty` call (only those lines).
+- A failed write keeps the place unsaved, so the next check tries again.
+
+**Tests:** ten turns inside two minutes write nothing (count writes, as
+D36 counts loads); the first check after two minutes writes once; back
+from the page writes; the in-memory place moves on every turn; a failed
+write is retried.
+
+**Status:**
+
+### D45: Home › Library opens the books
+
+**Why.** Left from D35: Home's Library row opens a three-row landing
+(Continue Reading, Books, Bookmarks), and the books are two presses
+further. The mockup's Library is the first screen, and its RECENT and
+BOOKMARKS tabs already cover the other rows.
+
+**Change.**
+
+- Home's Library row opens the Library: RECENT when there is a recent
+  book, else ALL. Hold BOOT there returns Home; hold BOOT on a page
+  returns to the Library.
+- The landing goes, and with it the `Bookmarks` route only it reached (the
+  BOOKMARKS tab covers it). Reader Options › Bookmarks keeps its list
+  (`ReaderBookmarks`). Home's Continue card still resumes the book.
+- `home.rs`: only its two `ScreenRoute::Reader` arms (icon and book count)
+  follow the new route.
+- **Previews:** `home`, `library` (RECENT), and one with no book read yet.
+
+**Tests:** Home › Library › a book › hold BOOT twice, through
+`AppState::apply`, back to Home; the tab that opens with and without a
+recent book; Reader Options › Bookmarks opens its list and hold BOOT
+returns to Options.
+
+**Status:**
+
+### D46: Reader screens in the new style
+
+**Why.** The Library, Settings and the reading page have the mockup's
+look; the screens around them still have rustmix's black header with a
+subtitle and a boxed status row: Reader Options, Reading Preferences, the
+table of contents, the bookmark list, Opening Book, Settings ›
+Reading and Settings › Display.
+
+**Change.**
+
+- The black status bar (`draw_status_bar`, the screen's name on the left,
+  a short value on the right such as the book's title or `PREFS.TXT`),
+  then rows with the label on the left and the value on the right, as
+  Settings › Sleep screen draws them (read `sleep_settings.rs`, do not
+  edit it), and option lists through `draw_option_list`.
+- The rows scroll when they do not fit, at every UI size.
+- Opening Book: the book's title, the stage and a bar, in the same look.
+- **Previews:** one per screen at Standard, and Reading Preferences and the
+  table of contents at Large.
+
+**Tests:** every row fits above the bar at every UI size, or scrolls with
+the selection on screen; a long book title is cut, not drawn under the
+right value.
+
+**Status:**
+
+### D47: Settings › System › Memory
+
+**Why.** Mockup, "Reglas que seguiría": always measure, with the battery
+log and free memory in Settings › System. `RuntimeMemorySnapshot` is
+logged at worker boundaries but never shown.
+
+**Change.**
+
+- A `Memory` row in Settings › System. The screen shows internal RAM
+  free, its largest free block and the lowest free since boot
+  (`heap_caps_get_minimum_free_size`), PSRAM free and its lowest, and the
+  main task's stack margin.
+- `main.rs` captures a snapshot when the status bar refreshes and stores
+  it in `AppState` (only those lines). The screen reads the stored one.
+- Sizes in KB, or MB above 1 MB, with `regional::grouped`.
+- **Preview:** `settings-memory`.
+
+**Tests:** the size labels; the lowest value never goes up across
+snapshots; Home › Settings › System › Memory through
+`AppState::apply`.
+
+**Status:**
+
+### D48: Go to a percent of the book
+
+**Why.** A TXT book has no table of contents, so reaching its middle
+takes hundreds of page turns.
+
+**Change.**
+
+- Reader Options › `Go to`: an option list of 0% to 90% in steps of 10,
+  with the place in use marked. Choosing one opens the book there, through
+  the same path as resuming a saved place.
+- TXT: the byte offset at that percent, moved forward to the next line
+  start. EPUB: the chapter holding that offset of the flattened text, at
+  its page.
+- The page label after the jump stays honest (`p. 41+` style, as a
+  resumed place shows today).
+
+**Tests:** 50% of a sample TXT opens within a page of the middle and at a
+line start; 50% of a sample EPUB opens in the right chapter; the place
+saves (with D44's batching).
+
+**Status:**
 
 ## Round 8 tasks (done in v0.10.4)
 

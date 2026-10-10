@@ -20,6 +20,8 @@ Newest first. Versions and milestone commits follow the
   both are saved to `ALARMS.TXT`, which the first alarm creates.
 - **Bible.** The reading menu no longer reads the card on every key, and a
   translation folder with a broken index is left out.
+- **Fix.** Hold BOOT in an option list of Settings › Reading or Settings ›
+  AI closes the list before leaving the screen.
 
 ## v0.10.3 — Reader page, Library, Bible translations, hold to repeat
 

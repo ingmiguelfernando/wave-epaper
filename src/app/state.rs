@@ -1794,6 +1794,11 @@ impl AppState {
         {
             return;
         }
+        if self.router.current() == ScreenRoute::AiSettings
+            && self.ai_settings_ui.picker.take().is_some()
+        {
+            return;
+        }
         if self.router.current() == ScreenRoute::ReaderPreferences
             && self.reader.preferences_picker.take().is_some()
         {
@@ -2475,6 +2480,20 @@ mod tests {
             state.ai.as_ref().map(|c| c.language),
             Some(crate::ai_config::AiLanguage::Spanish)
         );
+    }
+
+    #[test]
+    fn hold_boot_in_an_ai_option_list_closes_it_first() {
+        let mut state = open_ai_settings();
+        state.ai = Some(crate::ai_config::AiConfig::default());
+        state.ai_settings_ui.selected = 2; // Language
+        state.apply(ButtonEvent::Select);
+        assert!(state.ai_settings_ui.picker.is_some());
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::AiSettings);
+        assert_eq!(state.ai_settings_ui.picker, None, "the list closes");
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
     }
 
     #[test]
