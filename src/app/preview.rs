@@ -413,6 +413,31 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     result.voice_notes_result.cycle_tab();
     states.push(("voice-note-audio", result));
 
+    // A note on its way, and one the provider refused.
+    let mut queued = sample_state();
+    queued.router.navigate_to(ScreenRoute::VoiceNotes);
+    queued.voice_notes.notes = sample_ai_state_notes();
+    queued.voice_notes.selected = 2;
+    queued.router.navigate_to(ScreenRoute::VoiceNoteResult);
+    queued.voice_notes_result.record = Some(crate::voice_note_record::NoteRecord::queued());
+    states.push(("voice-note-queued", queued.clone()));
+    queued.voice_notes.selected = 5;
+    queued.voice_notes_result.record = Some(crate::voice_note_record::NoteRecord {
+        state: crate::voice_note_record::NoteState::Failed,
+        error: "HTTP 401: Invalid API Key".into(),
+        ..crate::voice_note_record::NoteRecord::queued()
+    });
+    states.push(("voice-note-failed", queued));
+
+    // Details of a note never sent, with its AI action selected.
+    let mut details = sample_state();
+    details.router.navigate_to(ScreenRoute::VoiceNotes);
+    details.voice_notes.notes = sample_voice_notes();
+    details.voice_notes.selected = 2;
+    details.voice_notes.detail_selected = crate::voice_notes::DETAIL_AI;
+    details.router.navigate_to(ScreenRoute::VoiceNoteDetails);
+    states.push(("voice-note-details", details));
+
     let mut page = sample_state();
     open_sample_book(&mut page);
     states.push(("reader-page", page.clone()));
@@ -595,7 +620,13 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut ai = sample_state();
     ai.ai = Some(sample_ai_config());
     ai.router.navigate_to(ScreenRoute::AiSettings);
-    states.push(("settings-ai", ai));
+    states.push(("settings-ai", ai.clone()));
+    ai.ai_keys = crate::ai_keys::AiKeyPresence {
+        available: true,
+        transcription: true,
+        summary: true,
+    };
+    states.push(("settings-ai-keys", ai));
 
     let mut ai_picker = sample_state();
     ai_picker.ai = Some(sample_ai_config());
@@ -789,7 +820,7 @@ fn sample_result_record() -> crate::voice_note_record::NoteRecord {
         state: crate::voice_note_record::NoteState::Done,
         error: String::new(),
         title: "Reunión de equipo: presupuesto Q4".into(),
-        language: "es".into(),
+        language: "Spanish".into(),
         transcribed_by: "Groq whisper-large-v3-turbo".into(),
         summarized_by: "OpenRouter llama-3.3-70b".into(),
         summary: "• Se aprobó el presupuesto del Q4 con un recorte del 10 % en viajes.\n\

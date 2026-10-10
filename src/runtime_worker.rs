@@ -34,7 +34,7 @@ const ENOMEM: i32 = 12;
 /// A photo still being prepared holds internal memory for a few seconds, so
 /// wait up to three seconds for a block that fits the stack.
 #[cfg(target_os = "espidf")]
-fn wait_for_stack_memory(stack_bytes: usize) {
+pub(crate) fn wait_for_stack_memory(stack_bytes: usize) {
     use esp_idf_svc::sys;
     for _ in 0..12 {
         let largest = unsafe {
@@ -50,7 +50,7 @@ fn wait_for_stack_memory(stack_bytes: usize) {
 }
 
 #[cfg(not(target_os = "espidf"))]
-fn wait_for_stack_memory(_stack_bytes: usize) {}
+pub(crate) fn wait_for_stack_memory(_stack_bytes: usize) {}
 
 pub fn run_named_worker<T, E, F>(
     name: &'static str,

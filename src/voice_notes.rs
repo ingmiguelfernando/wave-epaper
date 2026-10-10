@@ -23,6 +23,7 @@ use crate::{
         upsert_voice_note_metadata, VoiceNoteMetadata, VOICE_TITLE_MAX_CHARS,
         VOICE_UNKNOWN_RECORDED_AT,
     },
+    voice_note_record::NoteState,
 };
 
 pub const VOICE_NOTES_ROOT: &str = "/sdcard/RUSTMIX/VOICE";
@@ -48,6 +49,15 @@ pub const VOICE_TITLE_EDITOR_KEY_ROWS: [[&str; 7]; 6] = [
 const VOICE_TITLE_EDITOR_KEY_COLUMNS: usize = 7;
 const VOICE_TITLE_EDITOR_KEY_COUNT: usize = 42;
 const WAV_HEADER_BYTES: usize = 44;
+
+/// The actions of a saved note's details screen, top to bottom.
+pub const DETAIL_PLAY: usize = 0;
+pub const DETAIL_AI: usize = 1;
+pub const DETAIL_TITLE: usize = 2;
+pub const DETAIL_EXPORT: usize = 3;
+pub const DETAIL_DELETE: usize = 4;
+pub const DETAIL_RETURN: usize = 5;
+pub const DETAIL_ACTIONS: usize = 6;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum VoiceMicGain {
@@ -201,6 +211,8 @@ pub enum VoiceNotesUiRequest {
     SaveEditedTitle { file_name: String, title: String },
     ExportSelected,
     DeleteSelected,
+    /// Queue the selected note for transcription and a summary.
+    ProcessSelected,
     RefreshCatalog,
 }
 
@@ -336,14 +348,17 @@ impl VoiceNotesUiState {
         } else {
             match event {
                 ButtonEvent::Up => {
-                    self.detail_selected = self.detail_selected.checked_sub(1).unwrap_or(4);
+                    self.detail_selected = self
+                        .detail_selected
+                        .checked_sub(1)
+                        .unwrap_or(DETAIL_ACTIONS - 1);
                     false
                 }
                 ButtonEvent::Down => {
-                    self.detail_selected = (self.detail_selected + 1) % 5;
+                    self.detail_selected = (self.detail_selected + 1) % DETAIL_ACTIONS;
                     false
                 }
-                ButtonEvent::Select if self.detail_selected == 0 => {
+                ButtonEvent::Select if self.detail_selected == DETAIL_PLAY => {
                     self.request = Some(if self.is_playing_selected() {
                         VoiceNotesUiRequest::StopPlayback
                     } else {
@@ -351,15 +366,27 @@ impl VoiceNotesUiState {
                     });
                     true
                 }
-                ButtonEvent::Select if self.detail_selected == 1 => {
+                ButtonEvent::Select if self.detail_selected == DETAIL_AI => {
+                    // A note on its way through the providers has nothing to start.
+                    let pending = self
+                        .selected_note()
+                        .and_then(|note| note.ai_state)
+                        .is_some_and(NoteState::is_pending);
+                    if pending {
+                        return false;
+                    }
+                    self.request = Some(VoiceNotesUiRequest::ProcessSelected);
+                    true
+                }
+                ButtonEvent::Select if self.detail_selected == DETAIL_TITLE => {
                     self.begin_title_edit();
                     false
                 }
-                ButtonEvent::Select if self.detail_selected == 2 => {
+                ButtonEvent::Select if self.detail_selected == DETAIL_EXPORT => {
                     self.request = Some(VoiceNotesUiRequest::ExportSelected);
                     true
                 }
-                ButtonEvent::Select if self.detail_selected == 3 => {
+                ButtonEvent::Select if self.detail_selected == DETAIL_DELETE => {
                     self.delete_confirmation = true;
                     self.delete_confirm_selected = 0;
                     false
@@ -670,6 +697,19 @@ pub const fn bytes_per_second() -> u32 {
     VOICE_SAMPLE_RATE_HZ * VOICE_CHANNELS as u32 * (VOICE_BITS_PER_SAMPLE as u32 / 8)
 }
 
+/// The details screen's AI action for a note in `state`.
+#[must_use]
+pub const fn ai_action_label(state: Option<NoteState>) -> &'static str {
+    match state {
+        None => "Transcribe and summarize",
+        Some(NoteState::Queued) => "Queued for transcription",
+        Some(NoteState::Transcribing) => "Transcribing\u{2026}",
+        Some(NoteState::Summarizing) => "Summarizing\u{2026}",
+        Some(NoteState::Done) => "Summarize again",
+        Some(NoteState::Failed) => "Retry",
+    }
+}
+
 #[must_use]
 pub fn format_duration(seconds: u32) -> String {
     format!("{:02}:{:02}", seconds / 60, seconds % 60)
@@ -791,22 +831,25 @@ fn read_voice_note_entry_with_metadata(
     let pcm_bytes = parse_pcm_wav_header(&header)?;
     let wav_bytes = file.metadata()?.len();
     // The record sits next to the WAV; a bad record shows no state, not an error.
-    let ai_state = path
-        .parent()
-        .and_then(|root| {
-            crate::voice_note_record::load_record(root, &file_name)
-                .ok()
-                .flatten()
-        })
-        .map(|record| record.state);
+    let record = path.parent().and_then(|root| {
+        crate::voice_note_record::load_record(root, &file_name)
+            .ok()
+            .flatten()
+    });
+    // A summarized note shows its AI title until the owner names it.
+    let unnamed = metadata.title == default_voice_title(&file_name);
+    let title = match record.as_ref() {
+        Some(record) if unnamed && !record.title.trim().is_empty() => record.title.clone(),
+        _ => metadata.title,
+    };
     Ok(VoiceNoteEntry {
         file_name,
-        title: metadata.title,
+        title,
         recorded_at: metadata.recorded_at,
         wav_bytes,
         pcm_bytes,
         duration_seconds: pcm_bytes / bytes_per_second(),
-        ai_state,
+        ai_state: record.map(|record| record.state),
     })
 }
 
@@ -1383,12 +1426,74 @@ mod tests {
             ai_state: None,
         });
         ui.selected = 2;
-        ui.detail_selected = 3;
+        ui.detail_selected = DETAIL_DELETE;
         assert!(!ui.apply_detail_button(ButtonEvent::Select));
         assert!(ui.delete_confirmation);
         ui.delete_confirm_selected = 1;
         assert!(ui.apply_detail_button(ButtonEvent::Select));
         assert_eq!(ui.take_request(), Some(VoiceNotesUiRequest::DeleteSelected));
+    }
+
+    #[test]
+    fn the_ai_action_queues_a_note_unless_it_is_already_on_its_way() {
+        let mut ui = VoiceNotesUiState::default();
+        ui.notes.push(VoiceNoteEntry {
+            file_name: "VOICE001.WAV".into(),
+            title: "VOICE NOTE 001".into(),
+            recorded_at: VOICE_UNKNOWN_RECORDED_AT.into(),
+            wav_bytes: 44,
+            pcm_bytes: 0,
+            duration_seconds: 0,
+            ai_state: None,
+        });
+        ui.selected = 2;
+        ui.detail_selected = DETAIL_AI;
+        assert!(ui.apply_detail_button(ButtonEvent::Select));
+        assert_eq!(
+            ui.take_request(),
+            Some(VoiceNotesUiRequest::ProcessSelected)
+        );
+        for state in [NoteState::Failed, NoteState::Done] {
+            ui.notes[0].ai_state = Some(state);
+            assert!(ui.apply_detail_button(ButtonEvent::Select));
+            assert_eq!(
+                ui.take_request(),
+                Some(VoiceNotesUiRequest::ProcessSelected)
+            );
+        }
+        for state in [
+            NoteState::Queued,
+            NoteState::Transcribing,
+            NoteState::Summarizing,
+        ] {
+            ui.notes[0].ai_state = Some(state);
+            assert!(!ui.apply_detail_button(ButtonEvent::Select));
+            assert_eq!(ui.take_request(), None);
+        }
+        // Up from the first action wraps to the last.
+        ui.detail_selected = DETAIL_PLAY;
+        ui.apply_detail_button(ButtonEvent::Up);
+        assert_eq!(ui.detail_selected, DETAIL_RETURN);
+    }
+
+    #[test]
+    fn a_summarized_note_shows_its_ai_title_until_it_is_renamed() {
+        let root = std::env::temp_dir().join(format!("wave-voice-title-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("VOICE001.WAV"), build_pcm_wav_header(0)).unwrap();
+        let done = crate::voice_note_record::NoteRecord {
+            state: NoteState::Done,
+            title: "Lista de compras".into(),
+            ..crate::voice_note_record::NoteRecord::queued()
+        };
+        crate::voice_note_record::save_record(&root, "VOICE001.WAV", &done).unwrap();
+        let notes = scan_voice_notes(&root).unwrap();
+        assert_eq!(notes[0].title, "Lista de compras");
+        assert_eq!(notes[0].ai_state, Some(NoteState::Done));
+        save_voice_note_title(&root, "VOICE001.WAV", "COMPRAS").unwrap();
+        assert_eq!(scan_voice_notes(&root).unwrap()[0].title, "COMPRAS");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

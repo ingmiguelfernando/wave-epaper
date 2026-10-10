@@ -271,6 +271,7 @@ pub mod espidf {
         WIFI_TRANSFER_MAX_DIRECTORY_ROWS, WIFI_TRANSFER_MAX_UPLOAD_BYTES, WIFI_TRANSFER_ROOT,
         WIFI_TRANSFER_SERVER_STACK_BYTES, WIFI_TRANSFER_STREAM_CHUNK_BYTES,
     };
+    use crate::ai_keys::{espidf::AiKeyStore, validate_key, AiKeySlot, AI_KEY_MAX_CHARS};
 
     const PORTAL_HTML: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -283,11 +284,16 @@ body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}butt
 <p>Path: <code id="path">/</code></p><div id="list"></div>
 <h2>Upload</h2><input id="file" type="file"><input id="name" placeholder="Optional new name"><button onclick="upload()">Upload</button>
 <h2>Folder</h2><input id="folder" placeholder="Folder name"><button onclick="mkdir()">Create folder</button>
+<h2>AI keys</h2>
+<p>For Voice Notes. A key is stored encrypted on the device, never written to the SD card and never shown again.</p>
+<p id="keys">Unlock to see which keys are set.</p>
+<select id="slot"><option value="transcription">Transcription key</option><option value="summary">Summary key</option></select>
+<input id="key" type="password" autocomplete="off" placeholder="Paste the API key"><button onclick="saveKey()">Save key</button><button onclick="clearKey()">Remove key</button>
 <pre id="status">Enter the six-digit code displayed on the device.</pre>
 <script>
 let current='/'; const status=t=>document.getElementById('status').textContent=t;
 const code=()=>localStorage.waveCode||document.getElementById('code').value;
-function saveCode(){localStorage.waveCode=document.getElementById('code').value;loadList(current)}
+function saveCode(){localStorage.waveCode=document.getElementById('code').value;loadList(current);keys()}
 const enc=s=>encodeURIComponent(s); const join=n=>(current==='/'?'/':current+'/')+n;
 async function api(url,opt){let r=await fetch(url+(url.includes('?')?'&':'?')+'code='+enc(code()),opt);let t=await r.text();if(!r.ok)throw Error(t);return t}
 // File names come from the SD card, so they are only ever set as text, never parsed as HTML.
@@ -305,7 +311,12 @@ async function upload(){try{let f=document.getElementById('file').files[0];let n
 async function mkdir(){try{await api('/api/mkdir?path='+enc(join(document.getElementById('folder').value)),{method:'POST'});status('Folder created');loadList(current)}catch(e){status(e.message)}}
 async function renamePath(p){try{let n=prompt('New name');if(!n)return;let parent=p.substring(0,p.lastIndexOf('/'))||'/';let to=(parent==='/'?'/':parent+'/')+n;await api('/api/rename?from='+enc(p)+'&to='+enc(to),{method:'POST'});status('Renamed');loadList(current)}catch(e){status(e.message)}}
 async function del(p){try{await api('/api/delete?path='+enc(p),{method:'POST'});status('Deleted');loadList(current)}catch(e){status(e.message)}}
-loadList('/');
+// Keys only go to the device; it answers with which ones are set, never the keys.
+const slot=()=>enc(document.getElementById('slot').value);
+async function keys(){try{let k=JSON.parse(await api('/api/ai-keys'));document.getElementById('keys').textContent=k.available?'Transcription key: '+(k.transcription?'set':'not set')+' · Summary key: '+(k.summary?'set':'not set'):'Key storage is unavailable on this device.'}catch(e){}}
+async function saveKey(){try{let i=document.getElementById('key');await api('/api/ai-keys?slot='+slot(),{method:'POST',body:i.value});i.value='';status('Key saved');keys()}catch(e){status(e.message)}}
+async function clearKey(){try{await api('/api/ai-keys?slot='+slot()+'&clear=1',{method:'POST'});status('Key removed');keys()}catch(e){status(e.message)}}
+loadList('/');keys();
 </script></body></html>"#;
 
     #[derive(Debug)]
@@ -345,7 +356,8 @@ loadList('/');
     }
 
     impl WifiTransferServer {
-        pub fn start(ipv4: &str, code: String) -> Result<Self> {
+        /// `keys` is the encrypted AI key store, when NVS opened.
+        pub fn start(ipv4: &str, code: String, keys: Option<AiKeyStore>) -> Result<Self> {
             let url = format!("http://{ipv4}/");
             let shared = Arc::new(Mutex::new(SharedStatus::new(url.clone(), code.clone())));
             let mut server = EspHttpServer::new(&Configuration {
@@ -353,7 +365,7 @@ loadList('/');
                 stack_size: WIFI_TRANSFER_SERVER_STACK_BYTES,
                 max_open_sockets: 2,
                 max_sessions: 2,
-                max_uri_handlers: 10,
+                max_uri_handlers: 12,
                 session_timeout: Duration::from_secs(60),
                 ..Default::default()
             })?;
@@ -497,6 +509,64 @@ loadList('/');
                     snapshot.last_bytes
                 );
                 request.into_ok_response()?.write_all(body.as_bytes())?;
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+            // Which AI keys are set; never the keys themselves.
+            let presence_code = code.clone();
+            let presence_keys = keys.clone();
+            server.fn_handler("/api/ai-keys", Method::Get, move |request| {
+                authenticate(request.uri(), &presence_code)?;
+                let presence = presence_keys
+                    .as_ref()
+                    .map(AiKeyStore::presence)
+                    .unwrap_or_default();
+                let body = format!(
+                    "{{\"available\":{},\"transcription\":{},\"summary\":{}}}",
+                    presence.available, presence.transcription, presence.summary
+                );
+                request.into_ok_response()?.write_all(body.as_bytes())?;
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+            // Save a key from the request body, or remove one with `clear`.
+            let key_shared = Arc::clone(&shared);
+            let key_code = code.clone();
+            server.fn_handler("/api/ai-keys", Method::Post, move |mut request| {
+                authenticate(request.uri(), &key_code)?;
+                let store = keys
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Key storage is unavailable on this device"))?;
+                let slot = required_query(request.uri(), "slot")?;
+                let slot = AiKeySlot::from_marker(&slot).ok_or_else(|| anyhow!("unknown key"))?;
+                if query_value(request.uri(), "clear").is_some() {
+                    store.clear(slot)?;
+                    lock(&key_shared).touch(format!("Removed the {} key", slot.marker()), 0);
+                    info!("rustmix-wave=ai-key status=removed slot={}", slot.marker());
+                    request.into_ok_response()?.write_all(b"removed")?;
+                    return Ok(());
+                }
+                let mut body = [0_u8; AI_KEY_MAX_CHARS + 64];
+                let mut total = 0;
+                loop {
+                    let read = request.read(&mut body[total..])?;
+                    if read == 0 {
+                        break;
+                    }
+                    total += read;
+                    if total == body.len() {
+                        bail!("The key is too long.");
+                    }
+                }
+                let saved = std::str::from_utf8(&body[..total])
+                    .map_err(|_| anyhow!("The key is not text."))
+                    .and_then(|text| validate_key(text).map_err(|error| anyhow!(error)))
+                    .and_then(|key| store.set(slot, key));
+                body.fill(0);
+                saved?;
+                lock(&key_shared).touch(format!("Saved the {} key", slot.marker()), 0);
+                info!("rustmix-wave=ai-key status=saved slot={}", slot.marker());
+                request.into_ok_response()?.write_all(b"saved")?;
                 Ok::<(), anyhow::Error>(())
             })?;
 

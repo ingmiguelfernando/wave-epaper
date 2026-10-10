@@ -231,14 +231,18 @@ pub mod espidf {
         }
 
         /// Create the station with the radio off; `begin_connect` switches it on.
-        pub fn new<M>(modem: M, config: &NetworkConfig) -> Result<Self>
+        /// Without NVS the driver keeps its settings and calibration in RAM.
+        pub fn new<M>(
+            modem: M,
+            config: &NetworkConfig,
+            nvs: Option<EspDefaultNvsPartition>,
+        ) -> Result<Self>
         where
             M: WifiModemPeripheral + 'static,
         {
             let sys_loop = EspSystemEventLoop::take()?;
-            let nvs = EspDefaultNvsPartition::take()?;
             let mut wifi =
-                BlockingWifi::wrap(EspWifi::new(modem, sys_loop.clone(), Some(nvs))?, sys_loop)?;
+                BlockingWifi::wrap(EspWifi::new(modem, sys_loop.clone(), nvs)?, sys_loop)?;
             let auth_method = if config.password.is_empty() {
                 AuthMethod::None
             } else {

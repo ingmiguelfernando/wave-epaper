@@ -15,6 +15,12 @@ pub enum NoteState {
 }
 
 impl NoteState {
+    /// Queued, or on its way through the providers.
+    #[must_use]
+    pub const fn is_pending(self) -> bool {
+        matches!(self, Self::Queued | Self::Transcribing | Self::Summarizing)
+    }
+
     #[must_use]
     pub const fn marker(self) -> &'static str {
         match self {
@@ -200,6 +206,17 @@ pub fn fail(root: &std::path::Path, wav_name: &str, error: &str) -> Result<NoteR
     }
     record.state = NoteState::Failed;
     record.error = one_line(error);
+    save_record(root, wav_name, &record)?;
+    Ok(record)
+}
+
+/// Put a note in the queue: a new record for a note never processed, or
+/// its record back to queued. The transcript stays, so a note that already
+/// has one only needs a new summary.
+pub fn queue(root: &std::path::Path, wav_name: &str) -> Result<NoteRecord> {
+    let mut record = load_record(root, wav_name)?.unwrap_or_else(NoteRecord::queued);
+    record.state = NoteState::Queued;
+    record.error = String::new();
     save_record(root, wav_name, &record)?;
     Ok(record)
 }
@@ -432,6 +449,27 @@ mod tests {
             fail(&root, "VOICE004.WAV", "other").unwrap().error,
             "HTTP 429"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn queueing_creates_a_record_or_sends_one_back_keeping_its_transcript() {
+        let root = std::env::temp_dir().join(format!("wave-voice-requeue-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let fresh = queue(&root, "VOICE005.WAV").unwrap();
+        assert_eq!(fresh, NoteRecord::queued());
+        let failed = NoteRecord {
+            state: NoteState::Failed,
+            error: "HTTP 500".into(),
+            transcript: "Comprar pan.".into(),
+            ..NoteRecord::queued()
+        };
+        save_record(&root, "VOICE005.WAV", &failed).unwrap();
+        let again = queue(&root, "VOICE005.WAV").unwrap();
+        assert_eq!(again.state, NoteState::Queued);
+        assert_eq!(again.error, "", "the old reason goes");
+        assert_eq!(again.transcript, "Comprar pan.");
+        assert_eq!(load_record(&root, "VOICE005.WAV").unwrap(), Some(again));
         let _ = std::fs::remove_dir_all(&root);
     }
 

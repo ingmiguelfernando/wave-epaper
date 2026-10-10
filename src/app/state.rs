@@ -26,6 +26,7 @@ use crate::{
     sleep_screen::{SleepMode, SleepScreenSetting, SleepScreenSettings},
     storage::StorageSnapshot,
     unit_converter::UnitConverterUiState,
+    voice_note_record::NoteState,
     voice_notes::{VoiceNotesUiRequest, VoiceNotesUiState},
     weather::{WeatherFetchState, WeatherSnapshot},
     weather_config::{WeatherConfig, WeatherSetting},
@@ -153,6 +154,12 @@ pub struct AppState {
     pub weather_config: Option<WeatherConfig>,
     /// AI.TXT; `None` until the file loads, and then `Not set up` when it is missing.
     pub ai: Option<crate::ai_config::AiConfig>,
+    /// Which AI keys the device holds; main.rs reads them from NVS.
+    pub ai_keys: crate::ai_keys::AiKeyPresence,
+    /// The note an AI job is sending now; main.rs keeps it current.
+    pub ai_busy_note: Option<String>,
+    /// Set when the owner queues a note, so the queue tries at once.
+    ai_retry_now: bool,
     pub weather_settings_ui: WeatherSettingsUiState,
     /// Settings › AI cursor and open list.
     pub ai_settings_ui: AiSettingsUiState,
@@ -245,6 +252,9 @@ impl Default for AppState {
             weather: WeatherSnapshot::default(),
             weather_config: None,
             ai: None,
+            ai_keys: crate::ai_keys::AiKeyPresence::default(),
+            ai_busy_note: None,
+            ai_retry_now: false,
             weather_settings_ui: WeatherSettingsUiState::default(),
             ai_settings_ui: AiSettingsUiState::default(),
             ai_changed: false,
@@ -630,19 +640,7 @@ impl AppState {
                         .selected_note()
                         .is_some_and(|note| note.ai_state.is_some());
                     if has_record {
-                        let record = self.voice_notes.selected_note().and_then(|note| {
-                            crate::voice_note_record::load_record(
-                                std::path::Path::new(crate::voice_notes::VOICE_NOTES_ROOT),
-                                &note.file_name,
-                            )
-                            .ok()
-                            .flatten()
-                        });
-                        self.voice_notes_result = crate::voice_note_result::ResultUiState {
-                            record,
-                            ..Default::default()
-                        };
-                        self.router.navigate_to(ScreenRoute::VoiceNoteResult);
+                        self.open_selected_note_result();
                     } else {
                         self.router.navigate_to(ScreenRoute::VoiceNoteDetails);
                     }
@@ -667,7 +665,7 @@ impl AppState {
                 if event == ButtonEvent::Select
                     && !was_title_editing
                     && !was_delete_confirmation
-                    && self.voice_notes.detail_selected == 4
+                    && self.voice_notes.detail_selected == crate::voice_notes::DETAIL_RETURN
                 {
                     self.voice_notes.request_stop_playback();
                     self.voice_notes.clear_transient_details();
@@ -1936,6 +1934,67 @@ impl AppState {
         self.voice_notes.refresh_catalog();
     }
 
+    /// Open the selected note's AI result, reading its record from the card.
+    pub fn open_selected_note_result(&mut self) {
+        self.voice_notes_result = crate::voice_note_result::ResultUiState {
+            record: self.selected_note_record(),
+            ..Default::default()
+        };
+        self.router.navigate_to(ScreenRoute::VoiceNoteResult);
+    }
+
+    fn selected_note_record(&self) -> Option<crate::voice_note_record::NoteRecord> {
+        let note = self.voice_notes.selected_note()?;
+        let root = std::path::Path::new(crate::voice_notes::VOICE_NOTES_ROOT);
+        crate::voice_note_record::load_record(root, &note.file_name)
+            .ok()
+            .flatten()
+    }
+
+    /// A note's AI step changed while its job runs: update its row without
+    /// reading the card, and the result screen when it shows that note.
+    pub fn set_note_ai_state(&mut self, wav_name: &str, ai_state: NoteState) {
+        let notes = &mut self.voice_notes.notes;
+        if let Some(note) = notes.iter_mut().find(|note| note.file_name == wav_name) {
+            note.ai_state = Some(ai_state);
+        }
+        self.reload_note_result(wav_name);
+    }
+
+    /// Read the record again when the selected note is `wav_name`, keeping
+    /// the open tab and scroll.
+    pub fn reload_note_result(&mut self, wav_name: &str) {
+        let selected = self.voice_notes.selected_note();
+        if selected.is_some_and(|note| note.file_name == wav_name) {
+            self.voice_notes_result.record = self.selected_note_record();
+        }
+    }
+
+    /// The oldest queued note, once both providers and their keys are set.
+    #[must_use]
+    pub fn next_ai_note(&self) -> Option<&str> {
+        let config = self.ai.as_ref().filter(|config| config.is_ready())?;
+        if !self.ai_keys.ready(config) {
+            return None;
+        }
+        self.voice_notes
+            .notes
+            .iter()
+            .filter(|note| note.ai_state == Some(NoteState::Queued))
+            .map(|note| note.file_name.as_str())
+            .min()
+    }
+
+    /// The owner queued a note: skip any wait left from failed tries.
+    pub fn request_ai_retry(&mut self) {
+        self.ai_retry_now = true;
+    }
+
+    #[must_use]
+    pub fn take_ai_retry(&mut self) -> bool {
+        core::mem::take(&mut self.ai_retry_now)
+    }
+
     #[must_use]
     pub fn take_voice_notes_request(&mut self) -> Option<VoiceNotesUiRequest> {
         self.voice_notes.take_request()
@@ -2765,6 +2824,39 @@ mod tests {
         let mut state = voice_list_with_note(None);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::VoiceNoteDetails);
+    }
+
+    #[test]
+    fn the_queue_starts_with_the_oldest_note_once_providers_and_keys_are_set() {
+        use crate::{ai_keys::AiKeyPresence, voice_note_record::NoteState};
+        let mut state = voice_list_with_note(Some(NoteState::Queued));
+        let mut older = state.voice_notes.notes[0].clone();
+        older.file_name = "VOICE000.WAV".into();
+        older.ai_state = Some(NoteState::Done);
+        state.voice_notes.notes.insert(0, older);
+        assert_eq!(state.next_ai_note(), None, "no providers yet");
+        state.ai = Some(crate::ai_config::AiConfig {
+            transcription_url: "https://api.groq.com/openai/v1".into(),
+            transcription_model: "whisper-large-v3-turbo".into(),
+            summary_url: "https://openrouter.ai/api/v1".into(),
+            summary_model: "llama-3.3-70b-instruct".into(),
+            ..crate::ai_config::AiConfig::default()
+        });
+        assert_eq!(state.next_ai_note(), None, "no keys yet");
+        state.ai_keys = AiKeyPresence {
+            available: true,
+            transcription: true,
+            summary: true,
+        };
+        assert_eq!(state.next_ai_note(), Some("VOICE001.WAV"));
+        state.voice_notes.notes[0].ai_state = Some(NoteState::Queued);
+        assert_eq!(state.next_ai_note(), Some("VOICE000.WAV"), "oldest first");
+        state.set_note_ai_state("VOICE000.WAV", NoteState::Transcribing);
+        assert_eq!(state.next_ai_note(), Some("VOICE001.WAV"));
+        assert!(!state.take_ai_retry());
+        state.request_ai_retry();
+        assert!(state.take_ai_retry());
+        assert!(!state.take_ai_retry(), "taken once");
     }
 
     #[test]

@@ -28,6 +28,14 @@ CONFIG_MBEDTLS_DEFAULT_CERTIFICATE_BUNDLE=y
 # for worker stacks.
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 
+# AI provider keys live in the default NVS partition, encrypted with keys
+# derived from an HMAC key in eFuse block 5. The first boot of a firmware
+# with these lines generates that key and burns it: irreversible, and USB
+# flashing keeps working as before.
+CONFIG_NVS_ENCRYPTION=y
+CONFIG_NVS_SEC_KEY_PROTECT_USING_HMAC=y
+CONFIG_NVS_SEC_HMAC_EFUSE_KEY_ID=5
+
 # Embedded browser requests commonly exceed the ESP-IDF 512-byte default.
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 # Percent-encoded long file names (accents take 6 bytes) need longer URIs.

@@ -352,7 +352,7 @@ pub fn render_ai_settings(
         ("Model", config.summary_model.clone()),
         ("Style", config.style.label().into()),
         ("Process", config.process.label().into()),
-        ("API keys", "Not set".into()),
+        ("API keys", state.ai_keys.label(&config).into()),
     ];
     let groups = [
         (0, "Transcription \u{00b7} /audio/transcriptions"),

@@ -30,11 +30,15 @@ mod firmware {
         },
         io::vfs::MountedFatfs,
         log::EspLogger,
+        nvs::EspDefaultNvsPartition,
         sys,
     };
     use log::{info, warn};
     use waveshare_epd397_rust_app::{
         ai_config::{AiConfig, AI_CONFIG_PATH},
+        ai_jobs::{AiJob, JobOutcome},
+        ai_keys::{espidf::AiKeyStore, AiKeyPresence, AiKeySlot},
+        ai_worker::{espidf::EspAiTransport, AiBackoff, AiEvent, AiWorker},
         alarm::{AlarmEngine, AlarmSnapshot, AlarmUiOutcome, ALARMS_CONFIG_PATH},
         app::{
             display::{DisplayPreferences, DISPLAY_CONFIG_PATH},
@@ -107,9 +111,10 @@ mod firmware {
             load_voice_notes_preferences, save_voice_notes_preferences, VoiceNotesPreferences,
             VOICE_UNKNOWN_RECORDED_AT,
         },
+        voice_note_record::{self, NoteState},
         voice_notes::{
             cleanup_stale_voice_tmp, delete_voice_note, save_voice_note_title, VoiceNotesUiRequest,
-            VoicePlaybackSession, VoiceRecordingSession, VOICE_NOTES_ROOT,
+            VoiceNotesUiState, VoicePlaybackSession, VoiceRecordingSession, VOICE_NOTES_ROOT,
             VOICE_PCM_MONO_CHUNK_BYTES, VOICE_PCM_STEREO_CAPTURE_BYTES,
         },
         weather::{
@@ -457,6 +462,7 @@ mod firmware {
         }
         refresh_voice_note_storage_available(&mut state, _mounted_sd.is_some());
         state.refresh_voice_notes_catalog();
+        requeue_interrupted_notes(&mut state);
         state.refresh_lua_app_catalog(_mounted_sd.is_some());
         log_lua_runtime_events(&mut state);
         info!(
@@ -561,8 +567,30 @@ mod firmware {
 
         // Wi-Fi stays off except for short bursts driven by the main loop, so
         // a missing config or an unreachable network never blocks the shell.
+        // NVS is taken once: Wi-Fi keeps its settings there and the AI keys
+        // live there. It is encrypted; the first boot burns its HMAC key.
+        let nvs_partition = match EspDefaultNvsPartition::take() {
+            Ok(partition) => {
+                info!("rustmix-wave=nvs status=ready encryption=hmac-efuse-key5");
+                Some(partition)
+            }
+            Err(error) => {
+                warn!("rustmix-wave=nvs status=failed error={error}");
+                None
+            }
+        };
+        if let Some(partition) = nvs_partition.clone() {
+            let _ = AI_KEYS.set(AiKeyStore::new(partition));
+        }
+        state.ai_keys = AI_KEYS
+            .get()
+            .map_or_else(AiKeyPresence::default, AiKeyStore::presence);
+        info!(
+            "rustmix-wave=ai-keys available={} transcription={} summary={}",
+            state.ai_keys.available, state.ai_keys.transcription, state.ai_keys.summary
+        );
         let mut network_runtime = if let Some(config) = network_config.as_ref() {
-            match NetworkRuntime::new(peripherals.modem, config) {
+            match NetworkRuntime::new(peripherals.modem, config, nvs_partition) {
                 Ok(runtime) => {
                     info!(
                         "rustmix-wave=wifi-radio status=ready ssid={} policy=bursts",
@@ -590,6 +618,8 @@ mod firmware {
         state.update_wifi_transfer_snapshot(WifiTransferSnapshot::default());
         let mut voice_recording: Option<VoiceRecordingSession> = None;
         let mut voice_playback: Option<VoicePlaybackSession> = None;
+        let mut ai_worker = AiWorker::default();
+        let mut ai_backoff = AiBackoff::default();
         let mut voice_stereo_buffer = vec![0_u8; VOICE_PCM_STEREO_CAPTURE_BYTES];
         let mut voice_mono_buffer = vec![0_u8; VOICE_PCM_MONO_CHUNK_BYTES];
         info!("rustmix-wave=imu-event-thresholds tilt-mg={} shake-delta-mg={} rotate-dps={} level-tolerance-mg={} debounce-ms={}", state.imu_events.thresholds.tilt_enter_mg, state.imu_events.thresholds.shake_delta_mg, state.imu_events.thresholds.rotate_dps, state.imu_events.thresholds.level_tolerance_mg, state.imu_events.thresholds.debounce_ms);
@@ -833,6 +863,47 @@ mod firmware {
             let weather_due = next_weather_refresh(weather_config.as_ref(), last_weather_attempt);
             let transfer_waiting = wifi_transfer_server.is_none()
                 && state.wifi_transfer.state == WifiTransferState::Starting;
+            // Voice notes go to the AI providers one at a time, while Wi-Fi is
+            // on and nothing needs the microphone, the speaker or the card.
+            let ai_events = ai_worker.poll();
+            if !ai_events.is_empty() {
+                for event in ai_events {
+                    apply_ai_event(&mut state, &mut ai_backoff, event);
+                }
+                if state.panel_awake
+                    && matches!(
+                        state.active_route(),
+                        ScreenRoute::Ai
+                            | ScreenRoute::VoiceNotes
+                            | ScreenRoute::VoiceNoteDetails
+                            | ScreenRoute::VoiceNoteResult
+                    )
+                {
+                    refresh_screen(
+                        &mut panel,
+                        &mut frame,
+                        &mut state,
+                        &mut panel_refresh,
+                        RefreshRequest::Normal,
+                    )?;
+                }
+            }
+            if state.take_ai_retry() {
+                ai_backoff.clear();
+            }
+            if ai_worker.is_busy() && (voice_recording.is_some() || voice_playback.is_some()) {
+                ai_worker.cancel();
+            }
+            let ai_battery = state.board.power.and_then(|power| power.battery_percent);
+            let ai_waiting = !ai_worker.is_busy()
+                && !sleep_mode.is_sleeping()
+                && voice_recording.is_none()
+                && voice_playback.is_none()
+                && _mounted_sd.is_some()
+                && (on_usb_power
+                    || ai_battery.map_or(true, |percent| percent >= AI_MIN_BATTERY_PERCENT))
+                && ai_backoff.ready(Instant::now())
+                && state.next_ai_note().is_some();
             if let Some(config) = network_config.as_ref().filter(|_| {
                 network_runtime.has_radio()
                     && (!sleep_mode.is_sleeping() || weather_while_asleep(&state))
@@ -849,6 +920,10 @@ mod firmware {
                             && now >= radio.next_burst(now, weather_due, last_activity)
                         {
                             Some("scheduled")
+                        } else if ai_waiting
+                            && now >= radio.next_burst(now, Some(now), last_activity)
+                        {
+                            Some("voice-notes")
                         } else {
                             None
                         };
@@ -892,11 +967,16 @@ mod firmware {
                         }
                     }
                     RadioPhase::Connected => {
+                        if ai_waiting {
+                            start_ai_job(&mut ai_worker, &mut ai_backoff, &mut state);
+                        }
                         let weather_settled = weather_due.map_or(true, |due| due > now)
                             && !weather_retry.is_pending()
                             && !manual_weather_refresh;
                         if !transfer_waiting
                             && wifi_transfer_server.is_none()
+                            && !ai_worker.is_busy()
+                            && !ai_waiting
                             && radio.work_done(now, weather_settled)
                         {
                             radio_off(
@@ -1127,7 +1207,8 @@ mod firmware {
                 && state.alarms.active.is_none()
                 && voice_recording.is_none()
                 && voice_playback.is_none()
-                && wifi_transfer_server.is_none();
+                && wifi_transfer_server.is_none()
+                && !ai_worker.is_busy();
             let power_key_now_ms = uptime.elapsed().as_millis() as u64;
             let power_key_was_down = power_presses.is_down();
             let power_key_down = power_key_held(&power_key_pin);
@@ -1274,6 +1355,8 @@ mod firmware {
                                 log_sleep_image_selection(&selection);
                                 selection
                             });
+                            // Sleep switches Wi-Fi off: a note being sent waits in the queue.
+                            ai_worker.cancel();
                             if radio.phase() != RadioPhase::Off {
                                 if !radio_off(
                                     &mut network_runtime,
@@ -2248,6 +2331,119 @@ mod firmware {
     const USB_CHECK_INTERVAL: Duration = Duration::from_secs(5);
     const BATTERY_SAMPLE_INTERVAL: Duration = Duration::from_secs(SAMPLE_MINUTES as u64 * 60);
     const READING_STATS_SAVE_INTERVAL: Duration = Duration::from_secs(300);
+    /// Below this charge, without USB power, notes wait in the queue.
+    const AI_MIN_BATTERY_PERCENT: u8 = 15;
+    /// The encrypted AI key store, once NVS opened at boot.
+    static AI_KEYS: std::sync::OnceLock<AiKeyStore> = std::sync::OnceLock::new();
+
+    /// A note left transcribing or summarizing by a restart goes back to
+    /// the queue.
+    fn requeue_interrupted_notes(state: &mut AppState) {
+        let root = std::path::Path::new(VOICE_NOTES_ROOT);
+        let interrupted: Vec<String> = state
+            .voice_notes
+            .notes
+            .iter()
+            .filter(|note| {
+                matches!(
+                    note.ai_state,
+                    Some(NoteState::Transcribing | NoteState::Summarizing)
+                )
+            })
+            .map(|note| note.file_name.clone())
+            .collect();
+        for file_name in interrupted {
+            match voice_note_record::queue(root, &file_name) {
+                Ok(_) => {
+                    state.set_note_ai_state(&file_name, NoteState::Queued);
+                    info!("rustmix-wave=voice-ai status=requeued file={file_name} reason=restart");
+                }
+                Err(error) => {
+                    warn!("rustmix-wave=voice-ai status=requeue-failed file={file_name} error={error:#}")
+                }
+            }
+        }
+    }
+
+    /// Start the oldest queued note. Its keys are read from NVS for this job
+    /// only and never logged.
+    fn start_ai_job(worker: &mut AiWorker, backoff: &mut AiBackoff, state: &mut AppState) {
+        let (Some(wav_name), Some(config), Some(store)) = (
+            state.next_ai_note().map(str::to_owned),
+            state.ai.clone(),
+            AI_KEYS.get(),
+        ) else {
+            return;
+        };
+        let presence = state.ai_keys;
+        let key = |slot| {
+            let source = presence.source(slot, &config)?;
+            store.get(source).ok().flatten()
+        };
+        let (Some(transcription_key), Some(summary_key)) =
+            (key(AiKeySlot::Transcription), key(AiKeySlot::Summary))
+        else {
+            warn!("rustmix-wave=voice-ai status=keys-unreadable file={wav_name}");
+            backoff.failed(Instant::now());
+            return;
+        };
+        let job = AiJob {
+            root: VOICE_NOTES_ROOT.into(),
+            wav_name: wav_name.clone(),
+            config,
+            transcription_key,
+            summary_key,
+        };
+        log_runtime_memory("before-voice-ai");
+        match worker.start(job, Box::new(EspAiTransport)) {
+            Ok(()) => {
+                state.ai_busy_note = Some(wav_name.clone());
+                info!("rustmix-wave=voice-ai status=started file={wav_name}");
+            }
+            Err(error) => {
+                backoff.failed(Instant::now());
+                warn!("rustmix-wave=voice-ai status=start-failed file={wav_name} error={error}");
+            }
+        }
+    }
+
+    /// A step or the end of an AI job: update the note's row and result.
+    fn apply_ai_event(state: &mut AppState, backoff: &mut AiBackoff, event: AiEvent) {
+        match event {
+            AiEvent::Step { wav_name, state: step } => {
+                info!("rustmix-wave=voice-ai status={} file={wav_name}", step.marker());
+                state.set_note_ai_state(&wav_name, step);
+            }
+            AiEvent::Finished { wav_name, outcome } => {
+                state.ai_busy_note = None;
+                match &outcome {
+                    JobOutcome::Done(_) => {
+                        backoff.clear();
+                        info!("rustmix-wave=voice-ai status=done file={wav_name}");
+                    }
+                    JobOutcome::Failed(reason) => {
+                        backoff.clear();
+                        warn!("rustmix-wave=voice-ai status=failed file={wav_name} error={reason}");
+                    }
+                    JobOutcome::Retry(reason) => {
+                        backoff.failed(Instant::now());
+                        warn!("rustmix-wave=voice-ai status=retry-later file={wav_name} error={reason}");
+                    }
+                    JobOutcome::Cancelled => {
+                        info!("rustmix-wave=voice-ai status=cancelled file={wav_name}");
+                    }
+                }
+                if matches!(outcome, JobOutcome::Retry(_) | JobOutcome::Cancelled) {
+                    // The job queues its note itself; this covers a worker that stopped.
+                    let root = std::path::Path::new(VOICE_NOTES_ROOT);
+                    let _ = voice_note_record::queue(root, &wav_name);
+                }
+                // The record now holds the state and the title: read the card once.
+                state.refresh_voice_notes_catalog();
+                state.reload_note_result(&wav_name);
+            }
+        }
+    }
 
     fn time_left(since: Instant, period_seconds: u64) -> Duration {
         Duration::from_secs(period_seconds).saturating_sub(since.elapsed())
@@ -2553,6 +2749,10 @@ mod firmware {
             let snapshot = active.snapshot();
             if snapshot != state.wifi_transfer {
                 state.update_wifi_transfer_snapshot(snapshot);
+                // The portal may have saved or removed an AI key.
+                if let Some(keys) = AI_KEYS.get() {
+                    state.ai_keys = keys.presence();
+                }
             }
         }
     }
@@ -2624,7 +2824,7 @@ mod firmware {
         let code = format!("{:06}", unsafe { sys::esp_random() } % 1_000_000);
         info!("rustmix-wave=wifi-transfer-server status=starting ipv4={ipv4} port=80 root={WIFI_TRANSFER_ROOT} stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES}");
         log_runtime_memory("before-wifi-transfer-start");
-        match WifiTransferServer::start(&ipv4, code) {
+        match WifiTransferServer::start(&ipv4, code, AI_KEYS.get().cloned()) {
             Ok(active) => {
                 state.update_wifi_transfer_snapshot(active.snapshot());
                 *server = Some(active);
@@ -3004,6 +3204,20 @@ mod firmware {
                             state.update_audio_snapshot(runtime.snapshot());
                         }
                         info!("rustmix-wave=voice-record status=completed file={} recorded-at={} duration-seconds={} pcm-bytes={} wav-bytes={}", entry.file_name, entry.recorded_at, entry.duration_seconds, entry.pcm_bytes, entry.wav_bytes);
+                        // With process=online and the providers set, the note goes
+                        // straight to the queue; the catalog refresh reads its record.
+                        let queue_now = state.ai.as_ref().is_some_and(|config| {
+                            config.is_ready()
+                                && state.ai_keys.ready(config)
+                                && VoiceNotesUiState::queues_on_save(config.process)
+                        });
+                        if queue_now {
+                            let root = std::path::Path::new(VOICE_NOTES_ROOT);
+                            match voice_note_record::queue(root, &entry.file_name) {
+                                Ok(_) => info!("rustmix-wave=voice-ai status=queued file={} reason=saved", entry.file_name),
+                                Err(error) => warn!("rustmix-wave=voice-ai status=queue-failed file={} error={error:#}", entry.file_name),
+                            }
+                        }
                         state.voice_notes.complete_recording(entry);
                         state.refresh_voice_notes_catalog();
                         refresh_voice_note_storage_available(state, mounted);
@@ -3179,6 +3393,13 @@ mod firmware {
                     .voice_notes
                     .selected_note()
                     .map(|note| note.file_name.clone());
+                if selected.is_some() && selected == state.ai_busy_note {
+                    state
+                        .voice_notes
+                        .fail("This note is being sent to the AI; delete it when that ends.");
+                    warn!("rustmix-wave=voice-note-delete status=rejected reason=ai-job-running");
+                    return;
+                }
                 if let Some(file_name) = selected {
                     match delete_voice_note(std::path::Path::new(VOICE_NOTES_ROOT), &file_name) {
                         Ok(()) => {
@@ -3200,6 +3421,40 @@ mod firmware {
             VoiceNotesUiRequest::RefreshCatalog => {
                 state.refresh_voice_notes_catalog();
                 refresh_voice_note_storage_available(state, mounted);
+            }
+            VoiceNotesUiRequest::ProcessSelected => {
+                let Some(file_name) = state
+                    .voice_notes
+                    .selected_note()
+                    .map(|note| note.file_name.clone())
+                else {
+                    return;
+                };
+                let Some(config) = state.ai.clone().filter(AiConfig::is_ready) else {
+                    state
+                        .voice_notes
+                        .fail("Set the providers in /RUSTMIX/AI.TXT first.");
+                    return;
+                };
+                if !state.ai_keys.ready(&config) {
+                    state
+                        .voice_notes
+                        .fail("Add the API keys in the Wi-Fi portal first.");
+                    return;
+                }
+                match voice_note_record::queue(std::path::Path::new(VOICE_NOTES_ROOT), &file_name)
+                {
+                    Ok(_) => {
+                        state.set_note_ai_state(&file_name, NoteState::Queued);
+                        state.request_ai_retry();
+                        state.open_selected_note_result();
+                        info!("rustmix-wave=voice-ai status=queued file={file_name} reason=manual");
+                    }
+                    Err(error) => {
+                        state.voice_notes.fail(format!("{error:#}"));
+                        warn!("rustmix-wave=voice-ai status=queue-failed file={file_name} error={error:#}");
+                    }
+                }
             }
         }
     }

@@ -121,7 +121,10 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// The main task owns core 0; on core 1 a decode never delays button polling.
 #[cfg(target_os = "espidf")]
-fn spawn_on_second_core<F>(builder: std::thread::Builder, task: F) -> io::Result<JoinHandle<()>>
+pub(crate) fn spawn_on_second_core<F>(
+    builder: std::thread::Builder,
+    task: F,
+) -> io::Result<JoinHandle<()>>
 where
     F: FnOnce() + Send + 'static,
 {
@@ -142,7 +145,10 @@ where
 }
 
 #[cfg(not(target_os = "espidf"))]
-fn spawn_on_second_core<F>(builder: std::thread::Builder, task: F) -> io::Result<JoinHandle<()>>
+pub(crate) fn spawn_on_second_core<F>(
+    builder: std::thread::Builder,
+    task: F,
+) -> io::Result<JoinHandle<()>>
 where
     F: FnOnce() + Send + 'static,
 {

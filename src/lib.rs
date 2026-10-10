@@ -6,6 +6,9 @@
 
 pub mod ai_client;
 pub mod ai_config;
+pub mod ai_jobs;
+pub mod ai_keys;
+pub mod ai_worker;
 pub mod alarm;
 pub mod app;
 pub mod audio;

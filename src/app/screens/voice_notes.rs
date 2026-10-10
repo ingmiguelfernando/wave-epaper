@@ -22,7 +22,10 @@ use crate::{
     },
     orientation::OrientedFrameBuffer,
     voice_note_metadata::format_storage_bytes,
-    voice_notes::{format_duration, VoiceNotesMode, VOICE_TITLE_EDITOR_KEY_ROWS},
+    voice_notes::{
+        ai_action_label, format_duration, VoiceNotesMode, DETAIL_AI, DETAIL_DELETE,
+        DETAIL_EXPORT, DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE, VOICE_TITLE_EDITOR_KEY_ROWS,
+    },
 };
 
 const DELETE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "move"), (KeyCap::Select, "confirm")];
@@ -150,13 +153,6 @@ pub fn render_voice_note_details(
     line(
         display,
         312,
-        "Available",
-        &format_storage_bytes(state.voice_notes.available_storage_bytes),
-        metadata,
-    )?;
-    line(
-        display,
-        348,
         "Playback",
         &format!(
             "{} / {}",
@@ -165,69 +161,48 @@ pub fn render_voice_note_details(
         ),
         metadata,
     )?;
-    draw_action(
-        display,
-        386,
-        if state.voice_notes.is_playing_selected() {
-            "Stop playback"
-        } else {
-            "Play note"
-        },
-        state.voice_notes.detail_selected == 0,
-        body,
-    )?;
-    draw_action(
-        display,
-        436,
-        "Edit friendly title",
-        state.voice_notes.detail_selected == 1,
-        body,
-    )?;
-    draw_action(
-        display,
-        486,
-        "Export / download",
-        state.voice_notes.detail_selected == 2,
-        body,
-    )?;
-    draw_action(
-        display,
-        536,
-        "Delete note",
-        state.voice_notes.detail_selected == 3,
-        body,
-    )?;
-    draw_action(
-        display,
-        586,
-        "Return to Voice Notes",
-        state.voice_notes.detail_selected == 4,
-        body,
-    )?;
+    let play = if state.voice_notes.is_playing_selected() {
+        "Stop playback"
+    } else {
+        "Play note"
+    };
+    let actions = [
+        (DETAIL_PLAY, play),
+        (DETAIL_AI, ai_action_label(note.ai_state)),
+        (DETAIL_TITLE, "Edit friendly title"),
+        (DETAIL_EXPORT, "Export / download"),
+        (DETAIL_DELETE, "Delete note"),
+        (DETAIL_RETURN, "Return to Voice Notes"),
+    ];
+    for (index, label) in actions {
+        let top = 350 + index as i32 * 50;
+        let selected = state.voice_notes.detail_selected == index;
+        draw_action(display, top, label, selected, body)?;
+    }
     if state.voice_notes.export_file.as_deref() == Some(note.file_name.as_str()) {
         line(
             display,
-            650,
+            672,
             "LAN",
             state.wifi_transfer.url_label(),
             metadata,
         )?;
         line(
             display,
-            682,
+            700,
             "Code",
             state.wifi_transfer.code_label(),
             metadata,
         )?;
         line(
             display,
-            714,
+            728,
             "Path",
             &format!("VOICE/{}", note.file_name),
             metadata,
         )?;
     } else if let Some(error) = state.voice_notes.error.as_deref() {
-        Text::new(error, Point::new(22, 682), detail).draw(display)?;
+        Text::new(error, Point::new(22, 690), detail).draw(display)?;
     }
     draw_bottom_bar(display, state.display, &RUN_HINTS)?;
     Ok(())
@@ -370,7 +345,17 @@ fn result_body_lines(
     };
     let body = state.display.body_style();
     let mut lines = Vec::new();
-    for paragraph in prepare_text(text).split('\n') {
+    // A note not summarized yet says where it is, above what it already has.
+    let status = match state.voice_notes_result.tab {
+        ResultTab::Summary => crate::voice_note_result::status_text(record),
+        _ => None,
+    };
+    let text = match status {
+        Some(status) if text.trim().is_empty() => status,
+        Some(status) => format!("{status}\n\n{text}"),
+        None => text.to_string(),
+    };
+    for paragraph in prepare_text(&text).split('\n') {
         if paragraph.trim().is_empty() {
             lines.push(String::new());
         } else {
@@ -409,10 +394,7 @@ pub fn render_voice_note_result(
         _ => note.recorded_at.clone(),
     };
     let meta = match record {
-        Some(record) => format!(
-            "{} · {} · {} → {}",
-            when, record.language, record.transcribed_by, record.summarized_by
-        ),
+        Some(record) => crate::voice_note_result::meta_line(&when, record),
         None => format!("{} · {}", when, format_duration(note.duration_seconds)),
     };
     let meta = crate::voice_note_result::prepare_text(&meta);

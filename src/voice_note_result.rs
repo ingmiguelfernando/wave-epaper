@@ -84,6 +84,44 @@ pub fn audio_text(file_name: &str, duration_seconds: u32, pcm_bytes: u32) -> Str
     )
 }
 
+/// What the summary tab says while a note is not summarized yet, or why it
+/// failed. `None` once the summary is there.
+#[must_use]
+pub fn status_text(record: &crate::voice_note_record::NoteRecord) -> Option<String> {
+    use crate::voice_note_record::NoteState;
+    match record.state {
+        NoteState::Done => None,
+        NoteState::Queued => {
+            Some("Queued. The note goes to the providers when Wi-Fi is on.".into())
+        }
+        NoteState::Transcribing => Some("Transcribing\u{2026}".into()),
+        NoteState::Summarizing => Some("Summarizing\u{2026}".into()),
+        NoteState::Failed => Some(format!(
+            "Failed: {}\nSelect opens the actions; Retry sends the note again.",
+            record.error
+        )),
+    }
+}
+
+/// The line under the title: when, the language if known, and who
+/// transcribed and summarized, leaving out what is not known yet.
+#[must_use]
+pub fn meta_line(when: &str, record: &crate::voice_note_record::NoteRecord) -> String {
+    let providers = match (
+        record.transcribed_by.as_str(),
+        record.summarized_by.as_str(),
+    ) {
+        ("", "") => String::new(),
+        (only, "") | ("", only) => only.to_string(),
+        (transcribed, summarized) => format!("{transcribed} \u{2192} {summarized}"),
+    };
+    [when, record.language.as_str(), providers.as_str()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
 /// Make text drawable with the device fonts: `☐` becomes `•`, and any
 /// character the font set cannot draw becomes `?`. Spanish accents stay.
 #[must_use]
@@ -182,5 +220,49 @@ mod tests {
     #[test]
     fn line_breaks_are_kept() {
         assert_eq!(prepare_text("uno\ndos"), "uno\ndos");
+    }
+
+    #[test]
+    fn each_unfinished_state_says_where_the_note_is() {
+        use crate::voice_note_record::{NoteRecord, NoteState};
+        let queued = NoteRecord::queued();
+        assert!(status_text(&queued).unwrap().starts_with("Queued."));
+        let failed = NoteRecord {
+            state: NoteState::Failed,
+            error: "HTTP 401: Invalid API Key".into(),
+            ..NoteRecord::queued()
+        };
+        let text = status_text(&failed).unwrap();
+        assert!(text.starts_with("Failed: HTTP 401: Invalid API Key\n"));
+        let done = NoteRecord {
+            state: NoteState::Done,
+            ..NoteRecord::queued()
+        };
+        assert_eq!(status_text(&done), None);
+    }
+
+    #[test]
+    fn the_meta_line_leaves_out_what_is_unknown() {
+        use crate::voice_note_record::NoteRecord;
+        let queued = NoteRecord::queued();
+        assert_eq!(
+            meta_line("Oct 2 \u{b7} 12:04", &queued),
+            "Oct 2 \u{b7} 12:04"
+        );
+        let done = NoteRecord {
+            language: "Spanish".into(),
+            transcribed_by: "Groq whisper".into(),
+            summarized_by: "OpenRouter llama".into(),
+            ..NoteRecord::queued()
+        };
+        assert_eq!(
+            meta_line("Oct 2", &done),
+            "Oct 2 \u{b7} Spanish \u{b7} Groq whisper \u{2192} OpenRouter llama"
+        );
+        let half = NoteRecord {
+            transcribed_by: "Groq whisper".into(),
+            ..NoteRecord::queued()
+        };
+        assert_eq!(meta_line("Oct 2", &half), "Oct 2 \u{b7} Groq whisper");
     }
 }
