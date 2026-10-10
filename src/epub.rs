@@ -355,9 +355,42 @@ pub fn read_epub_title_on_worker(path: impl AsRef<Path>) -> Result<String, Strin
 /// Read one OPF metadata title without flattening the spine.
 #[inline(never)]
 pub fn read_epub_title(path: impl AsRef<Path>) -> Result<String, String> {
+    Ok(read_epub_meta(path)?.title)
+}
+
+/// EPUB metadata from the OPF: the title and the first `dc:creator`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EpubMeta {
+    pub title: String,
+    /// Empty when the OPF has no creator.
+    pub author: String,
+}
+
+/// Read the title and the first author on a worker thread, in the same pass.
+#[inline(never)]
+pub fn read_epub_meta_on_worker(path: impl AsRef<Path>) -> Result<EpubMeta, String> {
+    let path = path.as_ref().to_path_buf();
+    let worker = std::thread::Builder::new()
+        .name("epub-title".into())
+        .stack_size(EPUB_TITLE_WORKER_STACK_BYTES)
+        .spawn(move || read_epub_meta(path))
+        .map_err(|error| format!("EPUB title worker start failed: {error}"))?;
+    worker
+        .join()
+        .map_err(|_| "EPUB title worker panicked".to_string())?
+}
+
+/// Read one OPF's title and first author without flattening the spine.
+#[must_use]
+pub fn read_epub_meta(path: impl AsRef<Path>) -> Result<EpubMeta, String> {
     let archive = ZipArchive::open(path)?;
     let (_, package, _) = epub_package(&archive)?;
-    Ok(package_title(&package))
+    Ok(EpubMeta {
+        title: package_title(&package),
+        author: first_element_text(&package, "creator")
+            .map(|value| value.trim().to_string())
+            .unwrap_or_default(),
+    })
 }
 
 fn epub_package(archive: &ZipArchive) -> Result<(String, String, String), String> {
@@ -1197,7 +1230,7 @@ pub(crate) fn sample_epub(bodies: &[String]) -> Vec<u8> {
     }
     let manifest = format!("<manifest>{manifest}</manifest>");
     let spine = format!("<spine>{spine}</spine>");
-    let metadata = "<metadata><dc:title>Libro</dc:title><dc:language>es</dc:language></metadata>";
+    let metadata = "<metadata><dc:title>Libro</dc:title><dc:creator>Autor</dc:creator><dc:language>es</dc:language></metadata>";
     let package = format!("<package>{metadata}{manifest}{spine}</package>");
     let container = "<container><rootfile full-path='OEBPS/book.opf'/></container>";
     let mut entries = vec![

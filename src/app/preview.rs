@@ -358,7 +358,7 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     states.push(("settings-large-font", settings_large));
 
     let routes = [
-        ("library", ScreenRoute::Reader),
+        ("reader-shell", ScreenRoute::Reader),
         ("ai", ScreenRoute::Ai),
         ("games", ScreenRoute::Games),
         ("tools", ScreenRoute::Tools),
@@ -431,11 +431,16 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     states.push(("reader-page-epub-pace", epub_pace));
     states.push(("bible-translation", bible_translation_preview_state()));
     for (name, tab) in [
-        ("library", crate::reader::ReaderLibraryTab::Recent),
+        ("library", crate::reader::ReaderLibraryTab::Books),
         ("library-all", crate::reader::ReaderLibraryTab::Books),
         ("library-files", crate::reader::ReaderLibraryTab::Files),
     ] {
-        states.push((name, library_preview_state(tab)));
+        let mut state = library_preview_state(tab);
+        if name == "library-all" {
+            // The finished book under the cursor shows the check in ink.
+            state.reader.library_selected = 2;
+        }
+        states.push((name, state));
     }
     let mut large_library = library_preview_state(crate::reader::ReaderLibraryTab::Books);
     large_library.display.font_size = UiFontSize::Large;
@@ -655,29 +660,40 @@ fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
     let state_root = root.join("READER");
     fs::create_dir_all(&books).unwrap();
     fs::create_dir_all(&state_root).unwrap();
+    // One EPUB in progress with its author, one finished book, one new.
+    fs::write(
+        books.join("Libro.epub"),
+        crate::epub::sample_epub(&[QUIJOTE.repeat(4)]),
+    )
+    .unwrap();
     fs::write(books.join("Quijote.txt"), QUIJOTE.repeat(3)).unwrap();
-    fs::write(books.join("Cien anos.txt"), QUIJOTE.repeat(2)).unwrap();
+    fs::write(books.join("Poemas.txt"), QUIJOTE.repeat(2)).unwrap();
     let mut reader = crate::reader::ReaderUiState::with_roots(
         books.to_string_lossy().into_owned(),
         state_root.to_string_lossy().into_owned(),
     );
     reader.refresh_library();
-    // Quijote is a third read: its place is saved and it is the recent book.
-    let quijote = reader
+    // The EPUB is a third read: its place carries the book's percent.
+    let libro = reader
         .books
         .iter()
-        .find(|book| book.title == "Quijote")
+        .find(|book| book.format == crate::reader::BookFormat::Epub)
         .cloned()
-        .expect("the sample book is listed");
+        .expect("the sample EPUB is listed");
     let place = crate::reader::ReaderLocation {
-        path: quijote.path.clone(),
-        title: quijote.title.clone(),
-        format: quijote.format,
-        size_bytes: quijote.size_bytes,
-        modified_seconds: quijote.modified_seconds,
+        path: libro.path.clone(),
+        title: libro.title.clone(),
+        format: libro.format,
+        size_bytes: libro.size_bytes,
+        modified_seconds: libro.modified_seconds,
         page_index: 3,
-        byte_offset: quijote.size_bytes / 3,
-        epub_chapter: None,
+        byte_offset: 1_200,
+        epub_chapter: Some(crate::reader::ReaderChapterPageLabel {
+            chapter_number: 1,
+            page_number: 2,
+            page_count: 5,
+        }),
+        place_percent: Some(12),
     };
     reader.positions = vec![place.clone()];
     reader.recent = vec![place];
@@ -685,6 +701,15 @@ fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
     reader.library_selected = 0;
     let mut state = sample_state();
     state.reader = reader;
+    // Quijote was read to its end earlier.
+    let quijote = state
+        .reader
+        .books
+        .iter()
+        .find(|book| book.title == "Quijote")
+        .map(|book| book.path.clone())
+        .expect("the sample book is listed");
+    state.reading_stats.mark_finished(&quijote);
     state.router.navigate_to(ScreenRoute::Library);
     state
 }
@@ -1098,6 +1123,7 @@ fn sample_state() -> AppState {
         page_index: 41,
         byte_offset: 240_000,
         epub_chapter: None,
+        place_percent: None,
     });
     // Reading history: 25 min today closing a 5-day streak.
     let today = crate::civil_date::days_from_civil(2026, 10, 2) as u32;

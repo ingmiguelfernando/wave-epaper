@@ -5,7 +5,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle, RoundedRectangle},
+    primitives::{Line, PrimitiveStyle, Rectangle, RoundedRectangle},
 };
 
 use crate::{
@@ -151,31 +151,13 @@ pub fn render_library(
         )
         .draw(display)?;
     }
-    let bookmarks = reader.library_tab == ReaderLibraryTab::Bookmarks;
-    let (step, rows) = if bookmarks {
-        (58, 10)
-    } else {
-        (LIBRARY_BOOK_ROW_HEIGHT + 8, 7)
-    };
+    let (step, rows) = (LIBRARY_BOOK_ROW_HEIGHT + 8, 7);
     // Scroll so the selected row stays on screen.
     let first = reader.library_selected.saturating_sub(rows - 1);
     for (index, entry) in visible.iter().enumerate().skip(first).take(rows) {
         let selected = reader.library_selected == index;
         let top = LIBRARY_ROWS_TOP + (index - first) as i32 * step;
-        if bookmarks {
-            let columns = library_entry_columns(reader, entry);
-            draw_row(
-                display,
-                state,
-                top,
-                selected,
-                &truncate(&entry.book.title, 25),
-                columns.badge.as_str(),
-                columns.suffix.as_str(),
-            )?;
-        } else {
-            draw_book_row(display, state, top, selected, entry)?;
-        }
+        draw_book_row(display, state, top, selected, entry)?;
     }
     draw_bottom_bar(display, state.display, &LIBRARY_HINTS)
 }
@@ -843,6 +825,11 @@ fn draw_tabs(
 /// chapter, since its saved offset counts the book's text, not the file; a
 /// book never opened shows `new`. FILES shows the file size instead. The
 /// author line waits for the EPUB parser.
+/// A book row: the title with the author under it, the format chip over the
+/// row's state on the right (a drawn check for a finished book, the percent,
+/// `Ch. N` for an old EPUB place or `new`), and a bar under the author for a
+/// book in progress. BOOKMARKS rows show their place in the state slot.
+/// Row percents draw in Body size (KNOWN_ISSUES percent glyph).
 fn draw_book_row(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -867,6 +854,8 @@ fn draw_book_row(
     )
     .with_color(ink);
     let detail = state.display.detail_style().with_color(ink);
+    // Percent glyphs need Body size (KNOWN_ISSUES).
+    let body = state.display.body_style().with_color(ink);
     let frame = if selected {
         PrimitiveStyle::with_fill(BinaryColor::On)
     } else {
@@ -879,60 +868,174 @@ fn draw_book_row(
     .into_styled(frame)
     .draw(display)?;
 
-    let title_baseline = top + 30;
+    // The right column: the format chip over the row's state.
+    let bookmarks = state.reader.library_tab == ReaderLibraryTab::Bookmarks;
     let chip = entry.book.format.badge();
     let chip_width = detail.text_width(chip) + 12;
-    let chip_left = 20 + 440 - 12 - chip_width;
+    let state_text = row_state_text(state, entry, bookmarks);
+    let state_width = state_text
+        .as_ref()
+        .map_or(0, |text| body.text_width(text).max(detail.text_width(text)));
+    let column_left;
+    let text_width;
+    let column_width;
+    (column_left, text_width, column_width) = row_column_layout(chip_width, state_width);
     let cap = detail.cap_height();
     RoundedRectangle::with_equal_corners(
         Rectangle::new(
-            Point::new(chip_left, title_baseline - cap - 6),
+            Point::new(column_left + (column_width - chip_width) / 2, top + 10),
             Size::new(chip_width as u32, (cap + 12) as u32),
         ),
         Size::new(4, 4),
     )
     .into_styled(PrimitiveStyle::with_stroke(ink, 1))
     .draw(display)?;
-    Text::new(chip, Point::new(chip_left + 6, title_baseline), detail).draw(display)?;
-    let title = title_style.fit(&entry.book.title, chip_left - 12 - 34);
-    Text::new(&title, Point::new(34, title_baseline), title_style).draw(display)?;
+    Text::new(
+        chip,
+        Point::new(
+            column_left + (column_width - chip_width) / 2 + 6,
+            top + 10 + 6 + cap,
+        ),
+        detail,
+    )
+    .draw(display)?;
 
-    let line = top + 58;
+    let title_baseline = top + 30;
+    let author_baseline = top + 52;
+    Text::new(
+        &title_style.fit(&entry.book.title, text_width),
+        Point::new(34, title_baseline),
+        title_style,
+    )
+    .draw(display)?;
+    let author = row_author(&state.reader, entry);
+    if !author.is_empty() {
+        Text::new(
+            &detail.fit(author, text_width),
+            Point::new(34, author_baseline),
+            detail,
+        )
+        .draw(display)?;
+    }
+
     if state.reader.library_tab == ReaderLibraryTab::Files {
         let size = crate::storage::format_bytes(entry.book.size_bytes);
-        Text::new(&size, Point::new(34, line), detail).draw(display)?;
+        Text::new(&size, Point::new(34, author_baseline), detail).draw(display)?;
         return Ok(());
     }
-    let Some(location) = entry.location.as_ref() else {
-        Text::new("new", Point::new(34, line), detail).draw(display)?;
-        return Ok(());
-    };
-    if entry.book.format != BookFormat::Text {
-        let label = location.epub_chapter.as_ref().map_or_else(
-            || "opened".into(),
-            |chapter| format!("Ch. {}", chapter.chapter_number),
-        );
-        Text::new(&label, Point::new(34, line), detail).draw(display)?;
-        return Ok(());
+
+    // The state slot under the chip: the check replaces the percent when the
+    // book is finished.
+    let state_baseline = top + 52;
+    if state.reading_stats.is_finished(&entry.book.path) {
+        draw_check(
+            display,
+            ink,
+            Point::new(column_left, state_baseline - cap - 4),
+        )?;
+    } else if let Some(text) = state_text {
+        Text::new(&text, Point::new(column_left, state_baseline), body).draw(display)?;
     }
-    let size = entry.book.size_bytes.max(1);
-    let percent = (location.byte_offset.saturating_mul(100) / size).min(100) as u32;
-    let bar_width: u32 = 300;
-    let bar_top = line - 9;
-    Rectangle::new(Point::new(34, bar_top), Size::new(bar_width, 8))
-        .into_styled(PrimitiveStyle::with_stroke(ink, 1))
-        .draw(display)?;
-    Rectangle::new(
-        Point::new(34, bar_top),
-        Size::new(bar_width * percent / 100, 8),
-    )
-    .into_styled(PrimitiveStyle::with_fill(ink))
-    .draw(display)?;
-    let label = format!("{percent}%");
-    Text::new(&label, Point::new(34 + bar_width as i32 + 10, line), detail).draw(display)?;
+    // The bar under the author marks a book in progress.
+    if !bookmarks && entry.location.is_some() {
+        if let Some(percent) = row_percent(entry) {
+            let bar_top = author_baseline + 8;
+            let bar_width = text_width as u32;
+            Rectangle::new(Point::new(34, bar_top), Size::new(bar_width, 8))
+                .into_styled(PrimitiveStyle::with_stroke(ink, 1))
+                .draw(display)?;
+            Rectangle::new(
+                Point::new(34, bar_top),
+                Size::new(bar_width * u32::from(percent) / 100, 8),
+            )
+            .into_styled(PrimitiveStyle::with_fill(ink))
+            .draw(display)?;
+        }
+    }
     Ok(())
 }
 
+/// Column split of a row: where the state column starts, how much room the
+/// title keeps, and the state column's width, given the chip's and the state's
+/// widths.
+fn row_column_layout(chip_width: i32, state_width: i32) -> (i32, i32, i32) {
+    let column_width = chip_width.max(state_width) + 4;
+    let column_left = 20 + 440 - 12 - column_width;
+    let text_width = column_left - 12 - 34;
+    (column_left, text_width, column_width)
+}
+
+/// The row's state text: its place on BOOKMARKS, else the percent or the
+/// chapter of an old EPUB place, `new` when the book was never opened. `None`
+/// when the row draws a check instead.
+fn row_state_text(
+    state: &AppState,
+    entry: &crate::reader::ReaderLibraryEntry,
+    bookmarks: bool,
+) -> Option<String> {
+    if state.reading_stats.is_finished(&entry.book.path) {
+        return None;
+    }
+    if bookmarks {
+        let columns = library_entry_columns(&state.reader, entry);
+        return Some(format!("{} {}", columns.badge, columns.suffix));
+    }
+    let Some(location) = entry.location.as_ref() else {
+        return Some("new".to_string());
+    };
+    if let Some(percent) = row_percent(entry) {
+        return Some(format!("{percent}%"));
+    }
+    let label = location.epub_chapter.as_ref().map_or_else(
+        || "opened".to_string(),
+        |chapter| format!("Ch. {}", chapter.chapter_number),
+    );
+    Some(label)
+}
+
+/// The row's percent: the saved place's, else a TXT book's bytes read.
+fn row_percent(entry: &crate::reader::ReaderLibraryEntry) -> Option<u8> {
+    let location = entry.location.as_ref()?;
+    if let Some(percent) = location.place_percent {
+        return Some(percent);
+    }
+    if entry.book.format == BookFormat::Text {
+        let size = entry.book.size_bytes.max(1);
+        return Some((location.byte_offset.saturating_mul(100) / size).min(100) as u8);
+    }
+    None
+}
+
+/// A row's author: RECENT and BOOKMARKS rows carry only the saved place, so
+/// the author comes from the scanned book with the same path.
+fn row_author<'a>(
+    reader: &'a crate::reader::ReaderUiState,
+    entry: &'a crate::reader::ReaderLibraryEntry,
+) -> &'a str {
+    if !entry.book.author.is_empty() {
+        return &entry.book.author;
+    }
+    reader
+        .books
+        .iter()
+        .find(|book| book.path == entry.book.path)
+        .map_or("", |book| book.author.as_str())
+}
+
+/// A check mark, since the fonts have no `✓` glyph.
+fn draw_check(
+    display: &mut OrientedFrameBuffer<'_>,
+    ink: BinaryColor,
+    top_left: Point,
+) -> Result<(), Infallible> {
+    Line::new(top_left + Point::new(0, 6), top_left + Point::new(5, 11))
+        .into_styled(PrimitiveStyle::with_stroke(ink, 2))
+        .draw(display)?;
+    Line::new(top_left + Point::new(5, 11), top_left + Point::new(15, 1))
+        .into_styled(PrimitiveStyle::with_stroke(ink, 2))
+        .draw(display)?;
+    Ok(())
+}
 fn draw_row(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -1274,6 +1377,56 @@ mod tests {
     }
 
     #[test]
+    fn a_recent_row_takes_its_author_from_the_scanned_book() {
+        let mut reader = crate::reader::ReaderUiState::default();
+        reader.books = vec![ReaderBook {
+            path: "/books/Libro.epub".into(),
+            title: "Libro".into(),
+            author: "Autor".into(),
+            format: BookFormat::Epub,
+            size_bytes: 10,
+            modified_seconds: 1,
+        }];
+        // A RECENT row carries the saved place only.
+        let entry = ReaderLibraryEntry {
+            book: ReaderBook {
+                path: "/books/Libro.epub".into(),
+                title: "Libro".into(),
+                author: String::new(),
+                format: BookFormat::Epub,
+                size_bytes: 10,
+                modified_seconds: 1,
+            },
+            location: None,
+        };
+        assert_eq!(super::row_author(&reader, &entry), "Autor");
+    }
+
+    /// Every row fits at the Large size: the state column holds its widest
+    /// text and the title keeps room beside it, as the row draws them.
+    #[test]
+    fn every_row_fits_at_large() {
+        use crate::app::display::{DisplayPreferences, UiFontFamily, UiFontSize};
+        for family in UiFontFamily::ALL {
+            let preferences = DisplayPreferences {
+                font_family: family,
+                font_size: UiFontSize::Large,
+            };
+            let detail = preferences.detail_style();
+            let body = preferences.body_style();
+            let chip_width = detail.text_width("EPUB") + 12;
+            let state_width = body.text_width("100%").max(detail.text_width("Ch. 00"));
+            let (column_left, text_width, _column_width) =
+                super::row_column_layout(chip_width, state_width);
+            assert!(
+                text_width >= 180,
+                "{family:?}: the title keeps only {text_width} px"
+            );
+            assert!(column_left > 34, "{family:?}: the columns overlap");
+        }
+    }
+
+    #[test]
     fn preference_picker_wraps_applies_and_draws() {
         let mut state = AppState::default();
         state.router.navigate_to(ScreenRoute::ReaderPreferences);
@@ -1328,6 +1481,7 @@ mod tests {
             byte_offset: 789,
             page_index: 11,
             epub_chapter: None,
+            place_percent: None,
         };
         let mut reader = crate::reader::ReaderUiState::default();
         reader.library_tab = ReaderLibraryTab::Bookmarks;
@@ -1359,6 +1513,7 @@ mod tests {
             modified_seconds: 456,
             byte_offset: 789,
             page_index: 11,
+            place_percent: None,
             epub_chapter: Some(ReaderChapterPageLabel {
                 chapter_number: 4,
                 page_number: 3,
@@ -1381,6 +1536,7 @@ mod tests {
             book: ReaderBook {
                 path: "POIROT~1.TXT".into(),
                 title: "POIROT~1".into(),
+                author: String::new(),
                 format: BookFormat::Text,
                 size_bytes: 123,
                 modified_seconds: 456,
@@ -1415,6 +1571,7 @@ mod tests {
             book: ReaderBook {
                 path: "a.txt".into(),
                 title: "A".into(),
+                author: String::new(),
                 format: BookFormat::Text,
                 size_bytes: 1,
                 modified_seconds: 0,

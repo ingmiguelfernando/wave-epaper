@@ -174,6 +174,14 @@ impl ReadingStats {
         self.books.iter().filter(|entry| entry.finished).count()
     }
 
+    /// Whether `path` is marked finished.
+    #[must_use]
+    pub fn is_finished(&self, path: &str) -> bool {
+        self.books
+            .iter()
+            .any(|entry| entry.path == path && entry.finished)
+    }
+
     #[must_use]
     pub fn has_unsaved(&self) -> bool {
         self.unsaved

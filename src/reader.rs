@@ -20,7 +20,7 @@ use crate::{
     buttons::ButtonEvent,
     charset::glyph_index,
     epub::{
-        open_epub_on_worker, read_epub_title_on_worker, EpubChapter, EpubDocument, EpubTocEntry,
+        open_epub_on_worker, read_epub_meta_on_worker, EpubChapter, EpubDocument, EpubTocEntry,
         EPUB_SPINE_LIMIT, EPUB_TEXT_VERSION, EPUB_TOC_LIMIT,
     },
     framebuffer::{HEIGHT, WIDTH},
@@ -119,6 +119,8 @@ impl BookFormat {
 pub struct ReaderBook {
     pub path: String,
     pub title: String,
+    /// First `dc:creator` of an EPUB; empty for a TXT book.
+    pub author: String,
     pub format: BookFormat,
     pub size_bytes: u64,
     pub modified_seconds: u64,
@@ -153,6 +155,9 @@ pub struct ReaderLocation {
     pub page_index: usize,
     pub byte_offset: u64,
     pub epub_chapter: Option<ReaderChapterPageLabel>,
+    /// The book's percent at this place, saved with it. `None` on lines older
+    /// than the field; an EPUB row then shows its chapter instead.
+    pub place_percent: Option<u8>,
 }
 
 impl ReaderLocation {
@@ -161,6 +166,7 @@ impl ReaderLocation {
         ReaderBook {
             path: self.path.clone(),
             title: self.title.clone(),
+            author: String::new(),
             format: self.format,
             size_bytes: self.size_bytes,
             modified_seconds: self.modified_seconds,
@@ -818,6 +824,20 @@ impl ReaderSession {
             page_index: self.current_absolute_page(),
             byte_offset,
             epub_chapter: self.epub_chapter_page_label_for_offset(byte_offset),
+            place_percent: Some(self.place_percent()),
+        }
+    }
+
+    /// True on the book's last page: for an EPUB the last chapter's last page,
+    /// for a TXT book the last indexed page with the index complete.
+    #[must_use]
+    pub fn is_at_book_end(&self) -> bool {
+        if self.current_page + 1 < self.page_offsets.len().max(1) {
+            return false;
+        }
+        match self.epub_chapter_index() {
+            Some(index) => index + 1 >= self.epub_chapter_count(),
+            None => self.index_complete,
         }
     }
 
@@ -2307,17 +2327,20 @@ pub fn scan_txt_library(root: impl AsRef<Path>) -> Result<Vec<ReaderBook>, Strin
             .and_then(|value| value.to_str())
             .unwrap_or("Untitled book")
             .to_string();
-        let title = if format == BookFormat::Epub {
-            read_epub_title_on_worker(&path)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or(fallback_title)
-        } else {
-            fallback_title
-        };
+        let mut title = fallback_title;
+        let mut author = String::new();
+        if format == BookFormat::Epub {
+            if let Ok(meta) = read_epub_meta_on_worker(&path) {
+                if !meta.title.trim().is_empty() {
+                    title = meta.title;
+                }
+                author = meta.author;
+            }
+        }
         books.push(ReaderBook {
             path: path.to_string_lossy().into_owned(),
             title,
+            author,
             format,
             size_bytes,
             modified_seconds,
@@ -2918,7 +2941,7 @@ fn book_fingerprint(book: &ReaderBook, layout: ReaderLayout) -> u64 {
 
 fn serialize_location(location: &ReaderLocation) -> String {
     format!(
-        "version={}\npath={}\ntitle={}\nformat={}\nsize={}\nmodified={}\npage={}\noffset={}\nchapter={}\nchapter_page={}\nchapter_pages={}\n",
+        "version={}\npath={}\ntitle={}\nformat={}\nsize={}\nmodified={}\npage={}\noffset={}\nchapter={}\nchapter_page={}\nchapter_pages={}\npercent={}\n",
         READER_PERSISTENCE_VERSION,
         escape_field(&location.path),
         escape_field(&location.title),
@@ -2929,7 +2952,10 @@ fn serialize_location(location: &ReaderLocation) -> String {
         location.byte_offset,
         optional_usize(location.epub_chapter.as_ref().map(|chapter| chapter.chapter_number)),
         optional_usize(location.epub_chapter.as_ref().map(|chapter| chapter.page_number)),
-        optional_usize(location.epub_chapter.as_ref().map(|chapter| chapter.page_count))
+        optional_usize(location.epub_chapter.as_ref().map(|chapter| chapter.page_count)),
+        location
+            .place_percent
+            .map_or_else(String::new, |percent| percent.to_string()),
     )
 }
 
@@ -2939,6 +2965,7 @@ fn parse_location_record(text: &str) -> Result<ReaderLocation, String> {
     let mut title = None;
     let mut format = None;
     let mut size = None;
+    let mut percent = None;
     let mut modified = None;
     let mut page = None;
     let mut offset = None;
@@ -2961,6 +2988,7 @@ fn parse_location_record(text: &str) -> Result<ReaderLocation, String> {
             "chapter" => chapter = parse_optional_usize(value),
             "chapter_page" => chapter_page = parse_optional_usize(value),
             "chapter_pages" => chapter_pages = parse_optional_usize(value),
+            "percent" => percent = parse_optional_usize(value),
             _ => {}
         }
     }
@@ -2976,6 +3004,7 @@ fn parse_location_record(text: &str) -> Result<ReaderLocation, String> {
         page_index: page.ok_or_else(|| "missing page".to_string())?,
         byte_offset: offset.ok_or_else(|| "missing offset".to_string())?,
         epub_chapter: chapter_page_label(chapter, chapter_page, chapter_pages),
+        place_percent: percent.and_then(|value| u8::try_from(value).ok()),
     })
 }
 
@@ -3016,16 +3045,20 @@ fn serialize_location_fields(location: &ReaderLocation) -> String {
                 .as_ref()
                 .map(|chapter| chapter.page_count),
         ),
+        location
+            .place_percent
+            .map_or_else(String::new, |percent| percent.to_string()),
     ]
     .join("\t")
 }
 
 fn parse_location_fields(value: &str) -> Result<ReaderLocation, String> {
     let fields = split_escaped_tabs(value)?;
-    if fields.len() != 7 && fields.len() != 10 {
+    // 7 and 10 field lines predate the percent field; 11 is current.
+    if fields.len() != 7 && fields.len() != 10 && fields.len() != 11 {
         return Err("invalid location field count".into());
     }
-    let epub_chapter = if fields.len() == 10 {
+    let epub_chapter = if fields.len() >= 10 {
         chapter_page_label(
             parse_optional_usize(&fields[7]),
             parse_optional_usize(&fields[8]),
@@ -3047,6 +3080,10 @@ fn parse_location_fields(value: &str) -> Result<ReaderLocation, String> {
             .parse()
             .map_err(|_| "invalid offset".to_string())?,
         epub_chapter,
+        place_percent: fields
+            .get(10)
+            .and_then(|field| parse_optional_usize(field))
+            .and_then(|value| u8::try_from(value).ok()),
     })
 }
 
@@ -4109,6 +4146,7 @@ mod tests {
         let book = ReaderBook {
             path: "Book.txt".into(),
             title: "Book".into(),
+            author: String::new(),
             format: BookFormat::Text,
             size_bytes: 1000,
             modified_seconds: 0,
@@ -4122,6 +4160,7 @@ mod tests {
             page_index: 8,
             byte_offset: 220,
             epub_chapter: None,
+            place_percent: None,
         };
         let mut reader = ReaderUiState::default();
         assert_eq!(reader.bookmark_display_page(&bookmark), 9);
@@ -4159,6 +4198,7 @@ mod tests {
             page_index: 11,
             byte_offset: 55,
             epub_chapter: Some(label.clone()),
+            place_percent: Some(12),
         };
         assert_eq!(
             parse_location_record(&serialize_location(&location)).unwrap(),
@@ -4169,6 +4209,42 @@ mod tests {
             location
         );
         assert_eq!(label.page_text(), "2/9");
+    }
+
+    #[test]
+    fn the_scan_reads_an_epubs_author_from_its_opf() {
+        let root = temp_dir("epub-author");
+        fs::write(
+            root.join("Libro.epub"),
+            crate::epub::sample_epub(&["uno".into()]),
+        )
+        .unwrap();
+        let books = scan_txt_library(&root).unwrap();
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].title, "Libro");
+        assert_eq!(books[0].author, "Autor");
+    }
+
+    #[test]
+    fn the_percent_round_trips_and_an_old_line_without_it_reads() {
+        let location = ReaderLocation {
+            path: "book.txt".into(),
+            title: "Book".into(),
+            format: BookFormat::Text,
+            size_bytes: 1_000,
+            modified_seconds: 1,
+            page_index: 3,
+            byte_offset: 250,
+            epub_chapter: None,
+            place_percent: Some(25),
+        };
+        let line = serialize_location_fields(&location);
+        assert_eq!(parse_location_fields(&line).unwrap(), location);
+        // A line from before the percent field still reads.
+        let old = line.split('\t').take(10).collect::<Vec<_>>().join("\t");
+        let parsed = parse_location_fields(&old).unwrap();
+        assert_eq!(parsed.place_percent, None);
+        assert_eq!(parsed.byte_offset, 250);
     }
 
     #[test]
@@ -4351,6 +4427,7 @@ mod tests {
         let book = ReaderBook {
             path: document.path.clone(),
             title: "Libro".into(),
+            author: String::new(),
             format: BookFormat::Epub,
             size_bytes: 10,
             modified_seconds: 5,

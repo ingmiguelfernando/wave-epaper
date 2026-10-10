@@ -449,7 +449,7 @@ the Detail size (broken `%`).
 percent round trip in STATE.TXT and RECENT.TXT, and an old line without
 it; every row fits at Large.
 
-**Status:**
+**Status:** done on `side-tasks-8`. Built: the scan reads the first `dc:creator` in the same OPF pass (`read_epub_meta_on_worker`) into `ReaderBook.author`, empty for TXT, and RECENT and BOOKMARKS rows take it from the scanned book with the same path; rows show the title, the author under it, the format chip over a state slot (a drawn check for a finished book, the percent in Body size, `Ch. N` for an old EPUB place or `new`), and a bar under the author for a book in progress, with BOOKMARKS rows showing their place in the slot; reaching a book last page (index complete; an EPUB last chapter) marks it finished and the check shows from the stats after reopen; the saved place stores `place_percent` in STATE.TXT and RECENT.TXT (both the field and key=value records round-trip it) and 7 and 10 field lines still read with no percent. Previews `library` (an EPUB in progress with its author, a finished book, a new book), `library-all` (the finished row under the cursor), `library-large-font` and `library-files`, checked at Standard and Large. Tests: the scan author from `sample_epub`; the percent round trip and an old line; `done` after the last page through `AppState::apply`; the row author lookup; every row fits at Large. Open: `library` and `library-all` are one list differing by selection; bookmark rows moved from the compact list to the book rows so they show the author (seven rows now, scrolling kept); a book resumed at its end is not re-marked until a turn.
 
 ### D41: Settings › Reading
 

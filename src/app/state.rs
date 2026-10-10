@@ -1053,6 +1053,13 @@ impl AppState {
         if before.is_some() && self.reader_position() != before {
             self.reading_pages = self.reading_pages.saturating_add(1);
         }
+        // The turn that reaches the book's last page finishes it.
+        if let Some(session) = self.reader.session.as_ref() {
+            if session.is_at_book_end() {
+                let path = session.book.path.clone();
+                self.reading_stats.mark_finished(&path);
+            }
+        }
     }
 
     /// Today's day number in the local timezone, for Reading Stats; `None`
@@ -1950,6 +1957,7 @@ mod tests {
             book: ReaderBook {
                 path: "/sdcard/RUSTMIX/BOOKS/Quijote.txt".into(),
                 title: "Quijote".into(),
+                author: String::new(),
                 format: crate::reader::BookFormat::Text,
                 size_bytes: 2_000_000,
                 modified_seconds: 0,
@@ -1999,6 +2007,30 @@ mod tests {
         state.reader = reader;
         state.home_selected = home_index(ScreenRoute::Reader).expect("Library row on Home");
         state
+    }
+
+    #[test]
+    fn done_after_the_last_page_through_apply() {
+        let mut state = home_library_with_epub("done");
+        state.apply(ButtonEvent::Select); // Home's Library row
+        state.apply(ButtonEvent::Select); // the Reader landing's continue shell
+        state.apply(ButtonEvent::Select); // the shell opens the Library list
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        state.apply(ButtonEvent::Select); // open the EPUB
+        for _ in 0..8 {
+            if state.tick_reader() == crate::reader::ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        let path = state.reader.session.as_ref().unwrap().book.path.clone();
+        assert!(!state.reading_stats.is_finished(&path));
+        for _ in 0..60 {
+            state.apply(ButtonEvent::Down);
+        }
+        assert!(
+            state.reading_stats.is_finished(&path),
+            "the turn that reaches the last page finishes the book"
+        );
     }
 
     #[test]
@@ -2754,6 +2786,7 @@ mod tests {
             page_index: 3,
             byte_offset: 420,
             epub_chapter: None,
+            place_percent: None,
         };
         state.reader.recent = vec![place.clone()];
         state.apply(ButtonEvent::Select);
