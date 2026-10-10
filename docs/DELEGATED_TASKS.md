@@ -508,7 +508,7 @@ the file, nothing can be saved at all.
 a new alarm write the file; a broken file is never overwritten; the next
 alarm after a delete.
 
-**Status:**
+**Status:** done on `side-tasks-8`. Built: a `New alarm` row at the end of the Alarms list while fewer than `MAX_ALARMS` exist (a missing file shows an empty list with the row), opening the editor on a new alarm (07:00, on, weekdays, `Alarm N`); the editor last field chooses with ▲▼ between `Save alarm` and `Delete alarm`, ● runs the choice (Save adds or updates and writes, Delete removes a saved alarm and recomputes the next for the RTC, or only discards a new one); `AlarmEngine::load_or_empty` (the one `main.rs` call changed) so a missing `ALARMS.TXT` is an empty savable list while a file that does not parse still blocks saving. Previews `alarms-new` and `alarms-delete`. Tests: adds up to six and Select on the seventh edits instead; delete and save once; a missing file with a new alarm writes and reads back; a broken file is never overwritten; the next alarm after a delete. Open: nothing known.
 
 ### D43: Bible: no card reads while drawing
 

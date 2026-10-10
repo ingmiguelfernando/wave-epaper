@@ -250,7 +250,7 @@ mod firmware {
             }
         };
 
-        let mut alarm_engine = match AlarmEngine::load_from_path(ALARMS_CONFIG_PATH) {
+        let mut alarm_engine = match AlarmEngine::load_or_empty(ALARMS_CONFIG_PATH) {
             Ok(engine) => {
                 let snapshot = engine.snapshot();
                 info!(

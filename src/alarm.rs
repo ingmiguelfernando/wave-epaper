@@ -153,11 +153,42 @@ impl AlarmEditField {
     }
 }
 
+/// What the editor's last field runs: save the draft or delete the alarm.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AlarmCommit {
+    #[default]
+    Save,
+    Delete,
+}
+
+impl AlarmCommit {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Save => "Save alarm",
+            Self::Delete => "Delete alarm",
+        }
+    }
+
+    /// The other choice, for ▲▼ at the last field.
+    #[must_use]
+    pub const fn toggled(self) -> Self {
+        match self {
+            Self::Save => Self::Delete,
+            Self::Delete => Self::Save,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AlarmEditorSnapshot {
     pub alarm_index: usize,
     pub draft: AlarmDefinition,
     pub field_index: usize,
+    /// True for a new alarm: Save adds it, Delete only discards it.
+    pub creating: bool,
+    /// What ● runs at the last field.
+    pub commit: AlarmCommit,
 }
 
 impl AlarmEditorSnapshot {
@@ -335,6 +366,24 @@ impl AlarmEngine {
         Ok(engine)
     }
 
+    /// Load the alarms, or start an empty list when the file is missing: an
+    /// empty list can be saved. A file that does not parse is an error, so a
+    /// broken file is never overwritten.
+    pub fn load_or_empty(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        match fs::read_to_string(path) {
+            Ok(text) => Self::parse(&text),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let mut engine = Self::default();
+                engine.config_loaded = true;
+                Ok(engine)
+            }
+            Err(error) => {
+                Err(error).with_context(|| format!("read alarm config {}", path.display()))
+            }
+        }
+    }
+
     /// The file the loader reads back: a header, the snooze, then one line per
     /// alarm.
     #[must_use]
@@ -497,7 +546,8 @@ impl AlarmEngine {
         if self.editor.is_some() {
             return self.apply_editor_button(event, now_local);
         }
-        let row_count = self.alarms.len();
+        let creating_row = self.alarms.len() < MAX_ALARMS;
+        let row_count = self.alarms.len() + usize::from(creating_row);
         if row_count == 0 {
             self.selected = 0;
             return AlarmUiOutcome::None;
@@ -513,14 +563,38 @@ impl AlarmEngine {
                 AlarmUiOutcome::SelectionChanged
             }
             ButtonEvent::Select => {
+                if creating_row && self.selected == self.alarms.len() {
+                    self.begin_new_alarm();
+                    return AlarmUiOutcome::EditorOpened;
+                }
                 self.editor = Some(AlarmEditorSnapshot {
                     alarm_index: self.selected,
                     draft: self.alarms[self.selected].clone(),
                     field_index: 0,
+                    creating: false,
+                    commit: AlarmCommit::default(),
                 });
                 AlarmUiOutcome::EditorOpened
             }
         }
+    }
+
+    /// Open the editor on a new alarm: 07:00, on, weekdays, named for its slot.
+    pub fn begin_new_alarm(&mut self) {
+        let count = self.alarms.len();
+        self.editor = Some(AlarmEditorSnapshot {
+            alarm_index: count,
+            draft: AlarmDefinition {
+                name: format!("Alarm {}", count + 1),
+                hour: 7,
+                minute: 0,
+                enabled: true,
+                schedule: AlarmScheduleKind::Recurring { weekdays: WEEKDAYS },
+            },
+            field_index: 0,
+            creating: true,
+            commit: AlarmCommit::default(),
+        });
     }
 
     fn apply_active_button(
@@ -566,22 +640,40 @@ impl AlarmEngine {
                 AlarmUiOutcome::Edited
             }
             ButtonEvent::Select => {
-                let save = self
+                let commit = self
                     .editor
                     .as_ref()
-                    .is_some_and(|editor| editor.selected_field() == AlarmEditField::Save);
-                if save {
-                    let editor = self.editor.take().expect("editor checked above");
-                    self.selected = editor.alarm_index;
-                    self.alarms[editor.alarm_index] = editor.draft;
-                    self.recompute_next(now_local);
-                    self.changed = true;
-                    AlarmUiOutcome::Saved
-                } else {
-                    if let Some(editor) = self.editor.as_mut() {
-                        editor.field_index = (editor.field_index + 1) % AlarmEditField::COUNT;
+                    .filter(|editor| editor.selected_field() == AlarmEditField::Save)
+                    .map(|editor| editor.commit);
+                match commit {
+                    Some(AlarmCommit::Save) => {
+                        let editor = self.editor.take().expect("editor checked above");
+                        if editor.creating {
+                            self.alarms.push(editor.draft);
+                        } else {
+                            self.selected = editor.alarm_index;
+                            self.alarms[editor.alarm_index] = editor.draft;
+                        }
+                        self.recompute_next(now_local);
+                        self.changed = true;
+                        AlarmUiOutcome::Saved
                     }
-                    AlarmUiOutcome::SelectionChanged
+                    Some(AlarmCommit::Delete) => {
+                        let editor = self.editor.take().expect("editor checked above");
+                        // A new alarm only discards; a saved one leaves the list.
+                        if !editor.creating && editor.alarm_index < self.alarms.len() {
+                            self.alarms.remove(editor.alarm_index);
+                            self.recompute_next(now_local);
+                            self.changed = true;
+                        }
+                        AlarmUiOutcome::Saved
+                    }
+                    None => {
+                        if let Some(editor) = self.editor.as_mut() {
+                            editor.field_index = (editor.field_index + 1) % AlarmEditField::COUNT;
+                        }
+                        AlarmUiOutcome::SelectionChanged
+                    }
                 }
             }
         }
@@ -645,7 +737,8 @@ impl AlarmEngine {
                     }
                 };
             }
-            AlarmEditField::Save => {}
+            // ▲▼ at the last field chooses what ● runs.
+            AlarmEditField::Save => editor.commit = editor.commit.toggled(),
         }
     }
 
@@ -1033,6 +1126,109 @@ alarm=Flight,05:45,2026-06-10,on,once\n",
         engine.apply_button(ButtonEvent::Down, due);
         engine.apply_button(ButtonEvent::Select, due);
         assert!(!engine.snapshot().alarms[0].enabled);
+    }
+
+    /// Walk the editor to its last field and run the chosen commit.
+    fn run_editor(engine: &mut AlarmEngine, now: RtcDateTime, commit: AlarmCommit) {
+        for _ in 0..5 {
+            engine.apply_button(ButtonEvent::Select, now);
+        }
+        if commit == AlarmCommit::Delete {
+            engine.apply_button(ButtonEvent::Up, now);
+        }
+        engine.apply_button(ButtonEvent::Select, now);
+    }
+
+    #[test]
+    fn six_alarms_add_and_no_seventh_row_opens() {
+        let now = local(2026, 6, 3, 3, 6, 0);
+        let mut engine = AlarmEngine::default();
+        engine.config_loaded = true;
+        for count in 1..=MAX_ALARMS {
+            engine.begin_new_alarm();
+            run_editor(&mut engine, now, AlarmCommit::Save);
+            assert_eq!(engine.alarms.len(), count);
+            assert_eq!(engine.alarms.last().unwrap().name, format!("Alarm {count}"));
+        }
+        // The New alarm row is gone: Select edits an existing alarm.
+        assert_eq!(
+            engine.apply_button(ButtonEvent::Select, now),
+            AlarmUiOutcome::EditorOpened
+        );
+        let editor = engine.editor.as_ref().unwrap();
+        assert!(!editor.creating, "the sixth Select edits, it does not add");
+    }
+
+    #[test]
+    fn delete_removes_the_alarm_and_marks_one_save() {
+        let now = local(2026, 6, 3, 3, 6, 0);
+        let mut engine = AlarmEngine::parse(
+            "alarm=A,07:00,daily,on,recurring\nalarm=B,08:00,daily,on,recurring\n",
+        )
+        .unwrap();
+        assert_eq!(
+            engine.apply_button(ButtonEvent::Select, now),
+            AlarmUiOutcome::EditorOpened
+        );
+        run_editor(&mut engine, now, AlarmCommit::Delete);
+        assert_eq!(engine.alarms.len(), 1);
+        assert_eq!(engine.alarms[0].name, "B");
+        assert!(engine.take_changed(), "the delete writes the file once");
+        assert!(!engine.take_changed());
+    }
+
+    #[test]
+    fn the_next_alarm_moves_to_the_later_one_after_a_delete() {
+        let now = local(2026, 6, 3, 3, 6, 0);
+        let mut engine = AlarmEngine::parse(
+            "alarm=A,07:00,daily,on,recurring\nalarm=B,08:00,daily,on,recurring\n",
+        )
+        .unwrap();
+        engine.recompute_next(now);
+        assert_eq!(engine.next_occurrence().unwrap().alarm_index, 0);
+        engine.apply_button(ButtonEvent::Select, now);
+        run_editor(&mut engine, now, AlarmCommit::Delete);
+        assert_eq!(
+            engine.next_occurrence().unwrap().alarm_index,
+            0,
+            "B is the only alarm now"
+        );
+        assert_eq!(
+            engine.alarms[engine.next_occurrence().unwrap().alarm_index].name,
+            "B"
+        );
+    }
+
+    #[test]
+    fn a_missing_file_with_a_new_alarm_writes_the_file() {
+        let root = std::env::temp_dir().join(format!("wave-alarm-new-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let path = root.join("RUSTMIX").join("ALARMS.TXT");
+        let now = local(2026, 6, 3, 3, 6, 0);
+        let mut engine = AlarmEngine::load_or_empty(&path).unwrap();
+        assert!(engine.alarms.is_empty(), "a missing file is an empty list");
+        engine.begin_new_alarm();
+        run_editor(&mut engine, now, AlarmCommit::Save);
+        assert!(engine.take_changed());
+        engine.save_to_path(&path).unwrap();
+        let reread = AlarmEngine::load_or_empty(&path).unwrap();
+        assert_eq!(reread.alarms.len(), 1);
+        assert_eq!(reread.alarms[0].name, "Alarm 1");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_broken_file_is_never_overwritten() {
+        let root = std::env::temp_dir().join(format!("wave-alarm-broken-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("ALARMS.TXT");
+        fs::write(&path, "alarm=broken\n").unwrap();
+        assert!(
+            AlarmEngine::load_or_empty(&path).is_err(),
+            "a broken file does not load"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "alarm=broken\n");
     }
 
     #[test]

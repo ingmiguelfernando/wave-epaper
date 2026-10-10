@@ -129,7 +129,7 @@ pub fn render_alarms(
         draw_action(
             display,
             548,
-            "Save runtime edit",
+            editor.commit.label(),
             editor.field_index == 5,
             body,
         )?;
@@ -154,7 +154,12 @@ pub fn render_alarms(
 
     if alarms.alarms.is_empty() {
         Text::new("No alarm schedules were loaded.", Point::new(22, 298), body).draw(display)?;
-        Text::new("Add alarm rows to ALARMS.TXT.", Point::new(22, 338), body).draw(display)?;
+        Text::new(
+            "New alarm creates one; ALARMS.TXT holds more.",
+            Point::new(22, 338),
+            body,
+        )
+        .draw(display)?;
     } else {
         for (index, alarm) in alarms.alarms.iter().take(6).enumerate() {
             draw_alarm_row(
@@ -165,6 +170,21 @@ pub fn render_alarms(
                 body,
             )?;
         }
+    }
+    // The list ends with a New alarm row while there is room for one.
+    if alarms.alarms.len() < crate::alarm::MAX_ALARMS {
+        let top = if alarms.alarms.is_empty() {
+            400
+        } else {
+            264 + alarms.alarms.len() as i32 * 62
+        };
+        draw_action(
+            display,
+            top,
+            "New alarm",
+            alarms.selected == alarms.alarms.len(),
+            body,
+        )?;
     }
 
     if let Some(error) = alarms.error.as_deref() {

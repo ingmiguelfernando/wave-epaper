@@ -442,6 +442,38 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         }
         states.push((name, state));
     }
+    let mut alarms_new = sample_state();
+    alarms_new.alarms = crate::alarm::AlarmEngine::parse(
+        "snooze_minutes=9\nalarm=Morning,07:00,daily,on,recurring\nalarm=Plan,09:30,weekdays,on,recurring\n",
+    )
+    .unwrap()
+    .snapshot();
+    alarms_new.alarms.selected = 2;
+    alarms_new.router.navigate_to(ScreenRoute::Alarms);
+    states.push(("alarms-new", alarms_new));
+    let mut alarms_delete = sample_state();
+    alarms_delete.alarms = crate::alarm::AlarmEngine::parse(
+        "snooze_minutes=9\nalarm=Morning,07:00,daily,on,recurring\n",
+    )
+    .unwrap()
+    .snapshot();
+    alarms_delete.alarms.editor = Some(crate::alarm::AlarmEditorSnapshot {
+        alarm_index: 0,
+        draft: crate::alarm::AlarmDefinition {
+            name: "Morning".into(),
+            hour: 7,
+            minute: 0,
+            enabled: true,
+            schedule: crate::alarm::AlarmScheduleKind::Recurring {
+                weekdays: crate::alarm::EVERY_DAY,
+            },
+        },
+        field_index: 5,
+        creating: false,
+        commit: crate::alarm::AlarmCommit::Delete,
+    });
+    alarms_delete.router.navigate_to(ScreenRoute::Alarms);
+    states.push(("alarms-delete", alarms_delete));
     let mut reading_settings = sample_state();
     reading_settings
         .router
