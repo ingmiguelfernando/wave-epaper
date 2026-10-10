@@ -3371,6 +3371,72 @@ mod bible_routing_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// Drawing the reading menu and the translation picker and pressing the
+    /// menu keys touch nothing: the state keeps both lists from its build.
+    #[test]
+    fn the_menu_reads_nothing_while_drawing_or_on_its_keys() {
+        let root = temp_card("menu-reads");
+        fs::write(root.join("VERSES.TXT"), "PSA 23:1-3\n").unwrap();
+        add_second_translation(&root, "VUL", INDEX);
+        let mut state = menu_state(&root);
+        let reads_before = state.bible.reads();
+        let loads_before = state.bible.loads();
+        for _ in 0..3 {
+            let items = crate::app::screens::bible::bible_menu_items(&state);
+            assert!(!items.is_empty());
+            state.apply(ButtonEvent::Down);
+        }
+        // Traducción is the third item; its picker draws from the kept list.
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleTranslations);
+        let titles: Vec<&str> = state
+            .bible
+            .translation_list()
+            .iter()
+            .map(|option| option.title.as_str())
+            .collect();
+        assert_eq!(titles.len(), 2);
+        assert_eq!(
+            state.bible.reads(),
+            reads_before,
+            "the menu and its keys read nothing"
+        );
+        assert_eq!(
+            state.bible.loads(),
+            loads_before,
+            "no chapter is loaded either"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_translation_with_a_broken_index_is_not_listed() {
+        let root = temp_card("broken-index");
+        let dir = root.join("BAD");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("meta.txt"),
+            "format=1\nabbreviation=BAD\nlanguage=en\n",
+        )
+        .unwrap();
+        fs::write(dir.join("index.tsv"), "not\tan\tindex\n").unwrap();
+        let mut state = home_with_card(&root);
+        assert_eq!(
+            state.bible.translation_count(),
+            1,
+            "the broken folder is not a translation"
+        );
+        state.bible.open_translation_picker();
+        assert!(state
+            .bible
+            .translation_list()
+            .iter()
+            .all(|option| option.folder != "BAD"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn the_verse_of_the_day_opens_its_chapter_from_the_reading_menu() {
         let root = temp_card("menu-verse-day");

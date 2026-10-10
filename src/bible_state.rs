@@ -58,8 +58,14 @@ pub struct BibleUiState {
     language: Option<Language>,
     chapter: Option<ChapterCache>,
     loads: usize,
+    /// Translations kept at build time, each with an index that reads.
     translation_list: Vec<TranslationOption>,
     translation_selected: usize,
+    /// The verse list kept at build time.
+    verses: Vec<VerseRef>,
+    /// Card reads outside chapter loads, so a test can see that drawing and
+    /// the menu keys add none.
+    reads: usize,
 }
 
 impl BibleUiState {
@@ -69,15 +75,46 @@ impl BibleUiState {
     pub fn with_root(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
         // An empty root is "no card": never scan the current directory.
+        let mut reads = 0_usize;
         let scanned = if root.as_os_str().is_empty() {
             None
         } else {
+            reads += 1;
             bible::translations(&root).ok()
         };
+        // The translation list is kept, and only with an index that reads: the
+        // menu and its keys then touch nothing, and choosing never lands on a
+        // broken folder's book picker.
+        let mut translation_list = Vec::new();
+        for folder in scanned.unwrap_or_default() {
+            reads += 1;
+            let title = std::fs::read_to_string(root.join(&folder).join("meta.txt"))
+                .ok()
+                .map(|text| bible::parse_meta(&text).title)
+                .filter(|title| !title.is_empty())
+                .unwrap_or_else(|| folder.clone());
+            reads += 1;
+            let readable = std::fs::read_to_string(root.join(&folder).join("index.tsv"))
+                .ok()
+                .and_then(|text| bible::parse_index(&text).ok())
+                .is_some_and(|books| !books.is_empty());
+            if readable {
+                translation_list.push(TranslationOption { folder, title });
+            }
+        }
+        reads += 1;
         let place = BiblePlace::load(&root);
         let saved = place.as_ref().map(|place| place.translation.as_str());
-        let (card, books) = match scanned.and_then(|list| pick_translation(list, saved)) {
+        let chosen = pick_translation(
+            translation_list
+                .iter()
+                .map(|option| option.folder.clone())
+                .collect(),
+            saved,
+        );
+        let (card, books) = match chosen {
             Some(translation) => {
+                reads += 1;
                 let text = std::fs::read_to_string(root.join(&translation).join("index.tsv"));
                 match text.ok().and_then(|text| bible::parse_index(&text).ok()) {
                     Some(books) if !books.is_empty() => (BibleCard::Ready { translation }, books),
@@ -87,9 +124,18 @@ impl BibleUiState {
             None => (BibleCard::Missing, Vec::new()),
         };
         let language = match &card {
-            BibleCard::Ready { translation } => read_language(&root, translation),
+            BibleCard::Ready { translation } => {
+                reads += 1;
+                read_language(&root, translation)
+            }
             BibleCard::Missing => None,
         };
+        // VERSES.TXT is read once here and kept.
+        reads += 1;
+        let verses = sd_file::read_to_string(&root.join(VERSES_FILE))
+            .ok()
+            .and_then(|text| bible::parse_verse_list(&text).ok())
+            .unwrap_or_default();
         Self {
             root,
             card,
@@ -101,8 +147,10 @@ impl BibleUiState {
             language,
             chapter: None,
             loads: 0,
-            translation_list: Vec::new(),
+            translation_list,
             translation_selected: 0,
+            verses,
+            reads,
         }
     }
 
@@ -236,17 +284,14 @@ impl BibleUiState {
         self.root.join(VERSES_FILE)
     }
 
-    /// The verse-of-the-day list; a missing or malformed file is empty.
-    pub fn verse_list(&self) -> Vec<VerseRef> {
-        sd_file::read_to_string(&self.verses_path())
-            .ok()
-            .and_then(|text| bible::parse_verse_list(&text).ok())
-            .unwrap_or_default()
+    /// The verse-of-the-day list, kept at build time so drawing reads nothing.
+    pub fn verse_list(&self) -> &[VerseRef] {
+        &self.verses
     }
 
-    /// The menu offers the verse only when the file is on the card.
+    /// The menu offers the verse only when the card had one.
     pub fn has_verse_list(&self) -> bool {
-        self.verses_path().is_file()
+        !self.verses.is_empty()
     }
 
     /// The reading position of `verse` and its first verse number, when its
@@ -272,8 +317,7 @@ impl BibleUiState {
     /// its first verse number.
     #[must_use]
     pub fn verse_of_day(&self, epoch_day: u32) -> Option<(Position, u16)> {
-        let list = self.verse_list();
-        let verse = bible::verse_of_the_day(&list, epoch_day)?;
+        let verse = bible::verse_of_the_day(self.verse_list(), epoch_day)?;
         self.verse_position(verse)
     }
 
@@ -299,6 +343,11 @@ impl BibleUiState {
     /// Chapters read from the card so far; a page turn inside a chapter adds none.
     pub fn loads(&self) -> usize {
         self.loads
+    }
+
+    /// Card reads outside chapter loads; the menu and its keys add none.
+    pub fn reads(&self) -> usize {
+        self.reads
     }
 
     /// Read the open chapter when the place has moved off the kept one.
@@ -331,21 +380,9 @@ impl BibleUiState {
         });
     }
 
-    /// The translations on the card with their titles, the one in use selected.
+    /// Open the picker on the kept list at the translation in use.
     pub fn open_translation_picker(&mut self) {
         let current = self.translation().map(str::to_owned);
-        self.translation_list = bible::translations(&self.root)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|folder| {
-                let title = std::fs::read_to_string(self.root.join(&folder).join("meta.txt"))
-                    .ok()
-                    .map(|text| bible::parse_meta(&text).title)
-                    .filter(|title| !title.is_empty())
-                    .unwrap_or_else(|| folder.clone());
-                TranslationOption { folder, title }
-            })
-            .collect();
         self.translation_selected = current
             .and_then(|current| {
                 self.translation_list
@@ -387,6 +424,7 @@ impl BibleUiState {
             return SwitchOutcome::Picker;
         };
         let index_path = self.root.join(&folder).join("index.tsv");
+        self.reads += 1;
         let books = match std::fs::read_to_string(index_path)
             .ok()
             .and_then(|text| bible::parse_index(&text).ok())
@@ -394,6 +432,7 @@ impl BibleUiState {
             Some(books) if !books.is_empty() => books,
             _ => return SwitchOutcome::Picker,
         };
+        self.reads += 1;
         let language = std::fs::read_to_string(self.root.join(&folder).join("meta.txt"))
             .ok()
             .and_then(|text| Language::from_tag(&bible::parse_meta(&text).language));
@@ -435,9 +474,9 @@ impl BibleUiState {
         }
     }
 
-    /// Translations on the card; the menu offers a switch only with two or more.
+    /// Translations kept at build time; the menu offers a switch with two or more.
     pub fn translation_count(&self) -> usize {
-        bible::translations(&self.root).map_or(0, |list| list.len())
+        self.translation_list.len()
     }
 }
 

@@ -527,7 +527,7 @@ each key press in it.
 pressing keys in it read nothing; a translation with a broken index is not
 listed.
 
-**Status:**
+**Status:** done on `side-tasks-8`. Built: `BibleUiState` keeps the translation list and the verse list, read in `with_root` (a `reads()` counter sees every card read); `bible_menu_items`, the menu keys and the Traducción picker use the kept lists, so drawing and the keys touch nothing; the kept translations are only those whose `index.tsv` reads (and not empty), with their `meta.txt` titles, so choosing one never lands on a broken folder book picker; `translation_count` and `has_verse_list` read the kept lists too. Tests: drawing the menu and the picker and pressing the menu keys add no reads and no loads (counted as D36 counts loads); a translation with a broken index is not listed. Open: nothing known.
 
 ## Round 7 tasks (done in v0.10.3)
 
