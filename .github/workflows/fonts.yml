@@ -36,7 +36,7 @@ jobs:
       - name: Format generated Rust
         env:
           RUSTUP_TOOLCHAIN: stable
-        run: rustfmt --edition 2021 src/app/typography/assets.rs src/app/reader_*_assets.rs
+        run: rustfmt --edition 2021 src/app/typography/assets.rs src/app/reader_*_assets.rs src/app/display_assets.rs
 
       - name: Upload generated atlases
         uses: actions/upload-artifact@v7
@@ -46,3 +46,4 @@ jobs:
             fonts.log
             src/app/typography/assets.rs
             src/app/reader_*_assets.rs
+            src/app/display_assets.rs
