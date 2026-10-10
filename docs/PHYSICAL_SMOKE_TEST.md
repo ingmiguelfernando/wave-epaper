@@ -201,6 +201,19 @@ light sleep. Restore the owner's original preferences afterward.
 	Spanish translation; the next page turn does not stall (one chapter read
 	per chapter). Versículo del día opens on the page that holds the verse.
 
+## Round 8 (D39 to D43)
+
+- [ ] An EPUB chapter opens with its title and its rule; the footer shows
+    minutes left after 20 recorded pages and drops them below.
+- [ ] Library rows show the author under the title, a drawn check on a
+    finished book and the percent on an in-progress one.
+- [ ] Settings › Reading: wide margins push the text in, Hyphenation Off
+    wraps whole words, stats Off records no time and no pages.
+- [ ] Alarms: the New alarm row adds one, the editor deletes one and the
+    next alarm moves; a broken ALARMS.TXT is never overwritten.
+- [ ] Bible: two translations, Menu › Traducción switches and keeps the
+    place; the menu draws with the card idle.
+
 ## Remaining games and diagnostics (D3)
 
 - [ ] Install current examples; Home › Games lists one card per game —
