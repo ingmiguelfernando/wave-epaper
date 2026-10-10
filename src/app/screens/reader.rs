@@ -28,9 +28,9 @@ use crate::{
     },
     orientation::OrientedFrameBuffer,
     reader::{
-        BookFontSize, BookFormat, ParagraphAlignment, ReaderChapterPageLabel, ReaderLibraryTab,
-        ReaderLoadingStage, ReaderOption, ReaderSession, ReadingPreference, ReadingTheme,
-        CHAPTER_TITLE_LINES, READER_BODY_INSET,
+        BookFontSize, BookFormat, PageMargins, ParagraphAlignment, ReaderChapterPageLabel,
+        ReaderLibraryTab, ReaderLoadingStage, ReaderOption, ReaderSession, ReadingPreference,
+        ReadingTheme, CHAPTER_TITLE_LINES,
     },
     reading_stats::DayStats,
 };
@@ -325,7 +325,7 @@ pub fn render_page(
     let width = size.width as i32;
     let height = size.height as i32;
     let landscape = width > height;
-    let body = page_body_geometry(width, height);
+    let body = page_body_geometry(width, height, state.reader.preferences.margins);
     let body_style = reader_body_style(
         state.reader.preferences.book_font,
         state.reader.preferences.font_size,
@@ -531,8 +531,14 @@ struct ReaderBodyGeometry {
 
 /// The text box of a Reader page: right under the reading header's rule and
 /// above the bottom bar, in either orientation.
-const fn page_body_geometry(width: i32, height: i32) -> ReaderBodyGeometry {
-    ReaderBodyGeometry::new(width, READING_HEADER_HEIGHT + 6, 0, height - 54)
+const fn page_body_geometry(width: i32, height: i32, margins: PageMargins) -> ReaderBodyGeometry {
+    ReaderBodyGeometry::new(
+        width,
+        READING_HEADER_HEIGHT + 6,
+        0,
+        height - 54,
+        margins.inset(),
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -561,11 +567,17 @@ impl ReaderBodyGeometry {
     /// themes never changes TXT pagination or cache fingerprints. Pagination
     /// wraps lines to the same width (`ReaderLayout::line_width`).
     #[must_use]
-    const fn new(width: i32, status_top: i32, status_height: i32, footer_line: i32) -> Self {
+    const fn new(
+        width: i32,
+        status_top: i32,
+        status_height: i32,
+        footer_line: i32,
+        inset: i32,
+    ) -> Self {
         let text = TextBounds::new(
-            READER_BODY_INSET,
+            inset,
             status_top + status_height + 18,
-            width - READER_BODY_INSET,
+            width - inset,
             footer_line - 12,
         );
         let frame = ReaderFrameBounds {
@@ -638,11 +650,16 @@ pub fn render_preferences(
             }
             ReadingPreference::ShowProgress if state.reader.preferences.show_progress => "On",
             ReadingPreference::ShowProgress => "Off",
+            ReadingPreference::Margins => state.reader.preferences.margins.label(),
+            ReadingPreference::Hyphenation => state.reader.preferences.hyphenation.label(),
+            ReadingPreference::ReadingStats if state.reader.preferences.record_stats => "On",
+            ReadingPreference::ReadingStats => "Off",
         };
         draw_row(
             display,
             state,
-            156 + index as i32 * 78,
+            // Nine rows share the screen above the bar.
+            156 + index as i32 * 64,
             state.reader.preferences_selected == index,
             preference.label(),
             badge,
@@ -1121,7 +1138,7 @@ mod tests {
         for orientation in ReaderOrientation::ALL {
             let width = orientation.screen_width();
             let height = 1280 - width;
-            let body = page_body_geometry(width, height);
+            let body = page_body_geometry(width, height, crate::reader::PageMargins::Normal);
             assert!(
                 body.text.top > READING_HEADER_HEIGHT,
                 "{width}: under the rule"
@@ -1170,7 +1187,7 @@ mod tests {
         for orientation in ReaderOrientation::ALL {
             let width = orientation.screen_width();
             let height = 1280 - width;
-            let body = super::page_body_geometry(width, height);
+            let body = super::page_body_geometry(width, height, crate::reader::PageMargins::Normal);
             assert!(
                 body.text.top > READING_HEADER_HEIGHT,
                 "{width}: under the rule"
@@ -1461,7 +1478,7 @@ mod tests {
 
     #[test]
     fn high_contrast_frame_stays_outside_shared_text_viewport() {
-        let body = ReaderBodyGeometry::new(480, 80, 42, 746);
+        let body = ReaderBodyGeometry::new(480, 80, 42, 746, 24);
         assert!(body.frame.left < body.text.left);
         assert!(body.frame.top < body.text.top);
         assert!(body.frame.right > body.text.right);
@@ -1619,7 +1636,7 @@ mod tests {
         let mut preferences = ReaderPreferences::default();
         for orientation in [ReaderOrientation::Portrait, ReaderOrientation::Landscape] {
             preferences.orientation = orientation;
-            let body = ReaderBodyGeometry::new(orientation.screen_width(), 80, 42, 700);
+            let body = ReaderBodyGeometry::new(orientation.screen_width(), 80, 42, 700, 24);
             assert_eq!(body.text.width(), preferences.layout().line_width());
         }
     }

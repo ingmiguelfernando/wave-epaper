@@ -482,7 +482,7 @@ round trip with and without the new fields; margins change `line_width`
 and the cache fingerprint; Off leaves no hyphen at a line's end; stats Off
 records nothing; the row's value.
 
-**Status:**
+**Status:** done on `side-tasks-8`. Built: a `Reading` row between Display and Sleep screen (nine rows fit at 44..692 above the bar), subtitle `Hyphenation, margins, stats`, value `Auto ES/EN` or `Hyphenation off`; the `SettingsReading` screen (parent Settings) with Book font, Size, Alignment, Margins (`Narrow`/`Normal`/`Wide`), Hyphenation (`Auto ES/EN`/`Off`), Show progress and Reading stats, each opening an option list at the value in use; `PageMargins`, `HyphenationMode` and `record_stats` in `PREFS.TXT` (old files read as Normal and Auto and On) whose margins set the text inset (16, 24 or 40 px) for `line_width` and the page box and both margins and hyphenation join the cache fingerprint; Hyphenation Off wraps whole words; stats Off records no time, no pages and no finished book. A change goes through the in-book preference path, so it persists and stages the rebuild for the next book open; choosing the value in use does nothing. Reader Options › Reading Preferences lists the new options too. Previews `settings` (nine rows), `settings-reading`, `reader-page-wide-margins` (text ink at 41 px vs 24), all checked at Standard and Large. Tests: Settings › Reading through `AppState::apply` with two edits and their values; the PREFS round trip with and without the new fields; margins in `line_width` and the fingerprint; Hyphenation Off leaves no hyphen at a line end; stats Off records nothing; nine rows fit above the bar. Open: nothing known.
 
 ### D42: Add and delete alarms on the device
 

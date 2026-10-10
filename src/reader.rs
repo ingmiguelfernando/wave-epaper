@@ -484,6 +484,144 @@ impl ParagraphAlignment {
     }
 }
 
+/// Text inset of Reader pages: narrow, the default, or wide.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PageMargins {
+    Narrow,
+    #[default]
+    Normal,
+    Wide,
+}
+
+impl PageMargins {
+    pub const ALL: [Self; 3] = [Self::Narrow, Self::Normal, Self::Wide];
+
+    /// Inset of the text from each screen edge, in pixels.
+    #[must_use]
+    pub const fn inset(self) -> i32 {
+        match self {
+            Self::Narrow => 16,
+            Self::Normal => 24,
+            Self::Wide => 40,
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Narrow => "Narrow",
+            Self::Normal => "Normal",
+            Self::Wide => "Wide",
+        }
+    }
+
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Narrow => "narrow",
+            Self::Normal => "normal",
+            Self::Wide => "wide",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "narrow" => Ok(Self::Narrow),
+            "normal" => Ok(Self::Normal),
+            "wide" => Ok(Self::Wide),
+            other => Err(format!("unsupported margins value {other:?}")),
+        }
+    }
+}
+
+/// Whether lines hyphenate by the book's language.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum HyphenationMode {
+    #[default]
+    Auto,
+    Off,
+}
+
+impl HyphenationMode {
+    pub const ALL: [Self; 2] = [Self::Auto, Self::Off];
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto ES/EN",
+            Self::Off => "Off",
+        }
+    }
+
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Off => "off",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "auto" => Ok(Self::Auto),
+            "off" => Ok(Self::Off),
+            other => Err(format!("unsupported hyphenation value {other:?}")),
+        }
+    }
+}
+
+/// The rows of Settings › Reading.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadingSetting {
+    BookFont,
+    Size,
+    Alignment,
+    Margins,
+    Hyphenation,
+    ShowProgress,
+    Stats,
+}
+
+impl ReadingSetting {
+    pub const ALL: [Self; 7] = [
+        Self::BookFont,
+        Self::Size,
+        Self::Alignment,
+        Self::Margins,
+        Self::Hyphenation,
+        Self::ShowProgress,
+        Self::Stats,
+    ];
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BookFont => "Book font",
+            Self::Size => "Size",
+            Self::Alignment => "Alignment",
+            Self::Margins => "Margins",
+            Self::Hyphenation => "Hyphenation",
+            Self::ShowProgress => "Show progress",
+            Self::Stats => "Reading stats",
+        }
+    }
+
+    /// The in-book preference this row changes, so one path persists the
+    /// choice and repaginates an open book.
+    #[must_use]
+    pub const fn preference(self) -> ReadingPreference {
+        match self {
+            Self::BookFont => ReadingPreference::BookFont,
+            Self::Size => ReadingPreference::BookFontSize,
+            Self::Alignment => ReadingPreference::ParagraphAlignment,
+            Self::Margins => ReadingPreference::Margins,
+            Self::Hyphenation => ReadingPreference::Hyphenation,
+            Self::ShowProgress => ReadingPreference::ShowProgress,
+            Self::Stats => ReadingPreference::ReadingStats,
+        }
+    }
+}
+
 /// Layout dimensions affecting pagination and cache fingerprints. Lines wrap
 /// by pixel width; `chars_per_line` only sizes the text window read per page.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -494,6 +632,8 @@ pub struct ReaderLayout {
     pub font_size: BookFontSize,
     pub book_font: BookFont,
     pub paragraph_alignment: ParagraphAlignment,
+    pub margins: PageMargins,
+    pub hyphenation: HyphenationMode,
 }
 
 impl ReaderLayout {
@@ -501,7 +641,7 @@ impl ReaderLayout {
     /// same amount, so lines wrap exactly where they are drawn.
     #[must_use]
     pub const fn line_width(self) -> i32 {
-        self.orientation.screen_width() - 2 * READER_BODY_INSET
+        self.orientation.screen_width() - 2 * self.margins.inset()
     }
 }
 
@@ -514,6 +654,10 @@ pub struct ReaderPreferences {
     pub book_font: BookFont,
     pub paragraph_alignment: ParagraphAlignment,
     pub show_progress: bool,
+    pub margins: PageMargins,
+    pub hyphenation: HyphenationMode,
+    /// Whether reading time, pages and finished books are recorded.
+    pub record_stats: bool,
 }
 
 impl Default for ReaderPreferences {
@@ -525,6 +669,9 @@ impl Default for ReaderPreferences {
             book_font: BookFont::Serif,
             paragraph_alignment: ParagraphAlignment::Justified,
             show_progress: true,
+            margins: PageMargins::Normal,
+            hyphenation: HyphenationMode::Auto,
+            record_stats: true,
         }
     }
 }
@@ -594,14 +741,17 @@ impl ReaderPreferences {
             font_size: self.font_size,
             book_font: self.book_font,
             paragraph_alignment: self.paragraph_alignment,
+            margins: self.margins,
+            hyphenation: self.hyphenation,
         }
     }
 
     #[must_use]
     pub fn serialized(self) -> String {
         let show_progress = if self.show_progress { "true" } else { "false" };
+        let record_stats = if self.record_stats { "true" } else { "false" };
         format!(
-            "version={}\ntheme={}\norientation={}\nfont_size={}\nbook_font={}\nparagraph_alignment={}\nshow_progress={}\n",
+            "version={}\ntheme={}\norientation={}\nfont_size={}\nbook_font={}\nparagraph_alignment={}\nshow_progress={}\nmargins={}\nhyphenation={}\nrecord_stats={}\n",
             READER_PREFS_VERSION,
             self.theme.marker(),
             self.orientation.marker(),
@@ -609,7 +759,93 @@ impl ReaderPreferences {
             self.book_font.marker(),
             self.paragraph_alignment.marker(),
             show_progress,
+            self.margins.marker(),
+            self.hyphenation.marker(),
+            record_stats,
         )
+    }
+
+    /// Labels of the choices for `setting` and the index of the value in use.
+    #[must_use]
+    pub fn options(self, setting: ReadingSetting) -> (Vec<&'static str>, usize) {
+        match setting {
+            ReadingSetting::BookFont => {
+                option_labels(&BookFont::ALL, self.book_font, BookFont::label)
+            }
+            ReadingSetting::Size => {
+                option_labels(&BookFontSize::ALL, self.font_size, BookFontSize::label)
+            }
+            ReadingSetting::Alignment => option_labels(
+                &ParagraphAlignment::ALL,
+                self.paragraph_alignment,
+                ParagraphAlignment::label,
+            ),
+            ReadingSetting::Margins => {
+                option_labels(&PageMargins::ALL, self.margins, PageMargins::label)
+            }
+            ReadingSetting::Hyphenation => option_labels(
+                &HyphenationMode::ALL,
+                self.hyphenation,
+                HyphenationMode::label,
+            ),
+            ReadingSetting::ShowProgress => {
+                option_labels(&[true, false], self.show_progress, |value| {
+                    if value {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                })
+            }
+            ReadingSetting::Stats => option_labels(&[true, false], self.record_stats, |value| {
+                if value {
+                    "On"
+                } else {
+                    "Off"
+                }
+            }),
+        }
+    }
+
+    /// Apply a valid option-list choice to `setting`; invalid indices do nothing.
+    pub fn choose(&mut self, setting: ReadingSetting, index: usize) {
+        match setting {
+            ReadingSetting::BookFont => {
+                if let Some(&value) = BookFont::ALL.get(index) {
+                    self.book_font = value;
+                }
+            }
+            ReadingSetting::Size => {
+                if let Some(&value) = BookFontSize::ALL.get(index) {
+                    self.font_size = value;
+                }
+            }
+            ReadingSetting::Alignment => {
+                if let Some(&value) = ParagraphAlignment::ALL.get(index) {
+                    self.paragraph_alignment = value;
+                }
+            }
+            ReadingSetting::Margins => {
+                if let Some(&value) = PageMargins::ALL.get(index) {
+                    self.margins = value;
+                }
+            }
+            ReadingSetting::Hyphenation => {
+                if let Some(&value) = HyphenationMode::ALL.get(index) {
+                    self.hyphenation = value;
+                }
+            }
+            ReadingSetting::ShowProgress => {
+                if let Some(&value) = [true, false].get(index) {
+                    self.show_progress = value;
+                }
+            }
+            ReadingSetting::Stats => {
+                if let Some(&value) = [true, false].get(index) {
+                    self.record_stats = value;
+                }
+            }
+        }
     }
 
     fn parse(text: &str) -> Result<Self, String> {
@@ -637,6 +873,15 @@ impl ReaderPreferences {
                         "true" => true,
                         "false" => false,
                         _ => return Err("show_progress must be true or false".into()),
+                    }
+                }
+                "margins" => prefs.margins = PageMargins::parse(value)?,
+                "hyphenation" => prefs.hyphenation = HyphenationMode::parse(value)?,
+                "record_stats" => {
+                    prefs.record_stats = match value.trim() {
+                        "true" => true,
+                        "false" => false,
+                        _ => return Err("record_stats must be true or false".into()),
                     }
                 }
                 other => return Err(format!("unsupported Reader preference key {other:?}")),
@@ -1182,16 +1427,22 @@ pub enum ReadingPreference {
     BookFont,
     ParagraphAlignment,
     ShowProgress,
+    Margins,
+    Hyphenation,
+    ReadingStats,
 }
 
 impl ReadingPreference {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 9] = [
         Self::ReadingTheme,
         Self::Orientation,
         Self::BookFontSize,
         Self::BookFont,
         Self::ParagraphAlignment,
         Self::ShowProgress,
+        Self::Margins,
+        Self::Hyphenation,
+        Self::ReadingStats,
     ];
 
     #[must_use]
@@ -1203,6 +1454,9 @@ impl ReadingPreference {
             Self::BookFont => "Book Font",
             Self::ParagraphAlignment => "Paragraph Alignment",
             Self::ShowProgress => "Show Progress",
+            Self::Margins => "Margins",
+            Self::Hyphenation => "Hyphenation",
+            Self::ReadingStats => "Reading Stats",
         }
     }
 }
@@ -1858,6 +2112,25 @@ impl ReaderUiState {
                     }
                 })
             }
+            ReadingPreference::Margins => option_labels(
+                &PageMargins::ALL,
+                self.preferences.margins,
+                PageMargins::label,
+            ),
+            ReadingPreference::Hyphenation => option_labels(
+                &HyphenationMode::ALL,
+                self.preferences.hyphenation,
+                HyphenationMode::label,
+            ),
+            ReadingPreference::ReadingStats => {
+                option_labels(&[true, false], self.preferences.record_stats, |value| {
+                    if value {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                })
+            }
         }
     }
 
@@ -1939,6 +2212,38 @@ impl ReaderUiState {
                 self.last_message = Some(format!(
                     "Show progress: {}",
                     if self.preferences.show_progress {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                ));
+                self.persist_preferences_best_effort();
+                false
+            }
+            ReadingPreference::Margins => {
+                let Some(&value) = PageMargins::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.margins = value;
+                self.last_message = Some(format!("Margins: {}", value.label()));
+                true
+            }
+            ReadingPreference::Hyphenation => {
+                let Some(&value) = HyphenationMode::ALL.get(index) else {
+                    return false;
+                };
+                self.preferences.hyphenation = value;
+                self.last_message = Some(format!("Hyphenation: {}", value.label()));
+                true
+            }
+            ReadingPreference::ReadingStats => {
+                let Some(&value) = [true, false].get(index) else {
+                    return false;
+                };
+                self.preferences.record_stats = value;
+                self.last_message = Some(format!(
+                    "Reading stats: {}",
+                    if self.preferences.record_stats {
                         "On"
                     } else {
                         "Off"
@@ -2653,6 +2958,11 @@ impl Typesetter {
     fn new(layout: ReaderLayout, language: Option<Language>) -> Self {
         // Every theme draws with the same strike, so pagination ignores it.
         let style = reader_body_style(layout.book_font, layout.font_size, ReadingTheme::Classic);
+        // Hyphenation Off wraps whole words.
+        let language = match layout.hyphenation {
+            HyphenationMode::Auto => language,
+            HyphenationMode::Off => None,
+        };
         Self {
             style,
             line_width: layout.line_width(),
@@ -2935,6 +3245,8 @@ fn book_fingerprint(book: &ReaderBook, layout: ReaderLayout) -> u64 {
     feed(&mut hash, layout.font_size.marker().as_bytes());
     feed(&mut hash, layout.book_font.marker().as_bytes());
     feed(&mut hash, layout.paragraph_alignment.marker().as_bytes());
+    feed(&mut hash, layout.margins.marker().as_bytes());
+    feed(&mut hash, layout.hyphenation.marker().as_bytes());
     feed(&mut hash, READER_CACHE_VERSION.as_bytes());
     hash
 }
@@ -3544,11 +3856,11 @@ mod tests {
         atomic_replace_text, book_format_from_path, detect_txt_encoding, is_fat83_safe_file_name,
         load_location_record, normalize_decoded, parse_location_fields, parse_location_record,
         scan_txt_library, serialize_location, serialize_location_fields, BookFont, BookFontSize,
-        BookFormat, ParagraphAlignment, ReaderBook, ReaderChapterPageLabel, ReaderLoadingStage,
-        ReaderLocation, ReaderOrientation, ReaderPreferences, ReaderSession, ReaderTickOutcome,
-        ReaderUiState, ReadingPreference, ReadingTheme, TextEncoding, LEGACY_READER_POSITIONS_FILE,
-        READER_BOOKMARKS_FILE, READER_POSITIONS_FILE, READER_PREFS_FILE, READER_RECENT_FILE,
-        READER_STATE_FILE,
+        BookFormat, HyphenationMode, PageMargins, ParagraphAlignment, ReaderBook,
+        ReaderChapterPageLabel, ReaderLoadingStage, ReaderLocation, ReaderOrientation,
+        ReaderPreferences, ReaderSession, ReaderTickOutcome, ReaderUiState, ReadingPreference,
+        ReadingTheme, TextEncoding, LEGACY_READER_POSITIONS_FILE, READER_BOOKMARKS_FILE,
+        READER_POSITIONS_FILE, READER_PREFS_FILE, READER_RECENT_FILE, READER_STATE_FILE,
     };
     use crate::{
         app::{AppState, ScreenRoute},
@@ -4209,6 +4521,70 @@ mod tests {
             location
         );
         assert_eq!(label.page_text(), "2/9");
+    }
+
+    #[test]
+    fn the_prefs_round_trip_keeps_the_new_fields_and_reads_an_old_file() {
+        let mut prefs = ReaderPreferences::default();
+        prefs.margins = PageMargins::Wide;
+        prefs.hyphenation = HyphenationMode::Off;
+        prefs.record_stats = false;
+        let text = prefs.serialized();
+        assert_eq!(ReaderPreferences::parse(&text).unwrap(), prefs);
+        // A file from before the fields reads as Normal, Auto and On.
+        let old = text
+            .lines()
+            .filter(|line| {
+                !line.starts_with("margins=")
+                    && !line.starts_with("hyphenation=")
+                    && !line.starts_with("record_stats=")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed = ReaderPreferences::parse(&old).unwrap();
+        assert_eq!(parsed.margins, PageMargins::Normal);
+        assert_eq!(parsed.hyphenation, HyphenationMode::Auto);
+        assert!(parsed.record_stats);
+    }
+
+    #[test]
+    fn margins_change_the_line_width_and_the_cache_fingerprint() {
+        let book = ReaderBook {
+            path: "book.txt".into(),
+            title: "Book".into(),
+            author: String::new(),
+            format: BookFormat::Text,
+            size_bytes: 1,
+            modified_seconds: 1,
+        };
+        let narrow = ReaderPreferences {
+            margins: PageMargins::Narrow,
+            ..ReaderPreferences::default()
+        }
+        .layout();
+        let wide = ReaderPreferences {
+            margins: PageMargins::Wide,
+            ..ReaderPreferences::default()
+        }
+        .layout();
+        assert!(narrow.line_width() > wide.line_width());
+        assert_ne!(
+            super::book_fingerprint(&book, narrow),
+            super::book_fingerprint(&book, wide)
+        );
+    }
+
+    #[test]
+    fn hyphenation_off_leaves_no_hyphen_at_a_lines_end() {
+        let layout = ReaderPreferences {
+            hyphenation: HyphenationMode::Off,
+            ..ReaderPreferences::default()
+        }
+        .layout();
+        let setter = super::Typesetter::new(layout, Some(Language::Spanish));
+        let text = characters("uno extraordinariamente dos tres");
+        let (lines, _) = super::compose_page(&text, 0, true, &setter, setter.lines_per_page);
+        assert!(lines.iter().all(|line| !line.text.ends_with('-')));
     }
 
     #[test]

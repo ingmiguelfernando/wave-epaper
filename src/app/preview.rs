@@ -442,6 +442,15 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         }
         states.push((name, state));
     }
+    let mut reading_settings = sample_state();
+    reading_settings
+        .router
+        .navigate_to(ScreenRoute::SettingsReading);
+    states.push(("settings-reading", reading_settings));
+    let mut wide = sample_state();
+    wide.reader.preferences.margins = crate::reader::PageMargins::Wide;
+    open_sample_book(&mut wide);
+    states.push(("reader-page-wide-margins", wide));
     let mut large_library = library_preview_state(crate::reader::ReaderLibraryTab::Books);
     large_library.display.font_size = UiFontSize::Large;
     states.push(("library-large-font", large_library));
@@ -1045,8 +1054,9 @@ fn open_sample_book(state: &mut AppState) {
         books.to_string_lossy().into_owned(),
         reader_state.to_string_lossy().into_owned(),
     );
-    // Keep the caller's orientation, so a landscape page paginates as one.
+    // Keep the caller's layout choices, so a page paginates as it draws.
     reader.preferences.orientation = state.reader.preferences.orientation;
+    reader.preferences.margins = state.reader.preferences.margins;
     reader.refresh_library();
     reader.library_selected = 0;
     assert!(reader.apply_library_button(ButtonEvent::Select));

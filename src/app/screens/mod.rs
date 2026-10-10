@@ -28,6 +28,7 @@ pub mod placeholder;
 pub mod power;
 pub mod power_key;
 pub mod reader;
+pub mod reading;
 pub mod reading_stats;
 pub mod settings;
 pub mod sleep_card;
@@ -100,6 +101,7 @@ pub fn render_active_screen(
         ScreenRoute::AudioDetails => audio::render_audio_details(display, state),
         ScreenRoute::Files => files::render_files(display, state),
         ScreenRoute::Display => display::render_display(display, state),
+        ScreenRoute::SettingsReading => reading::render_settings_reading(display, state),
         ScreenRoute::Power => power::render_power(display, state),
         ScreenRoute::SleepScreen => sleep_settings::render_sleep_settings(display, state),
         ScreenRoute::ReadingStats => {

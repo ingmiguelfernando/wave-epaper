@@ -12,6 +12,7 @@ pub enum ScreenRoute {
     Settings,
     SettingsClockAlarms,
     SettingsSystem,
+    SettingsReading,
     Photos,
     PhotoViewer,
     Bible,
@@ -128,6 +129,7 @@ impl ScreenRoute {
             Self::Clock => "Clock",
             Self::ClockDetails => "RTC details",
             Self::Display => "Display",
+            Self::SettingsReading => "Reading",
             Self::Power => "Power",
             Self::SleepScreen => "Sleep screen",
             Self::PowerKeyMenu => "Power Key Menu",
@@ -202,6 +204,7 @@ impl ScreenRoute {
             Self::Clock => "clock",
             Self::ClockDetails => "rtc-details",
             Self::Display => "display",
+            Self::SettingsReading => "settings-reading",
             Self::Power => "power",
             Self::SleepScreen => "sleep-screen",
             Self::PowerKeyMenu => "power-key-menu",
@@ -246,6 +249,7 @@ impl ScreenRoute {
                 | Self::SettingsSystem
                 | Self::Tools
                 | Self::Display
+                | Self::SettingsReading
                 | Self::Power
                 | Self::Alarms
                 | Self::WeatherSettings
@@ -316,6 +320,7 @@ impl ScreenRoute {
                 Some(Self::SettingsSystem)
             }
             Self::Display
+            | Self::SettingsReading
             | Self::Network
             | Self::Power
             | Self::SleepScreen

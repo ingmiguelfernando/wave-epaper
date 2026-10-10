@@ -37,6 +37,7 @@ use crate::{
 pub fn group_value(state: &AppState, route: ScreenRoute) -> String {
     match route {
         ScreenRoute::Display => display_value(state.display),
+        ScreenRoute::SettingsReading => reading_value(state.reader.preferences),
         ScreenRoute::SleepScreen => sleep_screen_value(state),
         ScreenRoute::WeatherSettings => weather_value(state.weather_config.as_ref()),
         ScreenRoute::AiSettings => state.ai.as_ref().map_or_else(
@@ -58,6 +59,15 @@ pub fn group_value(state: &AppState, route: ScreenRoute) -> String {
 /// `v0.9.7`, on the status bar and the System row as in the mockup.
 fn version_text() -> String {
     format!("v{FIRMWARE_VERSION}")
+}
+
+/// `Auto ES/EN`, or `Hyphenation off`, from the reading preferences.
+#[must_use]
+pub fn reading_value(preferences: crate::reader::ReaderPreferences) -> String {
+    match preferences.hyphenation {
+        crate::reader::HyphenationMode::Auto => "Auto ES/EN".to_string(),
+        crate::reader::HyphenationMode::Off => "Hyphenation off".to_string(),
+    }
 }
 
 /// `Inter · Standard`, the mockup's font row.

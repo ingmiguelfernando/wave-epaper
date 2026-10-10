@@ -173,6 +173,9 @@ pub struct AppState {
     pub voice_notes: VoiceNotesUiState,
     /// AI result screen: the open tab and the body scroll.
     pub voice_notes_result: crate::voice_note_result::ResultUiState,
+    /// Settings › Reading: the highlighted row and the open option list.
+    pub reader_settings_selected: usize,
+    pub reader_settings_picker: Option<usize>,
     /// Global display-maintenance menu opened by a physical Power short press.
     pub power_key_menu: PowerKeyMenuUiState,
     power_key_menu_return_route: ScreenRoute,
@@ -253,6 +256,8 @@ impl Default for AppState {
             wifi_transfer_request: None,
             voice_notes: VoiceNotesUiState::default(),
             voice_notes_result: crate::voice_note_result::ResultUiState::default(),
+            reader_settings_selected: 0,
+            reader_settings_picker: None,
             power_key_menu: PowerKeyMenuUiState::default(),
             power_key_menu_return_route: ScreenRoute::Home,
             power_key_manual_refresh_requested: false,
@@ -303,6 +308,8 @@ impl AppState {
             self.apply_ai_hub(event);
         } else if route.is_category() {
             self.apply_category(route, event);
+        } else if route == ScreenRoute::SettingsReading {
+            self.apply_reading_settings(event);
         } else if route == ScreenRoute::Display {
             self.apply_display(event);
         } else if route == ScreenRoute::Power {
@@ -1054,10 +1061,12 @@ impl AppState {
             self.reading_pages = self.reading_pages.saturating_add(1);
         }
         // The turn that reaches the book's last page finishes it.
-        if let Some(session) = self.reader.session.as_ref() {
-            if session.is_at_book_end() {
-                let path = session.book.path.clone();
-                self.reading_stats.mark_finished(&path);
+        if self.reader.preferences.record_stats {
+            if let Some(session) = self.reader.session.as_ref() {
+                if session.is_at_book_end() {
+                    let path = session.book.path.clone();
+                    self.reading_stats.mark_finished(&path);
+                }
             }
         }
     }
@@ -1079,6 +1088,11 @@ impl AppState {
     /// midnight lands on the day of the next call.
     pub fn collect_reading_stats(&mut self, today: Option<u32>) {
         let seconds = self.reading_clock.take_seconds(self.event_clock_ms);
+        // Reading stats Off records no time and no pages.
+        if !self.reader.preferences.record_stats {
+            self.reading_pages = 0;
+            return;
+        }
         let pages = core::mem::take(&mut self.reading_pages);
         let Some(today) = today.or(self.reading_day) else {
             // No clock at all: reading is not recorded.
@@ -1156,6 +1170,55 @@ impl AppState {
 
     /// Move between the Display rows, or within the option list once Select
     /// opened it. Select in the list applies the highlighted choice.
+    /// Move between the Settings › Reading rows, or within the option list once
+    /// Select opened it. A choice goes through the in-book preference path, so
+    /// it persists and repaginates the open book the same way.
+    fn apply_reading_settings(&mut self, event: ButtonEvent) {
+        use crate::reader::ReadingSetting;
+        let Some(&setting) = ReadingSetting::ALL.get(self.reader_settings_selected) else {
+            return;
+        };
+        let (options, current) = self.reader.preferences.options(setting);
+        if let Some(highlighted) = self.reader_settings_picker {
+            let count = options.len();
+            match event {
+                ButtonEvent::Up => {
+                    self.reader_settings_picker = Some((highlighted + count - 1) % count)
+                }
+                ButtonEvent::Down => self.reader_settings_picker = Some((highlighted + 1) % count),
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    let preference = setting.preference();
+                    self.reader.preferences_selected = crate::reader::ReadingPreference::ALL
+                        .iter()
+                        .position(|candidate| *candidate == preference)
+                        .unwrap_or(0);
+                    // A layout change stages its rebuild for the next book
+                    // open; the Settings screen stays where it is.
+                    let _layout_staged = self.reader.choose_preference(highlighted);
+                    self.reader_settings_picker = None;
+                }
+            }
+            return;
+        }
+        let count = ReadingSetting::ALL.len();
+        match event {
+            ButtonEvent::Up => {
+                self.reader_settings_selected = self
+                    .reader_settings_selected
+                    .checked_sub(1)
+                    .unwrap_or(count - 1);
+            }
+            ButtonEvent::Down => {
+                self.reader_settings_selected = (self.reader_settings_selected + 1) % count
+            }
+            ButtonEvent::Select => {
+                self.note_select_press();
+                self.reader_settings_picker = Some(current);
+            }
+        }
+    }
+
     fn apply_display(&mut self, event: ButtonEvent) {
         let Some(&setting) = DisplaySetting::ALL.get(self.display_action_selected) else {
             return;
@@ -1971,6 +2034,8 @@ mod tests {
                 font_size: BookFontSize::default(),
                 book_font: BookFont::default(),
                 paragraph_alignment: ParagraphAlignment::default(),
+                margins: crate::reader::PageMargins::default(),
+                hyphenation: crate::reader::HyphenationMode::default(),
             },
             language: None,
             current_page: 0,
@@ -2007,6 +2072,49 @@ mod tests {
         state.reader = reader;
         state.home_selected = home_index(ScreenRoute::Reader).expect("Library row on Home");
         state
+    }
+
+    #[test]
+    fn settings_reading_opens_edits_and_saves_the_preference() {
+        use crate::app::screens::settings::reading_value;
+        let mut state = open_from_home(ScreenRoute::Settings);
+        state.apply(ButtonEvent::Down); // Reading, after Display
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::SettingsReading);
+        assert_eq!(reading_value(state.reader.preferences), "Auto ES/EN");
+        // Margins: the fourth row.
+        for _ in 0..3 {
+            state.apply(ButtonEvent::Down);
+        }
+        state.apply(ButtonEvent::Select);
+        assert!(
+            state.reader_settings_picker.is_some(),
+            "the row opens its list"
+        );
+        state.apply(ButtonEvent::Down); // Normal -> Wide
+        state.apply(ButtonEvent::Select);
+        assert_eq!(
+            state.reader.preferences.margins,
+            crate::reader::PageMargins::Wide
+        );
+        assert_eq!(state.reader_settings_picker, None);
+        // Hyphenation off changes the row's value.
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Down); // Auto -> Off
+        state.apply(ButtonEvent::Select);
+        assert_eq!(reading_value(state.reader.preferences), "Hyphenation off");
+    }
+
+    #[test]
+    fn stats_off_records_no_time_and_no_pages() {
+        let mut state = reading_state();
+        state.reader.preferences.record_stats = false;
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        state.collect_reading_stats(Some(20_000));
+        assert_eq!(state.reading_stats.day(20_000).seconds, 0);
+        assert_eq!(state.reading_stats.day(20_000).pages, 0);
     }
 
     #[test]
@@ -2290,8 +2398,8 @@ mod tests {
         use crate::ai_config::AiConfig;
 
         let mut state = open_from_home(ScreenRoute::Settings);
-        // The AI row is the fourth Settings row: three Down presses from Display.
-        for _ in 0..3 {
+        // The AI row is the fifth Settings row: four Down presses from Display.
+        for _ in 0..4 {
             state.apply(ButtonEvent::Down);
         }
         assert!(
@@ -2318,7 +2426,7 @@ mod tests {
     /// Home › Settings, then down to the AI row (the fourth) and ●.
     fn open_ai_settings() -> AppState {
         let mut state = open_from_home(ScreenRoute::Settings);
-        for _ in 0..3 {
+        for _ in 0..4 {
             state.apply(ButtonEvent::Down);
         }
         state.apply(ButtonEvent::Select);
@@ -2365,10 +2473,11 @@ mod tests {
     #[test]
     fn settings_groups_open_their_screens_in_mockup_order() {
         let mut state = open_from_home(ScreenRoute::Settings);
-        // Display, Sleep screen, Weather, AI, Wi-Fi & transfer, Clock & alarms,
-        // Power, System.
+        // Display, Reading, Sleep screen, Weather, AI, Wi-Fi & transfer,
+        // Clock & alarms, Power, System.
         let expected = [
             ScreenRoute::Display,
+            ScreenRoute::SettingsReading,
             ScreenRoute::SleepScreen,
             ScreenRoute::WeatherSettings,
             ScreenRoute::AiSettings,
@@ -2389,8 +2498,8 @@ mod tests {
     #[test]
     fn clock_alarms_sublist_opens_both_screens_and_walks_back() {
         let mut state = open_from_home(ScreenRoute::Settings);
-        // Clock & alarms is the sixth group, after the AI row.
-        for _ in 0..5 {
+        // Clock & alarms is the seventh group, after the AI row.
+        for _ in 0..6 {
             state.apply(ButtonEvent::Down);
         }
         state.apply(ButtonEvent::Select);
@@ -2414,7 +2523,7 @@ mod tests {
     fn system_sublist_opens_all_four_diagnostics_and_walks_back() {
         let mut state = open_from_home(ScreenRoute::Settings);
         // System is the last group, after the AI row.
-        for _ in 0..7 {
+        for _ in 0..8 {
             state.apply(ButtonEvent::Down);
         }
         state.apply(ButtonEvent::Select);
