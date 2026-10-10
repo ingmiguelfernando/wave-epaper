@@ -1168,8 +1168,6 @@ impl AppState {
         }
     }
 
-    /// Move between the Display rows, or within the option list once Select
-    /// opened it. Select in the list applies the highlighted choice.
     /// Move between the Settings › Reading rows, or within the option list once
     /// Select opened it. A choice goes through the in-book preference path, so
     /// it persists and repaginates the open book the same way.
@@ -1219,6 +1217,8 @@ impl AppState {
         }
     }
 
+    /// Move between the Display rows, or within the option list once Select
+    /// opened it. Select in the list applies the highlighted choice.
     fn apply_display(&mut self, event: ButtonEvent) {
         let Some(&setting) = DisplaySetting::ALL.get(self.display_action_selected) else {
             return;
@@ -1789,6 +1789,11 @@ impl AppState {
         if self.router.current() == ScreenRoute::Display && self.display_picker.take().is_some() {
             return;
         }
+        if self.router.current() == ScreenRoute::SettingsReading
+            && self.reader_settings_picker.take().is_some()
+        {
+            return;
+        }
         if self.router.current() == ScreenRoute::ReaderPreferences
             && self.reader.preferences_picker.take().is_some()
         {
@@ -2104,6 +2109,20 @@ mod tests {
         state.apply(ButtonEvent::Down); // Auto -> Off
         state.apply(ButtonEvent::Select);
         assert_eq!(reading_value(state.reader.preferences), "Hyphenation off");
+    }
+
+    #[test]
+    fn hold_boot_in_a_reading_option_list_closes_it_first() {
+        let mut state = open_from_home(ScreenRoute::Settings);
+        state.apply(ButtonEvent::Down); // Reading
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Select); // Book font's list
+        assert!(state.reader_settings_picker.is_some());
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::SettingsReading);
+        assert_eq!(state.reader_settings_picker, None, "the list closes");
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Settings);
     }
 
     #[test]

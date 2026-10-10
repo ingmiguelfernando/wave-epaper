@@ -837,11 +837,6 @@ fn draw_tabs(
     Ok(())
 }
 
-/// A book row: the title in the Reader's book face and the format chip, then
-/// the place. A TXT book shows a bar and its percent; an EPUB shows its
-/// chapter, since its saved offset counts the book's text, not the file; a
-/// book never opened shows `new`. FILES shows the file size instead. The
-/// author line waits for the EPUB parser.
 /// A book row: the title with the author under it, the format chip over the
 /// row's state on the right (a drawn check for a finished book, the percent,
 /// `Ch. N` for an old EPUB place or `new`), and a bar under the author for a
@@ -1053,6 +1048,7 @@ fn draw_check(
         .draw(display)?;
     Ok(())
 }
+
 fn draw_row(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,

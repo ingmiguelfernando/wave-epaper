@@ -24,7 +24,7 @@ use crate::{
     reader::ReadingSetting,
 };
 
-/// Top of the first row and the stride of the nine rows above the bar.
+/// Top of the first row and the stride of the seven rows above the bar.
 const ROWS_TOP: i32 = 150;
 const ROW_STRIDE: i32 = 64;
 const ROW_HEIGHT: i32 = 52;
@@ -123,7 +123,7 @@ mod tests {
     use super::*;
     use crate::app::widgets::bottom_bar::BOTTOM_BAR_TOP;
 
-    /// The nine rows share the screen and end above the bottom bar.
+    /// The seven rows share the screen and end above the bottom bar.
     #[test]
     fn every_row_fits_above_the_bar() {
         let last_bottom =

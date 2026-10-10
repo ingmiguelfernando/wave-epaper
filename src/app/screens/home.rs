@@ -160,10 +160,11 @@ fn reading_card(state: &AppState) -> Option<ReadingCard> {
         });
     }
     let resume = state.reader.resume.as_ref()?;
-    // EPUB offsets index the flattened text, not the file, so only TXT gets a percentage.
+    // EPUB offsets index the flattened text, not the file, so an EPUB needs the
+    // percent saved with its place; older places have none.
     let percent = match resume.format {
         BookFormat::Text => Some(percent_of(resume.byte_offset, resume.size_bytes)),
-        BookFormat::Epub => None,
+        BookFormat::Epub => resume.place_percent,
     };
     Some(ReadingCard {
         title: resume.title.clone(),

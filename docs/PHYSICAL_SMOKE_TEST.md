@@ -203,16 +203,20 @@ light sleep. Restore the owner's original preferences afterward.
 
 ## Round 8 (D39 to D43)
 
-- [ ] An EPUB chapter opens with its title and its rule; the footer shows
-    minutes left after 20 recorded pages and drops them below.
+- [ ] An EPUB chapter opens with its title and its rule, and the title is
+	not repeated in the text; the footer shows minutes left after 20
+	recorded pages and drops them below. Old bookmarks still open.
 - [ ] Library rows show the author under the title, a drawn check on a
-    finished book and the percent on an in-progress one.
+	finished book and the percent on an in-progress one (EPUB too, after it
+	is opened once). Home's Continue card shows an EPUB's percent.
 - [ ] Settings › Reading: wide margins push the text in, Hyphenation Off
-    wraps whole words, stats Off records no time and no pages.
-- [ ] Alarms: the New alarm row adds one, the editor deletes one and the
-    next alarm moves; a broken ALARMS.TXT is never overwritten.
+	wraps whole words, stats Off records no time and no pages. Hold BOOT in
+	an option list closes the list, not the screen.
+- [ ] Alarms: without `ALARMS.TXT`, New alarm creates the file; the editor
+	deletes one and the next alarm moves; deleting the last alarm leaves
+	the RTC idle; a broken ALARMS.TXT is never overwritten.
 - [ ] Bible: two translations, Menu › Traducción switches and keeps the
-    place; the menu draws with the card idle.
+	place; the menu draws with the card idle.
 
 ## Remaining games and diagnostics (D3)
 

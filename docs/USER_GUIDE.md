@@ -83,17 +83,21 @@ Long file names are supported; hidden macOS `._` files are ignored.
 
 1. Open **Home › Library**. The tabs are RECENT, ALL, BOOKMARKS and FILES;
 	 a short BOOT press moves to the next tab.
-2. Up/Down selects a book; hold to move faster. Each book shows its format
-	 and a bar with its percent read (an EPUB shows its chapter), or `new`
-	 when it has never been opened; FILES shows file sizes. Select opens a
-	 book at its saved place; on BOOKMARKS, Select opens a bookmark.
+2. Up/Down selects a book; hold to move faster. Each book shows its title,
+	 the author of an EPUB, its format and a bar with its percent read, a
+	 check once finished, or `new` when it has never been opened; FILES shows
+	 file sizes. Select opens a book at its saved place; on BOOKMARKS, Select
+	 opens a bookmark.
 3. During Opening Book, wait for the first page or hold BOOT to cancel.
 	 EPUB text is loaded chapter by chapter, rather than loading an entire
 	 long book into memory.
 4. In the reading view, Up goes back a page, Down goes forward, Select opens
 	 Reader Options, and hold BOOT returns to the book list. The bar at the
-	 bottom shows the page (or chapter) and how far into the book you are; a
-	 ribbon at the top right marks a bookmarked page.
+	 bottom shows the page (or chapter) and how far into the book you are; an
+	 EPUB also shows the minutes left in the chapter at your pace, once twenty
+	 pages are recorded this week. A chapter's first page opens with its
+	 title. A ribbon at the top right marks a bookmarked page. Reaching the
+	 last page marks the book finished.
 
 **Continue Reading** resumes the saved book position (or returns to the list
 when nothing is saved). **Bookmarks** opens saved anchors. Positions, recent
@@ -124,11 +128,17 @@ or repaginating the book.
 | Book font | Inter, Atkinson, Serif, Literata |
 | Paragraph alignment | Justified, Left, Center, Right |
 | Show progress | On, Off |
+| Margins | Narrow, Normal, Wide |
+| Hyphenation | Auto ES/EN, Off |
+| Reading Stats | On, Off (Off records no time, pages or finished books) |
 
 Layout changes may reopen/repaginate the book; wait for loading. Theme and
 progress changes do not rebuild the layout. These are Reader preferences,
 independent of the interface font in Settings › Display. Hold BOOT again
-after closing a picker to leave Reading Preferences.
+after closing a picker to leave Reading Preferences. **Settings › Reading**
+changes the book font, size, alignment, margins, hyphenation, progress and
+stats without opening a book; an open book repaginates when you return to
+it.
 
 ## Reading Stats
 
@@ -246,15 +256,20 @@ are in [SD-card setup](SD_CARD_SETUP.md).
 
 ### Alarms
 
-Schedules and snooze minutes come from `/RUSTMIX/ALARMS.TXT`, and saved edits are written back to it.
-Calendar events do not create alarms.
+Schedules and snooze minutes come from `/RUSTMIX/ALARMS.TXT`, and saved
+edits are written back to it; without the file, the first new alarm creates
+it. Up to six alarms. Calendar events do not create alarms.
 
-- List: Up/Down chooses a schedule; Select opens the editor.
+- List: Up/Down chooses a schedule; Select opens the editor. The last row,
+  **New alarm**, opens the editor on a new alarm (07:00, weekdays).
 - Editor: Up/Down changes hour, minute, enable state, recurrence or schedule;
-        Select advances fields. On **Save alarm**, Select writes the edit to
-        `ALARMS.TXT` on the card; the edit survives a reboot.
+  Select advances fields. At the last field Up/Down chooses **Save alarm**
+  or **Delete alarm**, and Select runs it; both write `ALARMS.TXT`, so the
+  change survives a reboot. Delete on a new alarm only discards it.
 - Hold BOOT leaves the screen; short BOOT is not an alarm-editor Back action.
 - Active alarm: Up/Down chooses Snooze or Dismiss; Select runs it.
+
+A file that cannot be read is never overwritten: fix it on a computer.
 
 An RTC alarm can wake sleep-image mode and open Alarms. Check clock accuracy,
 the RTC-armed indicator and audible output before relying on an alarm.

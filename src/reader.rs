@@ -2711,17 +2711,24 @@ fn detect_txt_language(path: &str, encoding: TextEncoding) -> Option<Language> {
     Language::detect(&text)
 }
 
-/// Page start offsets of one loaded EPUB chapter.
 /// Bytes of a leading copy of `label` to drop from a chapter's text, with the
-/// whitespace around it. Zero when the text does not start with the label.
+/// whitespace around it. Zero when the text does not start with the label as
+/// a whole line or word, so a label `I` keeps the `In` of "In a hole".
 fn leading_label_bytes(text: &str, label: &str) -> usize {
+    if label.trim().is_empty() {
+        return 0;
+    }
     let leading = text.len() - text.trim_start().len();
     let Some(rest) = text.trim_start().strip_prefix(label) else {
         return 0;
     };
+    if !(rest.is_empty() || rest.starts_with(char::is_whitespace)) {
+        return 0;
+    }
     leading + label.len() + (rest.len() - rest.trim_start().len())
 }
 
+/// Page start offsets of one loaded EPUB chapter.
 fn paginate_epub_chapter(
     chapter: &LoadedEpubChapter,
     setter: &Typesetter,
@@ -4815,6 +4822,18 @@ mod tests {
             ..book
         };
         assert!(super::parse_epub_index(&text, &changed).is_err());
+    }
+
+    #[test]
+    fn only_a_whole_leading_label_is_dropped() {
+        assert_eq!(
+            super::leading_label_bytes("  Capítulo 1\n\nUno", "Capítulo 1"),
+            "  Capítulo 1\n\n".len()
+        );
+        assert_eq!(super::leading_label_bytes("In a hole", "I"), 0);
+        assert_eq!(super::leading_label_bytes("I\nIn a hole", "I"), 2);
+        assert_eq!(super::leading_label_bytes("Capítulo 10", "Capítulo 1"), 0);
+        assert_eq!(super::leading_label_bytes("  Uno", ""), 0);
     }
 
     #[test]

@@ -76,7 +76,12 @@ pub fn render_alarms(
     }
 
     if let Some(editor) = alarms.editor.as_ref() {
-        Text::new("Runtime editor", Point::new(22, 154), heading).draw(display)?;
+        let title = if editor.creating {
+            "New alarm"
+        } else {
+            "Edit alarm"
+        };
+        Text::new(title, Point::new(22, 154), heading).draw(display)?;
         Text::new(
             &format!("Alarm: {}", editor.draft.name),
             Point::new(22, 194),
@@ -153,13 +158,8 @@ pub fn render_alarms(
     .draw(display)?;
 
     if alarms.alarms.is_empty() {
-        Text::new("No alarm schedules were loaded.", Point::new(22, 298), body).draw(display)?;
-        Text::new(
-            "New alarm creates one; ALARMS.TXT holds more.",
-            Point::new(22, 338),
-            body,
-        )
-        .draw(display)?;
+        Text::new("No alarms yet.", Point::new(22, 298), body).draw(display)?;
+        Text::new("Select New alarm to add one.", Point::new(22, 338), body).draw(display)?;
     } else {
         for (index, alarm) in alarms.alarms.iter().take(6).enumerate() {
             draw_alarm_row(
