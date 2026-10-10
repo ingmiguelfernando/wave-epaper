@@ -30,7 +30,7 @@ use super::weather::percent_label;
 
 /// A forecast older than this reads `stale` on the sleep screens.
 const STALE_MINUTES: i64 = 6 * 60;
-/// Baseline of the sleep clock's digits, which rise about 92 px above it.
+/// Baseline of the sleep clock's digits, which rise about 95 px above it.
 const CLOCK_BASELINE: i32 = 312;
 
 pub struct SleepClock<'a> {
@@ -1005,7 +1005,8 @@ mod tests {
                                 ]
                                 .iter()
                                 .any(|b| x >= b.left && x < b.right && y >= b.top && y < b.bottom),
-                                "escaped clock pixel {x},{y}"
+                                "escaped clock pixel {x},{y}: icon {icon:?} summary {summary:?} \
+                                 details from {details_top}"
                             );
                         }
                     }

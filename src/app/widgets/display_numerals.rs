@@ -7,9 +7,12 @@ use embedded_graphics::{
     prelude::{DrawTarget, Point},
 };
 
-use crate::app::{
-    display_assets::{DISPLAY_CLOCK, DISPLAY_TEMPERATURE},
-    typography::{Text, TextBounds, UiTextStyle},
+use crate::{
+    app::{
+        display_assets::{DISPLAY_CLOCK, DISPLAY_TEMPERATURE},
+        typography::{BitmapFont, Text, TextBounds, UiTextStyle},
+    },
+    charset::glyph_index,
 };
 
 /// Which strike draws the text.
@@ -20,17 +23,27 @@ pub enum Numerals {
 }
 
 impl Numerals {
-    fn style(self, color: BinaryColor) -> UiTextStyle {
+    const fn font(self) -> &'static BitmapFont {
         match self {
-            Self::Clock => UiTextStyle::new(&DISPLAY_CLOCK, color),
-            Self::Temperature => UiTextStyle::new(&DISPLAY_TEMPERATURE, color),
+            Self::Clock => &DISPLAY_CLOCK,
+            Self::Temperature => &DISPLAY_TEMPERATURE,
         }
     }
 
-    /// Height of a digit above the baseline.
+    fn style(self, color: BinaryColor) -> UiTextStyle {
+        UiTextStyle::new(self.font(), color)
+    }
+
+    /// Height of the tallest digit above the baseline; round digits rise a
+    /// little past the capitals.
     #[must_use]
     pub fn digit_height(self) -> i32 {
-        self.style(BinaryColor::On).cap_height()
+        let font = self.font();
+        ('0'..='9')
+            .filter_map(|digit| glyph_index(digit).and_then(|index| font.glyphs.get(index)))
+            .map(|glyph| -i32::from(glyph.top))
+            .max()
+            .unwrap_or(0)
     }
 
     /// Space between glyphs: the mockup's tight letter spacing.
@@ -77,7 +90,12 @@ where
     } else {
         left
     };
-    let bounds = TextBounds::new(left, baseline - style.cap_height() - 8, right, baseline + 8);
+    let bounds = TextBounds::new(
+        left,
+        baseline - numerals.digit_height() - 8,
+        right,
+        baseline + 8,
+    );
     let mut buffer = [0_u8; 4];
     for character in text.chars().map(display_char) {
         let room = advance(character, style, cell);
