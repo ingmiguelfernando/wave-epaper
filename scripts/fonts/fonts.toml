@@ -137,14 +137,15 @@ strikes = [
     { name = "SERIF_XLARGE", face = "dejavu-serif", cap = 19, line_height = 33 },
 ]
 
-# Sleep clock (the mockup's 128 px) and large temperatures (96 px). Screens
-# draw only digits, `:`, `°` and `−` from these; the rest of the charset
-# comes along because every strike holds it.
+# Sleep clock (near the mockup's 128 px; at 128 the ring of `Å` rises past
+# the 8-bit glyph offset) and large temperatures (96 px). Screens draw only
+# digits, `:`, `°` and `−` from these; the rest of the charset comes along
+# because every strike holds it.
 [[outputs]]
 path = "src/app/display_assets.rs"
 title = "Display numerals: Inter ExtraBold for the sleep clock and temperatures."
 imports = "use super::typography::{BitmapFont, Glyph};"
 strikes = [
-    { name = "DISPLAY_CLOCK", face = "inter-extrabold", px = 128, line_height = 128 },
+    { name = "DISPLAY_CLOCK", face = "inter-extrabold", px = 126, line_height = 128 },
     { name = "DISPLAY_TEMPERATURE", face = "inter-extrabold", px = 96, line_height = 96 },
 ]
