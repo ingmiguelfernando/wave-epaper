@@ -8,6 +8,7 @@
 pub mod canvas;
 pub mod dirty_regions;
 pub mod minesweeper;
+pub mod race;
 pub mod records;
 pub mod refresh_policy;
 pub mod sudoku;

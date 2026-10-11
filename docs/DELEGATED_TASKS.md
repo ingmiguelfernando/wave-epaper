@@ -490,7 +490,28 @@ crashes; a lane change into a car crashes; nitro with a car two columns
 ahead crashes, and on a clear lane it adds 60 m; the interval after 1, 3
 and 6 km; Zen moves only on a key.
 
-**Status:**
+**Status:** done on `side-tasks-10`. Built: `src/games/race.rs`, the engine
+only (no drawing). The road is four lanes and six columns with the player
+fixed in column 1; cars and cones arrive in the last column and move one
+column toward the player each step, 20 m a step. Each new column leaves its
+free lane in or next to a lane the column before left free (the seeded
+xorshift of `tetris.rs`), so the gap a driver follows never jumps. A step
+that brings an obstacle into the player's cell is a crash, and so is a lane
+change into one; an obstacle that reaches the player's column in another
+lane has got past and leaves the road (a car counts as passed), which keeps
+the lane beside the player clear to dodge into and makes "a careful driver
+can always get through" true. Classic steps every 1000 ms at speed 1, 100
+ms less each kilometre (`tick_interval_ms`, down to 500 ms); nitro starts
+with one charge, gains one each kilometre (three at most) and spends one for
+three checked steps at once; Zen has no timer, ▲▼ change a lane and then
+step and ● steps in place. Counters: distance in metres, speed, cars passed
+and nitro used. Tests: 10,000 steps from three seeds never close a column
+and keep the gap chain touching; a car arriving in the player's cell
+crashes; a lane change into a car crashes; nitro into a car two columns
+ahead crashes and on a clear lane adds 60 m; the interval is 1000, 900, 700
+and 500 ms at 0, 1, 3 and 6 km driven by a careful driver; Zen moves only on
+a key. Open: nothing known. Device check: none yet (the engine draws
+nothing; D50 puts it on screen).
 
 ### D50: Race as an SD game
 
