@@ -443,7 +443,9 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     details
         .voice_notes
         .begin_playback("NOTE_001.WAV".into(), 1_900_000);
-    details.voice_notes.update_playback_progress(640_000, 1_900_000);
+    details
+        .voice_notes
+        .update_playback_progress(640_000, 1_900_000);
     details.audio.volume_percent = 85;
     states.push(("voice-note-playing", details));
 

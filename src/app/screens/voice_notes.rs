@@ -206,11 +206,7 @@ pub fn render_voice_note_details(
     } else if let Some(error) = state.voice_notes.error.as_deref() {
         Text::new(error, Point::new(22, 690), detail).draw(display)?;
     }
-    let hints: &[(KeyCap, &str)] = if playing {
-        &PLAYING_HINTS
-    } else {
-        &RUN_HINTS
-    };
+    let hints: &[(KeyCap, &str)] = if playing { &PLAYING_HINTS } else { &RUN_HINTS };
     draw_bottom_bar(display, state.display, hints)?;
     Ok(())
 }
