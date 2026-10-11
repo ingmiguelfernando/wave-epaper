@@ -572,7 +572,23 @@ logged at worker boundaries but never shown.
 snapshots; Home › Settings › System › Memory through
 `AppState::apply`.
 
-**Status:**
+**Status:** done on `side-tasks-9`. Built: a `Memory` row in Settings ›
+System (under Device Info) opens a read-only screen in the row style: internal
+RAM free, its largest free block, the lowest free since boot, PSRAM free and
+its lowest, and the main task's stack margin, in KB or MB above 1 MB with
+`regional::grouped` (one decimal in MB). `RuntimeMemorySnapshot` gained the
+two `heap_caps_get_minimum_free_size` values (and logs them);
+`MemoryUiState` stores the snapshot with remembered lows that never rise
+again across snapshots. `main.rs` captures one at each status-bar refresh
+(`update_board_snapshot`'s two sites: boot and the live refresh) and stores
+it in `AppState`; the screen reads the stored one and the route joins
+`uses_live_status`, so the numbers tick while it is open. Previews:
+`settings-memory`. Tests: the size labels (KB with grouped digits, MB above
+1 MB); the lowest value never goes up across snapshots (and takes lower
+ones); Home › Settings › System › Memory through `AppState::apply`, hold BOOT
+back to the sub-list. Docs: the guide's System section. Open: nothing known.
+Device check: the preview and the screen on the panel with a book open
+(PSRAM in use) and after a few minutes of uptime.
 
 ### D48: Go to a percent of the book
 

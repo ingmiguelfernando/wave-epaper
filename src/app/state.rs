@@ -46,6 +46,37 @@ pub const DISPLAY_ACTION_COUNT: usize = DisplaySetting::ALL.len();
 /// Start/stop portal and provisioning-details rows on the Network screen.
 pub const NETWORK_ACTION_COUNT: usize = 2;
 
+/// Settings › System › Memory: the snapshot from the last status-bar
+/// refresh (`main.rs` captures one) and the lowest free values seen since
+/// boot. The remembered lows never rise again across snapshots.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MemoryUiState {
+    pub snapshot: Option<crate::runtime_memory::RuntimeMemorySnapshot>,
+    /// Lowest internal RAM free seen across the stored snapshots.
+    pub lowest_internal_bytes: Option<usize>,
+    /// Lowest PSRAM free seen across the stored snapshots.
+    pub lowest_psram_bytes: Option<usize>,
+}
+
+impl MemoryUiState {
+    /// Store a fresh snapshot; the remembered lows only ever go down.
+    pub fn note_snapshot(&mut self, snapshot: crate::runtime_memory::RuntimeMemorySnapshot) {
+        self.lowest_internal_bytes = Some(
+            self.lowest_internal_bytes
+                .map_or(snapshot.heap_lowest_internal_bytes, |low| {
+                    low.min(snapshot.heap_lowest_internal_bytes)
+                }),
+        );
+        self.lowest_psram_bytes = Some(
+            self.lowest_psram_bytes
+                .map_or(snapshot.heap_lowest_psram_bytes, |low| {
+                    low.min(snapshot.heap_lowest_psram_bytes)
+                }),
+        );
+        self.snapshot = Some(snapshot);
+    }
+}
+
 /// Settings › Power cursor and the highlighted choice of an open option list.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PowerUiState {
@@ -146,6 +177,8 @@ pub struct AppState {
     pub router: ScreenRouter,
     pub board: BoardSnapshot,
     pub storage: StorageSnapshot,
+    /// Memory telemetry from the status-bar refresh; Settings › System › Memory.
+    pub memory: MemoryUiState,
     /// Password-free snapshot owned by the networking boundary.
     pub network: NetworkSnapshot,
     /// Cached weather snapshot retained across transient HTTP failures.
@@ -248,6 +281,7 @@ impl Default for AppState {
             router: ScreenRouter::default(),
             board: BoardSnapshot::default(),
             storage: StorageSnapshot::default(),
+            memory: MemoryUiState::default(),
             network: NetworkSnapshot::default(),
             weather: WeatherSnapshot::default(),
             weather_config: None,
@@ -1897,6 +1931,14 @@ impl AppState {
         self.board = board;
     }
 
+    /// Fresh memory telemetry, captured by `main.rs` at the status refresh.
+    pub fn update_memory_snapshot(
+        &mut self,
+        snapshot: crate::runtime_memory::RuntimeMemorySnapshot,
+    ) {
+        self.memory.note_snapshot(snapshot);
+    }
+
     pub fn update_storage_snapshot(&mut self, storage: StorageSnapshot) {
         self.storage = storage;
     }
@@ -2644,7 +2686,7 @@ mod tests {
     }
 
     #[test]
-    fn system_sublist_opens_all_four_diagnostics_and_walks_back() {
+    fn system_sublist_opens_all_five_diagnostics_and_walks_back() {
         let mut state = open_from_home(ScreenRoute::Settings);
         // System is the last group, after the AI row.
         for _ in 0..8 {
@@ -2654,6 +2696,7 @@ mod tests {
         assert_eq!(state.active_route(), ScreenRoute::SettingsSystem);
         let expected = [
             ScreenRoute::DeviceInfo,
+            ScreenRoute::SettingsMemory,
             ScreenRoute::Audio,
             ScreenRoute::Environment,
             ScreenRoute::Motion,

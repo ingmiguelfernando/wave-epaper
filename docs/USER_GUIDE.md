@@ -172,8 +172,13 @@ snooze and dismiss). Hold BOOT returns to Settings.
 
 ### System
 
-A list with **Device Info** (firmware, board and memory), **Audio**,
-**Environment** and **Motion**. Hold BOOT returns to Settings.
+A list with **Device Info** (firmware, board and services), **Memory**,
+**Audio**, **Environment** and **Motion**. Hold BOOT returns to Settings.
+
+**Memory** shows internal RAM free, its largest free block, the lowest free
+since boot, PSRAM free and its lowest, and the main task's stack margin;
+the device measures at each status bar refresh. Sizes are in KB, or MB
+above 1 MB.
 
 ### Display
 

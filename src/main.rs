@@ -93,7 +93,7 @@ mod firmware {
         regional::RegionalPreferences,
         rtc::RtcDateTime,
         rtc_alarm_interrupt::{espidf::RtcAlarmInterruptMonitor, RTC_ALARM_INTERRUPT_GPIO},
-        runtime_memory::log_runtime_memory,
+        runtime_memory::{log_runtime_memory, RuntimeMemorySnapshot},
         shared_i2c::SharedI2cBus,
         sleep_images::{SleepImageCatalog, SleepImageSelection, SLEEP_IMAGE_DIRECTORY},
         sleep_mode::{
@@ -548,6 +548,7 @@ mod firmware {
         }
         state.update_board_snapshot(board_services.read_snapshot(&mut service_delay));
         log_board_snapshot(state.board, state.regional);
+        state.update_memory_snapshot(RuntimeMemorySnapshot::capture());
         if let Some(rtc) = state.board.rtc {
             alarm_engine.recompute_next(state.regional.localize_rtc(rtc));
         }
@@ -1839,6 +1840,7 @@ mod firmware {
             {
                 state.update_board_snapshot(board_services.read_snapshot(&mut service_delay));
                 log_board_snapshot(state.board, state.regional);
+                state.update_memory_snapshot(RuntimeMemorySnapshot::capture());
                 refresh_screen(
                     &mut panel,
                     &mut frame,

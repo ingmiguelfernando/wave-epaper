@@ -345,6 +345,19 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         .navigate_to(ScreenRoute::SettingsSystem);
     states.push(("settings-system", settings_system));
 
+    // Settings › System › Memory: the stored snapshot, in sample numbers.
+    let mut memory = sample_state();
+    memory.update_memory_snapshot(crate::runtime_memory::RuntimeMemorySnapshot {
+        main_stack_high_water_bytes: 2_816,
+        heap_free_internal_bytes: 327_680,
+        heap_largest_internal_block_bytes: 196_608,
+        heap_lowest_internal_bytes: 180_224,
+        heap_free_psram_bytes: 6_815_744,
+        heap_lowest_psram_bytes: 5_242_880,
+    });
+    memory.router.navigate_to(ScreenRoute::SettingsMemory);
+    states.push(("settings-memory", memory));
+
     let mut settings_clock = sample_state();
     settings_clock
         .router

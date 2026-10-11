@@ -21,6 +21,7 @@ pub mod files;
 pub mod games;
 pub mod home;
 pub mod lua_game;
+pub mod memory;
 pub mod motion;
 pub mod network;
 pub mod photos;
@@ -109,6 +110,7 @@ pub fn render_active_screen(
         ScreenRoute::PhotoViewer => photos::render_photo_viewer(display, state),
         ScreenRoute::PowerKeyMenu => power_key::render_power_key_menu(display, state),
         ScreenRoute::DeviceInfo => device_info::render_device_info(display, state),
+        ScreenRoute::SettingsMemory => memory::render_settings_memory(display, state),
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),
         ScreenRoute::DeviceInfoRuntime => device_info::render_device_info_runtime(display, state),
         ScreenRoute::Bible | ScreenRoute::BibleBooks => {

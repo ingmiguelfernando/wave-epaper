@@ -5,7 +5,9 @@ pub struct RuntimeMemorySnapshot {
     pub main_stack_high_water_bytes: usize,
     pub heap_free_internal_bytes: usize,
     pub heap_largest_internal_block_bytes: usize,
+    pub heap_lowest_internal_bytes: usize,
     pub heap_free_psram_bytes: usize,
+    pub heap_lowest_psram_bytes: usize,
 }
 
 #[cfg(target_os = "espidf")]
@@ -25,8 +27,14 @@ impl RuntimeMemorySnapshot {
             heap_largest_internal_block_bytes: unsafe {
                 sys::heap_caps_get_largest_free_block(sys::MALLOC_CAP_INTERNAL as u32)
             },
+            heap_lowest_internal_bytes: unsafe {
+                sys::heap_caps_get_minimum_free_size(sys::MALLOC_CAP_INTERNAL as u32)
+            },
             heap_free_psram_bytes: unsafe {
                 sys::heap_caps_get_free_size(sys::MALLOC_CAP_SPIRAM as u32)
+            },
+            heap_lowest_psram_bytes: unsafe {
+                sys::heap_caps_get_minimum_free_size(sys::MALLOC_CAP_SPIRAM as u32)
             },
         }
     }
@@ -43,12 +51,14 @@ impl RuntimeMemorySnapshot {
 pub fn log_runtime_memory(boundary: &str) {
     let snapshot = RuntimeMemorySnapshot::capture();
     log::info!(
-        "rustmix-wave=runtime-memory boundary={} main-stack-high-water-bytes={} heap-free-internal-bytes={} heap-largest-internal-block-bytes={} heap-free-psram-bytes={}",
+        "rustmix-wave=runtime-memory boundary={} main-stack-high-water-bytes={} heap-free-internal-bytes={} heap-largest-internal-block-bytes={} heap-lowest-internal-bytes={} heap-free-psram-bytes={} heap-lowest-psram-bytes={}",
         sanitize_marker(boundary),
         snapshot.main_stack_high_water_bytes,
         snapshot.heap_free_internal_bytes,
         snapshot.heap_largest_internal_block_bytes,
-        snapshot.heap_free_psram_bytes
+        snapshot.heap_lowest_internal_bytes,
+        snapshot.heap_free_psram_bytes,
+        snapshot.heap_lowest_psram_bytes
     );
 }
 

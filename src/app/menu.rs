@@ -178,12 +178,18 @@ const SETTINGS_CLOCK_ALARMS_ENTRIES: [MenuEntry; 2] = [
 ];
 
 /// Sub-list opened from the System group.
-const SETTINGS_SYSTEM_ENTRIES: [MenuEntry; 4] = [
+const SETTINGS_SYSTEM_ENTRIES: [MenuEntry; 5] = [
     MenuEntry {
         label: "Device Info",
-        subtitle: "Firmware, board and memory",
+        subtitle: "Firmware, board and services",
         badge: "",
         route: ScreenRoute::DeviceInfo,
+    },
+    MenuEntry {
+        label: "Memory",
+        subtitle: "RAM, PSRAM and stack margin",
+        badge: "",
+        route: ScreenRoute::SettingsMemory,
     },
     MenuEntry {
         label: "Audio",
@@ -273,7 +279,7 @@ mod tests {
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
         assert_eq!(category_entries(ScreenRoute::Settings).len(), 9);
         assert_eq!(category_entries(ScreenRoute::SettingsClockAlarms).len(), 2);
-        assert_eq!(category_entries(ScreenRoute::SettingsSystem).len(), 4);
+        assert_eq!(category_entries(ScreenRoute::SettingsSystem).len(), 5);
         for route in CATEGORIES {
             assert!(category_entries(route)
                 .iter()

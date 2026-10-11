@@ -11,6 +11,7 @@ pub enum ScreenRoute {
     Settings,
     SettingsClockAlarms,
     SettingsSystem,
+    SettingsMemory,
     SettingsReading,
     Photos,
     PhotoViewer,
@@ -83,6 +84,7 @@ impl ScreenRoute {
             Self::Settings => "Settings",
             Self::SettingsClockAlarms => "Clock & alarms",
             Self::SettingsSystem => "System",
+            Self::SettingsMemory => "Memory",
             Self::Photos => "Photos",
             Self::PhotoViewer => "Photo",
             Self::Bible => "Bible",
@@ -155,6 +157,7 @@ impl ScreenRoute {
             Self::Settings => "settings",
             Self::SettingsClockAlarms => "settings-clock-alarms",
             Self::SettingsSystem => "settings-system",
+            Self::SettingsMemory => "settings-memory",
             Self::Photos => "photos",
             Self::PhotoViewer => "photo-viewer",
             Self::Bible => "bible",
@@ -280,6 +283,7 @@ impl ScreenRoute {
             Self::BibleMenu => Some(Self::BibleReading),
             Self::BibleTranslations => Some(Self::BibleReading),
             Self::SettingsClockAlarms | Self::SettingsSystem => Some(Self::Settings),
+            Self::SettingsMemory => Some(Self::SettingsSystem),
             Self::PhotoViewer => Some(Self::Photos),
             Self::ReaderBookmarks => Some(Self::ReaderOptions),
             Self::ReaderLoading | Self::ReaderPage => Some(Self::Library),
@@ -337,6 +341,7 @@ impl ScreenRoute {
                 | Self::Network
                 | Self::NetworkDetails
                 | Self::WifiTransfer
+                | Self::SettingsMemory
                 | Self::Alarms
                 | Self::Calendar
                 | Self::CalendarAgenda
