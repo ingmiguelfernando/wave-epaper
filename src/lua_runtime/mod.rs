@@ -10,6 +10,7 @@ use crate::{
     buttons::ButtonEvent,
     games::{
         canvas::NativeGameCanvas,
+        race::{RaceMode, RaceStart},
         records::GameRecords,
         refresh_policy::{GameRefreshPlan, GameRefreshPolicy, RefreshTrigger},
         sudoku::SudokuGame,
@@ -191,6 +192,14 @@ impl LuaRuntimeUiState {
                 start.set_bests(self.records.tetris_zen, self.records.tetris_classic);
                 start.render(&mut session.canvas)?;
             }
+            LuaEventBridge::Race(app) => app.set_best(match app.game().mode() {
+                RaceMode::Zen => self.records.race_zen,
+                RaceMode::Classic => self.records.race_classic,
+            }),
+            LuaEventBridge::RaceStart(start) => {
+                start.set_bests(self.records.race_classic, self.records.race_zen);
+                start.render(&mut session.canvas)?;
+            }
             LuaEventBridge::Sudoku(game) => {
                 game.prepare(self.sudoku_save, self.records);
                 // Redraw, so the start list shows the Continue row.
@@ -252,6 +261,20 @@ impl LuaRuntimeUiState {
         };
         match outcome {
             Ok(Some((id, result))) => {
+                // The Race crash screen's `Mode` row reopens the mode list,
+                // with the saved bests the session opened with.
+                if let Some(session) = self.session.as_mut() {
+                    if let LuaEventBridge::Race(app) = &session.event_bridge {
+                        if app.mode_requested() {
+                            let start =
+                                RaceStart::new(self.records.race_classic, self.records.race_zen);
+                            match start.render(&mut session.canvas) {
+                                Ok(()) => session.event_bridge = LuaEventBridge::RaceStart(start),
+                                Err(error) => self.error = Some(error),
+                            }
+                        }
+                    }
+                }
                 self.push_diagnostic(format!(
                     "rustmix-wave=lua-event-bridge id={id} bridge={} event={} outcome={} row={} column={} mode={} axis={} {} completed={} dirty-regions={} refresh=partial-fullscreen transport=existing-fullscreen-partial",
                     result.bridge_marker(),
@@ -329,17 +352,21 @@ impl LuaRuntimeUiState {
     }
 
     /// The next gravity tick, when the open game needs one: Classic only, one
-    /// tick every `GRAVITY_MS`. `None` when nothing falls.
+    /// tick every `GRAVITY_MS` (Tetris) or at the Race speed's interval.
+    /// `None` when nothing falls or steps.
     #[must_use]
     pub fn next_game_tick_ms(&self) -> Option<u64> {
-        let LuaEventBridge::Tetris(app) = &self.session.as_ref()?.event_bridge else {
-            return None;
-        };
-        if app.game().mode() != TetrisMode::Classic {
-            return None;
-        }
         let last = self.last_game_tick_ms?;
-        Some(last + u64::from(GRAVITY_MS))
+        match &self.session.as_ref()?.event_bridge {
+            LuaEventBridge::Tetris(app) => {
+                if app.game().mode() != TetrisMode::Classic {
+                    return None;
+                }
+                Some(last + u64::from(GRAVITY_MS))
+            }
+            LuaEventBridge::Race(app) => Some(last + app.game().tick_interval_ms()?),
+            _ => None,
+        }
     }
 
     /// Run a gravity tick when one is due. After a long pause the piece steps
@@ -378,6 +405,13 @@ impl LuaRuntimeUiState {
                     self.records_changed |= match app.game().mode() {
                         TetrisMode::Zen => self.records.observe_tetris_zen(app.best()),
                         TetrisMode::Classic => self.records.observe_tetris_classic(app.best()),
+                    };
+                }
+                LuaEventBridge::Race(app) => {
+                    // Each mode keeps its own best distance, in metres.
+                    self.records_changed |= match app.game().mode() {
+                        RaceMode::Zen => self.records.observe_race_zen(app.best()),
+                        RaceMode::Classic => self.records.observe_race_classic(app.best()),
                     };
                 }
                 LuaEventBridge::Sudoku(game) => self.close_sudoku(game),

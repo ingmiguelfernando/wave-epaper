@@ -20,7 +20,7 @@ use crate::{
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
-    games::sudoku::time_text,
+    games::{race::distance_label, sudoku::time_text},
     lua_runtime::manifest::LuaAppManifest,
     orientation::OrientedFrameBuffer,
     regional::grouped,
@@ -172,6 +172,18 @@ fn game_details(state: &AppState, manifest: &LuaAppManifest) -> (String, String)
             };
             (zen, classic)
         }
+        "race" => {
+            // The mockup's card: Classic over Zen, each with its best distance.
+            let classic = match records.race_classic {
+                0 => "Classic · no best yet".into(),
+                best => format!("Classic · best {}", distance_label(best)),
+            };
+            let zen = match records.race_zen {
+                0 => "Zen · no best yet".into(),
+                best => format!("Zen · best {}", distance_label(best)),
+            };
+            (classic, zen)
+        }
         _ => (
             format!("Version {}", manifest.version),
             "SD card game".into(),
@@ -225,6 +237,29 @@ fn draw_icon(
                 Rectangle::new(
                     Point::new(top_left.x + column * block, top_left.y + row * block),
                     Size::new((block - 2) as u32, (block - 2) as u32),
+                )
+                .into_styled(ink)
+                .draw(display)?;
+            }
+        }
+        "race" => {
+            // A car seen from the side: body, roof and two wheels.
+            Rectangle::new(
+                Point::new(top_left.x + 4, top_left.y + 26),
+                Size::new(52, 20),
+            )
+            .into_styled(ink)
+            .draw(display)?;
+            Rectangle::new(
+                Point::new(top_left.x + 16, top_left.y + 12),
+                Size::new(28, 16),
+            )
+            .into_styled(ink)
+            .draw(display)?;
+            for x in [12_i32, 36] {
+                Rectangle::new(
+                    Point::new(top_left.x + x, top_left.y + 42),
+                    Size::new(12, 12),
                 )
                 .into_styled(ink)
                 .draw(display)?;
@@ -287,6 +322,7 @@ mod d25_tests {
         for (id, name) in [
             ("hgrid", "Hello Grid"),
             ("mines", "Minesweeper"),
+            ("race", "Race"),
             ("sudoku", "Sudoku"),
             ("tetris", "Tetris"),
         ] {
@@ -307,8 +343,8 @@ mod d25_tests {
     #[test]
     fn sudoku_card_reads_the_save_and_the_best_time() {
         let mut state = hub_state_with_games();
-        // No save, no best.
-        let manifest_id = state.lua_runtime.games()[2].id.clone();
+        // No save, no best. Sudoku is the fourth card by name.
+        let manifest_id = state.lua_runtime.games()[3].id.clone();
         let manifest = state
             .lua_runtime
             .catalog
@@ -356,7 +392,7 @@ mod d25_tests {
     #[test]
     fn tetris_card_groups_the_best_score() {
         let mut state = hub_state_with_games();
-        let manifest_id = state.lua_runtime.games()[3].id.clone();
+        let manifest_id = state.lua_runtime.games()[4].id.clone();
         let manifest = state
             .lua_runtime
             .catalog
@@ -375,6 +411,29 @@ mod d25_tests {
         assert_eq!(second, "Classic · best 4,200");
     }
 
+    /// The mockup's Race card: Classic over Zen, each with its best distance.
+    #[test]
+    fn race_card_shows_the_best_distances() {
+        let mut state = hub_state_with_games();
+        let manifest_id = state.lua_runtime.games()[2].id.clone();
+        let manifest = state
+            .lua_runtime
+            .catalog
+            .entries
+            .iter()
+            .find(|entry| entry.manifest.id == manifest_id)
+            .map(|entry| &entry.manifest)
+            .unwrap();
+        let (first, second) = super::game_details(&state, manifest);
+        assert_eq!(first, "Classic · no best yet");
+        assert_eq!(second, "Zen · no best yet");
+        state.lua_runtime.records.race_classic = 5_100;
+        state.lua_runtime.records.race_zen = 2_400;
+        let (first, second) = super::game_details(&state, manifest);
+        assert_eq!(first, "Classic · best 5.1 km");
+        assert_eq!(second, "Zen · best 2.4 km");
+    }
+
     #[test]
     fn the_hub_selects_a_card_and_plays_it() {
         // Real samples, because opening a session reads MAIN.LUA from the
@@ -386,14 +445,162 @@ mod d25_tests {
             true,
         );
         assert!(state.lua_runtime.catalog.is_available());
-        // Move to Tetris (4th card) and play it.
-        state.apply(crate::buttons::ButtonEvent::Down);
-        state.apply(crate::buttons::ButtonEvent::Down);
-        state.apply(crate::buttons::ButtonEvent::Down);
-        assert_eq!(state.category_selection(ScreenRoute::Games), 3);
+        // The cards sort by name: Hello Grid, Minesweeper, Race, Sudoku,
+        // Tetris. Move to Tetris (5th card) and play it.
+        for _ in 0..4 {
+            state.apply(crate::buttons::ButtonEvent::Down);
+        }
+        assert_eq!(state.category_selection(ScreenRoute::Games), 4);
         state.apply(crate::buttons::ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::LuaGame);
         assert!(state.lua_runtime.session.is_some());
+    }
+
+    /// Games › Race › Classic through `AppState::apply` and `tick_lua_game`:
+    /// the timer steps the road, the interval shrinks with the speed, a crash
+    /// opens the crash screen, Race again starts a new run and the best
+    /// distance is kept for `RECORDS.TXT`.
+    #[test]
+    fn race_plays_on_the_timer_crashes_and_races_again() {
+        use crate::buttons::ButtonEvent;
+        use crate::lua_runtime::event_bridge::LuaEventBridge;
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Games);
+        state.lua_runtime.refresh_catalog_from_root(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS"),
+            true,
+        );
+        // Race is the third card by name.
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::LuaGame);
+        // The mode list: Classic is the first row. The press time seeds the
+        // game, so the run is the same every time.
+        state.apply_with_clock(ButtonEvent::Select, 3);
+        let mut clock = 0_u64;
+        let mut stepped = false;
+        let mut interval_at_start = None;
+        let mut interval_after_km = None;
+        // Careful driving: dodge into a lane that survives the next column,
+        // then let the timer step the road.
+        for _ in 0..3_000 {
+            let (over, threatened) = match &state.lua_runtime.session {
+                Some(session) => match &session.event_bridge {
+                    LuaEventBridge::Race(app) => {
+                        let game = app.game();
+                        (game.is_over(), game.cell(game.player_lane(), 2).is_some())
+                    }
+                    _ => break,
+                },
+                None => break,
+            };
+            if over {
+                break;
+            }
+            if threatened {
+                let target = match &state.lua_runtime.session {
+                    Some(session) => match &session.event_bridge {
+                        LuaEventBridge::Race(app) => {
+                            let game = app.game();
+                            (0..4_usize)
+                                .filter(|lane| {
+                                    *lane != game.player_lane()
+                                        && game.cell(*lane, 1).is_none()
+                                        && game.cell(*lane, 2).is_none()
+                                })
+                                .min_by_key(|lane| lane.abs_diff(game.player_lane()))
+                        }
+                        _ => break,
+                    },
+                    None => break,
+                };
+                if let Some(target) = target {
+                    let lane = match &state.lua_runtime.session {
+                        Some(session) => match &session.event_bridge {
+                            LuaEventBridge::Race(app) => app.game().player_lane(),
+                            _ => break,
+                        },
+                        None => break,
+                    };
+                    if target < lane {
+                        state.apply(ButtonEvent::Up);
+                    } else if target > lane {
+                        state.apply(ButtonEvent::Down);
+                    }
+                }
+            }
+            clock += 1_000;
+            if state.tick_lua_game(clock) {
+                stepped = true;
+                // The runtime's interval, measured right after a step ran.
+                // `None` on the step that crashes: the game is over.
+                if let Some(due) = state.next_lua_game_tick_ms() {
+                    let interval = due - clock;
+                    let speed = match &state.lua_runtime.session {
+                        Some(session) => match &session.event_bridge {
+                            LuaEventBridge::Race(app) => app.game().speed(),
+                            _ => break,
+                        },
+                        None => break,
+                    };
+                    if speed <= 1 {
+                        interval_at_start = Some(interval);
+                    } else if interval_after_km.is_none() {
+                        interval_after_km = Some(interval);
+                    }
+                }
+            }
+            if interval_after_km.is_some() {
+                break;
+            }
+        }
+        assert!(stepped, "the timer stepped the road");
+        assert_eq!(
+            interval_at_start,
+            Some(1_000),
+            "one step a second at speed 1"
+        );
+        assert_eq!(
+            interval_after_km,
+            Some(900),
+            "100 ms less after a kilometre"
+        );
+        // Stop dodging: the next obstacle in the lane ends the run.
+        for _ in 0..300 {
+            let over = match &state.lua_runtime.session {
+                Some(session) => match &session.event_bridge {
+                    LuaEventBridge::Race(app) => app.game().is_over(),
+                    _ => false,
+                },
+                None => false,
+            };
+            if over {
+                break;
+            }
+            clock += 1_000;
+            state.tick_lua_game(clock);
+        }
+        // The crash screen's rows: Race again is the first one.
+        state.apply(ButtonEvent::Select);
+        let distance = match &state.lua_runtime.session {
+            Some(session) => match &session.event_bridge {
+                LuaEventBridge::Race(app) => {
+                    assert!(!app.game().is_over(), "Race again starts a new run");
+                    app.game().distance_m()
+                }
+                _ => panic!("the race is open"),
+            },
+            None => panic!("the race is open"),
+        };
+        assert_eq!(distance, 0, "the new run starts at the start line");
+        // Leaving keeps the best distance for RECORDS.TXT.
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Games);
+        assert!(
+            state.lua_runtime.records.race_classic > 0,
+            "the best is kept"
+        );
     }
 
     #[test]
@@ -415,6 +622,8 @@ mod d25_tests {
         state.lua_runtime.records = GameRecords {
             tetris_zen: 18_950,
             tetris_classic: 4_200,
+            race_classic: 5_100,
+            race_zen: 2_400,
             sudoku_easy: 0,
             sudoku_medium: 761,
             sudoku_hard: 0,

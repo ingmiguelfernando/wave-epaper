@@ -26,6 +26,7 @@ Use a FAT-formatted SD card. Wave mounts it at `/sdcard` and expects the followi
     HGRID/
     SUDOKU/
     MINES/
+    RACE/
     TETRIS/
     DICT/
       INDEX.TXT

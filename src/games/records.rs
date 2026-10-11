@@ -17,6 +17,10 @@ pub struct GameRecords {
     pub tetris_zen: u32,
     /// Best Tetris Classic score; slow gravity, its own record.
     pub tetris_classic: u32,
+    /// Best Race Classic distance in metres; one step a second at first.
+    pub race_classic: u32,
+    /// Best Race Zen distance in metres; the road steps on a key.
+    pub race_zen: u32,
     /// Best solve time in seconds per difficulty, 0 = none yet.
     pub sudoku_easy: u32,
     pub sudoku_medium: u32,
@@ -42,6 +46,8 @@ impl GameRecords {
             match key.trim() {
                 "tetris_zen" => records.tetris_zen = parsed,
                 "tetris_classic" => records.tetris_classic = parsed,
+                "race_classic" => records.race_classic = parsed,
+                "race_zen" => records.race_zen = parsed,
                 "sudoku_easy" => records.sudoku_easy = parsed,
                 "sudoku_medium" => records.sudoku_medium = parsed,
                 "sudoku_hard" => records.sudoku_hard = parsed,
@@ -55,8 +61,14 @@ impl GameRecords {
     #[must_use]
     pub fn serialized(&self) -> String {
         format!(
-            "# Wave game records v1\ntetris_zen={}\ntetris_classic={}\nsudoku_easy={}\nsudoku_medium={}\nsudoku_hard={}\n",
-            self.tetris_zen, self.tetris_classic, self.sudoku_easy, self.sudoku_medium, self.sudoku_hard
+            "# Wave game records v1\ntetris_zen={}\ntetris_classic={}\nrace_classic={}\nrace_zen={}\nsudoku_easy={}\nsudoku_medium={}\nsudoku_hard={}\n",
+            self.tetris_zen,
+            self.tetris_classic,
+            self.race_classic,
+            self.race_zen,
+            self.sudoku_easy,
+            self.sudoku_medium,
+            self.sudoku_hard
         )
     }
 
@@ -94,6 +106,28 @@ impl GameRecords {
     pub fn observe_tetris_classic(&mut self, best: u32) -> bool {
         if best > self.tetris_classic {
             self.tetris_classic = best;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Raise the Race Classic best distance in metres; `true` when the file
+    /// must be saved.
+    pub fn observe_race_classic(&mut self, best: u32) -> bool {
+        if best > self.race_classic {
+            self.race_classic = best;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Raise the Race Zen best distance in metres; `true` when the file must
+    /// be saved.
+    pub fn observe_race_zen(&mut self, best: u32) -> bool {
+        if best > self.race_zen {
+            self.race_zen = best;
             true
         } else {
             false
@@ -151,6 +185,8 @@ mod tests {
         let records = GameRecords {
             tetris_zen: 18_950,
             tetris_classic: 4_200,
+            race_classic: 5_100,
+            race_zen: 2_400,
             sudoku_easy: 0,
             sudoku_medium: 0,
             sudoku_hard: 0,
@@ -188,6 +224,19 @@ mod tests {
         );
         let parsed = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(parsed.tetris_classic, 4_200, "the Classic best round-trips");
+    }
+
+    /// Race keeps its best distances in metres, one per mode, in the same file.
+    #[test]
+    fn race_best_distances_round_trip_per_mode() {
+        let mut records = GameRecords::default();
+        assert!(records.observe_race_classic(5_100));
+        assert!(records.observe_race_zen(2_400));
+        assert!(!records.observe_race_classic(4_000), "lower saves nothing");
+        assert_eq!(records.race_zen, 2_400, "a Classic run is not a Zen best");
+        let parsed = GameRecords::parse(&records.serialized()).unwrap();
+        assert_eq!(parsed.race_classic, 5_100);
+        assert_eq!(parsed.race_zen, 2_400);
     }
 
     #[test]

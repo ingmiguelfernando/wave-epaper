@@ -3034,7 +3034,7 @@ mod tests {
                 .filter(|entry| entry.manifest.kind == LuaAppKind::Game)
                 .map(|entry| entry.manifest.name.as_str())
                 .collect::<Vec<_>>(),
-            ["Hello Grid", "Minesweeper", "Sudoku", "Tetris"]
+            ["Hello Grid", "Minesweeper", "Race", "Sudoku", "Tetris"]
         );
 
         for (id, bridge, reason) in [

@@ -66,6 +66,18 @@ const TETRIS_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Boot, "drop"),
 ];
 
+const RACE_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "lane"),
+    (KeyCap::Select, "nitro"),
+    (KeyCap::Boot, "pause"),
+];
+
+const RACE_CRASH_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "choose"),
+    (KeyCap::Select, "select"),
+    (KeyCap::Boot, "hold: back"),
+];
+
 pub fn render_lua_apps(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -181,6 +193,15 @@ fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
         LuaEventBridge::Tetris(_) => &TETRIS_HINTS,
         // The mode list chooses, as Sudoku's start list does.
         LuaEventBridge::TetrisStart(_) => &CHOOSE_HINTS,
+        // The crash screen's rows choose; the road plays.
+        LuaEventBridge::Race(game) => {
+            if game.game().is_over() {
+                &RACE_CRASH_HINTS
+            } else {
+                &RACE_HINTS
+            }
+        }
+        LuaEventBridge::RaceStart(_) => &CHOOSE_HINTS,
     }
 }
 

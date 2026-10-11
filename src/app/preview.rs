@@ -687,6 +687,22 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     tetris_classic.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("tetris-classic", tetris_classic));
 
+    // Race: the mode list, a run a few kilometres in, and the crash screen.
+    let mut race_start = sample_state();
+    race_start.lua_runtime.session = Some(race_start_session());
+    race_start.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("race-start", race_start));
+
+    let mut race_play = sample_state();
+    race_play.lua_runtime.session = Some(race_play_session());
+    race_play.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("race-play", race_play));
+
+    let mut race_crash = sample_state();
+    race_crash.lua_runtime.session = Some(race_crash_session());
+    race_crash.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("race-crash", race_crash));
+
     let mut sudoku_start = sample_state();
     sudoku_start.lua_runtime.session = Some(sudoku_start_session());
     sudoku_start.router.navigate_to(ScreenRoute::LuaGame);
@@ -988,6 +1004,7 @@ fn sample_games_catalog(state: &mut AppState) {
     for (id, name) in [
         ("hgrid", "Hello Grid"),
         ("mines", "Minesweeper"),
+        ("race", "Race"),
         ("sudoku", "Sudoku"),
         ("tetris", "Tetris"),
     ] {
@@ -1067,6 +1084,124 @@ fn tetris_app_session(
             manifest: LuaAppManifest {
                 id: "tetris".into(),
                 name: "Tetris".into(),
+                kind: LuaAppKind::Game,
+                entry: "MAIN.LUA".into(),
+                version: "1.0".into(),
+                input: vec![],
+            },
+        },
+        source_bytes: source.len(),
+        canvas,
+        refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
+        event_bridge,
+    }
+}
+
+/// A session for any `race.init` line, loaded through the device bridge.
+fn race_session(source: &str) -> (NativeGameCanvas, LuaEventBridge) {
+    let mut canvas = NativeGameCanvas::default();
+    let event_bridge = LuaEventBridge::load(source, &mut canvas).unwrap();
+    (canvas, event_bridge)
+}
+
+/// The Race mode list as the device opens it: `race.init()`, no moves.
+fn race_start_session() -> LuaAppSession {
+    let source = "race.init()";
+    let (canvas, event_bridge) = race_session(source);
+    race_app_session(source, canvas, event_bridge)
+}
+
+/// A Classic race a few kilometres in, with a best to beat.
+fn race_play_session() -> LuaAppSession {
+    let source = "race.init('classic', 1803)";
+    let (mut canvas, mut event_bridge) = race_session(source);
+    if let LuaEventBridge::Race(app) = &mut event_bridge {
+        app.set_best(5_100);
+    }
+    drive_sample(&mut event_bridge, &mut canvas, 2_400);
+    race_app_session(source, canvas, event_bridge)
+}
+
+/// A crash after a careful run: the distance, the best and the three rows.
+fn race_crash_session() -> LuaAppSession {
+    let source = "race.init('classic', 1803)";
+    let (mut canvas, mut event_bridge) = race_session(source);
+    if let LuaEventBridge::Race(app) = &mut event_bridge {
+        app.set_best(5_100);
+    }
+    drive_sample(&mut event_bridge, &mut canvas, 2_400);
+    // Stop dodging: the next obstacle in the lane ends the run.
+    for _ in 0..200 {
+        let over = match &event_bridge {
+            LuaEventBridge::Race(app) => app.game().is_over(),
+            _ => false,
+        };
+        if over {
+            break;
+        }
+        event_bridge.tick_game(&mut canvas).unwrap();
+    }
+    race_app_session(source, canvas, event_bridge)
+}
+
+/// Drive by the gap until `metres`, the way a careful player would: step the
+/// road, then dodge into a lane that survives the next column.
+fn drive_sample(event_bridge: &mut LuaEventBridge, canvas: &mut NativeGameCanvas, metres: u32) {
+    for _ in 0..600_u32 {
+        let (distance, over) = match event_bridge {
+            LuaEventBridge::Race(app) => (app.game().distance_m(), app.game().is_over()),
+            _ => return,
+        };
+        if over || distance >= metres {
+            return;
+        }
+        let dodge = match event_bridge {
+            LuaEventBridge::Race(app) => {
+                let game = app.game();
+                if game.cell(game.player_lane(), 2).is_none() {
+                    None
+                } else {
+                    (0..4_usize)
+                        .filter(|lane| {
+                            *lane != game.player_lane()
+                                && game.cell(*lane, 1).is_none()
+                                && game.cell(*lane, 2).is_none()
+                        })
+                        .min_by_key(|lane| lane.abs_diff(game.player_lane()))
+                }
+            }
+            _ => return,
+        };
+        if let Some(target) = dodge {
+            let event = match event_bridge {
+                LuaEventBridge::Race(app) => {
+                    if target < app.game().player_lane() {
+                        ButtonEvent::Up
+                    } else {
+                        ButtonEvent::Down
+                    }
+                }
+                _ => return,
+            };
+            event_bridge.apply_button(event, 3_000, canvas).unwrap();
+        }
+        event_bridge.tick_game(canvas).unwrap();
+    }
+}
+
+/// Wrap a loaded Race bridge in the session the screens draw from.
+fn race_app_session(
+    source: &str,
+    canvas: NativeGameCanvas,
+    event_bridge: LuaEventBridge,
+) -> LuaAppSession {
+    LuaAppSession {
+        entry: LuaAppEntry {
+            directory_name: "RACE".into(),
+            directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS/RACE"),
+            manifest: LuaAppManifest {
+                id: "race".into(),
+                name: "Race".into(),
                 kind: LuaAppKind::Game,
                 entry: "MAIN.LUA".into(),
                 version: "1.0".into(),

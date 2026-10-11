@@ -4,6 +4,12 @@
 //! move one column toward the player each step, 20 metres a step. The engine
 //! holds no drawing; `tetris.rs` renders the sibling game the same way.
 
+use super::{
+    canvas::{CanvasTextStyle, NativeGameCanvas},
+    dirty_regions::{DirtyRect, GAME_CANVAS_HEIGHT, GAME_CANVAS_WIDTH},
+};
+use crate::buttons::ButtonEvent;
+
 /// Lanes of the road, top to bottom.
 pub const RACE_LANES: usize = 4;
 /// Columns of the road; obstacles arrive in the last one.
@@ -43,6 +49,17 @@ impl RaceMode {
         match self {
             Self::Zen => "zen",
             Self::Classic => "classic",
+        }
+    }
+}
+
+impl RaceAction {
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Up => "lane-up",
+            Self::Down => "lane-down",
+            Self::Nitro => "nitro",
         }
     }
 }
@@ -305,11 +322,658 @@ impl RaceGame {
     }
 }
 
+/// What one key press or step did, for the device log and the redraw.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RaceEventResult {
+    pub reason: &'static str,
+    pub lane: usize,
+    pub column: usize,
+    pub mode: RaceMode,
+    pub action: Option<RaceAction>,
+    pub distance_m: u32,
+    pub speed: u32,
+    pub cars_passed: u32,
+    pub nitro_used: u32,
+    pub completed: bool,
+    pub dirty_regions: Vec<DirtyRect>,
+}
+
+/// The mode list Race opens on: Classic and Zen, each with its best distance.
+/// Choosing a row starts that mode; the list holds no game of its own.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RaceStart {
+    classic_best: u32,
+    zen_best: u32,
+    cursor: usize,
+}
+
+impl RaceStart {
+    #[must_use]
+    pub const fn new(classic_best: u32, zen_best: u32) -> Self {
+        Self {
+            classic_best,
+            zen_best,
+            cursor: 0,
+        }
+    }
+
+    /// The saved bests, handed in when the list opens.
+    pub fn set_bests(&mut self, classic_best: u32, zen_best: u32) {
+        self.classic_best = classic_best;
+        self.zen_best = zen_best;
+    }
+
+    /// The rows, in order. A mode without a best yet says so.
+    #[must_use]
+    pub fn options(&self) -> [(RaceMode, String); 2] {
+        [
+            (RaceMode::Classic, best_label("Classic", self.classic_best)),
+            (RaceMode::Zen, best_label("Zen", self.zen_best)),
+        ]
+    }
+
+    #[must_use]
+    pub const fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// ▲▼ move the highlight, wrapping over the two modes.
+    pub fn move_cursor(&mut self, direction: i32) {
+        self.cursor = if direction < 0 {
+            self.cursor.checked_sub(1).unwrap_or(1)
+        } else {
+            (self.cursor + 1) % 2
+        };
+    }
+
+    /// ● on a row: the mode it names.
+    #[must_use]
+    pub const fn chosen(&self) -> RaceMode {
+        if self.cursor == 0 {
+            RaceMode::Classic
+        } else {
+            RaceMode::Zen
+        }
+    }
+
+    /// The saved best of `mode`, for the game the list starts.
+    #[must_use]
+    pub const fn best(&self, mode: RaceMode) -> u32 {
+        match mode {
+            RaceMode::Classic => self.classic_best,
+            RaceMode::Zen => self.zen_best,
+        }
+    }
+
+    /// One boxed row per mode, the highlighted one inverted, as Tetris' list.
+    pub fn render(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        canvas.clear_frame();
+        canvas.rect(0, 0, GAME_CANVAS_WIDTH, RACE_BAR_HEIGHT, true)?;
+        canvas.text(16, 30, "Race".into(), CanvasTextStyle::Inverse)?;
+        for (index, (_, label)) in self.options().iter().enumerate() {
+            let top = 140 + index as i32 * 64;
+            let selected = index == self.cursor;
+            canvas.rect(24, top, 432, 52, selected)?;
+            let style = if selected {
+                CanvasTextStyle::Inverse
+            } else {
+                CanvasTextStyle::Body
+            };
+            canvas.text(44, top + 34, label.clone(), style)?;
+        }
+        canvas.text(
+            24,
+            320,
+            "The road runs right to left:".into(),
+            CanvasTextStyle::Detail,
+        )?;
+        canvas.text(
+            24,
+            344,
+            "▲▼ change a lane, ● nitro.".into(),
+            CanvasTextStyle::Detail,
+        )?;
+        canvas.text(
+            24,
+            368,
+            "Zen steps only when you press.".into(),
+            CanvasTextStyle::Detail,
+        )?;
+        canvas.request_refresh();
+        Ok(())
+    }
+}
+
+/// The Race game on the canvas: the mockup's playing screen, the crash
+/// screen and their redraws. The road is drawn once; a step redraws only
+/// the cells whose content changed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RaceApp {
+    game: RaceGame,
+    seed: u32,
+    best: u32,
+    top_speed: u32,
+    steps: u32,
+    paused: bool,
+    /// Highlighted row of the crash screen's list.
+    crash_cursor: usize,
+    /// Set by the crash screen's `Back to Games` row.
+    exit_requested: bool,
+    /// Set by the crash screen's `Mode` row: the mode list opens again.
+    mode_requested: bool,
+}
+
+impl RaceApp {
+    #[must_use]
+    pub fn new(mode: RaceMode, seed: u32) -> Self {
+        Self {
+            game: RaceGame::new(mode, seed),
+            seed,
+            best: 0,
+            top_speed: 1,
+            steps: 0,
+            paused: false,
+            crash_cursor: 0,
+            exit_requested: false,
+            mode_requested: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn game(&self) -> &RaceGame {
+        &self.game
+    }
+
+    #[must_use]
+    pub const fn best(&self) -> u32 {
+        self.best
+    }
+
+    /// Seed the in-memory best from the saved records when a session opens.
+    pub fn set_best(&mut self, best: u32) {
+        self.best = self.best.max(best);
+    }
+
+    /// The crash screen's `Back to Games` row asked to leave.
+    #[must_use]
+    pub const fn exit_requested(&self) -> bool {
+        self.exit_requested
+    }
+
+    /// The crash screen's `Mode` row asked for the mode list again.
+    #[must_use]
+    pub const fn mode_requested(&self) -> bool {
+        self.mode_requested
+    }
+
+    pub fn render_initial(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        self.render_commands(canvas)?;
+        canvas.reset_dirty_regions();
+        canvas.invalidate_rect(RACE_FULL_RECT);
+        canvas.request_refresh();
+        Ok(())
+    }
+
+    /// ▲▼ change a lane, ● spends a nitro charge (Classic) or steps (Zen).
+    /// On the crash screen ▲▼ choose a row and ● runs it.
+    pub fn apply_button_and_render(
+        &mut self,
+        event: ButtonEvent,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<RaceEventResult, String> {
+        let before = self.grid_snapshot();
+        if self.game.is_over() {
+            return self.apply_crash_menu(event, canvas);
+        }
+        if self.paused {
+            // While paused only ● resumes; the road stands still.
+            if event == ButtonEvent::Select {
+                self.paused = false;
+            }
+            return self.finish_and_render("pause-toggle", None, &before, canvas);
+        }
+        let action = match event {
+            ButtonEvent::Up => RaceAction::Up,
+            ButtonEvent::Down => RaceAction::Down,
+            ButtonEvent::Select => RaceAction::Nitro,
+        };
+        let moved = self.game.apply(action);
+        self.note_progress();
+        let reason = match (moved, action) {
+            (false, RaceAction::Nitro) if self.game.mode() == RaceMode::Classic => "no-nitro",
+            (false, _) => "blocked",
+            (true, RaceAction::Up) => "lane-up",
+            (true, RaceAction::Down) => "lane-down",
+            (true, RaceAction::Nitro) if self.game.mode() == RaceMode::Classic => "nitro",
+            (true, RaceAction::Nitro) => "step",
+        };
+        let reason = if self.game.is_over() {
+            "game-over"
+        } else {
+            reason
+        };
+        self.finish_and_render(reason, Some(action), &before, canvas)
+    }
+
+    /// A short BOOT press pauses Classic (the step clock stops and `PAUSED`
+    /// shows) and steps Zen one column. On the crash screen it does nothing;
+    /// hold BOOT leaves, as in Tetris.
+    pub fn apply_boot_short_press_and_render(
+        &mut self,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<RaceEventResult, String> {
+        let before = self.grid_snapshot();
+        if self.game.is_over() {
+            return self.finish_and_render("game-finished", None, &before, canvas);
+        }
+        match self.game.mode() {
+            RaceMode::Classic => {
+                self.paused = !self.paused;
+                self.finish_and_render("pause-toggle", None, &before, canvas)
+            }
+            RaceMode::Zen => {
+                self.game.tick();
+                self.note_progress();
+                let reason = if self.game.is_over() {
+                    "game-over"
+                } else {
+                    "step"
+                };
+                self.finish_and_render(reason, None, &before, canvas)
+            }
+        }
+    }
+
+    /// The result reported when the mode list starts this game.
+    #[must_use]
+    pub fn started_result(&self) -> RaceEventResult {
+        RaceEventResult {
+            reason: "start-choose",
+            lane: self.game.player_lane(),
+            column: PLAYER_COLUMN,
+            mode: self.game.mode(),
+            action: None,
+            distance_m: self.game.distance_m(),
+            speed: self.game.speed(),
+            cars_passed: self.game.cars_passed(),
+            nitro_used: self.game.nitro_used(),
+            completed: self.game.is_over(),
+            dirty_regions: vec![RACE_FULL_RECT],
+        }
+    }
+
+    /// One timed step, redrawn like a key press. `None` when the tick changed
+    /// nothing (Zen, a paused or finished game), so the caller skips a redraw.
+    pub fn tick_and_render(
+        &mut self,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<Option<RaceEventResult>, String> {
+        if self.paused {
+            return Ok(None);
+        }
+        let before = self.grid_snapshot();
+        if !self.game.tick() {
+            return Ok(None);
+        }
+        self.note_progress();
+        let reason = if self.game.is_over() {
+            "game-over"
+        } else {
+            "step"
+        };
+        self.finish_and_render(reason, None, &before, canvas)
+            .map(Some)
+    }
+
+    /// The crash screen's rows: ▲▼ choose, ● runs the highlighted one.
+    fn apply_crash_menu(
+        &mut self,
+        event: ButtonEvent,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<RaceEventResult, String> {
+        let before = self.grid_snapshot();
+        let reason = match event {
+            ButtonEvent::Up => {
+                self.crash_cursor = self.crash_cursor.checked_sub(1).unwrap_or(2);
+                "crash-choose"
+            }
+            ButtonEvent::Down => {
+                self.crash_cursor = (self.crash_cursor + 1) % 3;
+                "crash-choose"
+            }
+            ButtonEvent::Select => match self.crash_cursor {
+                0 => {
+                    self.seed = self.seed.wrapping_add(1);
+                    self.game = RaceGame::new(self.game.mode(), self.seed);
+                    self.steps = 0;
+                    self.paused = false;
+                    self.crash_cursor = 0;
+                    "new-game"
+                }
+                1 => {
+                    self.mode_requested = true;
+                    "mode-list"
+                }
+                _ => {
+                    self.exit_requested = true;
+                    "back-to-games"
+                }
+            },
+        };
+        self.finish_and_render(reason, None, &before, canvas)
+    }
+
+    /// Keep the top speed and the best distance as the game runs.
+    fn note_progress(&mut self) {
+        self.steps = self.steps.saturating_add(1);
+        self.top_speed = self.top_speed.max(self.game.speed());
+        self.best = self.best.max(self.game.distance_m());
+    }
+
+    fn grid_snapshot(&self) -> [[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES] {
+        let mut before = [[None; RACE_COLUMNS]; RACE_LANES];
+        for lane in 0..RACE_LANES {
+            for column in 0..RACE_COLUMNS {
+                before[lane][column] = self.game.cell(lane, column);
+            }
+        }
+        before
+    }
+
+    fn finish_and_render(
+        &mut self,
+        reason: &'static str,
+        action: Option<RaceAction>,
+        before: &[[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES],
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<RaceEventResult, String> {
+        self.render_commands(canvas)?;
+        canvas.reset_dirty_regions();
+        let dirty_regions = self.dirty_regions(reason, before);
+        for rect in &dirty_regions {
+            canvas.invalidate_rect(*rect);
+        }
+        canvas.request_refresh();
+        Ok(RaceEventResult {
+            reason,
+            lane: self.game.player_lane(),
+            column: PLAYER_COLUMN,
+            mode: self.game.mode(),
+            action,
+            distance_m: self.game.distance_m(),
+            speed: self.game.speed(),
+            cars_passed: self.game.cars_passed(),
+            nitro_used: self.game.nitro_used(),
+            completed: self.game.is_over(),
+            dirty_regions,
+        })
+    }
+
+    /// Only the cells whose content changed are redrawn, plus the counters;
+    /// every 30 steps a full refresh clears ghosting.
+    fn dirty_regions(
+        &self,
+        reason: &'static str,
+        before: &[[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES],
+    ) -> Vec<DirtyRect> {
+        if matches!(
+            reason,
+            "new-game" | "mode-list" | "back-to-games" | "start-choose"
+        ) {
+            return vec![RACE_FULL_RECT];
+        }
+        if reason == "game-over" {
+            return vec![RACE_FULL_RECT];
+        }
+        if self.steps % RACE_REFRESH_STEPS == 0 {
+            return vec![RACE_FULL_RECT];
+        }
+        let mut regions = vec![RACE_STATS_RECT];
+        for lane in 0..RACE_LANES {
+            for column in 0..RACE_COLUMNS {
+                if before[lane][column] != self.game.cell(lane, column) {
+                    regions.push(cell_rect(lane, column));
+                }
+            }
+        }
+        regions
+    }
+
+    fn render_commands(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        if self.game.is_over() {
+            return self.render_crash(canvas);
+        }
+        canvas.clear_frame();
+        canvas.rect(0, 0, GAME_CANVAS_WIDTH, RACE_BAR_HEIGHT, true)?;
+        let title = match self.game.mode() {
+            RaceMode::Classic => "Race · Classic",
+            RaceMode::Zen => "Race · Zen",
+        };
+        canvas.text(16, 30, title.into(), CanvasTextStyle::Inverse)?;
+        let speed = format!("Speed {}", self.game.speed());
+        canvas.text_right(464, 30, speed, CanvasTextStyle::Inverse)?;
+
+        // Distance, best and the nitro charges.
+        canvas.text(
+            16,
+            74,
+            distance_label(self.game.distance_m()),
+            CanvasTextStyle::Heading,
+        )?;
+        canvas.text(
+            16,
+            100,
+            format!("Best {}", distance_label(self.best)),
+            CanvasTextStyle::Detail,
+        )?;
+        canvas.text(320, 74, "NITRO".into(), CanvasTextStyle::Detail)?;
+        for charge in 0..u32::from(self.game.nitro_charges()) {
+            canvas.rect(320 + charge as i32 * 26, 84, 20, 14, true)?;
+        }
+
+        self.draw_road(canvas)?;
+
+        // The speed line and its bar toward the next kilometre.
+        let next_km = (self.game.distance_m() / 1000 + 1) * 1000;
+        canvas.text(
+            16,
+            632,
+            format!(
+                "Speed {} at {}",
+                self.game.speed() + 1,
+                distance_label(next_km)
+            ),
+            CanvasTextStyle::Detail,
+        )?;
+        let into_km = self.game.distance_m() % 1000;
+        canvas.rect(16, 642, 448, 12, false)?;
+        let fill = 448 * into_km as i32 / 1000;
+        if fill > 0 {
+            canvas.rect(16, 642, fill, 12, true)?;
+        }
+
+        if self.paused {
+            canvas.rect(120, 300, 240, 80, true)?;
+            canvas.text(176, 352, "PAUSED".into(), CanvasTextStyle::InverseHeading)?;
+        }
+        Ok(())
+    }
+
+    /// The road: rumble strips, lane lines and the cars. Other cars are
+    /// outlines; the player's car is solid.
+    fn draw_road(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        canvas.rect(ROAD_X, ROAD_TOP, ROAD_WIDTH, RUMBLE_HEIGHT, true)?;
+        canvas.rect(
+            ROAD_X,
+            ROAD_BOTTOM - RUMBLE_HEIGHT,
+            ROAD_WIDTH,
+            RUMBLE_HEIGHT,
+            true,
+        )?;
+        canvas.line(ROAD_X, ROAD_TOP + 2, ROAD_X + ROAD_WIDTH, ROAD_TOP + 2)?;
+        canvas.line(
+            ROAD_X,
+            ROAD_BOTTOM - 2,
+            ROAD_X + ROAD_WIDTH,
+            ROAD_BOTTOM - 2,
+        )?;
+        for lane in 1..RACE_LANES {
+            let y = ROAD_TOP + lane as i32 * LANE_HEIGHT;
+            for x in (ROAD_X..ROAD_X + ROAD_WIDTH).step_by(52) {
+                canvas.line(x, y, (x + 30).min(ROAD_X + ROAD_WIDTH), y)?;
+            }
+        }
+        for lane in 0..RACE_LANES {
+            for column in 0..RACE_COLUMNS {
+                match self.game.cell(lane, column) {
+                    Some(RaceObstacle::Car) => draw_traffic(canvas, lane, column)?,
+                    Some(RaceObstacle::Cone) => draw_cone(canvas, lane, column)?,
+                    None => {}
+                }
+            }
+        }
+        draw_player_car(canvas, self.game.player_lane())
+    }
+
+    /// The mockup's crash screen: the distance, the best and how far it was,
+    /// top speed, cars passed and nitro used, then the three rows.
+    fn render_crash(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        canvas.clear_frame();
+        canvas.rect(0, 0, GAME_CANVAS_WIDTH, RACE_BAR_HEIGHT, true)?;
+        let title = match self.game.mode() {
+            RaceMode::Classic => "Race · Classic",
+            RaceMode::Zen => "Race · Zen",
+        };
+        canvas.text(16, 30, title.into(), CanvasTextStyle::Inverse)?;
+        canvas.text_right(464, 30, "Crash!".into(), CanvasTextStyle::Inverse)?;
+
+        canvas.text(
+            16,
+            130,
+            distance_label(self.game.distance_m()),
+            CanvasTextStyle::Heading,
+        )?;
+        let to_go = self.best.saturating_sub(self.game.distance_m());
+        let best_line = if to_go > 0 {
+            format!(
+                "Best {} · {} to go",
+                distance_label(self.best),
+                distance_label(to_go)
+            )
+        } else {
+            format!("Best {} · new record!", distance_label(self.best))
+        };
+        canvas.text(16, 162, best_line, CanvasTextStyle::Body)?;
+
+        for (label, value, x) in [
+            ("Top speed", self.top_speed.to_string(), 16),
+            ("Cars passed", self.game.cars_passed().to_string(), 176),
+            ("Nitro used", self.game.nitro_used().to_string(), 336),
+        ] {
+            canvas.text(x, 216, label.into(), CanvasTextStyle::Detail)?;
+            canvas.text(x, 248, value, CanvasTextStyle::Heading)?;
+        }
+
+        let rows = [
+            format!("Race again  {}", self.game.mode().marker()),
+            "Mode  Classic · Zen".to_string(),
+            "Back to Games".to_string(),
+        ];
+        for (index, row) in rows.iter().enumerate() {
+            let top = 300 + index as i32 * 64;
+            let selected = index == self.crash_cursor;
+            canvas.rect(24, top, 432, 52, selected)?;
+            let style = if selected {
+                CanvasTextStyle::Inverse
+            } else {
+                CanvasTextStyle::Body
+            };
+            canvas.text(44, top + 34, row.clone(), style)?;
+        }
+        Ok(())
+    }
+}
+
+/// The road's geometry: four lanes and six columns between the rumble strips.
+const RACE_BAR_HEIGHT: i32 = 44;
+const ROAD_X: i32 = 18;
+const ROAD_TOP: i32 = 118;
+const RUMBLE_HEIGHT: i32 = 14;
+const ROAD_WIDTH: i32 = 444;
+const LANE_HEIGHT: i32 = 112;
+const ROAD_BOTTOM: i32 = ROAD_TOP + RACE_LANES as i32 * LANE_HEIGHT;
+const CELL_WIDTH: i32 = ROAD_WIDTH / RACE_COLUMNS as i32;
+/// A full refresh every 30 steps clears ghosting.
+const RACE_REFRESH_STEPS: u32 = 30;
+const RACE_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
+const RACE_STATS_RECT: DirtyRect = DirtyRect::new(0, RACE_BAR_HEIGHT, GAME_CANVAS_WIDTH, 64);
+
+/// The cell's rectangle on the road.
+fn cell_rect(lane: usize, column: usize) -> DirtyRect {
+    DirtyRect::new(
+        ROAD_X + column as i32 * CELL_WIDTH,
+        ROAD_TOP + lane as i32 * LANE_HEIGHT,
+        CELL_WIDTH,
+        LANE_HEIGHT,
+    )
+}
+
+/// An outline car: less ink to move and less ghosting than a solid one.
+fn draw_traffic(canvas: &mut NativeGameCanvas, lane: usize, column: usize) -> Result<(), String> {
+    let rect = cell_rect(lane, column);
+    let x = rect.x + (CELL_WIDTH - 64) / 2;
+    let y = rect.y + (LANE_HEIGHT - 44) / 2;
+    canvas.rect(x, y, 64, 44, false)?;
+    canvas.line(x + 44, y + 4, x + 44, y + 40)?;
+    Ok(())
+}
+
+/// A cone: a small solid triangle stand-in with a paper stripe.
+fn draw_cone(canvas: &mut NativeGameCanvas, lane: usize, column: usize) -> Result<(), String> {
+    let rect = cell_rect(lane, column);
+    let x = rect.x + (CELL_WIDTH - 36) / 2;
+    let y = rect.y + (LANE_HEIGHT - 40) / 2;
+    canvas.rect(x + 10, y, 16, 40, true)?;
+    canvas.paper_rect(x + 12, y + 16, 12, 8, true)?;
+    Ok(())
+}
+
+/// The player's car: solid, with paper windows.
+fn draw_player_car(canvas: &mut NativeGameCanvas, lane: usize) -> Result<(), String> {
+    let rect = cell_rect(lane, PLAYER_COLUMN);
+    let x = rect.x + (CELL_WIDTH - 64) / 2;
+    let y = rect.y + (LANE_HEIGHT - 44) / 2;
+    canvas.rect(x, y, 64, 44, true)?;
+    canvas.paper_rect(x + 8, y + 8, 18, 28, true)?;
+    canvas.paper_rect(x + 34, y + 14, 22, 16, true)?;
+    Ok(())
+}
+
+/// `2.4 km` above a kilometre, `350 m` below it.
+#[must_use]
+pub fn distance_label(metres: u32) -> String {
+    if metres >= 1000 {
+        format!("{}.{:01} km", metres / 1000, (metres % 1000) / 100)
+    } else {
+        format!("{metres} m")
+    }
+}
+
+/// `Classic · best 5.1 km`, or `Classic · no best yet`.
+fn best_label(mode: &str, best_m: u32) -> String {
+    if best_m == 0 {
+        format!("{mode} · no best yet")
+    } else {
+        format!("{mode} · best {}", distance_label(best_m))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         RaceAction, RaceGame, RaceMode, RaceObstacle, PLAYER_COLUMN, RACE_COLUMNS, RACE_LANES,
     };
+    use crate::buttons::ButtonEvent;
 
     /// The free lanes of a column as a bit per lane.
     fn free_mask(game: &RaceGame, column: usize) -> u8 {
@@ -417,7 +1081,7 @@ mod tests {
                     Some(target) if target < game.player_lane() => {
                         game.apply(RaceAction::Up);
                     }
-                    Some(target) => {
+                    Some(_) => {
                         game.apply(RaceAction::Down);
                     }
                     None => break,
@@ -460,5 +1124,76 @@ mod tests {
         assert!(game.apply(RaceAction::Nitro));
         assert_eq!(game.distance_m(), 40);
         assert_eq!(game.nitro_used(), 0);
+    }
+
+    /// A step dirties only the cells whose content changed: the column the
+    /// obstacles left, the one they entered and the new column.
+    #[test]
+    fn a_step_dirties_only_the_cells_that_changed() {
+        use super::{NativeGameCanvas, RaceApp, CELL_WIDTH, RACE_FULL_RECT};
+        let mut app = RaceApp::new(RaceMode::Zen, 7);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        // One car on the road, so the step has something to move.
+        app.game.place(2, 3, RaceObstacle::Car);
+        let result = app
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
+            .unwrap();
+        assert_eq!(result.reason, "step");
+        let changed: Vec<_> = result
+            .dirty_regions
+            .iter()
+            .filter(|rect| rect.width == CELL_WIDTH)
+            .collect();
+        assert!(!changed.is_empty(), "the moved cells are redrawn");
+        assert!(
+            changed.len() <= 2 * RACE_LANES,
+            "only the cells that changed, not the road: {}",
+            changed.len()
+        );
+        assert!(
+            !result.dirty_regions.contains(&RACE_FULL_RECT),
+            "an ordinary step is not a full refresh"
+        );
+    }
+
+    /// The crash screen's rows: Race again, Mode and Back to Games.
+    #[test]
+    fn the_crash_menu_races_again_and_leaves() {
+        use super::{NativeGameCanvas, RaceApp};
+        let mut app = RaceApp::new(RaceMode::Classic, 7);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        // Drive into the first obstacle: no dodging at all.
+        for _ in 0..200 {
+            if app.game().is_over() {
+                break;
+            }
+            app.tick_and_render(&mut canvas).unwrap();
+        }
+        assert!(app.game().is_over());
+        // Row 0: Race again.
+        let result = app
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
+            .unwrap();
+        assert_eq!(result.reason, "new-game");
+        assert!(!app.game().is_over());
+        assert_eq!(app.game().distance_m(), 0);
+        // Crash again, then row 2: Back to Games.
+        for _ in 0..200 {
+            if app.game().is_over() {
+                break;
+            }
+            app.tick_and_render(&mut canvas).unwrap();
+        }
+        app.apply_button_and_render(ButtonEvent::Down, &mut canvas)
+            .unwrap();
+        app.apply_button_and_render(ButtonEvent::Down, &mut canvas)
+            .unwrap();
+        let result = app
+            .apply_button_and_render(ButtonEvent::Select, &mut canvas)
+            .unwrap();
+        assert_eq!(result.reason, "back-to-games");
+        assert!(app.exit_requested());
     }
 }

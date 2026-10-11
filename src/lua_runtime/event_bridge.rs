@@ -10,6 +10,7 @@ use crate::{
     games::{
         canvas::NativeGameCanvas,
         minesweeper::{MinesweeperEventResult, MinesweeperGame},
+        race::{RaceApp, RaceEventResult, RaceMode, RaceStart},
         sudoku::{SudokuEventResult, SudokuGame},
         tetris::{TetrisApp, TetrisEventResult, TetrisMode, TetrisStart},
     },
@@ -20,6 +21,7 @@ pub enum LuaGameEventResult {
     Sudoku(SudokuEventResult),
     Minesweeper(MinesweeperEventResult),
     Tetris(TetrisEventResult),
+    Race(RaceEventResult),
 }
 impl LuaGameEventResult {
     #[must_use]
@@ -28,6 +30,7 @@ impl LuaGameEventResult {
             Self::Sudoku(_) => "sudoku",
             Self::Minesweeper(_) => "minesweeper",
             Self::Tetris(_) => "tetris",
+            Self::Race(_) => "race",
         }
     }
     #[must_use]
@@ -36,6 +39,7 @@ impl LuaGameEventResult {
             Self::Sudoku(r) => r.reason,
             Self::Minesweeper(r) => r.reason,
             Self::Tetris(r) => r.reason,
+            Self::Race(r) => r.reason,
         }
     }
     #[must_use]
@@ -44,6 +48,7 @@ impl LuaGameEventResult {
             Self::Sudoku(r) => r.row,
             Self::Minesweeper(r) => r.row,
             Self::Tetris(r) => r.row,
+            Self::Race(r) => r.lane,
         }
     }
     #[must_use]
@@ -52,6 +57,7 @@ impl LuaGameEventResult {
             Self::Sudoku(r) => r.column,
             Self::Minesweeper(r) => r.column,
             Self::Tetris(r) => r.column,
+            Self::Race(r) => r.column,
         }
     }
     #[must_use]
@@ -60,6 +66,7 @@ impl LuaGameEventResult {
             Self::Sudoku(r) => r.step.marker(),
             Self::Minesweeper(r) => r.mode.marker(),
             Self::Tetris(r) => r.mode.marker(),
+            Self::Race(r) => r.mode.marker(),
         }
     }
     #[must_use]
@@ -68,7 +75,7 @@ impl LuaGameEventResult {
             // Sudoku's former axis log slot now carries the entry step.
             Self::Sudoku(r) => r.step.marker(),
             Self::Minesweeper(r) => r.axis.marker(),
-            Self::Tetris(_) => "none",
+            Self::Tetris(_) | Self::Race(_) => "none",
         }
     }
     #[must_use]
@@ -89,6 +96,14 @@ impl LuaGameEventResult {
                 r.lines,
                 r.level
             ),
+            Self::Race(r) => format!(
+                "action={} distance-m={} speed={} cars-passed={} nitro-used={}",
+                r.action.map_or("none", |action| action.marker()),
+                r.distance_m,
+                r.speed,
+                r.cars_passed,
+                r.nitro_used
+            ),
         }
     }
     #[must_use]
@@ -97,6 +112,7 @@ impl LuaGameEventResult {
             Self::Sudoku(r) => r.completed,
             Self::Minesweeper(r) => r.outcome.completed(),
             Self::Tetris(r) => r.completed,
+            Self::Race(r) => r.completed,
         }
     }
     #[must_use]
@@ -105,6 +121,7 @@ impl LuaGameEventResult {
             Self::Sudoku(r) => r.dirty_regions.len(),
             Self::Minesweeper(r) => r.dirty_regions.len(),
             Self::Tetris(r) => r.dirty_regions.len(),
+            Self::Race(r) => r.dirty_regions.len(),
         }
     }
 }
@@ -117,6 +134,9 @@ pub enum LuaEventBridge {
     Tetris(TetrisApp),
     /// The mode list; becomes `Tetris` once a row is chosen.
     TetrisStart(TetrisStart),
+    Race(RaceApp),
+    /// The mode list; becomes `Race` once a row is chosen.
+    RaceStart(RaceStart),
 }
 impl LuaEventBridge {
     pub fn load(source: &str, canvas: &mut NativeGameCanvas) -> Result<Self, String> {
@@ -146,6 +166,20 @@ impl LuaEventBridge {
                     Ok(Self::TetrisStart(start))
                 }
             }
+        } else if let Some(init) = parse_race_init(source)? {
+            match init {
+                RaceInit::Mode(mode, seed) => {
+                    let game = RaceApp::new(mode, seed);
+                    game.render_initial(canvas)?;
+                    Ok(Self::Race(game))
+                }
+                // The mode list is the first screen; no game exists until a row is chosen.
+                RaceInit::Start => {
+                    let start = RaceStart::new(0, 0);
+                    start.render(canvas)?;
+                    Ok(Self::RaceStart(start))
+                }
+            }
         } else {
             super::bootstrap::execute_bootstrap_script(source, canvas)?;
             Ok(Self::Static)
@@ -158,6 +192,7 @@ impl LuaEventBridge {
             Self::Sudoku(_) => "sudoku",
             Self::Minesweeper(_) => "minesweeper",
             Self::Tetris(_) | Self::TetrisStart(_) => "tetris",
+            Self::Race(_) | Self::RaceStart(_) => "race",
         }
     }
     pub fn apply_button(
@@ -196,13 +231,35 @@ impl LuaEventBridge {
                     Ok(None)
                 }
             }
+            Self::Race(g) => g
+                .apply_button_and_render(event, canvas)
+                .map(LuaGameEventResult::Race)
+                .map(Some),
+            Self::RaceStart(start) => {
+                if let Some(mode) = apply_race_start_button(start, event) {
+                    // The press time seeds the game, so each new game differs.
+                    let seed = (now_ms as u32).max(1);
+                    let mut game = RaceApp::new(mode, seed);
+                    game.set_best(start.best(mode));
+                    game.render_initial(canvas)?;
+                    let result = game.started_result();
+                    *self = Self::Race(game);
+                    Ok(Some(LuaGameEventResult::Race(result)))
+                } else {
+                    // A cursor move changes the highlight, so the list redraws.
+                    start.render(canvas)?;
+                    Ok(None)
+                }
+            }
         }
     }
-    /// A timed tick. Only Classic Tetris falls; every other game ignores it.
-    /// Returns whether the screen changed, so the caller refreshes once.
+    /// A timed tick. Only Classic games step on the clock; every other game
+    /// ignores it. Returns whether the screen changed, so the caller refreshes
+    /// once.
     pub fn tick_game(&mut self, canvas: &mut NativeGameCanvas) -> Result<bool, String> {
         match self {
             Self::Tetris(game) => Ok(game.tick_and_render(canvas)?.is_some()),
+            Self::Race(game) => Ok(game.tick_and_render(canvas)?.is_some()),
             _ => Ok(false),
         }
     }
@@ -225,14 +282,33 @@ impl LuaEventBridge {
                 .apply_boot_short_press_and_render(canvas)
                 .map(LuaGameEventResult::Tetris)
                 .map(Some),
-            // BOOT does nothing on the mode list; hold BOOT still leaves the app.
-            Self::TetrisStart(_) => Ok(None),
+            Self::Race(g) => g
+                .apply_boot_short_press_and_render(canvas)
+                .map(LuaGameEventResult::Race)
+                .map(Some),
+            // BOOT does nothing on the mode lists; hold BOOT still leaves the app.
+            Self::TetrisStart(_) | Self::RaceStart(_) => Ok(None),
         }
     }
 }
 /// Keys on the Tetris mode list. ▲▼ move the highlight; ● starts the chosen
 /// mode, replacing the list with its game and reporting the start.
 fn apply_tetris_start_button(start: &mut TetrisStart, event: ButtonEvent) -> Option<TetrisMode> {
+    match event {
+        ButtonEvent::Up => {
+            start.move_cursor(-1);
+            None
+        }
+        ButtonEvent::Down => {
+            start.move_cursor(1);
+            None
+        }
+        ButtonEvent::Select => Some(start.chosen()),
+    }
+}
+
+/// Keys on the Race mode list, the same as Tetris'.
+fn apply_race_start_button(start: &mut RaceStart, event: ButtonEvent) -> Option<RaceMode> {
     match event {
         ButtonEvent::Up => {
             start.move_cursor(-1);
@@ -400,6 +476,65 @@ fn parse_tetris_init(source: &str) -> Result<Option<TetrisInit>, String> {
     }
     Ok(config)
 }
+
+/// What a `race.init` line asks for: the mode list, or one mode with a seed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RaceInit {
+    Start,
+    Mode(RaceMode, u32),
+}
+
+fn parse_race_init(source: &str) -> Result<Option<RaceInit>, String> {
+    let mut config = None;
+    for (index, raw_line) in source.lines().enumerate() {
+        let line_number = index + 1;
+        let line = raw_line.split("--").next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if !line.starts_with("race.init(") || !line.ends_with(')') {
+            if line.starts_with("race.") {
+                return Err(format!(
+                    "MAIN.LUA line {line_number}: unsupported race call"
+                ));
+            }
+            return Ok(None);
+        }
+        if config.is_some() {
+            return Err(format!("MAIN.LUA line {line_number}: duplicate race.init"));
+        }
+        let arguments = line["race.init(".len()..line.len() - 1].trim();
+        if arguments.is_empty() {
+            // `race.init()` opens the mode list, as `tetris.init()` does.
+            config = Some(RaceInit::Start);
+            continue;
+        }
+        let values = arguments.split(',').map(str::trim).collect::<Vec<_>>();
+        if values.len() != 2 {
+            return Err(format!(
+                "MAIN.LUA line {line_number}: race.init expects mode, seed"
+            ));
+        }
+        let mode = unquote(values[0]).ok_or_else(|| {
+            format!("MAIN.LUA line {line_number}: race.init expects one quoted mode")
+        })?;
+        let mode = match mode {
+            "zen" => RaceMode::Zen,
+            "classic" => RaceMode::Classic,
+            _ => {
+                return Err(format!(
+                    "MAIN.LUA line {line_number}: race supports zen and classic modes"
+                ))
+            }
+        };
+        let seed = values[1]
+            .parse::<u32>()
+            .map_err(|_| format!("MAIN.LUA line {line_number}: invalid race seed"))?;
+        config = Some(RaceInit::Mode(mode, seed));
+    }
+    Ok(config)
+}
+
 fn unquote(value: &str) -> Option<&str> {
     for quote in ['\'', '"'] {
         if value.len() >= 2 && value.starts_with(quote) && value.ends_with(quote) {
