@@ -1154,7 +1154,7 @@ fn open_sample_epub(state: &mut AppState, later_page: bool) {
         }
     }
     if later_page {
-        reader.next_page();
+        reader.next_page(0);
     }
     state.reader = reader;
     // A week of half a minute a page, so the label carries its minutes.

@@ -62,6 +62,9 @@ pub const READER_POSITION_LIMIT: usize = 64;
 pub const READER_RECENT_LIMIT: usize = 16;
 /// Maximum bookmark records retained on removable storage.
 pub const READER_BOOKMARK_LIMIT: usize = 128;
+/// How long the place may stay unsaved before a page turn writes it.
+pub const PLACE_SAVE_INTERVAL_MS: u64 = 120_000;
+
 /// Maximum page anchors accepted from one SD-backed cache file.
 pub const READER_CACHE_OFFSET_LIMIT: usize = 4096;
 /// Persist an anchor-cache checkpoint after this many newly indexed pages.
@@ -1511,6 +1514,12 @@ pub struct ReaderUiState {
     persistence_event: Option<String>,
     last_persistence_event: Option<String>,
     clear_ghost_requested: bool,
+    /// The place moved in memory and is not on the card yet.
+    place_unsaved: bool,
+    /// When the place was last marked unsaved, in the caller's clock.
+    place_unsaved_at_ms: u64,
+    /// Card writes of the place, so a test can count them.
+    place_writes: usize,
 }
 
 impl Default for ReaderUiState {
@@ -1540,6 +1549,9 @@ impl Default for ReaderUiState {
             persistence_event: None,
             last_persistence_event: None,
             clear_ghost_requested: false,
+            place_unsaved: false,
+            place_unsaved_at_ms: 0,
+            place_writes: 0,
         }
     }
 }
@@ -1884,23 +1896,33 @@ impl ReaderUiState {
         outcome
     }
 
-    pub fn previous_page(&mut self) {
+    pub fn previous_page(&mut self, now_ms: u64) {
         if let Some(session) = self.session.as_mut() {
+            let before = session.current_page;
             if let Err(error) = session.previous_page() {
                 self.last_message = Some(error);
+                // A turn that moved the page still moved the place.
+                if session.current_page != before {
+                    self.note_place_moved(now_ms);
+                }
                 return;
             }
-            self.persist_current_session_best_effort();
+            self.note_place_moved(now_ms);
         }
     }
 
-    pub fn next_page(&mut self) {
+    pub fn next_page(&mut self, now_ms: u64) {
         if let Some(session) = self.session.as_mut() {
+            let before = session.current_page;
             if let Err(error) = session.next_page() {
                 self.last_message = Some(error);
+                // A turn that moved the page still moved the place.
+                if session.current_page != before {
+                    self.note_place_moved(now_ms);
+                }
                 return;
             }
-            self.persist_current_session_best_effort();
+            self.note_place_moved(now_ms);
         }
     }
 
@@ -1976,7 +1998,7 @@ impl ReaderUiState {
             .map_or(&[], ReaderSession::toc_entries)
     }
 
-    pub fn apply_toc_button(&mut self, event: ButtonEvent) -> bool {
+    pub fn apply_toc_button(&mut self, event: ButtonEvent, now_ms: u64) -> bool {
         let count = self.toc_entries().len();
         if count == 0 {
             return false;
@@ -1990,11 +2012,11 @@ impl ReaderUiState {
                 self.toc_selected = (self.toc_selected + 1) % count;
                 false
             }
-            ButtonEvent::Select => self.open_selected_toc_entry(),
+            ButtonEvent::Select => self.open_selected_toc_entry(now_ms),
         }
     }
 
-    fn open_selected_toc_entry(&mut self) -> bool {
+    fn open_selected_toc_entry(&mut self, now_ms: u64) -> bool {
         let Some(session) = self.session.as_mut() else {
             return false;
         };
@@ -2009,7 +2031,8 @@ impl ReaderUiState {
         match session.show_epub_offset(entry.text_offset) {
             Ok(()) => {
                 self.last_message = Some(format!("TOC: {}", entry.label));
-                self.persist_current_session_best_effort();
+                // A jump moves the place like a page turn; it saves in a batch.
+                self.note_place_moved(now_ms);
                 true
             }
             Err(error) => {
@@ -2509,9 +2532,58 @@ impl ReaderUiState {
         Ok(session)
     }
 
-    fn persist_current_session_best_effort(&mut self) {
+    /// Move the place in memory to the open page and mark it unsaved. The
+    /// files are written in batches by [`Self::save_place_if_unsaved`].
+    fn note_place_moved(&mut self, now_ms: u64) {
         let Some(location) = self.session.as_ref().map(ReaderSession::current_location) else {
             return;
+        };
+        self.resume = Some(location.clone());
+        self.positions.retain(|entry| !entry.same_book(&location));
+        self.positions.insert(0, location.clone());
+        self.positions.truncate(READER_POSITION_LIMIT);
+        self.recent.retain(|entry| !entry.same_book(&location));
+        self.recent.insert(0, location);
+        self.recent.truncate(READER_RECENT_LIMIT);
+        // The clock starts when the place first becomes unsaved, so a batch
+        // writes two minutes after the first turn, not after the last.
+        if !self.place_unsaved {
+            self.place_unsaved_at_ms = now_ms;
+        }
+        self.place_unsaved = true;
+    }
+
+    /// Write the place when it has been unsaved for `PLACE_SAVE_INTERVAL_MS`,
+    /// or at once when `force` (leaving the reading view, before sleep).
+    /// Returns whether the files were written; a failed write keeps the place
+    /// unsaved, so the next check tries again.
+    pub fn save_place_if_unsaved(&mut self, now_ms: u64, force: bool) -> bool {
+        if !self.place_unsaved {
+            return false;
+        }
+        if !force && now_ms.saturating_sub(self.place_unsaved_at_ms) < PLACE_SAVE_INTERVAL_MS {
+            return false;
+        }
+        self.persist_current_session_best_effort()
+    }
+
+    /// Card writes of the place so far.
+    #[must_use]
+    pub fn place_writes(&self) -> usize {
+        self.place_writes
+    }
+
+    /// Whether the place moved in memory and is not on the card yet.
+    #[must_use]
+    pub fn place_unsaved(&self) -> bool {
+        self.place_unsaved
+    }
+
+    /// Write the place to the card. Returns whether every file was written;
+    /// a failure keeps the place unsaved.
+    fn persist_current_session_best_effort(&mut self) -> bool {
+        let Some(location) = self.session.as_ref().map(ReaderSession::current_location) else {
+            return true;
         };
         self.resume = Some(location.clone());
         self.positions.retain(|entry| !entry.same_book(&location));
@@ -2542,7 +2614,10 @@ impl ReaderUiState {
         if let Err(error) = self.persist_anchor_cache() {
             errors.push(format!("CACHE: {error}"));
         }
+        self.place_writes += 1;
+        self.place_unsaved = !errors.is_empty();
         self.finish_persistence("state-positions-recent-cache", errors);
+        !self.place_unsaved
     }
 
     fn persist_bookmarks_best_effort(&mut self) {
@@ -3960,7 +4035,8 @@ mod tests {
         reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
-        reader.next_page();
+        reader.next_page(0);
+        reader.save_place_if_unsaved(0, true);
         reader.toggle_current_bookmark();
         assert!(state.join(READER_STATE_FILE).exists());
         assert!(state.join(READER_POSITIONS_FILE).exists());
@@ -3997,7 +4073,8 @@ mod tests {
         reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
-        reader.next_page();
+        reader.next_page(0);
+        reader.save_place_if_unsaved(0, true);
         let cache = state
             .join("CACHE")
             .read_dir()
@@ -4196,7 +4273,7 @@ mod tests {
         reader.library_selected = 0;
         assert!(reader.apply_library_button(ButtonEvent::Select));
         assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
-        reader.next_page();
+        reader.next_page(0);
         assert!(reader.session.as_ref().unwrap().current_page > 0);
         let prefs_path = state_root.join(READER_PREFS_FILE);
         // A save replaces this sentinel even when the preferences are unchanged.
@@ -4310,8 +4387,8 @@ mod tests {
         for _ in 0..3 {
             reader.tick();
         }
-        reader.next_page();
-        reader.next_page();
+        reader.next_page(0);
+        reader.next_page(0);
         let saved = reader.session.as_ref().unwrap().current_location();
         assert_eq!(saved.page_index, 2);
 
@@ -4592,6 +4669,89 @@ mod tests {
         let text = characters("uno extraordinariamente dos tres");
         let (lines, _) = super::compose_page(&text, 0, true, &setter, setter.lines_per_page);
         assert!(lines.iter().all(|line| !line.text.ends_with('-')));
+    }
+
+    /// A TXT book with a few pages, ready to turn.
+    fn txt_reader(name: &str) -> ReaderUiState {
+        let root = temp_dir(name);
+        let state = temp_dir(&format!("{name}-state"));
+        fs::write(root.join("Book.txt"), "uno dos tres ".repeat(2_000)).unwrap();
+        let mut reader = ReaderUiState::with_roots(
+            root.to_string_lossy().into_owned(),
+            state.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        for _ in 0..8 {
+            if reader.tick() == ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        reader
+    }
+
+    /// Ten turns inside two minutes write nothing; the first check after two
+    /// minutes writes once; the in-memory place moves on every turn.
+    #[test]
+    fn page_turns_write_in_batches_not_per_turn() {
+        let mut reader = txt_reader("place-batch");
+        let writes_before = reader.place_writes();
+        for step in 0..10 {
+            reader.next_page(step * 1_000);
+            assert!(reader.place_unsaved, "turn {step} is unsaved");
+            assert_eq!(
+                reader.place_writes(),
+                writes_before,
+                "turn {step} writes nothing"
+            );
+        }
+        // The in-memory place moved on every turn.
+        assert_eq!(
+            reader.resume.as_ref().unwrap().page_index,
+            10,
+            "the place is right in memory"
+        );
+        // The first check after two minutes writes once.
+        assert!(reader.save_place_if_unsaved(120_000, false));
+        assert_eq!(reader.place_writes(), writes_before + 1);
+        assert!(!reader.place_unsaved);
+        // A later check writes nothing more.
+        assert!(!reader.save_place_if_unsaved(240_000, false));
+        assert_eq!(reader.place_writes(), writes_before + 1);
+    }
+
+    /// Leaving the reading view writes the place at once.
+    #[test]
+    fn back_from_the_page_writes_the_place() {
+        let mut reader = txt_reader("place-back");
+        reader.next_page(0);
+        assert!(reader.place_unsaved);
+        assert!(
+            reader.save_place_if_unsaved(1, true),
+            "the exit flushes at once"
+        );
+        assert!(!reader.place_unsaved);
+    }
+
+    /// A failed write keeps the place unsaved, so the next check tries again.
+    #[test]
+    fn a_failed_write_is_retried() {
+        let mut reader = txt_reader("place-retry");
+        reader.next_page(0);
+        // A state root that cannot be written: the folder is a file.
+        let blocked = temp_dir("place-retry-blocked");
+        let blocker = blocked.join("not-a-folder");
+        fs::write(&blocker, "x").unwrap();
+        reader.state_root = blocker.to_string_lossy().into_owned();
+        assert!(
+            !reader.save_place_if_unsaved(120_000, false),
+            "the write fails"
+        );
+        assert!(reader.place_unsaved, "the place stays unsaved");
+        // The next check tries again.
+        assert!(!reader.save_place_if_unsaved(240_000, false));
+        assert!(reader.place_unsaved);
     }
 
     #[test]
@@ -4893,11 +5053,11 @@ mod tests {
             Some(Language::Spanish)
         );
         for _ in 0..first_chapter_pages {
-            reader.next_page();
+            reader.next_page(0);
         }
         let label = current_chapter_label(&reader);
         assert_eq!((label.chapter_number, label.page_number), (2, 1));
-        reader.previous_page();
+        reader.previous_page(0);
         let label = current_chapter_label(&reader);
         assert_eq!(label.chapter_number, 1);
         assert_eq!(label.page_number, first_chapter_pages);

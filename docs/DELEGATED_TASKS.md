@@ -459,7 +459,7 @@ D36 counts loads); the first check after two minutes writes once; back
 from the page writes; the in-memory place moves on every turn; a failed
 write is retried.
 
-**Status:**
+**Status:** done on `side-tasks-9`. Built: a page turn (and a TOC jump) updates the place in memory (`resume`, positions, recent) and marks it unsaved with its first-unsaved clock, so Home and the Library stay right; the three files and the anchor cache are written by `ReaderUiState::save_place_if_unsaved` when the place has been unsaved two minutes (checked at the head of `AppState::apply_with_clock` with `event_clock_ms`), when the reading view is left (`AppState::back` on the page; another book and a layout rebuild already wrote), and from `main.rs` next to each `save_reading_stats_if_dirty` call (only those lines: the sleep path, the reader-closed path and the five-minute cadence); a failed write keeps the place unsaved and the next check retries; a turn whose page advanced marks the place even when the cache read failed. Tests: ten turns inside two minutes write nothing and the in-memory place moves on every turn (a `place_writes` counter, as D36 counts loads); the first check after two minutes writes once; back from the page writes at once through `AppState::apply`; a failed write is retried. Open: nothing known.
 
 ### D45: Home › Library opens the books
 

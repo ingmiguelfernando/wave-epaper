@@ -1376,7 +1376,7 @@ mod tests {
             .current_epub_chapter_page_label()
             .unwrap();
         assert!(label.page_count > 1, "the chapter has a later page");
-        state.reader.next_page();
+        state.reader.next_page(0);
         let later = state
             .reader
             .session

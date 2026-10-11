@@ -1441,6 +1441,7 @@ mod firmware {
                             }
                             if _mounted_sd.is_some() {
                                 save_reading_stats_if_dirty(&mut state);
+                                save_place_if_unsaved(&mut state);
                                 state.bible.save_if_changed();
                             }
                             sleep_started = Some((Instant::now(), battery));
@@ -1661,6 +1662,9 @@ mod firmware {
                     && _mounted_sd.is_some()
                 {
                     save_reading_stats_if_dirty(&mut state);
+                }
+                if !state.reader_page_open() && _mounted_sd.is_some() {
+                    save_place_if_unsaved(&mut state);
                 }
                 if state.panel_awake
                     && (outcome == ReaderTickOutcome::FirstPageReady
@@ -2218,6 +2222,7 @@ mod firmware {
             if last_stats_save.map_or(true, |at| at.elapsed() >= READING_STATS_SAVE_INTERVAL) {
                 if _mounted_sd.is_some() {
                     save_reading_stats_if_dirty(&mut state);
+                    save_place_if_unsaved(&mut state);
                 }
                 last_stats_save = Some(Instant::now());
             }
@@ -2578,6 +2583,14 @@ mod firmware {
         match state.reading_stats.save_to_path(READING_STATS_PATH) {
             Ok(()) => info!("rustmix-wave=reading-stats status=saved path={READING_STATS_PATH}"),
             Err(error) => warn!("rustmix-wave=reading-stats status=save-failed error={error:#}"),
+        }
+    }
+
+    /// Write the reading place when it has been unsaved for two minutes.
+    fn save_place_if_unsaved(state: &mut AppState) {
+        let now_ms = state.event_clock_ms;
+        if state.reader.save_place_if_unsaved(now_ms, false) {
+            info!("rustmix-wave=reader-place status=saved");
         }
     }
 

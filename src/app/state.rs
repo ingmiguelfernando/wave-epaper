@@ -309,6 +309,8 @@ impl AppState {
     /// themselves; tests choose the times.
     pub fn apply_with_clock(&mut self, event: ButtonEvent, now_ms: u64) {
         self.event_clock_ms = now_ms;
+        // A place unsaved for two minutes is written in a batch.
+        self.reader.save_place_if_unsaved(now_ms, false);
         let route = self.router.current();
         if route == ScreenRoute::Home {
             self.apply_home(event);
@@ -940,7 +942,7 @@ impl AppState {
                 if event == ButtonEvent::Select {
                     self.note_select_press();
                 }
-                if self.reader.apply_toc_button(event) {
+                if self.reader.apply_toc_button(event, self.event_clock_ms) {
                     self.router.navigate_to(ScreenRoute::ReaderPage);
                 }
             }
@@ -949,13 +951,13 @@ impl AppState {
                 ButtonEvent::Up => {
                     self.note_reading_key();
                     let before = self.reader_position();
-                    self.reader.previous_page();
+                    self.reader.previous_page(self.event_clock_ms);
                     self.note_reading_page_turn(before);
                 }
                 ButtonEvent::Down => {
                     self.note_reading_key();
                     let before = self.reader_position();
-                    self.reader.next_page();
+                    self.reader.next_page(self.event_clock_ms);
                     self.note_reading_page_turn(before);
                 }
                 ButtonEvent::Select => {
@@ -1853,6 +1855,10 @@ impl AppState {
         if self.router.current() == ScreenRoute::ReaderLoading {
             self.reader.cancel_loading();
         }
+        if self.router.current() == ScreenRoute::ReaderPage {
+            // Leaving the reading view writes the place at once.
+            self.reader.save_place_if_unsaved(self.event_clock_ms, true);
+        }
         if self.router.current() == ScreenRoute::BibleReading {
             self.bible.remember_place();
         }
@@ -2251,6 +2257,37 @@ mod tests {
         assert_eq!((label.chapter_number, label.page_number), (2, 1));
         // The new chapter's first page draws its title.
         assert_eq!(session.current_epub_chapter_label(), Some("Capítulo 2"));
+    }
+
+    /// The two-minute batch and the exit flush, through `AppState::apply`.
+    #[test]
+    fn the_place_writes_in_batches_through_apply_and_on_back() {
+        let mut state = reading_state();
+        let root = std::env::temp_dir().join(format!("wave-place-wiring-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        state.reader.state_root = root.to_string_lossy().into_owned();
+
+        // Turns mark the place unsaved and write nothing inside two minutes.
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 5_000);
+        assert!(state.reader.place_unsaved());
+        assert_eq!(
+            state.reader.place_writes(),
+            0,
+            "no write inside two minutes"
+        );
+
+        // The check two minutes after the first turn writes once.
+        state.apply_with_clock(ButtonEvent::Down, 130_000);
+        assert_eq!(state.reader.place_writes(), 1, "the batch writes once");
+
+        // Leaving the page writes the place again at once.
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        assert_eq!(state.reader.place_writes(), 2);
+        assert!(!state.reader.place_unsaved());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
