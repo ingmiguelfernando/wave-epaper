@@ -3375,6 +3375,12 @@ mod firmware {
             VoiceNotesUiRequest::StopPlayback => {
                 stop_voice_note_playback(playback, audio_runtime, state, "ui-stop");
             }
+            VoiceNotesUiRequest::VolumeUp => {
+                apply_audio_request(audio_runtime, state, AudioUiRequest::VolumeUp);
+            }
+            VoiceNotesUiRequest::VolumeDown => {
+                apply_audio_request(audio_runtime, state, AudioUiRequest::VolumeDown);
+            }
             VoiceNotesUiRequest::PersistMicGain(mic_gain) => {
                 let preferences = VoiceNotesPreferences { mic_gain };
                 match save_voice_notes_preferences(std::path::Path::new(VOICE_NOTES_ROOT), preferences) {

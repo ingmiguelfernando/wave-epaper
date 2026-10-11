@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.11.0: what is implemented, not the future
+This guide describes firmware v0.11.1: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -417,6 +417,9 @@ Navigation:
 	summarize, Retry or Summarize again), Edit friendly title,
 	Export/download, Delete or Return; Select runs the action. Delete asks for
 	confirmation, and waits while the note is being sent.
+- Playing a note: Up/Down turn the speaker volume up or down in steps of
+	5%, shown on the Volume line; Select stops. The volume is the one in
+	Settings › System › Audio and goes back to 60% after a restart.
 - Note with an AI record: Select opens its result. The title is the summary
     title; tabs are SUMMARY, TRANSCRIPT and AUDIO (short BOOT switches);
     Up/Down scroll the text; Select opens the note's actions. Until the

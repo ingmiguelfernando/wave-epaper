@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-11, firmware v0.11.0.
+Last updated: 2026-10-11, firmware v0.11.1.
 
 ## Status
 
@@ -24,7 +24,7 @@ Last updated: 2026-10-11, firmware v0.11.0.
 | Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3 |
-| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1 |
+| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1; Race designed (mockup), delegated as Round 10 |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0; XiaoZhi open |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
@@ -305,6 +305,10 @@ Done in v0.9.7 (D27); kept as the reference.
   - Refresh only the changed cells (`games/dirty_regions.rs`), with a full
     refresh every few moves.
 - **Games hub.** Done in v0.9.7 (D25): one card per SD game with its state.
+- **Race** (native engine, SD app `RACE`): the mockup's two Race screens.
+  Four lanes on a road that runs right to left and moves in steps; ▲▼
+  change lanes, ● spends a nitro, BOOT pauses. Classic steps every second
+  and faster each kilometre; Zen steps on a key. Delegated as D49 and D50.
 
 ## Phase 7: AI
 

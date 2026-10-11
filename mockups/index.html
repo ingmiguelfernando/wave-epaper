@@ -185,6 +185,9 @@ canvas.full{position:absolute;inset:0;width:480px;height:800px;image-rendering:p
 .side .lbl{margin-top:16px}
 .side b{display:block;font-size:26px}
 .nx{display:grid;grid-template-columns:repeat(3,24px);grid-auto-rows:24px;margin-top:6px}
+.road{display:block;width:448px;margin:10px 16px 0}
+.rstats{display:flex;justify-content:space-between;margin:12px 16px 0}
+.rstats b{display:block;font-size:26px}
 
 /* ai */
 .app{position:relative;display:flex;align-items:center;gap:14px;height:84px;margin:0 16px 8px;padding:10px 14px 10px 34px;border:2px solid var(--ink)}
@@ -261,6 +264,12 @@ canvas.full{position:absolute;inset:0;width:480px;height:800px;image-rendering:p
     <g id="m-tools"><path d="M14.5 4a4.5 4.5 0 0 0-4.3 5.9l-6.4 6.4a1.9 1.9 0 0 0 2.7 2.7l6.4-6.4A4.5 4.5 0 0 0 19.9 7.1l-2.6 2.6-2.4-.6-.6-2.4 2.6-2.6A4.5 4.5 0 0 0 14.5 4z"/></g>
     <g id="m-settings"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/></g>
     <g id="m-mic"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v4M8.5 21.5h7"/></g>
+    <!-- Race: cars seen from above on a 60x44 grid, nose to the right -->
+    <pattern id="race-rumble" width="32" height="14" patternUnits="userSpaceOnUse"><rect width="16" height="14" style="fill:var(--ink)"/></pattern>
+    <g id="race-car"><rect x="9" y="0" width="12" height="8" rx="2"/><rect x="40" y="0" width="12" height="8" rx="2"/><rect x="9" y="36" width="12" height="8" rx="2"/><rect x="40" y="36" width="12" height="8" rx="2"/><path d="M2 12a8 8 0 0 1 8-8h34c9 0 14 9 14 18s-5 18-14 18H10a8 8 0 0 1-8-8z"/><path style="fill:var(--icobg)" d="M35 12h5c3 0 5 4 5 10s-2 10-5 10h-5z"/><rect style="fill:var(--icobg)" x="10" y="13" width="7" height="18" rx="2"/><rect style="fill:var(--icobg)" x="20" y="19.5" width="12" height="5"/></g>
+    <g id="race-traffic"><rect x="9" y="0" width="12" height="8" rx="2"/><rect x="40" y="0" width="12" height="8" rx="2"/><rect x="9" y="36" width="12" height="8" rx="2"/><rect x="40" y="36" width="12" height="8" rx="2"/><path style="fill:var(--icobg)" stroke="currentColor" stroke-width="3" d="M3.5 12a8 8 0 0 1 8-8h32.5c8 0 12.5 9 12.5 18s-4.5 18-12.5 18H11.5a8 8 0 0 1-8-8z"/><path fill="none" stroke="currentColor" stroke-width="3" d="M36 12c3 3 3 17 0 20M15 13v18"/></g>
+    <g id="race-cone"><path d="M14 2l11 32H3z"/><path style="fill:var(--icobg)" d="M10.4 14h7.2l2 6H8.4z"/></g>
+    <g id="race-burst"><path d="M0-30l8 18 20-6-11 15 17 12-21 1 2 21-14-15-14 15 2-21-21-1 17-12-11-15 20 6z"/><path style="fill:var(--icobg)" d="M0-14l4 9 10-3-6 8 8 6-10 1 1 10-7-7-7 7 1-10-10-1 8-6-6-8 10 3z"/></g>
   </defs>
 </svg>
 
@@ -546,6 +555,56 @@ canvas.full{position:absolute;inset:0;width:480px;height:800px;image-rendering:p
   </div>
   <div class="ft"><span><i class="k">▲▼</i>move</span><span><i class="k">●</i>rotate</span><span><i class="k">BOOT</i>drop</span></div>
 </div></div><figcaption><b>Tetris</b>En modo Zen no hay gravedad: la pieza solo se mueve cuando presionas, ideal para e-paper y para la batería. Classic tiene gravedad lenta. ▲▼ mueve, ● rota y BOOT deja caer la pieza; la sombra punteada muestra dónde va a caer.</figcaption></figure>
+
+<!-- Race (proposal) -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Race · Classic</span><span class="r">Speed 3</span></div>
+  <div class="rstats">
+    <div><div class="lbl">Distance</div><b>2.4 km</b></div>
+    <div><div class="lbl">Best</div><b>5.1 km</b></div>
+    <div><div class="lbl">Nitro</div><b class="vb"><i class="f"></i><i class="f"></i><i></i></b></div>
+  </div>
+  <svg class="road" viewBox="0 0 448 468" fill="currentColor">
+    <rect width="448" height="14" fill="url(#race-rumble)"/><rect y="454" width="448" height="14" fill="url(#race-rumble)"/>
+    <path d="M0 15.5h448M0 452.5h448" stroke="currentColor" stroke-width="3"/>
+    <path d="M0 124h448M0 234h448M0 344h448" stroke="currentColor" stroke-width="4" stroke-dasharray="30 22"/>
+    <use href="#race-traffic" transform="translate(301 41.5) scale(1.25)"/>
+    <use href="#race-traffic" transform="translate(372 151.5) scale(1.25)"/>
+    <use href="#race-traffic" transform="translate(226 261.5) scale(1.25)"/>
+    <use href="#race-cone" transform="translate(318 370) scale(1.25)"/><use href="#race-cone" transform="translate(356 370) scale(1.25)"/>
+    <rect x="79" y="153" width="72" height="52" rx="13" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="7 6"/>
+    <use href="#race-car" transform="translate(76 261.5) scale(1.25)"/>
+    <path d="M26 274h38M40 289h24M26 304h38" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+  </svg>
+  <div class="pad" style="padding-bottom:0"><div class="lbl">Speed 4 at 3.0 km</div><div class="bar" style="margin-top:6px"><i style="width:80%"></i></div></div>
+  <div class="infobox">One step a second at first, faster every kilometre. Only the cars that move are redrawn; the lanes never move, and a full refresh every 30 steps clears ghosting.</div>
+  <div class="ft"><span><i class="k">▲▼</i>lane</span><span><i class="k">●</i>nitro</span><span><i class="k">BOOT</i>pause</span></div>
+</div></div><figcaption><b>Race (propuesta)</b>La carretera corre de derecha a izquierda para que ▲▼ cambien de carril sin pensar. Cada paso los demás autos se acercan una casilla; el contorno punteado es dónde quedarías con ▲. ● gasta un nitro: tres pasos de una vez, solo si el carril está libre. Los otros autos van en contorno: menos tinta que mover, menos fantasma. Zen: la carretera avanza solo cuando presionas.</figcaption></figure>
+
+<!-- Race crash -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Race · Classic</span><span class="r">Crash!</span></div>
+  <svg class="road" viewBox="0 0 448 212" fill="currentColor">
+    <rect width="448" height="14" fill="url(#race-rumble)"/><rect y="198" width="448" height="14" fill="url(#race-rumble)"/>
+    <path d="M0 15.5h448M0 196.5h448" stroke="currentColor" stroke-width="3"/>
+    <path d="M0 106h448" stroke="currentColor" stroke-width="4" stroke-dasharray="30 22"/>
+    <use href="#race-traffic" transform="translate(364 32) scale(1.25)"/>
+    <use href="#race-traffic" transform="translate(212 124) scale(1.25)"/>
+    <use href="#race-car" transform="rotate(-14 184 152) translate(146 124) scale(1.25)"/>
+    <use href="#race-burst" transform="translate(216 146)"/>
+  </svg>
+  <div class="timer" style="margin-top:26px;font-size:104px">2.4 km</div>
+  <div style="text-align:center;font-size:17px;font-weight:700;margin-top:8px">Best 5.1 km · 2.7 km to go</div>
+  <div class="rstats" style="margin:18px 16px 14px">
+    <div><div class="lbl">Top speed</div><b>3</b></div>
+    <div><div class="lbl">Cars passed</div><b>37</b></div>
+    <div><div class="lbl">Nitro used</div><b>1</b></div>
+  </div>
+  <div class="kv sel" style="border-top:2px solid var(--ink)">Race again <span class="v">Classic</span></div>
+  <div class="kv">Mode <span class="v">Classic · Zen</span></div>
+  <div class="kv">Back to Games <span class="v"></span></div>
+  <div class="ft"><span><i class="k">▲▼</i>choose</span><span><i class="k">●</i>select</span><span><i class="k">BOOT</i>hold: back</span></div>
+</div></div><figcaption><b>Race: choque</b>Al chocar, la pantalla se refresca completa una vez y muestra la distancia, el récord (se guarda en RECORDS.TXT como el de Tetris) y lo que falta para superarlo. ● vuelve a correr en el mismo modo.</figcaption></figure>
 
 </div>
 

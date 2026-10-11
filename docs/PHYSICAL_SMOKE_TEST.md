@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.11.0), not an upstream v1.0.0 marker.
+	expected release version (currently v0.11.1), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	XiaoZhi remains SOON. Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
@@ -200,6 +200,12 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Bible: a verse that does not fit a line breaks with a hyphen on a
 	Spanish translation; the next page turn does not stall (one chapter read
 	per chapter). Versículo del día opens on the page that holds the verse.
+
+## Voice note volume (v0.11.1)
+
+- [ ] Play a note: ▲ makes it louder and ▼ quieter while it plays, the
+	Volume line follows, ● stops, and Settings › System › Audio shows the
+	same volume. When the note ends, ▲▼ move through the actions again.
 
 ## Voice notes to the AI providers (v0.11.0)
 

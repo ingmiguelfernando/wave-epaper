@@ -3,6 +3,14 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.11.1 — Voice note volume
+
+- **Volume while a note plays.** ▲▼ turn the speaker up or down in steps
+  of 5% while a note plays, and the note's screen shows the volume. Before,
+  the volume was only in Settings › System › Audio.
+- **Mockup:** a Race game for e-paper, playing and crash screens; it is
+  the next delegated round.
+
 ## v0.11.0 — Voice notes to the AI providers
 
 - **Transcripts and summaries from the device.** With both providers in
