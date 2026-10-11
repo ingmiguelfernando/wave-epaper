@@ -648,10 +648,17 @@ mod d25_tests {
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         assert!(matches!(
-            state.lua_runtime.session.as_ref().map(|session| &session.event_bridge),
+            state
+                .lua_runtime
+                .session
+                .as_ref()
+                .map(|session| &session.event_bridge),
             Some(LuaEventBridge::RaceStart(_))
         ));
-        assert!(state.lua_runtime.records.race_classic > 0, "the best is kept");
+        assert!(
+            state.lua_runtime.records.race_classic > 0,
+            "the best is kept"
+        );
 
         // Classic again, a crash, then Back to Games.
         state.apply_with_clock(ButtonEvent::Select, clock + 7);

@@ -263,14 +263,15 @@ impl LuaRuntimeUiState {
             Ok(Some((id, result))) => {
                 // The Race crash screen's `Mode` row reopens the mode list.
                 // The run's best is kept first: the list replaces the game.
-                let race_mode_request = self.session.as_ref().and_then(|session| {
-                    match &session.event_bridge {
-                        LuaEventBridge::Race(app) if app.mode_requested() => {
-                            Some((app.game().mode(), app.best()))
-                        }
-                        _ => None,
-                    }
-                });
+                let race_mode_request =
+                    self.session
+                        .as_ref()
+                        .and_then(|session| match &session.event_bridge {
+                            LuaEventBridge::Race(app) if app.mode_requested() => {
+                                Some((app.game().mode(), app.best()))
+                            }
+                            _ => None,
+                        });
                 if let Some((mode, best)) = race_mode_request {
                     self.records_changed |= match mode {
                         RaceMode::Zen => self.records.observe_race_zen(best),
