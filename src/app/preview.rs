@@ -436,7 +436,16 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     details.voice_notes.selected = 2;
     details.voice_notes.detail_selected = crate::voice_notes::DETAIL_AI;
     details.router.navigate_to(ScreenRoute::VoiceNoteDetails);
-    states.push(("voice-note-details", details));
+    states.push(("voice-note-details", details.clone()));
+
+    // The same note playing: ▲▼ change the volume.
+    details.voice_notes.detail_selected = crate::voice_notes::DETAIL_PLAY;
+    details
+        .voice_notes
+        .begin_playback("NOTE_001.WAV".into(), 1_900_000);
+    details.voice_notes.update_playback_progress(640_000, 1_900_000);
+    details.audio.volume_percent = 85;
+    states.push(("voice-note-playing", details));
 
     let mut page = sample_state();
     open_sample_book(&mut page);

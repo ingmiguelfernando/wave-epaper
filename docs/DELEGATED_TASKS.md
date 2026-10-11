@@ -398,6 +398,104 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
+## Round 10 tasks (branch `side-tasks-10`)
+
+Start from `main` once Round 9 is merged; its result will be at the top of
+this file. Do not add these to `side-tasks-9`. Two tasks that add a racing
+game, in this order. When they are done, merge `main` into the branch and
+open a pull request.
+
+The design is the mockup's two Race screens, in Juegos after Tetris
+(`mockups/index.html`). The road runs from right to left so that ▲▼
+change lanes, and it moves in steps, as Tetris Classic falls.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8). Leave these files alone:
+
+- `src/main.rs`: the game timer already runs any game through
+  `AppState::tick_lua_game`, so nothing here needs it;
+- updates and network: `src/ota*.rs`, `src/wifi_transfer.rs`,
+  `src/network*.rs`, `sdkconfig.defaults`, `partitions.csv`, `.github/`;
+- voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
+  `src/ai_*.rs`, `src/xiaozhi/`, `src/app/screens/voice_notes.rs`,
+  `src/app/screens/ai.rs`;
+- drawing: `src/app/widgets/`, `src/app/typography/`,
+  `src/app/display_assets.rs`, `scripts/fonts/`.
+
+Run the doc-comment check of Round 9 before you hand over.
+
+### D49: Race engine (library only)
+
+**Why.** A game that suits e-paper: one screen change per step, and keys
+that map to lanes.
+
+**Change.** `src/games/race.rs`, with no drawing yet:
+
+- A road of 4 lanes and 6 columns. The player's car is in column 1. Cars
+  and cones arrive in column 5 and move one column toward the player each
+  step. A step is 20 m.
+- Each new column leaves at least one lane free, in or next to a lane left
+  free by the column before, so a careful driver can always get through.
+  Use the seeded generator of `tetris.rs`.
+- ▲▼ move the car one lane at once; moving into a car or a cone is a
+  crash, and so is a step that brings one into the player's cell.
+- Classic: a step every 1000 ms at speed 1. The speed goes up by one each
+  kilometre and each level takes 100 ms off, down to 500 ms.
+  `tick_interval_ms()` gives the timer the current value.
+- Nitro: start with one charge, one more each kilometre, at most three. ●
+  spends one and takes three steps at once, checking each; anything in the
+  way is a crash.
+- Zen: no timer. ▲▼ change lane and then step, ● steps in the same
+  lane, and there is no nitro.
+- Counters: distance in metres, speed, cars passed and nitro used;
+  `is_over()` after a crash.
+
+**Tests:** 10,000 steps from several seeds never close every lane and always
+leave one the player can reach; a car arriving in the player's cell
+crashes; a lane change into a car crashes; nitro with a car two columns
+ahead crashes, and on a clear lane it adds 60 m; the interval after 1, 3
+and 6 km; Zen moves only on a key.
+
+**Status:**
+
+### D50: Race as an SD game
+
+**Why.** D49 on screen, with a card on Games and a best distance, as the
+mockup draws it.
+
+**Change.**
+
+- `race.init()` in `MAIN.LUA` opens a mode list (Classic, Zen), as
+  `tetris.init()` does (`lua_runtime/event_bridge.rs`).
+  `next_game_tick_ms` (`lua_runtime/mod.rs`) returns the Classic interval
+  of the current speed; today it only knows Tetris.
+- The mockup's playing screen on `NativeGameCanvas`, at 480 × 800. The
+  lanes and edges are drawn once; a step redraws only the cells whose
+  content changed (`dirty_regions.rs`), and a full refresh comes every 30
+  steps (`refresh_policy.rs`). Other cars are outlines; the player's car is
+  solid.
+- The mockup's crash screen: the distance, the best and how far it was,
+  top speed, cars passed and nitro used, then Race again, Mode and Back to
+  Games.
+- BOOT pauses Classic (the step clock stops and `PAUSED` shows); hold BOOT
+  leaves, as in Tetris.
+- Best distances `race_classic` and `race_zen`, in metres, in
+  `RECORDS.TXT` (`games/records.rs`), saved when leaving, as Tetris does.
+- Games hub: a `race` card with a car icon and `Classic · best 5.1 km`
+  over `Zen · best …` (`app/screens/games.rs`).
+- `examples/sd-card/RUSTMIX/APPS/RACE/` with `APP.TOM`, `MAIN.LUA` and
+  `README.TXT`, like `TETRIS/`; the SD guide's tree and the User Guide's
+  Games section.
+- **Previews:** `race-start`, `race-play`, `race-crash`, and `games` with
+  three cards.
+
+**Tests:** through `AppState::apply` and `tick_lua_game`: Games › Race ›
+Classic, steps on the timer, a crash, Race again; the best kept in
+`RECORDS.TXT`; the interval shrinks with speed; a step dirties only the
+cells that changed.
+
+**Status:**
+
 ## Round 9 tasks (branch `side-tasks-9`)
 
 Start from `main` at v0.10.4. Five tasks, in this order; D48 is the

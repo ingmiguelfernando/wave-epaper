@@ -35,6 +35,12 @@ const RECORDING_HINTS: [(KeyCap, &str); 2] = [
     (KeyCap::Select, "stop + save"),
 ];
 
+const PLAYING_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "volume"),
+    (KeyCap::Select, "stop"),
+    (KeyCap::Boot, "hold: back"),
+];
+
 pub fn render_voice_notes(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -146,13 +152,6 @@ pub fn render_voice_note_details(
     line(
         display,
         276,
-        "Duration",
-        &format_duration(note.duration_seconds),
-        metadata,
-    )?;
-    line(
-        display,
-        312,
         "Playback",
         &format!(
             "{} / {}",
@@ -161,7 +160,10 @@ pub fn render_voice_note_details(
         ),
         metadata,
     )?;
-    let play = if state.voice_notes.is_playing_selected() {
+    let volume = format!("{}%", state.audio.volume_percent);
+    line(display, 312, "Volume", &volume, metadata)?;
+    let playing = state.voice_notes.is_playing_selected();
+    let play = if playing {
         "Stop playback"
     } else {
         "Play note"
@@ -204,7 +206,12 @@ pub fn render_voice_note_details(
     } else if let Some(error) = state.voice_notes.error.as_deref() {
         Text::new(error, Point::new(22, 690), detail).draw(display)?;
     }
-    draw_bottom_bar(display, state.display, &RUN_HINTS)?;
+    let hints: &[(KeyCap, &str)] = if playing {
+        &PLAYING_HINTS
+    } else {
+        &RUN_HINTS
+    };
+    draw_bottom_bar(display, state.display, hints)?;
     Ok(())
 }
 

@@ -207,6 +207,9 @@ pub enum VoiceNotesUiRequest {
     CancelRecording,
     StartPlayback,
     StopPlayback,
+    /// Speaker volume up or down while a note plays.
+    VolumeUp,
+    VolumeDown,
     PersistMicGain(VoiceMicGain),
     SaveEditedTitle {
         file_name: String,
@@ -350,6 +353,15 @@ impl VoiceNotesUiState {
             }
         } else {
             match event {
+                // While the note plays the cursor stays on Stop, so ▲▼ are free.
+                ButtonEvent::Up if self.is_playing_selected() => {
+                    self.request = Some(VoiceNotesUiRequest::VolumeUp);
+                    true
+                }
+                ButtonEvent::Down if self.is_playing_selected() => {
+                    self.request = Some(VoiceNotesUiRequest::VolumeDown);
+                    true
+                }
                 ButtonEvent::Up => {
                     self.detail_selected = self
                         .detail_selected
@@ -1409,6 +1421,34 @@ mod tests {
         ui.begin_playback("VOICE001.WAV".into(), 0);
         assert!(ui.apply_detail_button(ButtonEvent::Select));
         assert_eq!(ui.take_request(), Some(VoiceNotesUiRequest::StopPlayback));
+    }
+
+    #[test]
+    fn up_and_down_change_the_volume_only_while_the_note_plays() {
+        let mut ui = VoiceNotesUiState::default();
+        ui.notes.push(VoiceNoteEntry {
+            file_name: "VOICE001.WAV".into(),
+            title: "VOICE NOTE 001".into(),
+            recorded_at: VOICE_UNKNOWN_RECORDED_AT.into(),
+            wav_bytes: 44,
+            pcm_bytes: 0,
+            duration_seconds: 0,
+            ai_state: None,
+        });
+        ui.selected = 2;
+        ui.apply_detail_button(ButtonEvent::Down);
+        assert_eq!(ui.detail_selected, DETAIL_AI);
+        assert_eq!(ui.take_request(), None);
+        ui.detail_selected = DETAIL_PLAY;
+        ui.begin_playback("VOICE001.WAV".into(), 0);
+        assert!(ui.apply_detail_button(ButtonEvent::Up));
+        assert_eq!(ui.take_request(), Some(VoiceNotesUiRequest::VolumeUp));
+        assert!(ui.apply_detail_button(ButtonEvent::Down));
+        assert_eq!(ui.take_request(), Some(VoiceNotesUiRequest::VolumeDown));
+        assert_eq!(ui.detail_selected, DETAIL_PLAY, "Select still stops");
+        ui.stop_playback();
+        ui.apply_detail_button(ButtonEvent::Down);
+        assert_eq!(ui.detail_selected, DETAIL_AI);
     }
 
     #[test]
