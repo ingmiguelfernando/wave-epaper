@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-10, firmware v0.10.5.
+Last updated: 2026-10-11, firmware v0.11.0.
 
 ## Status
 
@@ -25,7 +25,7 @@ Last updated: 2026-10-10, firmware v0.10.5.
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3 |
 | Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1 |
-| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1; requests from the device open |
+| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0; XiaoZhi open |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
@@ -308,21 +308,22 @@ Done in v0.9.7 (D27); kept as the reference.
 
 ## Phase 7: AI
 
-- **Voice Notes v2.**
-  1. Record.
-  2. Transcribe with an OpenAI-compatible `POST /audio/transcriptions`, for
-     example Groq `whisper-large-v3-turbo`.
-  3. Summarize with `POST /chat/completions`, for example OpenRouter.
-  4. Take the title from the summary.
-
-  Notes queue while offline, and each shows its state: queued, transcribing, or
-  summary ready.
-  - Recording stays WAV at first. Opus at 24 kbps needs an encoder (an ESP-IDF
-    Opus component); that decision is open.
+- **Voice Notes v2.** Done in 0.11.0 (`ai_jobs.rs`, `ai_worker.rs`,
+  `ai_keys.rs`): a queued note goes to `POST /audio/transcriptions` in WAV
+  parts of at most 10 minutes, the transcript to `POST /chat/completions`,
+  and the title comes from the summary. One note at a time on a worker
+  thread on core 1; Wi-Fi stays on for it; recording, playback, the portal
+  and sleep stop it and queue it again; network errors back off from 2
+  minutes to an hour.
+  - Left: Opus at 24 kbps would make uploads about ten times smaller. It
+    needs an encoder (an ESP-IDF Opus component), which XiaoZhi needs too.
 - **Settings › AI.** Two providers, each with a base URL, model and key, plus
-  language, summary style and "process when online".
-- **API keys.** Typed in the Wi-Fi portal and stored encrypted in NVS. Never
-  written to the SD card, never shown again.
+  language, summary style and "process when online". Done in 0.10.1; the
+  keys row in 0.11.0.
+- **API keys.** Typed in the Wi-Fi portal and stored in the default NVS
+  partition, encrypted with the HMAC scheme (key in eFuse block 5, burned
+  on the first boot of 0.11.0). Never written to the SD card, never shown
+  again. One key serves both providers on the same host.
 - **XiaoZhi** voice chat (WebSocket and Opus streaming, device tools such as
   reading a Bible verse) is the largest item. xiaozhi-esp32 now needs ESP-IDF
   6.0.1 or later (Wave uses 5.5.1), so port its documented WebSocket protocol

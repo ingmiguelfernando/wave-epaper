@@ -419,7 +419,9 @@ Leave these files alone:
   `src/app/widgets/display_numerals.rs`, `src/app/display_assets.rs`,
   `src/app/typography/`, `scripts/fonts/`;
 - voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
-  `src/ai_*.rs`, `src/app/screens/voice_notes.rs`, `src/app/screens/ai.rs`.
+  `src/ai_*.rs`, `src/app/screens/voice_notes.rs`, `src/app/screens/ai.rs`;
+  Phase 7 also changed `src/wifi_transfer.rs`, `src/network.rs` and the
+  Settings › AI keys row.
 
 Read the Round 8 result first. Before you hand over, run this and fix
 every hit: it prints an old doc comment line followed by added code, the

@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.10.5), not an upstream v1.0.0 marker.
+	expected release version (currently v0.11.0), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	XiaoZhi remains SOON. Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
@@ -200,6 +200,26 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] Bible: a verse that does not fit a line breaks with a hyphen on a
 	Spanish translation; the next page turn does not stall (one chapter read
 	per chapter). Versículo del día opens on the page that holds the verse.
+
+## Voice notes to the AI providers (v0.11.0)
+
+- [ ] First boot: the serial log shows `rustmix-wave=nvs status=ready` and
+	then a Wi-Fi burst that connects; Settings › AI › API keys reads
+	`Not set`, not `Unavailable`. A second boot shows the same.
+- [ ] Portal › AI keys: save a transcription and a summary key; the page
+	says both are set and never shows them. After the portal stops, API keys
+	reads `Set`. Remove one: it reads which key is missing.
+- [ ] With `process=online`, record a 20-second note: about 8 seconds after
+	the last key press the list shows `TRANSCRIBING…`, then `SUMMARIZING…`,
+	then `SUMMARY`, and the note takes the summary's title. Its result shows
+	the summary, the transcript and the providers.
+- [ ] A wrong key gives `FAILED`; the SUMMARY tab shows the provider's
+	reason, and Retry after fixing the key finishes the note.
+- [ ] Record while a note is sent: the sent note goes back to `QUEUED` and
+	finishes after the recording is saved. Power-key sleep does the same.
+- [ ] A note longer than 10 minutes goes in two parts and the transcript
+	holds both.
+- [ ] Summarize again on a summarized note changes only the summary.
 
 ## Display numerals and weather icons (v0.10.5)
 

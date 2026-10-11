@@ -1,11 +1,9 @@
 # Wave user guide
 
-This guide describes firmware v0.10.5: what is implemented, not the future
+This guide describes firmware v0.11.0: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
-Its `sleep-clock` and `sleep-weather` images are layouts for a later release,
-**not modes you can choose yet**.
 
 ## Controls
 
@@ -48,8 +46,7 @@ Select opens the highlighted one.
 | Settings | One page of groups: Display, Sleep screen, Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. AI shows `Ready` once `/RUSTMIX/AI.TXT` sets both a transcription and a summary provider |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
-Tetris Classic, AI transcription, OTA updates and the clock or weather sleep
-screens are not implemented yet.
+XiaoZhi voice chat and OTA updates are not implemented yet.
 
 ## Photos
 
@@ -372,33 +369,72 @@ transcript › summary`), the three newest notes (title, then `Oct 2 · 12:04 ·
 18 min`) and a note that recordings stay on the SD card. ▲▼ moves through
 the cards and notes, ● opens XiaoZhi, Voice Notes or the note's details,
 and a short BOOT starts a new recording from anywhere on the hub.
-Transcription and summaries are not implemented yet.
+XiaoZhi voice chat is not implemented yet.
 
 ### Voice Notes
 
-Voice Notes records local PCM16 mono
-16 kHz WAV. Each note can have an AI record (`VOICE###.AI`, next to the WAV)
-that shows its state in the list and on the AI hub: `QUEUED`, `QUEUED ·
-OFFLINE`, `TRANSCRIBING…`, `SUMMARIZING…`, `SUMMARY` or `FAILED`. The device
-does not send transcription or summary requests yet; a note's state comes
-only from its record on the card.
+Voice Notes records local PCM16 mono 16 kHz WAV. With both providers set in
+`/RUSTMIX/AI.TXT` (see [SD-card setup](SD_CARD_SETUP.md)) and their API keys
+saved in the Wi-Fi portal, a note goes to the transcription provider and its
+transcript to the summary provider. Each note's AI record (`VOICE###.AI`,
+next to the WAV) keeps the state, the transcript and the summary. The list
+and the AI hub show the state: `QUEUED`, `QUEUED · OFFLINE`,
+`TRANSCRIBING…`, `SUMMARIZING…`, `SUMMARY` or `FAILED`.
+
+- With `process=online` a new recording joins the queue when it is saved.
+	With `manual`, choose **Transcribe and summarize** in the note's details.
+- Queued notes go one at a time, oldest first. The device switches Wi-Fi on
+	for them about 8 seconds after the last key press and keeps it on until
+	the note is done.
+- Notes wait while a note records or plays, while the transfer portal is
+	on, while the device sleeps, and below 15% battery without USB power.
+	Any of these stops the note being sent; it goes again later from the
+	start. Auto-sleep waits until the note being sent is done.
+- A busy provider or a lost connection queues the note again; the queue then
+	waits 2 minutes, then 4, and so on up to an hour. A refused request (a
+	wrong key or model name) marks the note `FAILED` with the provider's
+	reason, and **Retry** in its details sends it again.
+- A note longer than 10 minutes goes in equal parts of at most 10 minutes,
+	because providers accept files up to 25 MB; the transcript joins them.
+- The summary's title becomes the note's title until you name it yourself.
+- **Summarize again** in a summarized note's details asks for a new summary
+	from the saved transcript, for example after changing the style.
+
+Navigation:
 
 - List: Up/Down chooses Record new note, microphone gain or a saved note;
 	Select starts recording, cycles gain or opens details.
 - Recording: Up/Down toggles pause/resume; Select stops and saves; hold BOOT
 	cancels. The screen reports duration, peak and clipping.
-- Saved note: Up/Down chooses Play/Stop, Edit friendly title, Export/download,
-	Delete or Return; Select runs the action. Delete asks for confirmation.
+- Saved note: Up/Down chooses Play/Stop, the AI action (Transcribe and
+	summarize, Retry or Summarize again), Edit friendly title,
+	Export/download, Delete or Return; Select runs the action. Delete asks for
+	confirmation, and waits while the note is being sent.
 - Note with an AI record: Select opens its result. The title is the summary
     title; tabs are SUMMARY, TRANSCRIPT and AUDIO (short BOOT switches);
-    Up/Down scroll the text; Select opens the note's actions. A note without
-    a record opens its details.
+    Up/Down scroll the text; Select opens the note's actions. Until the
+    summary arrives, the SUMMARY tab says where the note is, or why it
+    failed. A note without a record opens its details.
 - Title keyboard: Up/Down moves in the active axis; short BOOT toggles
 	NAV H / NAV V; Select activates a key, SAVE or CANCEL. Hold BOOT cancels.
 
 WAV names stay `VOICE###.WAV`; friendly titles are sidecar metadata in
 `/RUSTMIX/VOICE/`. Export uses the temporary LAN portal. Do not edit sidecars
 or remove the SD card during recording/playback/writes.
+
+### API keys
+
+Start the Wi-Fi transfer portal (see Network and Wi-Fi transfer) and open
+its page. Under **AI keys**, choose Transcription key or Summary key, paste
+the key and select **Save key**. The device keeps keys encrypted in its flash
+memory, never on the SD card, and the page only says whether each key is set.
+When both providers are on the same host (Groq for both), one key serves
+both. Settings › AI › API keys reads `Set`, `Not set`, or which key is
+missing.
+
+The first start of firmware 0.11.0 or later burns a random key into the
+chip's eFuse block 5; the flash storage is encrypted with keys derived from
+it. This happens once and is permanent. USB flashing works as before.
 
 ## Tools
 

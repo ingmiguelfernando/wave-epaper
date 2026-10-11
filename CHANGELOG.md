@@ -3,6 +3,25 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.11.0 — Voice notes to the AI providers
+
+- **Transcripts and summaries from the device.** With both providers in
+  `AI.TXT` and their keys saved, a note goes to the transcription provider
+  and its transcript to the summary provider. The list and the AI hub show
+  each note's state, the result screen fills in, and the note takes the
+  summary's title. `process=online` queues each new recording; otherwise
+  choose Transcribe and summarize in the note's details.
+- **Queue.** One note at a time, oldest first, about 8 seconds after the
+  last key press, with Wi-Fi on until it is done. Notes longer than 10
+  minutes go in parts. A lost connection or a busy provider tries again
+  later; a refused request shows the provider's reason and offers Retry.
+  Summarize again makes a new summary from the saved transcript.
+- **API keys** are typed in the Wi-Fi portal's new AI keys section and kept
+  in encrypted flash, never on the SD card. The first boot of this version
+  burns a random key into the chip's eFuse block 5 for that encryption;
+  this is permanent and does not change USB flashing.
+- AI.TXT and the note list reload when the transfer portal stops.
+
 ## v0.10.5 — Display numerals and weather icons
 
 - **Sleep clock and temperatures** are drawn in Inter ExtraBold, as in the

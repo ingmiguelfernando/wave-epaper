@@ -23,8 +23,8 @@ use crate::{
     orientation::OrientedFrameBuffer,
     voice_note_metadata::format_storage_bytes,
     voice_notes::{
-        ai_action_label, format_duration, VoiceNotesMode, DETAIL_AI, DETAIL_DELETE,
-        DETAIL_EXPORT, DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE, VOICE_TITLE_EDITOR_KEY_ROWS,
+        ai_action_label, format_duration, VoiceNotesMode, DETAIL_AI, DETAIL_DELETE, DETAIL_EXPORT,
+        DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE, VOICE_TITLE_EDITOR_KEY_ROWS,
     },
 };
 

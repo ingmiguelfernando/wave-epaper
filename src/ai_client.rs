@@ -138,9 +138,7 @@ pub fn summary_request(model: &str, transcript: &str, style: SummaryStyle) -> St
 note mentions tasks, add a line with the word for to-dos in the transcript's \
 language, then one task per line, each starting with \"\u{2610} \"."
         }
-        SummaryStyle::Bullets => {
-            "the key points, one per line, each starting with \"\u{2022} \"."
-        }
+        SummaryStyle::Bullets => "the key points, one per line, each starting with \"\u{2022} \".",
         SummaryStyle::Paragraph => "one short paragraph.",
     };
     let system = format!(

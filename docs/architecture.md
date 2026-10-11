@@ -41,7 +41,9 @@ work are in [ROADMAP.md](ROADMAP.md).
     `screen-previews`).
 - Feature modules: `reader.rs`, `epub.rs`, `hyphenation.rs` (books);
   `weather.rs`; `network.rs`, `radio_burst.rs` (Wi-Fi); `alarm.rs`, `rtc*.rs`;
-  `audio/`, `voice_notes.rs`; `calendar.rs`, `dictionary.rs`,
+  `audio/`, `voice_notes.rs`, `voice_note_record.rs`; `ai_jobs.rs` (one note
+  through the providers), `ai_worker.rs` (its thread and the HTTPS client),
+  `ai_keys.rs` (keys in encrypted NVS); `calendar.rs`, `dictionary.rs`,
   `unit_converter.rs`; `lua_runtime/`, `games/` (SD apps); `wifi_transfer.rs`
   (file portal); `sleep_images.rs`, `sleep_mode.rs`, `sleep_screen.rs`;
   `photos/` and `dither.rs` (gallery, JPEG decoding, cache files, worker);

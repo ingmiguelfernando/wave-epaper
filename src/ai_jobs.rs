@@ -271,7 +271,8 @@ fn pcm_bytes(path: &Path) -> Result<u32, Stop> {
         |error: String| Stop::Failed(format!("The recording could not be read: {error}"));
     let mut file = File::open(path).map_err(|error| unreadable(error.to_string()))?;
     let mut header = [0_u8; 44];
-    file.read_exact(&mut header).map_err(|error| unreadable(error.to_string()))?;
+    file.read_exact(&mut header)
+        .map_err(|error| unreadable(error.to_string()))?;
     parse_pcm_wav_header(&header).map_err(|error| unreadable(error.to_string()))
 }
 
@@ -314,9 +315,8 @@ fn transcribe(
         let (status, reply) =
             transport.post(&url, &headers, &body, TRANSCRIPTION_REPLY_LIMIT, cancel)?;
         check_status(status, &reply)?;
-        let text = ai_client::parse_transcription(&reply).map_err(|error| {
-            Stop::Failed(format!("Unexpected transcription reply: {error}"))
-        })?;
+        let text = ai_client::parse_transcription(&reply)
+            .map_err(|error| Stop::Failed(format!("Unexpected transcription reply: {error}")))?;
         texts.push(text.trim().to_string());
     }
     texts.retain(|text| !text.is_empty());
@@ -517,10 +517,7 @@ mod tests {
             .unwrap();
         assert_eq!(&upload.body[start..start + wav.len()], wav.as_slice());
         assert_eq!(summary.url, "https://openrouter.ai/api/v1/chat/completions");
-        assert_eq!(
-            header(summary, "Authorization"),
-            Some("Bearer sk-or-test")
-        );
+        assert_eq!(header(summary, "Authorization"), Some("Bearer sk-or-test"));
         let request = String::from_utf8(summary.body.clone()).unwrap();
         assert!(request.contains("Hay que comprar pan."));
         let _ = std::fs::remove_dir_all(&root);
@@ -551,10 +548,7 @@ mod tests {
                 .unwrap();
             assert_eq!(upload.body[start..start + 44], half);
         }
-        assert_eq!(
-            record(&root).transcript,
-            "Primera parte.\n\nSegunda parte."
-        );
+        assert_eq!(record(&root).transcript, "Primera parte.\n\nSegunda parte.");
         let _ = std::fs::remove_dir_all(&root);
     }
 

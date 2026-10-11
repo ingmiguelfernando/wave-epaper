@@ -569,7 +569,13 @@ mod firmware {
         // a missing config or an unreachable network never blocks the shell.
         // NVS is taken once: Wi-Fi keeps its settings there and the AI keys
         // live there. It is encrypted; the first boot burns its HMAC key.
-        let nvs_partition = match EspDefaultNvsPartition::take() {
+        let nvs_partition = EspDefaultNvsPartition::take().or_else(|error| {
+            // Wi-Fi rebuilds its settings and calibration; saved keys are lost.
+            warn!("rustmix-wave=nvs status=erasing error={error}");
+            unsafe { sys::nvs_flash_erase() };
+            EspDefaultNvsPartition::take()
+        });
+        let nvs_partition = match nvs_partition {
             Ok(partition) => {
                 info!("rustmix-wave=nvs status=ready encryption=hmac-efuse-key5");
                 Some(partition)
@@ -891,7 +897,12 @@ mod firmware {
             if state.take_ai_retry() {
                 ai_backoff.clear();
             }
-            if ai_worker.is_busy() && (voice_recording.is_some() || voice_playback.is_some()) {
+            // The portal can move or delete the WAV being sent, as it could one
+            // being recorded or played.
+            let portal_active = wifi_transfer_server.is_some() || transfer_waiting;
+            if ai_worker.is_busy()
+                && (voice_recording.is_some() || voice_playback.is_some() || portal_active)
+            {
                 ai_worker.cancel();
             }
             let ai_battery = state.board.power.and_then(|power| power.battery_percent);
@@ -899,6 +910,7 @@ mod firmware {
                 && !sleep_mode.is_sleeping()
                 && voice_recording.is_none()
                 && voice_playback.is_none()
+                && !portal_active
                 && _mounted_sd.is_some()
                 && (on_usb_power
                     || ai_battery.map_or(true, |percent| percent >= AI_MIN_BATTERY_PERCENT))
@@ -2410,8 +2422,14 @@ mod firmware {
     /// A step or the end of an AI job: update the note's row and result.
     fn apply_ai_event(state: &mut AppState, backoff: &mut AiBackoff, event: AiEvent) {
         match event {
-            AiEvent::Step { wav_name, state: step } => {
-                info!("rustmix-wave=voice-ai status={} file={wav_name}", step.marker());
+            AiEvent::Step {
+                wav_name,
+                state: step,
+            } => {
+                info!(
+                    "rustmix-wave=voice-ai status={} file={wav_name}",
+                    step.marker()
+                );
                 state.set_note_ai_state(&wav_name, step);
             }
             AiEvent::Finished { wav_name, outcome } => {
@@ -2856,6 +2874,15 @@ mod firmware {
         state.calendar.refresh_events();
         storage_browser.refresh();
         state.update_storage_snapshot(storage_browser.snapshot());
+        // The portal may have removed a note, or brought AI.TXT; a later
+        // Settings save must not write back the old one.
+        if mounted {
+            state.refresh_voice_notes_catalog();
+            match AiConfig::load_from_path(AI_CONFIG_PATH) {
+                Ok(config) => state.ai = config,
+                Err(error) => info!("rustmix-wave=ai-settings status=invalid error={error:#}"),
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -3442,8 +3469,7 @@ mod firmware {
                         .fail("Add the API keys in the Wi-Fi portal first.");
                     return;
                 }
-                match voice_note_record::queue(std::path::Path::new(VOICE_NOTES_ROOT), &file_name)
-                {
+                match voice_note_record::queue(std::path::Path::new(VOICE_NOTES_ROOT), &file_name) {
                     Ok(_) => {
                         state.set_note_ai_state(&file_name, NoteState::Queued);
                         state.request_ai_retry();

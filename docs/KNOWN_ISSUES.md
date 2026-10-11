@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.10.5. This is not a list of promised mockup features. See
+Firmware v0.11.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -53,9 +53,17 @@ estimates until the battery log confirms them on the device.
 
 ## Voice Notes AI
 
-Notes are not sent for transcription or summary yet. A `VOICE###.AI`
-record made on a computer shows its state on the list and the AI hub, and a
-finished record opens its result; there ● opens the note's actions.
+- Notes go as WAV (about 1.9 MB a minute), so a long note takes a while to
+  upload and uses battery; the mockup's Opus recording is not done yet.
+- Keys typed in the portal cross the LAN as plain HTTP, like the files the
+  portal moves. Type them on a home network you trust.
+- Recording, playback, the transfer portal or sleep stops the note being
+  sent; it goes again later from its first part.
+- The first start of 0.11.0 burns eFuse key block 5 for NVS encryption,
+  and the Wi-Fi settings saved by older firmware are dropped (Wi-Fi
+  rebuilds them). A chip whose block 5 already holds another key cannot
+  open NVS: Wi-Fi then runs without saved calibration and the portal says
+  key storage is unavailable.
 
 ## EPUB scope
 

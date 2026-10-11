@@ -115,8 +115,13 @@ process=manual
 
 - `language` is `auto`, `es` or `en`; `style` is `bullets-todos`, `bullets` or
   `paragraph`; `process` is `online` or `manual`.
+- `online` queues each new recording when it is saved; `manual` waits for
+  Transcribe and summarize in the note's details.
+- The URLs are the providers' OpenAI-compatible base URLs; the device adds
+  `/audio/transcriptions` and `/chat/completions`.
 - The Settings row reads `Ready` once both URLs and models are set.
-- API keys are never read from this card. Keys are typed in the Wi-Fi portal.
+- API keys are never read from this card. Keys are typed in the Wi-Fi portal
+  and stored encrypted on the device (see the guide's API keys section).
 
 ## Alarms
 

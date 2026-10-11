@@ -208,7 +208,10 @@ pub enum VoiceNotesUiRequest {
     StartPlayback,
     StopPlayback,
     PersistMicGain(VoiceMicGain),
-    SaveEditedTitle { file_name: String, title: String },
+    SaveEditedTitle {
+        file_name: String,
+        title: String,
+    },
     ExportSelected,
     DeleteSelected,
     /// Queue the selected note for transcription and a summary.
