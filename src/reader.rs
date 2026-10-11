@@ -1419,18 +1419,6 @@ impl ReaderOption {
             Self::GoHome => "Go Home",
         }
     }
-
-    #[must_use]
-    pub const fn badge(self) -> &'static str {
-        match self {
-            Self::Bookmark => "TOGGLE",
-            Self::Bookmarks => "LIST",
-            Self::TableOfContents => "NONE",
-            Self::ReadingPreferences => ">>>",
-            Self::ClearGhosting => "RUN",
-            Self::GoTo | Self::GoToLibrary | Self::GoHome => ">>>",
-        }
-    }
 }
 
 /// Reading Preferences editor rows. MOVE highlights a row and SELECT opens an
@@ -2711,16 +2699,16 @@ impl ReaderUiState {
     /// Write the place to the card. Returns whether every file was written;
     /// a failure keeps the place unsaved.
     fn persist_current_session_best_effort(&mut self) -> bool {
-        let Some(location) = self.session.as_ref().map(ReaderSession::current_location) else {
-            return true;
-        };
-        self.resume = Some(location.clone());
-        self.positions.retain(|entry| !entry.same_book(&location));
-        self.positions.insert(0, location.clone());
-        self.positions.truncate(READER_POSITION_LIMIT);
-        self.recent.retain(|entry| !entry.same_book(&location));
-        self.recent.insert(0, location);
-        self.recent.truncate(READER_RECENT_LIMIT);
+        // Without a session the place in memory is still the one to keep.
+        if let Some(location) = self.session.as_ref().map(ReaderSession::current_location) {
+            self.resume = Some(location.clone());
+            self.positions.retain(|entry| !entry.same_book(&location));
+            self.positions.insert(0, location.clone());
+            self.positions.truncate(READER_POSITION_LIMIT);
+            self.recent.retain(|entry| !entry.same_book(&location));
+            self.recent.insert(0, location);
+            self.recent.truncate(READER_RECENT_LIMIT);
+        }
         let mut errors = Vec::new();
         if let Some(location) = self.resume.as_ref() {
             if let Err(error) =

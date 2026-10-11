@@ -4,6 +4,41 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 9 result (2026-10-11)
+
+Branch `side-tasks-9` (D44 to D48) came as pull request #8 from v0.11.1,
+with CI and the firmware build green. It was reviewed on `review-9`, merged
+and released as v0.11.2 (milestone `reader-style`). Every task is wired to
+the device, each screen has its preview (and Large where asked), and the
+doc-comment check came back clean for the first time. D48 also fixed a real
+loader gap: a place outside the cached pages now opens at its byte offset
+instead of the start.
+
+What the main developer changed at merge time:
+
+- **D44:** `main.rs` passed the key clock (`event_clock_ms`) with
+  `force = false` at all three sites. The key clock stops between presses,
+  so the five-minute cadence never saw two minutes pass, and sleep did not
+  write a place younger than two minutes. `main.rs` now uses the running
+  uptime clock, and sleep and leaving the reading view force the write. A
+  place still unsaved after its session closed reported a write without
+  writing; it now writes the place kept in memory.
+- **D46:** Reader Options still showed rustmix's `ADD`, `LIST`, `NONE`,
+  `RUN` and `>>>`. It now says Add or Remove Bookmark, the number of
+  bookmarks and of contents entries, `None`, nothing for an action and `›`
+  for a screen. `draw_list_row` drew a title without a description high in
+  the row, off the value's line; it now centres it, which every settings
+  list shows.
+
+Verdict: D44 to D48 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- For a new function that takes a time, check the clock every caller
+  passes. The key clock only moves when a key is pressed.
+- When a screen changes style, read its values as well as its layout, and
+  replace old placeholders.
+
 ## Round 8 result (2026-10-10)
 
 Branch `side-tasks-8` (D39 to D43) came as pull request #7 from v0.10.3,
@@ -400,10 +435,9 @@ Do differently next time:
 
 ## Round 10 tasks (branch `side-tasks-10`)
 
-Start from `main` once Round 9 is merged; its result will be at the top of
-this file. Do not add these to `side-tasks-9`. Two tasks that add a racing
-game, in this order. When they are done, merge `main` into the branch and
-open a pull request.
+Start from `main` at v0.11.2, where Round 9 is merged; read its result at
+the top of this file first. Two tasks that add a racing game, in this order.
+When they are done, merge `main` into the branch and open a pull request.
 
 The design is the mockup's two Race screens, in Juegos after Tetris
 (`mockups/index.html`). The road runs from right to left so that ▲▼
@@ -496,7 +530,7 @@ cells that changed.
 
 **Status:**
 
-## Round 9 tasks (branch `side-tasks-9`)
+## Round 9 tasks (done in v0.11.2)
 
 Start from `main` at v0.10.4. Five tasks, in this order; D48 is the
 largest, so skip it rather than rush it. When they are done, merge `main`

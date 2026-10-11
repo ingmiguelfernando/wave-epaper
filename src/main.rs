@@ -1442,7 +1442,7 @@ mod firmware {
                             }
                             if _mounted_sd.is_some() {
                                 save_reading_stats_if_dirty(&mut state);
-                                save_place_if_unsaved(&mut state);
+                                save_place_if_unsaved(&mut state, &uptime, true);
                                 state.bible.save_if_changed();
                             }
                             sleep_started = Some((Instant::now(), battery));
@@ -1665,7 +1665,7 @@ mod firmware {
                     save_reading_stats_if_dirty(&mut state);
                 }
                 if !state.reader_page_open() && _mounted_sd.is_some() {
-                    save_place_if_unsaved(&mut state);
+                    save_place_if_unsaved(&mut state, &uptime, true);
                 }
                 if state.panel_awake
                     && (outcome == ReaderTickOutcome::FirstPageReady
@@ -2224,7 +2224,7 @@ mod firmware {
             if last_stats_save.map_or(true, |at| at.elapsed() >= READING_STATS_SAVE_INTERVAL) {
                 if _mounted_sd.is_some() {
                     save_reading_stats_if_dirty(&mut state);
-                    save_place_if_unsaved(&mut state);
+                    save_place_if_unsaved(&mut state, &uptime, false);
                 }
                 last_stats_save = Some(Instant::now());
             }
@@ -2588,10 +2588,12 @@ mod firmware {
         }
     }
 
-    /// Write the reading place when it has been unsaved for two minutes.
-    fn save_place_if_unsaved(state: &mut AppState) {
-        let now_ms = state.event_clock_ms;
-        if state.reader.save_place_if_unsaved(now_ms, false) {
+    /// Write the reading place once it has been unsaved for two minutes, or
+    /// at once with `force` (before sleep, after leaving the reading view).
+    fn save_place_if_unsaved(state: &mut AppState, uptime: &Instant, force: bool) {
+        // The key clock stops between presses; this one keeps running.
+        let now_ms = uptime.elapsed().as_millis() as u64;
+        if state.reader.save_place_if_unsaved(now_ms, force) {
             info!("rustmix-wave=reader-place status=saved");
         }
     }

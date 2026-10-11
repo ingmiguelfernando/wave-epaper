@@ -535,18 +535,26 @@ pub fn render_options(
     }
     let top = STATUS_BAR_HEIGHT;
     let first = first_visible(state.reader.options_selected, top);
+    let bookmarks = state.reader.bookmarks.len().to_string();
+    let contents = state.reader.toc_entries().len().to_string();
     for (index, option) in ReaderOption::ALL.iter().copied().enumerate().skip(first) {
-        let badge = match option {
-            ReaderOption::Bookmark if state.reader.current_page_is_bookmarked() => "REMOVE",
-            ReaderOption::Bookmark => "ADD",
-            ReaderOption::Bookmarks => "LIST",
-            ReaderOption::TableOfContents if state.reader.has_structured_toc() => "LIST",
-            _ => option.badge(),
+        let (title, value) = match option {
+            ReaderOption::Bookmark if state.reader.current_page_is_bookmarked() => {
+                ("Remove Bookmark", "")
+            }
+            ReaderOption::Bookmark => ("Add Bookmark", ""),
+            ReaderOption::Bookmarks => (option.label(), bookmarks.as_str()),
+            ReaderOption::TableOfContents if state.reader.has_structured_toc() => {
+                (option.label(), contents.as_str())
+            }
+            ReaderOption::TableOfContents => (option.label(), "None"),
+            ReaderOption::ClearGhosting => (option.label(), ""),
+            _ => (option.label(), "\u{203a}"),
         };
         let row = ListRow {
-            title: option.label(),
+            title,
             subtitle: "",
-            value: badge,
+            value,
             selected: state.reader.options_selected == index,
         };
         draw_list_row(

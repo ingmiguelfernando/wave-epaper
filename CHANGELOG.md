@@ -3,6 +3,23 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.11.2 — Reader screens, Library first, Memory, Go to
+
+- **Library from Home.** Home's Library row opens the books: RECENT when a
+  book was read, else ALL. The three-row landing is gone; hold BOOT on a
+  page returns to the books.
+- **Reader screens** (Options, Reading Preferences, contents, bookmarks,
+  Opening Book) and Settings › Reading and Display have the black status
+  bar and the label-and-value rows of the other settings; long lists
+  scroll. Reader Options shows bookmark and contents counts.
+- **Fewer card writes while reading.** A page turn keeps the place in
+  memory; it is written after two minutes, when you leave the page and
+  before sleep.
+- **Go to** in Reader Options opens the book at 0% to 90%.
+- **Settings › System › Memory:** free RAM, the largest block, the lowest
+  since boot, PSRAM and the main task's stack margin.
+- Rows without a description centre their title on the value's line.
+
 ## v0.11.1 — Voice note volume
 
 - **Volume while a note plays.** ▲▼ turn the speaker up or down in steps

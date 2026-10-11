@@ -73,7 +73,12 @@ pub fn draw_list_row(
         text_right = left - 12;
     }
 
-    let block = title_style.cap_height() + 10 + detail_style.cap_height();
+    // Without a subtitle the title sits on the value's line.
+    let block = if row.subtitle.is_empty() {
+        title_style.cap_height()
+    } else {
+        title_style.cap_height() + 10 + detail_style.cap_height()
+    };
     let title_baseline = top + (LIST_ROW_HEIGHT - block) / 2 + title_style.cap_height();
     let title = title_style.fit(row.title, text_right - TEXT_LEFT);
     Text::new(&title, Point::new(TEXT_LEFT, title_baseline), title_style).draw(display)?;
