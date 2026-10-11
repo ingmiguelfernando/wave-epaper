@@ -424,13 +424,13 @@ impl RaceStart {
         canvas.text(
             24,
             320,
-            "The road runs right to left:".into(),
+            "The road runs right to left: change lanes".into(),
             CanvasTextStyle::Detail,
         )?;
         canvas.text(
             24,
             344,
-            "▲▼ change a lane, ● nitro.".into(),
+            "to pass. Nitro takes three steps at once.".into(),
             CanvasTextStyle::Detail,
         )?;
         canvas.text(
@@ -504,6 +504,11 @@ impl RaceApp {
     #[must_use]
     pub const fn mode_requested(&self) -> bool {
         self.mode_requested
+    }
+
+    #[must_use]
+    pub const fn is_paused(&self) -> bool {
+        self.paused
     }
 
     pub fn render_initial(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
@@ -646,6 +651,7 @@ impl RaceApp {
                     self.seed = self.seed.wrapping_add(1);
                     self.game = RaceGame::new(self.game.mode(), self.seed);
                     self.steps = 0;
+                    self.top_speed = 1;
                     self.paused = false;
                     self.crash_cursor = 0;
                     "new-game"
@@ -874,12 +880,16 @@ impl RaceApp {
             canvas.text(x, 248, value, CanvasTextStyle::Heading)?;
         }
 
+        let mode = match self.game.mode() {
+            RaceMode::Classic => "Classic",
+            RaceMode::Zen => "Zen",
+        };
         let rows = [
-            format!("Race again  {}", self.game.mode().marker()),
-            "Mode  Classic · Zen".to_string(),
-            "Back to Games".to_string(),
+            ("Race again", mode),
+            ("Mode", "Classic · Zen"),
+            ("Back to Games", ""),
         ];
-        for (index, row) in rows.iter().enumerate() {
+        for (index, (label, value)) in rows.iter().enumerate() {
             let top = 300 + index as i32 * 64;
             let selected = index == self.crash_cursor;
             canvas.rect(24, top, 432, 52, selected)?;
@@ -888,7 +898,10 @@ impl RaceApp {
             } else {
                 CanvasTextStyle::Body
             };
-            canvas.text(44, top + 34, row.clone(), style)?;
+            canvas.text(44, top + 34, (*label).into(), style)?;
+            if !value.is_empty() {
+                canvas.text_right(436, top + 34, (*value).into(), style)?;
+            }
         }
         Ok(())
     }

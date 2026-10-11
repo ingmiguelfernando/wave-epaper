@@ -4,6 +4,46 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 10 result (2026-10-11)
+
+Branch `side-tasks-10` (D49 and D50) came as pull request #9 from v0.11.2,
+with CI and the firmware build green. It was reviewed on `review-10`,
+merged and released as v0.11.3 (milestone `race`). The engine is clean and
+well tested, the drawing follows the mockup, and the step redraws only the
+cells that changed. One choice differs from the task and stays: a car or
+cone that reaches the player's column in another lane is counted as passed
+and leaves the road, so the cells beside the player are always clear and a
+lane change never crashes. A careful driver can always get through.
+
+What the main developer changed at merge time:
+
+- **Previews:** `race-play` showed the crash screen. Its sample driver
+  pressed once toward a free lane two lanes away, stayed in the wrong lane
+  and crashed at 1.4 km. It now presses until it reaches the lane. The
+  previews were reported as inspected.
+- **Back to Games** on the crash screen did nothing: `exit_requested` was
+  set and never read. It now leaves as hold BOOT does.
+- **Mode** replaced the game with the mode list before the run's best was
+  kept, so a new best was lost. It is kept first now.
+- **Race again** kept the last run's top speed; it starts at 1 now.
+- The mode list's help line drew `?? change a lane, ? nitro`: ▲▼● are not
+  in the fonts. It says it in words now.
+- The crash rows read `Race again  classic`; the mode is now a
+  right-aligned value, as in the other lists.
+- A paused race still asked the main loop for a step every second; it
+  needs no timer now, so the device can sleep between keys.
+- The guide said driving into a car crashes; it now says what ends a run.
+
+Verdict: D49 and D50 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- Open every preview image you add and check it shows the state its name
+  says.
+- For every request flag a screen sets, find the code that reads it.
+- Draw only the characters the fonts have; ▲▼● are key caps in the
+  bottom bar, not text.
+
 ## Round 9 result (2026-10-11)
 
 Branch `side-tasks-9` (D44 to D48) came as pull request #8 from v0.11.1,
@@ -433,7 +473,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 10 tasks (branch `side-tasks-10`)
+## Round 10 tasks (done in v0.11.3)
 
 Start from `main` at v0.11.2, where Round 9 is merged; read its result at
 the top of this file first. Two tasks that add a racing game, in this order.

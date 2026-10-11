@@ -1173,17 +1173,19 @@ fn drive_sample(event_bridge: &mut LuaEventBridge, canvas: &mut NativeGameCanvas
             _ => return,
         };
         if let Some(target) = dodge {
-            let event = match event_bridge {
-                LuaEventBridge::Race(app) => {
-                    if target < app.game().player_lane() {
+            // One press moves one lane; the cells beside the car are clear.
+            for _ in 0..4 {
+                let event = match event_bridge {
+                    LuaEventBridge::Race(app) if target < app.game().player_lane() => {
                         ButtonEvent::Up
-                    } else {
+                    }
+                    LuaEventBridge::Race(app) if target > app.game().player_lane() => {
                         ButtonEvent::Down
                     }
-                }
-                _ => return,
-            };
-            event_bridge.apply_button(event, 3_000, canvas).unwrap();
+                    _ => break,
+                };
+                event_bridge.apply_button(event, 3_000, canvas).unwrap();
+            }
         }
         event_bridge.tick_game(canvas).unwrap();
     }

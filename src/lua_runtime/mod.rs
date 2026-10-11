@@ -261,17 +261,26 @@ impl LuaRuntimeUiState {
         };
         match outcome {
             Ok(Some((id, result))) => {
-                // The Race crash screen's `Mode` row reopens the mode list,
-                // with the saved bests the session opened with.
-                if let Some(session) = self.session.as_mut() {
-                    if let LuaEventBridge::Race(app) = &session.event_bridge {
-                        if app.mode_requested() {
-                            let start =
-                                RaceStart::new(self.records.race_classic, self.records.race_zen);
-                            match start.render(&mut session.canvas) {
-                                Ok(()) => session.event_bridge = LuaEventBridge::RaceStart(start),
-                                Err(error) => self.error = Some(error),
-                            }
+                // The Race crash screen's `Mode` row reopens the mode list.
+                // The run's best is kept first: the list replaces the game.
+                let race_mode_request = self.session.as_ref().and_then(|session| {
+                    match &session.event_bridge {
+                        LuaEventBridge::Race(app) if app.mode_requested() => {
+                            Some((app.game().mode(), app.best()))
+                        }
+                        _ => None,
+                    }
+                });
+                if let Some((mode, best)) = race_mode_request {
+                    self.records_changed |= match mode {
+                        RaceMode::Zen => self.records.observe_race_zen(best),
+                        RaceMode::Classic => self.records.observe_race_classic(best),
+                    };
+                    let start = RaceStart::new(self.records.race_classic, self.records.race_zen);
+                    if let Some(session) = self.session.as_mut() {
+                        match start.render(&mut session.canvas) {
+                            Ok(()) => session.event_bridge = LuaEventBridge::RaceStart(start),
+                            Err(error) => self.error = Some(error),
                         }
                     }
                 }
@@ -351,6 +360,14 @@ impl LuaRuntimeUiState {
         }
     }
 
+    /// The Race crash screen's `Back to Games` row asked to leave the game.
+    #[must_use]
+    pub fn game_exit_requested(&self) -> bool {
+        self.session.as_ref().is_some_and(|session| {
+            matches!(&session.event_bridge, LuaEventBridge::Race(app) if app.exit_requested())
+        })
+    }
+
     /// The next gravity tick, when the open game needs one: Classic only, one
     /// tick every `GRAVITY_MS` (Tetris) or at the Race speed's interval.
     /// `None` when nothing falls or steps.
@@ -364,6 +381,7 @@ impl LuaRuntimeUiState {
                 }
                 Some(last + u64::from(GRAVITY_MS))
             }
+            LuaEventBridge::Race(app) if app.is_paused() => None,
             LuaEventBridge::Race(app) => Some(last + app.game().tick_interval_ms()?),
             _ => None,
         }

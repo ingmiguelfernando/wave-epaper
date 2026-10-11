@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.11.2: what is implemented, not the future
+This guide describes firmware v0.11.3: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -340,10 +340,9 @@ costs about 2 mAh a day.
 Open **Home › Games** for the hub: one card per SD game — icon, name, and
 its state (Sudoku's running game and best time; Tetris' best score; Race's
 best distances; other games' version). ▲▼ picks a card, ● plays it, hold
-BOOT in a game returns
-to the hub and hold BOOT on the hub returns Home. Install the bundled SD
-samples with the installer; there are no IMU-controlled games or BLE remote
-page-turner in this build.
+BOOT in a game returns to the hub and hold BOOT on the hub returns Home.
+Install the bundled SD samples with the installer; there are no
+IMU-controlled games or BLE remote page-turner in this build.
 
 | Sample | Controls |
 |---|---|
@@ -351,7 +350,7 @@ page-turner in this build.
 | Sudoku | Opens on a start list: `Continue` (the saved game, with its difficulty and filled cells), `New · Easy`, `New · Medium` or `New · Hard` (a new puzzle each time), and `SD puzzle` when `MAIN.LUA` declares one. Then three steps: ▲▼ pick a row (given rows are skipped), ● confirm; ▲▼ pick a cell in the row (givens skipped), ● confirm; ▲▼ choose 1–9 or erase (×), ● place. Short BOOT goes back one step. A thick frame marks the row, the chosen cell is inverted and previews the number, and the strip starts on the first value that fits. Values already in the row, column or box are struck in the number strip; the options line shows what fits |
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
 | Tetris | Opens a mode list: Zen or Classic (Up and Down move, Select starts). Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. Zen has no gravity: the piece moves only on a press. Classic falls one row a second. Game over shows the score; Select starts a new game. Each mode keeps its own best, saved to `/RUSTMIX/GAMES/RECORDS.TXT` when you leave |
-| Race | Opens a mode list: Classic or Zen (Up and Down move, Select starts). The road runs right to left: cars and cones arrive in the last column and move one column toward you each step, 20 m a step. Up and Down change a lane (driving into a car or a cone crashes), Select spends a nitro charge for three steps at once (Classic) or steps in place (Zen), short BOOT pauses Classic or steps Zen. Classic steps once a second at speed 1 and takes 100 ms off each kilometre, down to 500 ms; nitro gains one charge each kilometre, three at most. Zen has no timer: the road moves only when you press. After a crash: the distance, the best and how far it was, top speed, cars passed and nitro used, then `Race again`, `Mode` or `Back to Games`. Each mode keeps its own best distance in metres, saved to `/RUSTMIX/GAMES/RECORDS.TXT` when you leave |
+| Race | Opens a mode list: Classic or Zen (Up and Down move, Select starts). The road runs right to left: cars and cones arrive in the last column and move one column toward you each step, 20 m a step. Up and Down change a lane; a car or cone that reaches your car ends the run, and one that reaches your column in another lane has been passed. Select spends a nitro charge for three steps at once (Classic) or steps in place (Zen), short BOOT pauses Classic or steps Zen. Classic steps once a second at speed 1 and takes 100 ms off each kilometre, down to 500 ms; nitro gains one charge each kilometre, three at most. Zen has no timer: the road moves only when you press. After a crash: the distance, the best and how far it was, top speed, cars passed and nitro used, then `Race again`, `Mode` or `Back to Games`. Each mode keeps its own best distance in metres, saved to `/RUSTMIX/GAMES/RECORDS.TXT` when you leave |
 
 These are button-driven samples. A
 missing/invalid SD app reports an error;

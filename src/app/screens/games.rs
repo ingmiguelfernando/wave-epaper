@@ -603,6 +603,66 @@ mod d25_tests {
         );
     }
 
+    /// The crash screen's Mode row keeps the run's best before the mode list
+    /// replaces the game, and Back to Games leaves as hold BOOT does.
+    #[test]
+    fn race_crash_rows_keep_the_best_and_leave() {
+        use crate::buttons::ButtonEvent;
+        use crate::lua_runtime::event_bridge::LuaEventBridge;
+        fn crash(state: &mut AppState, clock: &mut u64) {
+            for _ in 0..3_000 {
+                let over = match &state.lua_runtime.session {
+                    Some(session) => match &session.event_bridge {
+                        LuaEventBridge::Race(app) => app.game().is_over(),
+                        _ => panic!("the race is open"),
+                    },
+                    None => panic!("the race is open"),
+                };
+                if over {
+                    return;
+                }
+                *clock += 1_000;
+                state.tick_lua_game(*clock);
+            }
+            panic!("the run never crashed");
+        }
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Games);
+        state.lua_runtime.refresh_catalog_from_root(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS"),
+            true,
+        );
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        state.apply_with_clock(ButtonEvent::Select, 3);
+        let mut clock = 1_000_u64;
+        state.tick_lua_game(clock);
+        assert!(state.next_lua_game_tick_ms().is_some());
+        state.apply_lua_game_boot_short_press();
+        assert_eq!(state.next_lua_game_tick_ms(), None, "no timer while paused");
+        state.apply_lua_game_boot_short_press();
+        crash(&mut state, &mut clock);
+
+        // Mode: the list replaces the game, and the best is already kept.
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert!(matches!(
+            state.lua_runtime.session.as_ref().map(|session| &session.event_bridge),
+            Some(LuaEventBridge::RaceStart(_))
+        ));
+        assert!(state.lua_runtime.records.race_classic > 0, "the best is kept");
+
+        // Classic again, a crash, then Back to Games.
+        state.apply_with_clock(ButtonEvent::Select, clock + 7);
+        crash(&mut state, &mut clock);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Games);
+        assert!(state.lua_runtime.session.is_none());
+    }
+
     #[test]
     fn item_counts_use_singular_and_plural() {
         assert_eq!(crate::app::screens::category::item_count_text(1), "1 item");

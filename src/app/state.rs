@@ -886,6 +886,9 @@ impl AppState {
                 self.lua_runtime.apply_game_button(event, now_ms);
                 if self.lua_runtime.error.is_some() {
                     self.router.navigate_to(ScreenRoute::LuaGameError);
+                } else if self.lua_runtime.game_exit_requested() {
+                    // Leaves as hold BOOT does, so the best distance is kept.
+                    self.back();
                 }
             }
             ScreenRoute::LuaGameError => {}

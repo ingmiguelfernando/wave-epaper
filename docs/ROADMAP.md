@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-11, firmware v0.11.2.
+Last updated: 2026-10-11, firmware v0.11.3.
 
 ## Status
 
@@ -24,7 +24,7 @@ Last updated: 2026-10-11, firmware v0.11.2.
 | Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3 |
-| Phase 6: Games (Sudoku, Tetris) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1; Race designed (mockup), delegated as Round 10 |
+| Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3 |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0; XiaoZhi open |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
@@ -40,6 +40,7 @@ Last updated: 2026-10-11, firmware v0.11.2.
 | Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, waiting for device test |
 | Delegated tasks D39 to D43: EPUB chapter titles and minutes left, Library authors and finished books, Settings › Reading, add and delete alarms, Bible menu without card reads | 0.10.4 | PR #7 | Done, waiting for device test |
 | Delegated tasks D44 to D48: reading place saved in batches, Library straight from Home, Reader screens in the new style, Settings › System › Memory, Go to a percent | 0.11.2 | PR #8 | Done, waiting for device test |
+| Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -309,7 +310,8 @@ Done in v0.9.7 (D27); kept as the reference.
 - **Race** (native engine, SD app `RACE`): the mockup's two Race screens.
   Four lanes on a road that runs right to left and moves in steps; ▲▼
   change lanes, ● spends a nitro, BOOT pauses. Classic steps every second
-  and faster each kilometre; Zen steps on a key. Delegated as D49 and D50.
+  and faster each kilometre; Zen steps on a key. Done in v0.11.3 (D49,
+  D50).
 
 ## Phase 7: AI
 

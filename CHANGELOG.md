@@ -3,6 +3,18 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.11.3 — Race
+
+- **Race** in Games: a four-lane road that runs right to left in steps.
+  ▲▼ change lanes to pass cars and cones; Classic steps once a second
+  and faster each kilometre, with up to three nitro charges (●, three
+  steps at once); Zen steps only on a key. Short BOOT pauses Classic. A
+  crash shows the distance, the best, top speed, cars passed and nitro
+  used, then Race again, Mode or Back to Games. Each mode keeps its best
+  distance in `RECORDS.TXT`, and the Games hub card shows both.
+- Install the `RACE` folder from `examples/sd-card/RUSTMIX/APPS` with the
+  other games.
+
 ## v0.11.2 — Reader screens, Library first, Memory, Go to
 
 - **Library from Home.** Home's Library row opens the books: RECENT when a
