@@ -31,6 +31,7 @@ pub enum ScreenRoute {
     ReaderOptions,
     ReaderPreferences,
     ReaderToc,
+    ReaderGoTo,
     Calendar,
     CalendarAgenda,
     CalendarEventDetails,
@@ -103,6 +104,7 @@ impl ScreenRoute {
             Self::ReaderOptions => "Reader Options",
             Self::ReaderPreferences => "Reading Preferences",
             Self::ReaderToc => "Table of Contents",
+            Self::ReaderGoTo => "Go to",
             Self::Calendar => "Calendar",
             Self::CalendarAgenda => "Daily Agenda",
             Self::CalendarEventDetails => "Calendar Event",
@@ -176,6 +178,7 @@ impl ScreenRoute {
             Self::ReaderOptions => "reader-options",
             Self::ReaderPreferences => "reader-preferences",
             Self::ReaderToc => "reader-toc",
+            Self::ReaderGoTo => "reader-go-to",
             Self::Calendar => "calendar",
             Self::CalendarAgenda => "calendar-agenda",
             Self::CalendarEventDetails => "calendar-event-details",
@@ -248,6 +251,7 @@ impl ScreenRoute {
                 | Self::ReaderPreferences
                 | Self::ReaderOptions
                 | Self::ReaderToc
+                | Self::ReaderGoTo
                 | Self::ReaderBookmarks
                 | Self::BibleBooks
                 | Self::BibleChapters
@@ -289,7 +293,7 @@ impl ScreenRoute {
             Self::ReaderLoading | Self::ReaderPage => Some(Self::Library),
             Self::ReaderOptions => Some(Self::ReaderPage),
             Self::ReaderPreferences => Some(Self::ReaderOptions),
-            Self::ReaderToc => Some(Self::ReaderOptions),
+            Self::ReaderToc | Self::ReaderGoTo => Some(Self::ReaderOptions),
             Self::VoiceNotes | Self::XiaoZhi => Some(Self::Ai),
             Self::CalendarAgenda => Some(Self::Calendar),
             Self::CalendarEventDetails => Some(Self::CalendarAgenda),

@@ -418,6 +418,7 @@ impl AppState {
                 | ScreenRoute::ReaderOptions
                 | ScreenRoute::ReaderPreferences
                 | ScreenRoute::ReaderToc
+                | ScreenRoute::ReaderGoTo
         ) {
             self.apply_reader(event);
         } else if route.is_placeholder() {
@@ -967,6 +968,16 @@ impl AppState {
                     self.router.navigate_to(ScreenRoute::ReaderLoading);
                 }
             }
+            ScreenRoute::ReaderGoTo => match event {
+                ButtonEvent::Up => self.reader.goto_select_previous(),
+                ButtonEvent::Down => self.reader.goto_select_next(),
+                ButtonEvent::Select => {
+                    self.note_select_press();
+                    if self.reader.request_goto_selected(self.event_clock_ms) {
+                        self.router.navigate_to(ScreenRoute::ReaderLoading);
+                    }
+                }
+            },
             ScreenRoute::ReaderToc => {
                 if event == ButtonEvent::Select {
                     self.note_select_press();
@@ -1016,6 +1027,10 @@ impl AppState {
                             self.router.navigate_to(ScreenRoute::ReaderPreferences);
                         }
                         ReaderOption::ClearGhosting => self.reader.request_clear_ghosting(),
+                        ReaderOption::GoTo => {
+                            self.reader.begin_goto();
+                            self.router.navigate_to(ScreenRoute::ReaderGoTo);
+                        }
                         ReaderOption::GoToLibrary => {
                             self.enter_library();
                             self.router.navigate_to(ScreenRoute::Library);

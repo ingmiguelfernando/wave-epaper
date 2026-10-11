@@ -605,6 +605,13 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     opening.router.navigate_to(ScreenRoute::ReaderLoading);
     states.push(("reader-loading", opening));
 
+    // The Go to percent list: the place in use marked, the cursor on it.
+    let mut goto = sample_state();
+    open_sample_book(&mut goto);
+    goto.reader.begin_goto();
+    goto.router.navigate_to(ScreenRoute::ReaderGoTo);
+    states.push(("reader-go-to", goto));
+
     let mut display_screen = sample_state();
     display_screen.router.navigate_to(ScreenRoute::Display);
     states.push(("display", display_screen));

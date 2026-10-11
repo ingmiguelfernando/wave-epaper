@@ -61,6 +61,7 @@ pub fn render_active_screen(
         ScreenRoute::ReaderOptions => reader::render_options(display, state),
         ScreenRoute::ReaderPreferences => reader::render_preferences(display, state),
         ScreenRoute::ReaderToc => reader::render_toc(display, state),
+        ScreenRoute::ReaderGoTo => reader::render_goto(display, state),
         ScreenRoute::Calendar => calendar::render_calendar(display, state),
         ScreenRoute::CalendarAgenda => calendar::render_calendar_agenda(display, state),
         ScreenRoute::CalendarEventDetails => {

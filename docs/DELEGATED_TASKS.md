@@ -610,7 +610,24 @@ takes hundreds of page turns.
 line start; 50% of a sample EPUB opens in the right chapter; the place
 saves (with D44's batching).
 
-**Status:**
+**Status:** done on `side-tasks-9`. Built: Reader Options › `Go to` opens an
+option list of 0% to 90% in steps of 10 (the `ReaderGoTo` screen, hold BOOT
+back to Options) with the place in use marked (`IN USE` on its decade) and
+the cursor starting there. Choosing one opens the book there through the
+same path as resuming a saved place (`request_goto_percent` →
+`request_open_book`): TXT at the byte offset at that percent, moved forward
+to the next line start (`next_line_start`); EPUB at the chapter holding that
+offset of the flattened text, at its page (`show_epub_offset` seeks). A
+place ahead of the anchor cache opens at its own offset (the loader now
+seeks by the canonical byte offset when the stored page index falls outside
+the cached pages), and the label stays honest (`41+` style, with an
+estimated page number where the index does not reach). The place moves in
+memory at once (`move_place_to`) and saves through the batched writer.
+Preview: `reader-go-to`. Tests: 50% of a sample TXT opens at a line start
+within a page of the middle and keeps the `N+` label; 50% of a sample EPUB
+opens in the third of four chapters; the place saves through the batch
+(`STATE.TXT` holds the jump's offset). Open: nothing known. Device check:
+the preview, a long TXT with a jump to 50%, and an EPUB with chapter jumps.
 
 ## Round 8 tasks (done in v0.10.4)
 

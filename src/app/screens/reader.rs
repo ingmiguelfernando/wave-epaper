@@ -681,6 +681,31 @@ pub fn render_toc(
     draw_bottom_bar(display, state.display, &OPEN_HINTS)
 }
 
+/// The Go to list: 0% to 90% in steps of 10, with the place in use marked.
+pub fn render_goto(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    draw_status_bar(display, state.display, "Go to")?;
+    let body = state.display.body_style();
+    if let Some(session) = state.reader.session.as_ref() {
+        let title = body.fit(&session.book.title, 220);
+        draw_status_text(display, state.display, &title, STATUS_BAR_RIGHT)?;
+    }
+    let current = state.reader.session.as_ref().map_or(0, |session| {
+        usize::from(session.place_percent().min(90) / 10)
+    });
+    draw_option_list(
+        display,
+        state.display,
+        STATUS_BAR_HEIGHT,
+        &crate::reader::ReaderUiState::GOTO_LABELS,
+        current,
+        state.reader.goto_selected,
+    )?;
+    draw_bottom_bar(display, state.display, &CHOOSE_HINTS)
+}
+
 /// Runs of one Reader line with the x where each is drawn. A justified line
 /// is drawn word by word so its spare width is shared pixel-exactly between
 /// the gaps, the leftmost gaps taking the remainder.

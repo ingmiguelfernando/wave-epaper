@@ -1114,6 +1114,16 @@ impl ReaderSession {
         ((offset.saturating_mul(100) / source_size).min(100)) as u8
     }
 
+    /// An estimated absolute page for a place ahead of the index: the pages
+    /// known so far scaled by their share of the text. The label keeps its
+    /// `+`, so the estimate is never shown as an exact count.
+    #[must_use]
+    fn estimate_page_index(&self, offset: u64) -> usize {
+        let indexed = self.indexed_through.max(1);
+        let pages = self.page_offsets.len().max(1) as u64;
+        self.page_number_base + (offset.saturating_mul(pages) / indexed) as usize
+    }
+
     #[must_use]
     pub fn page_label(&self) -> String {
         if self.index_complete {
@@ -1379,17 +1389,19 @@ pub enum ReaderOption {
     TableOfContents,
     ReadingPreferences,
     ClearGhosting,
+    GoTo,
     GoToLibrary,
     GoHome,
 }
 
 impl ReaderOption {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Bookmark,
         Self::Bookmarks,
         Self::TableOfContents,
         Self::ReadingPreferences,
         Self::ClearGhosting,
+        Self::GoTo,
         Self::GoToLibrary,
         Self::GoHome,
     ];
@@ -1402,6 +1414,7 @@ impl ReaderOption {
             Self::TableOfContents => "Table of Contents",
             Self::ReadingPreferences => "Reading Preferences",
             Self::ClearGhosting => "Clear Ghosting",
+            Self::GoTo => "Go to",
             Self::GoToLibrary => "Go to Library",
             Self::GoHome => "Go Home",
         }
@@ -1415,7 +1428,7 @@ impl ReaderOption {
             Self::TableOfContents => "NONE",
             Self::ReadingPreferences => ">>>",
             Self::ClearGhosting => "RUN",
-            Self::GoToLibrary | Self::GoHome => ">>>",
+            Self::GoTo | Self::GoToLibrary | Self::GoHome => ">>>",
         }
     }
 }
@@ -1509,6 +1522,8 @@ pub struct ReaderUiState {
     pub preferences_selected: usize,
     /// Highlighted choice of the open option list, `None` while rows show.
     pub preferences_picker: Option<usize>,
+    /// Highlighted row of the Go to percent list (0 to 9 in tens of percent).
+    pub goto_selected: usize,
     preferences_layout_dirty: bool,
     pub last_message: Option<String>,
     persistence_event: Option<String>,
@@ -1544,6 +1559,7 @@ impl Default for ReaderUiState {
             options_selected: 0,
             preferences_selected: 0,
             preferences_picker: None,
+            goto_selected: 0,
             preferences_layout_dirty: false,
             last_message: None,
             persistence_event: None,
@@ -1772,6 +1788,99 @@ impl ReaderUiState {
         };
         self.request_open_book(location.as_book(), Some(location));
         true
+    }
+
+    /// Percent rows of the Go to list: 0% to 90% in steps of 10.
+    pub const GOTO_PERCENTS: [u8; 10] = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+    /// Their row labels.
+    pub const GOTO_LABELS: [&'static str; 10] = [
+        "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%",
+    ];
+
+    /// Open the book at the highlighted Go to row.
+    pub fn request_goto_selected(&mut self, now_ms: u64) -> bool {
+        let percent = Self::GOTO_PERCENTS[self.goto_selected % Self::GOTO_PERCENTS.len()];
+        self.request_goto_percent(percent, now_ms)
+    }
+
+    /// Open the Go to list with the place in use highlighted.
+    pub fn begin_goto(&mut self) {
+        let percent = self
+            .session
+            .as_ref()
+            .map_or(0, ReaderSession::place_percent);
+        self.goto_selected = usize::from(percent.min(90) / 10);
+    }
+
+    /// Move the highlighted Go to row down, wrapping.
+    pub fn goto_select_next(&mut self) {
+        self.goto_selected = (self.goto_selected + 1) % Self::GOTO_PERCENTS.len();
+    }
+
+    /// Move the highlighted Go to row up, wrapping.
+    pub fn goto_select_previous(&mut self) {
+        self.goto_selected = self
+            .goto_selected
+            .checked_sub(1)
+            .unwrap_or(Self::GOTO_PERCENTS.len() - 1);
+    }
+
+    /// Open the book at `percent` of its text, through the same path as
+    /// resuming a saved place: TXT at the next line start after that byte
+    /// offset, EPUB at the chapter page holding it in the flattened text.
+    pub fn request_goto_percent(&mut self, percent: u8, now_ms: u64) -> bool {
+        let Some(location) = self.goto_location(percent) else {
+            return false;
+        };
+        let book = location.as_book();
+        // Releasing the open session writes its own place first; the new
+        // place is remembered after it and marked for the batch.
+        self.request_open_book(book, Some(location.clone()));
+        self.move_place_to(location, now_ms);
+        true
+    }
+
+    /// The place `percent` of the way into the open book, `None` without a
+    /// session.
+    fn goto_location(&self, percent: u8) -> Option<ReaderLocation> {
+        let session = self.session.as_ref()?;
+        let source_size = session.source_size_bytes();
+        let target = source_size.saturating_mul(u64::from(percent.min(100))) / 100;
+        let (byte_offset, page_index, epub_chapter) = if session.epub_document.is_some() {
+            // The chapter holding the offset of the flattened text opens at
+            // its page; `show_epub_offset` does the seek after the open.
+            let chapter = session.epub_chapter_page_label_for_offset(target);
+            let page_index = chapter
+                .as_ref()
+                .map_or(0, |label| label.page_number.saturating_sub(1));
+            (target, page_index, chapter)
+        } else {
+            let offset = next_line_start(&session.book.path, target);
+            // Within the indexed range the page holding the line is exact;
+            // ahead of it the page number is estimated and the loader opens
+            // at the offset itself.
+            let page_index = if offset <= session.indexed_through {
+                session
+                    .page_offsets
+                    .iter()
+                    .rposition(|page| *page <= offset)
+                    .map_or(0, |index| session.page_number_base + index)
+            } else {
+                session.estimate_page_index(offset)
+            };
+            (offset, page_index, None)
+        };
+        Some(ReaderLocation {
+            path: session.book.path.clone(),
+            title: session.book.title.clone(),
+            format: session.book.format,
+            size_bytes: session.book.size_bytes,
+            modified_seconds: session.book.modified_seconds,
+            page_index,
+            byte_offset,
+            epub_chapter,
+            place_percent: Some(percent.min(100)),
+        })
     }
 
     fn request_open_book(&mut self, book: ReaderBook, resume: Option<ReaderLocation>) {
@@ -2444,8 +2553,22 @@ impl ReaderUiState {
                 None
             }
         };
+        // The byte offset is the canonical place: a page index outside the
+        // cached pages (a Go to ahead of the index, or a stale one after the
+        // layout changed) opens at its own offset, not at the start.
+        let seek_by_offset = match (
+            cached.as_ref(),
+            requested.filter(|location| location.matches_book(book)),
+        ) {
+            (Some(cache), Some(location)) => match location.page_index.checked_sub(cache.base_page)
+            {
+                Some(index) => index >= cache.offsets.len(),
+                None => true,
+            },
+            _ => false,
+        };
         let (page_number_base, page_offsets, current_page, indexed_through, index_complete) =
-            if let Some(cache) = cached {
+            if let Some(cache) = cached.filter(|_| !seek_by_offset) {
                 let selected = requested
                     .filter(|location| location.matches_book(book))
                     .and_then(|location| {
@@ -2538,6 +2661,12 @@ impl ReaderUiState {
         let Some(location) = self.session.as_ref().map(ReaderSession::current_location) else {
             return;
         };
+        self.move_place_to(location, now_ms);
+    }
+
+    /// Remember `location` as the place in memory (resume, positions and
+    /// recent) and mark it unsaved for the batched write.
+    fn move_place_to(&mut self, location: ReaderLocation, now_ms: u64) {
         self.resume = Some(location.clone());
         self.positions.retain(|entry| !entry.same_book(&location));
         self.positions.insert(0, location.clone());
@@ -2913,6 +3042,33 @@ fn previous_utf8_boundary(bytes: &[u8], mut offset: usize) -> usize {
         offset -= 1;
     }
     offset
+}
+
+/// Move `offset` forward to the first line start at or after it: the byte
+/// after the next newline, so a page typesets from a whole line. A line
+/// longer than the read window keeps `offset` unchanged.
+fn next_line_start(path: &str, offset: u64) -> u64 {
+    const WINDOW: usize = 4097;
+    if offset == 0 {
+        return 0;
+    }
+    let back = offset - 1;
+    let Ok(mut file) = File::open(path) else {
+        return offset;
+    };
+    if file.seek(SeekFrom::Start(back)).is_err() {
+        return offset;
+    }
+    let mut window = [0_u8; WINDOW];
+    let Ok(read) = file.read(&mut window) else {
+        return offset;
+    };
+    // The window starts one byte before `offset`, so a newline at its first
+    // byte means `offset` already is a line start.
+    window[..read]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(offset, |index| back + index as u64 + 1)
 }
 
 fn read_txt_page(
@@ -5140,5 +5296,130 @@ mod tests {
             reader.take_persistence_event().as_deref(),
             Some("status=saved scope=anchor-cache")
         );
+    }
+
+    /// A sample book with `count` lines of 50 bytes and a 17-byte tail, so a
+    /// percent of the size lands inside a line.
+    fn long_sample_book(root: &Path, count: usize) -> Vec<u8> {
+        let line = format!("{}\n", "x".repeat(49));
+        let mut bytes = line.repeat(count).into_bytes();
+        bytes.extend_from_slice(b"yyyyyyyyyyyyyyyyy");
+        fs::write(root.join("Long.txt"), &bytes).unwrap();
+        bytes
+    }
+
+    /// 50% of a sample TXT opens within a page of the middle and at a line
+    /// start, and keeps the honest `N+` page label.
+    #[test]
+    fn goto_half_of_a_txt_opens_at_a_line_start_near_the_middle() {
+        let root = temp_dir("goto-txt-books");
+        let state = temp_dir("goto-txt-state");
+        let bytes = long_sample_book(&root, 40_000);
+        let mut reader = ReaderUiState::with_roots(
+            root.to_string_lossy().into_owned(),
+            state.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
+        assert!(reader.request_goto_percent(50, 0));
+        for _ in 0..8 {
+            if reader.tick() == ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        let session = reader
+            .session
+            .as_ref()
+            .expect("the book opens at the place");
+        let offset = session.page_offsets[session.current_page] as usize;
+        let target = bytes.len() / 2;
+        assert_eq!(bytes[offset - 1], b'\n', "the page starts at a line");
+        assert!(offset >= target, "moved forward to the line start");
+        assert!(offset - target < 4096, "within a page of the middle");
+        assert!(
+            session.page_label().ends_with('+'),
+            "the label stays honest"
+        );
+    }
+
+    /// 50% of a sample EPUB opens in the chapter holding that offset of the
+    /// flattened text.
+    #[test]
+    fn goto_half_of_an_epub_opens_in_its_chapter() {
+        let root = temp_dir("goto-epub-books");
+        let state = temp_dir("goto-epub-state");
+        let bodies = [
+            "uno ".repeat(400),
+            "dos ".repeat(400),
+            "tres ".repeat(400),
+            "cuatro ".repeat(400),
+        ];
+        fs::write(root.join("Libro.epub"), crate::epub::sample_epub(&bodies)).unwrap();
+        let mut reader = ReaderUiState::with_roots(
+            root.to_string_lossy().into_owned(),
+            state.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        for _ in 0..8 {
+            if reader.tick() == ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        assert!(reader.request_goto_percent(50, 0));
+        for _ in 0..8 {
+            if reader.tick() == ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        let session = reader
+            .session
+            .as_ref()
+            .expect("the book opens at the place");
+        assert_eq!(
+            session.current_epub_chapter_label(),
+            Some("Capítulo 3"),
+            "the middle of the flattened text sits in the third of four chapters"
+        );
+    }
+
+    /// The place of a Go to jump is in memory at once and saves through the
+    /// batched writer (D44).
+    #[test]
+    fn goto_place_saves_through_the_batch() {
+        let root = temp_dir("goto-save-books");
+        let state = temp_dir("goto-save-state");
+        let bytes = long_sample_book(&root, 40_000);
+        let mut reader = ReaderUiState::with_roots(
+            root.to_string_lossy().into_owned(),
+            state.to_string_lossy().into_owned(),
+        );
+        reader.refresh_library();
+        reader.library_selected = 0;
+        assert!(reader.apply_library_button(ButtonEvent::Select));
+        assert_eq!(reader.tick(), ReaderTickOutcome::FirstPageReady);
+        let writes_before = reader.place_writes();
+        assert!(reader.request_goto_percent(50, 0));
+        // The place is in memory at once and marked for the batch.
+        let remembered_offset = reader
+            .resume
+            .as_ref()
+            .expect("the place is remembered")
+            .byte_offset;
+        assert_eq!(remembered_offset, bytes.len() as u64 / 2 + 42);
+        for _ in 0..8 {
+            if reader.tick() == ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        // Opening at the place writes it through the same persistence.
+        assert!(reader.place_writes() > writes_before);
+        let saved = load_location_record(&state.join(READER_STATE_FILE))
+            .unwrap()
+            .expect("the place is on the card");
+        assert_eq!(saved.byte_offset, remembered_offset);
     }
 }
