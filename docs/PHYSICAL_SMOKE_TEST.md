@@ -223,6 +223,26 @@ light sleep. Restore the owner's original preferences afterward.
    style label, and the place survives a reboot. On an EPUB, 50% opens the
    chapter holding the middle of the flattened text.
 
+## Round 10 (D49 to D50)
+
+- [ ] Games › Race opens the mode list (Classic, Zen) with each mode's best
+   distance; ● starts the chosen one. The road runs right to left: cars and
+   cones arrive in the last column and move one column toward you each step.
+- [ ] Classic: a step a second at speed 1, 100 ms less each kilometre (the
+   `Speed N at X km` line and its bar show the next one). ▲▼ change a lane,
+   ● spends a nitro charge for three steps at once (the charges show as
+   blocks), short BOOT pauses (`PAUSED`) and the step clock stops. Zen: the
+   road moves only on a key and there is no nitro.
+- [ ] A crash shows the distance, the best and how far it was, top speed,
+   cars passed and nitro used, then `Race again`, `Mode` and `Back to
+   Games`. `Race again` starts a new run; `Mode` reopens the list.
+- [ ] Leave the game: `RECORDS.TXT` on the card holds `race_classic` and
+   `race_zen` in metres, and the Games hub card shows `Classic · best …`
+   over `Zen · best …`.
+- [ ] The road redraws only the cars that moved (less ghosting); a full
+   refresh every 30 steps clears what is left.
+
+## Voice note volume (v0.11.1)
 
 - [ ] Play a note: ▲ makes it louder and ▼ quieter while it plays, the
 	Volume line follows, ● stops, and Settings › System › Audio shows the

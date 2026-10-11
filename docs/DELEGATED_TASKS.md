@@ -549,7 +549,34 @@ Classic, steps on the timer, a crash, Race again; the best kept in
 `RECORDS.TXT`; the interval shrinks with speed; a step dirties only the
 cells that changed.
 
-**Status:**
+**Status:** done on `side-tasks-10`. Built: `race.init()` in `MAIN.LUA`
+opens the mode list (Classic, Zen) through `lua_runtime/event_bridge.rs`
+(`RaceInit`, `RaceStart`, `RaceApp`), as `tetris.init()` does; the press
+time seeds the game. `next_game_tick_ms` returns the Classic interval of
+the current speed (`tick_interval_ms`), and `tick_game` steps the road.
+The mockup's playing screen on `NativeGameCanvas` at 480 × 800: the rumble
+strips, edges and lane dashes are drawn once, a step redraws only the
+cells whose content changed (the dirty rects of the moved cells plus the
+counters), and a full refresh comes every 30 steps (`race.rs`'s dirty
+regions). Other cars are
+outlines; the player's car is solid with paper windows. The crash screen
+shows the distance, the best and how far it was (or `new record!`), top
+speed, cars passed and nitro used, then `Race again`, `Mode` (reopens the
+mode list) and `Back to Games`. BOOT pauses Classic (the step clock stops
+and `PAUSED` shows) and steps Zen; hold BOOT leaves, as in Tetris. Best
+distances `race_classic` and `race_zen`, in metres, live in `RECORDS.TXT`
+(`games/records.rs`), saved when leaving. The Games hub gains a `race`
+card with a car icon and `Classic · best 5.1 km` over `Zen · best …`.
+`examples/sd-card/RUSTMIX/APPS/RACE/` with `APP.TOM`, `MAIN.LUA` and
+`README.TXT`; the SD guide's tree and the User Guide's Games table follow.
+Previews: `race-start`, `race-play`, `race-crash`, and `games` with the
+new card (all inspected). Tests: Games › Race › Classic through
+`AppState::apply` and `tick_lua_game` (steps on the timer, the interval
+shrinks with the speed, a crash, Race again, the best kept in
+`RECORDS.TXT`); the crash menu's three rows; a step dirties only the cells
+that changed; the race card's best distances; the records round-trip.
+Open: nothing known. Device check: the four previews, a Classic run to a
+crash and a Zen run on the panel, and `RECORDS.TXT` after leaving.
 
 ## Round 9 tasks (done in v0.11.2)
 
