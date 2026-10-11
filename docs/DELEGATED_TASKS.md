@@ -485,7 +485,26 @@ BOOKMARKS tabs already cover the other rows.
 recent book; Reader Options › Bookmarks opens its list and hold BOOT
 returns to Options.
 
-**Status:**
+**Status:** done on `side-tasks-9`. Built: Home's Library row opens the books
+directly. The landing screen and its three rows are gone, and with them the
+`ContinueReading` and `Bookmarks` routes (only the landing reached them;
+`render_continue_reading` and its tests go too). The Library opens on RECENT
+when the recent list has a book, else ALL (`AppState::enter_library`, from the
+Home row's `open_route` and from Options › Go to Library); hold BOOT returns
+from the books to Home and from a page to the books (`Library`'s parent is
+`Home` now). Reader Options › Bookmarks keeps its list (`ReaderBookmarks`,
+hold BOOT back to Options), the BOOKMARKS tab covers the old route, and the
+Home card still shows the book to resume: its book sits at the top of RECENT
+and opens at the saved place. `home.rs`: only the icon and book-count arms
+follow the route. Previews: `home` (the count on the Library row), `library`
+(RECENT with the recent book), `library-no-recent` (no book read yet: opens on
+ALL, every row `new`), `home-first-boot` (the empty card). Tests: Home ›
+Library › a book › hold BOOT twice through `AppState::apply`, back to Home;
+the tab that opens with and without a recent book; Reader Options › Bookmarks
+opens its list and hold BOOT returns to Options; a recent book still opens at
+its saved place. Docs: the user guide's Home table and Library section follow
+the new navigation. Open: nothing known. Device check: the previews and a real
+book folder with a saved place.
 
 ### D46: Reader screens in the new style
 

@@ -19,7 +19,7 @@ use crate::{
     power_key::PowerKeyLink,
     power_key_menu::{PowerKeyMenuOutcome, PowerKeyMenuUiState},
     power_settings::{PowerPreferences, PowerSetting},
-    reader::{ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
+    reader::{ReaderLibraryTab, ReaderOption, ReaderOrientation, ReaderTickOutcome, ReaderUiState},
     reading_stats::{ReadingClock, ReadingStats},
     regional::RegionalPreferences,
     sleep_mode::{LightSleepShare, SleepReport},
@@ -377,9 +377,7 @@ impl AppState {
             self.apply_lua_runtime(event, now_ms);
         } else if matches!(
             route,
-            ScreenRoute::ContinueReading
-                | ScreenRoute::Library
-                | ScreenRoute::Bookmarks
+            ScreenRoute::Library
                 | ScreenRoute::ReaderBookmarks
                 | ScreenRoute::ReaderLoading
                 | ScreenRoute::ReaderPage
@@ -598,7 +596,7 @@ impl AppState {
             self.calendar.refresh_events();
         }
         if target == ScreenRoute::Library {
-            self.reader.refresh_library();
+            self.enter_library();
         }
         if matches!(target, ScreenRoute::LuaApps | ScreenRoute::Games) {
             self.lua_runtime.refresh_catalog(true);
@@ -609,13 +607,23 @@ impl AppState {
         if target == ScreenRoute::Dictionary {
             self.dictionary.refresh_pack_status();
         }
-        if target == ScreenRoute::ContinueReading && self.reader.session.is_some() {
-            self.router.navigate_to(ScreenRoute::ReaderPage);
-        } else if target == ScreenRoute::Bible {
+        if target == ScreenRoute::Bible {
             self.open_bible_entry();
         } else {
             self.router.navigate_to(target);
         }
+    }
+
+    /// Enter the Library: rescan the books and open RECENT when there is a
+    /// recent book, else ALL. Every door into the books lands the same way,
+    /// so the list always opens where the reading left off (D45).
+    fn enter_library(&mut self) {
+        self.reader.refresh_library();
+        self.reader.library_tab = if self.reader.recent.is_empty() {
+            ReaderLibraryTab::Books
+        } else {
+            ReaderLibraryTab::Recent
+        };
     }
 
     fn apply_dictionary(&mut self, event: ButtonEvent) {
@@ -909,19 +917,6 @@ impl AppState {
 
     fn apply_reader(&mut self, event: ButtonEvent) {
         match self.router.current() {
-            ScreenRoute::ContinueReading => {
-                if event == ButtonEvent::Select {
-                    self.note_select_press();
-                    if self.reader.session.is_some() {
-                        self.router.navigate_to(ScreenRoute::ReaderPage);
-                    } else if self.reader.request_continue() {
-                        self.router.navigate_to(ScreenRoute::ReaderLoading);
-                    } else {
-                        self.reader.refresh_library();
-                        self.router.navigate_to(ScreenRoute::Library);
-                    }
-                }
-            }
             ScreenRoute::Library => {
                 if event == ButtonEvent::Select {
                     self.note_select_press();
@@ -930,7 +925,7 @@ impl AppState {
                     self.router.navigate_to(ScreenRoute::ReaderLoading);
                 }
             }
-            ScreenRoute::Bookmarks | ScreenRoute::ReaderBookmarks => {
+            ScreenRoute::ReaderBookmarks => {
                 if event == ButtonEvent::Select {
                     self.note_select_press();
                 }
@@ -988,7 +983,7 @@ impl AppState {
                         }
                         ReaderOption::ClearGhosting => self.reader.request_clear_ghosting(),
                         ReaderOption::GoToLibrary => {
-                            self.reader.refresh_library();
+                            self.enter_library();
                             self.router.navigate_to(ScreenRoute::Library);
                         }
                         ReaderOption::GoHome => self.router.back_home(),
@@ -2078,10 +2073,9 @@ mod tests {
 
     /// A Reader page open with a session, driven by `apply_with_clock`.
     fn reading_state() -> AppState {
-        let mut state = open_from_home(ScreenRoute::Reader);
+        let mut state = AppState::default();
         state.reader.session = Some(sample_session());
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::ReaderPage);
+        state.router.navigate_to(ScreenRoute::ReaderPage);
         state
     }
 
@@ -2145,7 +2139,7 @@ mod tests {
         reader.library_selected = 0;
         let mut state = AppState::default();
         state.reader = reader;
-        state.home_selected = home_index(ScreenRoute::Reader).expect("Library row on Home");
+        state.home_selected = home_index(ScreenRoute::Library).expect("Library row on Home");
         state
     }
 
@@ -2209,9 +2203,7 @@ mod tests {
     #[test]
     fn done_after_the_last_page_through_apply() {
         let mut state = home_library_with_epub("done");
-        state.apply(ButtonEvent::Select); // Home's Library row
-        state.apply(ButtonEvent::Select); // the Reader landing's continue shell
-        state.apply(ButtonEvent::Select); // the shell opens the Library list
+        state.apply(ButtonEvent::Select); // Home's Library row opens the books
         assert_eq!(state.active_route(), ScreenRoute::Library);
         state.apply(ButtonEvent::Select); // open the EPUB
         for _ in 0..8 {
@@ -2233,9 +2225,7 @@ mod tests {
     #[test]
     fn a_page_turn_crosses_into_a_new_chapter_with_its_title() {
         let mut state = home_library_with_epub("cross");
-        state.apply(ButtonEvent::Select); // Home's Library row
-        state.apply(ButtonEvent::Select); // the Reader landing's continue shell
-        state.apply(ButtonEvent::Select); // the shell opens the Library list
+        state.apply(ButtonEvent::Select); // Home's Library row opens the books
         assert_eq!(state.active_route(), ScreenRoute::Library);
         state.apply(ButtonEvent::Select); // open the EPUB
         assert_eq!(state.active_route(), ScreenRoute::ReaderLoading);
@@ -3046,13 +3036,8 @@ mod tests {
 
     #[test]
     fn a_recent_book_opens_at_its_saved_place() {
-        let mut state = open_from_home(ScreenRoute::Reader);
-        state.apply(ButtonEvent::Select);
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Library);
-        // RECENT is the first tab; a recent book carries its saved place.
-        state.reader.library_tab = crate::reader::ReaderLibraryTab::Recent;
-        state.reader.library_selected = 0;
+        // A recent book takes the Library to RECENT (D45); its row carries
+        // the saved place.
         let place = crate::reader::ReaderLocation {
             path: "/sdcard/RUSTMIX/BOOKS/Quijote.txt".into(),
             title: "Quijote".into(),
@@ -3064,7 +3049,15 @@ mod tests {
             epub_chapter: None,
             place_percent: None,
         };
-        state.reader.recent = vec![place.clone()];
+        let mut state = AppState::default();
+        state.reader.recent = vec![place];
+        state.home_selected = home_index(ScreenRoute::Library).expect("Library row on Home");
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        assert_eq!(
+            state.reader.library_tab,
+            crate::reader::ReaderLibraryTab::Recent
+        );
         state.apply(ButtonEvent::Select);
         let loading = state
             .reader
@@ -3079,10 +3072,8 @@ mod tests {
 
     #[test]
     fn library_boot_short_press_cycles_the_tabs_in_order() {
-        let mut state = open_from_home(ScreenRoute::Reader);
-        state.apply(ButtonEvent::Select);
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::Library);
+        // No book read yet: the Library opens on ALL (D45).
+        let mut state = open_from_home(ScreenRoute::Library);
         use crate::reader::ReaderLibraryTab::{Bookmarks, Books, Files, Recent};
         // The Library opens on ALL; BOOT walks the strip in order and wraps.
         assert_eq!(state.reader.library_tab, Books);
@@ -3095,14 +3086,64 @@ mod tests {
     }
 
     #[test]
-    fn reader_continue_shell_routes_to_library_when_no_session() {
-        let mut state = open_from_home(ScreenRoute::Reader);
-        state.apply(ButtonEvent::Select);
-        assert_eq!(state.active_route(), ScreenRoute::ContinueReading);
-        state.apply(ButtonEvent::Select);
+    fn home_library_a_book_and_hold_boot_twice_return_home() {
+        let mut state = home_library_with_epub("d45-nav");
+        state.apply(ButtonEvent::Select); // Home's Library row opens the books
         assert_eq!(state.active_route(), ScreenRoute::Library);
-        state.back();
-        assert_eq!(state.active_route(), ScreenRoute::Reader);
+        state.apply(ButtonEvent::Select); // open the book
+        assert_eq!(state.active_route(), ScreenRoute::ReaderLoading);
+        for _ in 0..8 {
+            if state.tick_reader() == crate::reader::ReaderTickOutcome::FirstPageReady {
+                break;
+            }
+        }
+        assert_eq!(state.active_route(), ScreenRoute::ReaderPage);
+        state.back(); // hold BOOT on a page returns to the Library
+        assert_eq!(state.active_route(), ScreenRoute::Library);
+        state.back(); // hold BOOT on the Library returns Home
+        assert_eq!(state.active_route(), ScreenRoute::Home);
+    }
+
+    #[test]
+    fn the_library_opens_on_recent_with_a_recent_book_and_on_all_without() {
+        use crate::reader::ReaderLibraryTab::{Books, Recent};
+        let mut with_recent = home_library_with_epub("d45-recent");
+        let book = with_recent.reader.books[0].clone();
+        with_recent.reader.recent = vec![crate::reader::ReaderLocation {
+            path: book.path.clone(),
+            title: book.title.clone(),
+            format: book.format,
+            size_bytes: book.size_bytes,
+            modified_seconds: book.modified_seconds,
+            page_index: 1,
+            byte_offset: 100,
+            epub_chapter: None,
+            place_percent: None,
+        }];
+        with_recent.apply(ButtonEvent::Select);
+        assert_eq!(with_recent.active_route(), ScreenRoute::Library);
+        assert_eq!(with_recent.reader.library_tab, Recent);
+        // No book read yet: the books are listed instead.
+        let mut fresh = home_library_with_epub("d45-fresh");
+        fresh.apply(ButtonEvent::Select);
+        assert_eq!(fresh.active_route(), ScreenRoute::Library);
+        assert_eq!(fresh.reader.library_tab, Books);
+    }
+
+    #[test]
+    fn reader_options_bookmarks_its_list_and_hold_boot_returns_to_options() {
+        let mut state = reading_state();
+        state.apply(ButtonEvent::Select); // Select on the page opens Options
+        assert_eq!(state.active_route(), ScreenRoute::ReaderOptions);
+        state.apply(ButtonEvent::Down); // to Bookmarks
+        assert_eq!(
+            state.reader.selected_option(),
+            crate::reader::ReaderOption::Bookmarks
+        );
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::ReaderBookmarks);
+        state.back(); // hold BOOT returns to Options
+        assert_eq!(state.active_route(), ScreenRoute::ReaderOptions);
     }
 
     #[test]

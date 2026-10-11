@@ -359,7 +359,6 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     states.push(("settings-large-font", settings_large));
 
     let routes = [
-        ("reader-shell", ScreenRoute::Reader),
         ("ai", ScreenRoute::Ai),
         ("games", ScreenRoute::Games),
         ("tools", ScreenRoute::Tools),
@@ -457,7 +456,8 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     states.push(("reader-page-epub-pace", epub_pace));
     states.push(("bible-translation", bible_translation_preview_state()));
     for (name, tab) in [
-        ("library", crate::reader::ReaderLibraryTab::Books),
+        // The Library opens on RECENT when there is a recent book (D45).
+        ("library", crate::reader::ReaderLibraryTab::Recent),
         ("library-all", crate::reader::ReaderLibraryTab::Books),
         ("library-files", crate::reader::ReaderLibraryTab::Files),
     ] {
@@ -468,6 +468,12 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         }
         states.push((name, state));
     }
+    // No book read yet: the Library opens on ALL, every row still `new`.
+    let mut fresh = library_preview_state(crate::reader::ReaderLibraryTab::Books);
+    fresh.reader.recent.clear();
+    fresh.reader.positions.clear();
+    fresh.reading_stats = Default::default();
+    states.push(("library-no-recent", fresh));
     let mut alarms_new = sample_state();
     alarms_new.alarms = crate::alarm::AlarmEngine::parse(
         "snooze_minutes=9\nalarm=Morning,07:00,daily,on,recurring\nalarm=Plan,09:30,weekdays,on,recurring\n",
@@ -1199,6 +1205,36 @@ fn sample_state() -> AppState {
         epub_chapter: None,
         place_percent: None,
     });
+    // A small shelf, so Home's Library row shows its book count.
+    for (path, title, format, size_bytes) in [
+        (
+            "/sdcard/RUSTMIX/BOOKS/Cien años de soledad.txt",
+            "Cien años de soledad",
+            BookFormat::Text,
+            2_000_000,
+        ),
+        (
+            "/sdcard/RUSTMIX/BOOKS/Libro.epub",
+            "Libro",
+            BookFormat::Epub,
+            340_000,
+        ),
+        (
+            "/sdcard/RUSTMIX/BOOKS/Quijote.txt",
+            "Quijote",
+            BookFormat::Text,
+            1_500_000,
+        ),
+    ] {
+        state.reader.books.push(crate::reader::ReaderBook {
+            path: path.into(),
+            title: title.into(),
+            author: String::new(),
+            format,
+            size_bytes,
+            modified_seconds: 0,
+        });
+    }
     // Reading history: 25 min today closing a 5-day streak.
     let today = crate::civil_date::days_from_civil(2026, 10, 2) as u32;
     for offset in 1..=4 {

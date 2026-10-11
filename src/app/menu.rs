@@ -6,7 +6,7 @@
 use super::router::ScreenRoute;
 
 pub const HOME_ENTRY_COUNT: usize = 9;
-pub const CATEGORY_COUNT: usize = 7;
+pub const CATEGORY_COUNT: usize = 6;
 pub const CATEGORY_PAGE_SIZE: usize = 9;
 
 /// Badge for entries whose screen is planned but not built yet.
@@ -31,7 +31,7 @@ const HOME_ENTRIES: [MenuEntry; HOME_ENTRY_COUNT] = [
         label: "Library",
         subtitle: "Books, progress and bookmarks",
         badge: "",
-        route: ScreenRoute::Reader,
+        route: ScreenRoute::Library,
     },
     MenuEntry {
         label: "Bible",
@@ -74,27 +74,6 @@ const HOME_ENTRIES: [MenuEntry; HOME_ENTRY_COUNT] = [
         subtitle: "Display, network and device",
         badge: "",
         route: ScreenRoute::Settings,
-    },
-];
-
-const READER_ENTRIES: [MenuEntry; 3] = [
-    MenuEntry {
-        label: "Continue Reading",
-        subtitle: "Resume the last book",
-        badge: "",
-        route: ScreenRoute::ContinueReading,
-    },
-    MenuEntry {
-        label: "Books",
-        subtitle: "TXT and EPUB books on the SD card",
-        badge: "",
-        route: ScreenRoute::Library,
-    },
-    MenuEntry {
-        label: "Bookmarks",
-        subtitle: "Saved reading positions",
-        badge: "",
-        route: ScreenRoute::Bookmarks,
     },
 ];
 
@@ -234,7 +213,6 @@ pub const fn home_entries() -> &'static [MenuEntry] {
 #[must_use]
 pub const fn category_entries(route: ScreenRoute) -> &'static [MenuEntry] {
     match route {
-        ScreenRoute::Reader => &READER_ENTRIES,
         ScreenRoute::Tools => &TOOLS_ENTRIES,
         ScreenRoute::Settings => &SETTINGS_ENTRIES,
         ScreenRoute::SettingsClockAlarms => &SETTINGS_CLOCK_ALARMS_ENTRIES,
@@ -246,13 +224,12 @@ pub const fn category_entries(route: ScreenRoute) -> &'static [MenuEntry] {
 #[must_use]
 pub const fn category_index(route: ScreenRoute) -> Option<usize> {
     match route {
-        ScreenRoute::Reader => Some(0),
-        ScreenRoute::Ai => Some(1),
-        ScreenRoute::Games => Some(2),
-        ScreenRoute::Tools => Some(3),
-        ScreenRoute::Settings => Some(4),
-        ScreenRoute::SettingsClockAlarms => Some(5),
-        ScreenRoute::SettingsSystem => Some(6),
+        ScreenRoute::Ai => Some(0),
+        ScreenRoute::Games => Some(1),
+        ScreenRoute::Tools => Some(2),
+        ScreenRoute::Settings => Some(3),
+        ScreenRoute::SettingsClockAlarms => Some(4),
+        ScreenRoute::SettingsSystem => Some(5),
         _ => None,
     }
 }
@@ -270,8 +247,7 @@ mod tests {
     };
     use crate::app::router::ScreenRoute;
 
-    const CATEGORIES: [ScreenRoute; 5] = [
-        ScreenRoute::Reader,
+    const CATEGORIES: [ScreenRoute; 4] = [
         ScreenRoute::Ai,
         ScreenRoute::Games,
         ScreenRoute::Tools,
@@ -282,6 +258,8 @@ mod tests {
     fn home_lists_photos_first_and_every_category() {
         assert_eq!(home_entries().len(), HOME_ENTRY_COUNT);
         assert_eq!(home_index(ScreenRoute::Photos), Some(0));
+        // The Library row opens the books directly, not a landing.
+        assert_eq!(home_index(ScreenRoute::Library), Some(1));
         for route in CATEGORIES {
             assert!(home_index(route).is_some(), "{route:?} missing from Home");
         }
@@ -289,7 +267,6 @@ mod tests {
 
     #[test]
     fn categories_have_entries_without_synthetic_back_rows() {
-        assert_eq!(category_entries(ScreenRoute::Reader).len(), 3);
         // Games and AI are hub screens now: no static menu entries.
         assert_eq!(category_entries(ScreenRoute::Ai).len(), 0);
         assert_eq!(category_entries(ScreenRoute::Games).len(), 0);

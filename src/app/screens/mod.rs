@@ -53,11 +53,8 @@ pub fn render_active_screen(
         }
         route if route.is_category() => category::render_category(display, state),
         route if route.is_placeholder() => placeholder::render_placeholder(display, state),
-        ScreenRoute::ContinueReading => reader::render_continue_reading(display, state),
         ScreenRoute::Library => reader::render_library(display, state),
-        ScreenRoute::Bookmarks | ScreenRoute::ReaderBookmarks => {
-            reader::render_bookmarks(display, state)
-        }
+        ScreenRoute::ReaderBookmarks => reader::render_bookmarks(display, state),
         ScreenRoute::ReaderLoading => reader::render_loading(display, state),
         ScreenRoute::ReaderPage => reader::render_page(display, state),
         ScreenRoute::ReaderOptions => reader::render_options(display, state),
@@ -122,7 +119,7 @@ pub fn render_active_screen(
         ScreenRoute::BibleMenu => bible::render_bible_menu(display, state),
         ScreenRoute::BibleTranslations => bible::render_bible_translations(display, state),
         ScreenRoute::BibleMissing => bible::render_bible_missing(display, state),
-        ScreenRoute::Reader | ScreenRoute::Tools | ScreenRoute::GamesTbd | ScreenRoute::XiaoZhi => {
+        ScreenRoute::Tools | ScreenRoute::GamesTbd | ScreenRoute::XiaoZhi => {
             unreachable!("category and placeholder routes handled above")
         }
     }

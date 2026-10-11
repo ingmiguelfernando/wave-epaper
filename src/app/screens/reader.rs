@@ -37,9 +37,6 @@ use crate::{
 
 const READER_PAGE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "page"), (KeyCap::Select, "menu")];
 
-const RESUME_HINTS: [(KeyCap, &str); 2] =
-    [(KeyCap::Select, "resume"), (KeyCap::Boot, "hold: back")];
-
 const LIBRARY_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "book"),
     (KeyCap::Select, "read"),
@@ -53,64 +50,6 @@ const MENU_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Select, "activate"),
     (KeyCap::Boot, "hold: back"),
 ];
-
-pub fn render_continue_reading(
-    display: &mut OrientedFrameBuffer<'_>,
-    state: &AppState,
-) -> Result<(), Infallible> {
-    draw_header(
-        display,
-        state.display,
-        "CONTINUE READING",
-        "PERSISTENT BOOK RESUME",
-    )?;
-    let heading = state.display.heading_style();
-    let body = state.display.body_style();
-    if let Some(session) = state.reader.session.as_ref() {
-        Text::new(
-            &truncate(&session.book.title, 38),
-            Point::new(24, 190),
-            heading,
-        )
-        .draw(display)?;
-        Text::new(
-            &format!("{} is open.", session.display_page_label()),
-            Point::new(24, 240),
-            body,
-        )
-        .draw(display)?;
-        Text::new("SELECT resumes the open page.", Point::new(24, 284), body).draw(display)?;
-    } else if let Some(resume) = state.reader.resume.as_ref() {
-        Text::new(&truncate(&resume.title, 38), Point::new(24, 190), heading).draw(display)?;
-        Text::new(
-            &format!("{} is ready to restore.", resume.display_page_label()),
-            Point::new(24, 240),
-            body,
-        )
-        .draw(display)?;
-        Text::new(
-            "SELECT loads the saved position.",
-            Point::new(24, 284),
-            body,
-        )
-        .draw(display)?;
-    } else {
-        Text::new("No saved book", Point::new(24, 190), heading).draw(display)?;
-        Text::new(
-            "Open Library and choose a TXT book.",
-            Point::new(24, 240),
-            body,
-        )
-        .draw(display)?;
-        Text::new(
-            "The last-read page is stored on the SD card.",
-            Point::new(24, 284),
-            body,
-        )
-        .draw(display)?;
-    }
-    draw_bottom_bar(display, state.display, &RESUME_HINTS)
-}
 
 /// Top of the tab chips, under the status bar.
 const LIBRARY_TABS_TOP: i32 = STATUS_BAR_HEIGHT + 14;
@@ -319,7 +258,9 @@ pub fn render_page(
     state: &AppState,
 ) -> Result<(), Infallible> {
     let Some(session) = state.reader.session.as_ref() else {
-        return render_continue_reading(display, state);
+        // Defensive: Opening Book is the only path onto the page, and it
+        // always has a session. Without one, show the books.
+        return render_library(display, state);
     };
     let size = display.orientation().logical_size();
     let width = size.width as i32;
@@ -1107,9 +1048,8 @@ fn truncate(value: &str, max_chars: usize) -> String {
 mod tests {
     use super::{
         bookmark_entry_columns, library_count, library_entry_columns, page_body_geometry,
-        reader_body_style, reader_line_runs, render_bookmarks, render_continue_reading,
-        render_library, render_loading, render_options, render_preferences, render_toc,
-        ReaderBodyGeometry,
+        reader_body_style, reader_line_runs, render_bookmarks, render_library, render_loading,
+        render_options, render_page, render_preferences, render_toc, ReaderBodyGeometry,
     };
     use crate::{
         app::{render_current_screen, AppState, ScreenRoute},
@@ -1574,7 +1514,7 @@ mod tests {
         let mut state = AppState::default();
         let mut frame = FrameBuffer::new_white();
         let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
-        render_continue_reading(&mut display, &state).unwrap();
+        render_page(&mut display, &state).unwrap();
         render_library(&mut display, &state).unwrap();
         render_bookmarks(&mut display, &state).unwrap();
         render_options(&mut display, &state).unwrap();

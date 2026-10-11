@@ -329,7 +329,7 @@ fn border_style() -> PrimitiveStyle<BinaryColor> {
 fn home_icon(route: ScreenRoute, state: &AppState) -> &'static Icon {
     match route {
         ScreenRoute::Photos => &icons::PHOTO,
-        ScreenRoute::Reader => &icons::BOOK,
+        ScreenRoute::Library => &icons::BOOK,
         ScreenRoute::Bible => &icons::BIBLE,
         ScreenRoute::ReadingStats => &icons::STATS,
         ScreenRoute::Weather => current_weather_icon(state),
@@ -360,7 +360,7 @@ fn home_conditions(state: &AppState) -> Option<&CurrentConditions> {
 fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
     let books = state.reader.books.len();
     match entry.route {
-        ScreenRoute::Reader if books > 0 => books.to_string(),
+        ScreenRoute::Library if books > 0 => books.to_string(),
         ScreenRoute::ReadingStats => reading_stats_meta(state),
         ScreenRoute::Weather => match home_conditions(state) {
             Some(current) => {

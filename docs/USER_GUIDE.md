@@ -28,15 +28,16 @@ text; settings already applied with Select remain applied.
 
 Home shows time, battery, Wi-Fi burst state, date, weather and a Continue
 Reading summary. Settings › Weather can hide the weather from Home. The
-summary card is informational: use **Library › Continue Reading** to resume;
-while you read, the card shows `N% · M min today` when the clock is set and
-today has reading time. Up/Down wraps through the nine application rows;
-Select opens the highlighted one.
+summary card is informational: open **Home › Library** and pick the book on
+RECENT to resume it where the card shows; while you read, the card shows
+`N% · M min today` when the clock is set and today has reading time.
+Up/Down wraps through the nine application rows; Select opens the
+highlighted one.
 
 | Home row | Current behavior |
 |---|---|
 | Photos | Gallery of the JPEG photos in `/RUSTMIX/PHOTOS`; see [Photos](#photos) |
-| Library | Continue Reading, Books, Bookmarks |
+| Library | The books: RECENT, ALL, BOOKMARKS and FILES |
 | Bible | Offline reader in Spanish; opens at the last place, or the book picker on first use. In the book list short BOOT jumps to the next section; in the chapter grid it jumps ten chapters, and hold BOOT goes back to the books. ▼ turns to the next page and ▲ back, across chapters and books; short BOOT opens the chapter grid; ● opens the menu (`Ir a libro`, `Ir a capítulo`, and `Versículo del día` when `VERSES.TXT` has today's verse). The place is saved when you leave and before sleep |
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
@@ -78,8 +79,9 @@ Put `.TXT`, `.EPUB` or `.EPU` books in `/RUSTMIX/BOOKS/` on the SD card.
 See [SD-card setup](SD_CARD_SETUP.md) for formats and generated state files.
 Long file names are supported; hidden macOS `._` files are ignored.
 
-1. Open **Home › Library**. The tabs are RECENT, ALL, BOOKMARKS and FILES;
-	 a short BOOT press moves to the next tab.
+1. Open **Home › Library**. It opens on RECENT when there is a recent
+    book, else ALL. The tabs are RECENT, ALL, BOOKMARKS and FILES; a short
+    BOOT press moves to the next tab.
 2. Up/Down selects a book; hold to move faster. Each book shows its title,
 	 the author of an EPUB, its format and a bar with its percent read, a
 	 check once finished, or `new` when it has never been opened; FILES shows
@@ -96,8 +98,8 @@ Long file names are supported; hidden macOS `._` files are ignored.
 	 title. A ribbon at the top right marks a bookmarked page. Reaching the
 	 last page marks the book finished.
 
-**Continue Reading** resumes the saved book position (or returns to the list
-when nothing is saved). **Bookmarks** opens saved anchors. Positions, recent
+A RECENT row opens its book at the saved place (the Home card shows the
+book to resume); BOOKMARKS lists the saved anchors. Positions, recent
 books, bookmarks and preferences persist in `/RUSTMIX/READER/`; page numbers
 can change when typography changes, while anchors retain the reading position.
 

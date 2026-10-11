@@ -5,7 +5,6 @@
 pub enum ScreenRoute {
     #[default]
     Home,
-    Reader,
     Ai,
     Games,
     Tools,
@@ -24,9 +23,7 @@ pub enum ScreenRoute {
     BibleMissing,
     ReadingStats,
     XiaoZhi,
-    ContinueReading,
     Library,
-    Bookmarks,
     ReaderBookmarks,
     ReaderLoading,
     ReaderPage,
@@ -80,7 +77,6 @@ impl ScreenRoute {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Home => "Home",
-            Self::Reader => "Library",
             Self::Ai => "AI",
             Self::Games => "Games",
             Self::Tools => "Tools",
@@ -98,9 +94,7 @@ impl ScreenRoute {
             Self::BibleMissing => "Bible missing",
             Self::ReadingStats => "Reading Stats",
             Self::XiaoZhi => "XiaoZhi",
-            Self::ContinueReading => "Continue Reading",
             Self::Library => "Library",
-            Self::Bookmarks => "Bookmarks",
             Self::ReaderBookmarks => "Reader Bookmarks",
             Self::ReaderLoading => "Opening Book",
             Self::ReaderPage => "Reader Page",
@@ -155,7 +149,6 @@ impl ScreenRoute {
     pub const fn marker(self) -> &'static str {
         match self {
             Self::Home => "home",
-            Self::Reader => "reader",
             Self::Ai => "ai",
             Self::Games => "games",
             Self::Tools => "tools",
@@ -173,9 +166,7 @@ impl ScreenRoute {
             Self::BibleMissing => "bible-missing",
             Self::ReadingStats => "reading-stats",
             Self::XiaoZhi => "xiaozhi",
-            Self::ContinueReading => "continue-reading",
             Self::Library => "library",
-            Self::Bookmarks => "bookmarks",
             Self::ReaderBookmarks => "reader-bookmarks",
             Self::ReaderLoading => "reader-loading",
             Self::ReaderPage => "reader-page",
@@ -230,11 +221,7 @@ impl ScreenRoute {
     pub const fn is_category(self) -> bool {
         matches!(
             self,
-            Self::Reader
-                | Self::Tools
-                | Self::Settings
-                | Self::SettingsClockAlarms
-                | Self::SettingsSystem
+            Self::Tools | Self::Settings | Self::SettingsClockAlarms | Self::SettingsSystem
         )
     }
 
@@ -277,7 +264,7 @@ impl ScreenRoute {
     pub const fn parent(self) -> Option<Self> {
         match self {
             Self::Home => None,
-            Self::Reader
+            Self::Library
             | Self::Ai
             | Self::Games
             | Self::Tools
@@ -293,7 +280,6 @@ impl ScreenRoute {
             Self::BibleMenu => Some(Self::BibleReading),
             Self::BibleTranslations => Some(Self::BibleReading),
             Self::SettingsClockAlarms | Self::SettingsSystem => Some(Self::Settings),
-            Self::ContinueReading | Self::Library | Self::Bookmarks => Some(Self::Reader),
             Self::PhotoViewer => Some(Self::Photos),
             Self::ReaderBookmarks => Some(Self::ReaderOptions),
             Self::ReaderLoading | Self::ReaderPage => Some(Self::Library),
@@ -459,7 +445,13 @@ mod tests {
             ScreenRoute::DeviceInfoRuntime.parent(),
             Some(ScreenRoute::DeviceInfoBoard)
         );
-        assert_eq!(ScreenRoute::Reader.parent(), Some(ScreenRoute::Home));
+        // The books are one press from Home and one from the page (D45).
+        assert_eq!(ScreenRoute::Library.parent(), Some(ScreenRoute::Home));
+        assert_eq!(ScreenRoute::ReaderPage.parent(), Some(ScreenRoute::Library));
+        assert_eq!(
+            ScreenRoute::ReaderBookmarks.parent(),
+            Some(ScreenRoute::ReaderOptions)
+        );
         for route in [
             ScreenRoute::LuaApps,
             ScreenRoute::LuaGame,
