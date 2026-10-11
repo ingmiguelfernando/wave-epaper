@@ -540,6 +540,62 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         .navigate_to(ScreenRoute::ReaderPreferences);
     states.push(("reader-preferences-picker", reader_preferences_picker));
 
+    // The restyled reader screens (D46): Options, Preferences, TOC,
+    // Bookmarks and Opening Book, with Preferences and the TOC at Large.
+    let mut options = sample_state();
+    open_sample_book(&mut options);
+    options.reader.options_selected = 1;
+    options.router.navigate_to(ScreenRoute::ReaderOptions);
+    states.push(("reader-options", options));
+
+    let mut preferences = sample_state();
+    open_sample_book(&mut preferences);
+    preferences.reader.preferences_selected = 2;
+    preferences
+        .router
+        .navigate_to(ScreenRoute::ReaderPreferences);
+    states.push(("reader-preferences", preferences.clone()));
+    preferences.display.font_size = UiFontSize::Large;
+    states.push(("reader-preferences-large-font", preferences));
+
+    let mut toc = sample_state();
+    open_sample_epub(&mut toc, false);
+    toc.reader.toc_selected = 1;
+    toc.router.navigate_to(ScreenRoute::ReaderToc);
+    states.push(("reader-toc", toc.clone()));
+    toc.display.font_size = UiFontSize::Large;
+    states.push(("reader-toc-large-font", toc));
+
+    let mut marks = sample_state();
+    open_sample_book(&mut marks);
+    marks.reader.bookmarks = preview_marks();
+    marks.reader.bookmarks_selected = 1;
+    marks.router.navigate_to(ScreenRoute::ReaderBookmarks);
+    states.push(("reader-bookmarks", marks));
+
+    let mut opening = sample_state();
+    opening.reader.loading = Some(crate::reader::PendingReaderOpen {
+        book: crate::reader::ReaderBook {
+            path: "/sdcard/RUSTMIX/BOOKS/Cien años de soledad.txt".into(),
+            title: "Cien años de soledad".into(),
+            author: String::new(),
+            format: crate::reader::BookFormat::Text,
+            size_bytes: 2_000_000,
+            modified_seconds: 0,
+        },
+        stage: crate::reader::ReaderLoadingStage::UpdatingLayout,
+        encoding: None,
+        epub_document: None,
+        resume: None,
+        message: "Paginating chapter 3".into(),
+    });
+    opening.router.navigate_to(ScreenRoute::ReaderLoading);
+    states.push(("reader-loading", opening));
+
+    let mut display_screen = sample_state();
+    display_screen.router.navigate_to(ScreenRoute::Display);
+    states.push(("display", display_screen));
+
     let mut gallery = sample_state();
     open_sample_gallery(&mut gallery);
     states.push(("photos", gallery.clone()));
@@ -1108,6 +1164,24 @@ fn record_sample_battery_day(state: &mut AppState) {
         };
         state.battery_log.record(now - step * 15, percent as u8);
     }
+}
+
+/// Three saved marks of one book, each at its own page.
+fn preview_marks() -> Vec<crate::reader::ReaderLocation> {
+    [3_usize, 11, 27]
+        .into_iter()
+        .map(|page| crate::reader::ReaderLocation {
+            path: "/sdcard/RUSTMIX/BOOKS/Quijote.txt".into(),
+            title: "Quijote".into(),
+            format: crate::reader::BookFormat::Text,
+            size_bytes: 1_000_000,
+            modified_seconds: 1,
+            page_index: page,
+            byte_offset: page as u64 * 8_000,
+            epub_chapter: None,
+            place_percent: None,
+        })
+        .collect()
 }
 
 /// Open a Spanish TXT sample on its first page, showing word wrapping,

@@ -16,9 +16,23 @@ use crate::{
     orientation::OrientedFrameBuffer,
 };
 
+use super::bottom_bar::BOTTOM_BAR_TOP;
+
 pub const LIST_ROW_HEIGHT: i32 = 72;
 const TEXT_LEFT: i32 = 34;
 const VALUE_RIGHT: i32 = 480 - 18;
+
+/// How many full rows fit between `top` and the bottom bar, at any UI size.
+#[must_use]
+pub fn visible_rows(top: i32) -> usize {
+    ((BOTTOM_BAR_TOP - top) / LIST_ROW_HEIGHT).max(1) as usize
+}
+
+/// First row of the scrolling window that keeps `selected` on screen.
+#[must_use]
+pub fn first_visible(selected: usize, top: i32) -> usize {
+    selected.saturating_sub(visible_rows(top) - 1)
+}
 
 pub struct ListRow<'a> {
     pub title: &'a str,
@@ -85,4 +99,21 @@ pub fn draw_selection_marker(
     .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
     .draw(display)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{first_visible, visible_rows, LIST_ROW_HEIGHT};
+    use crate::app::{widgets::bottom_bar::BOTTOM_BAR_TOP, widgets::status_bar::STATUS_BAR_HEIGHT};
+
+    /// The window fits its rows above the bar and follows the selection.
+    #[test]
+    fn the_scroll_window_keeps_the_selection_on_screen() {
+        let top = STATUS_BAR_HEIGHT;
+        let visible = visible_rows(top);
+        assert!(top + visible as i32 * LIST_ROW_HEIGHT <= BOTTOM_BAR_TOP);
+        assert_eq!(first_visible(0, top), 0);
+        assert_eq!(first_visible(visible - 1, top), 0);
+        assert_eq!(first_visible(20, top), 20 - (visible - 1));
+    }
 }

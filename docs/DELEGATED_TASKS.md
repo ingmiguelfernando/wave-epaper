@@ -530,7 +530,26 @@ Reading and Settings › Display.
 the selection on screen; a long book title is cut, not drawn under the
 right value.
 
-**Status:**
+**Status:** done on `side-tasks-9`. Built: Reader Options, Reading
+Preferences, the table of contents, the bookmark list, Opening Book, Settings
+› Reading and Settings › Display draw in the mockup's look — the black status
+bar (the screen's name left, a short value right: the book's title on the
+reader screens, `PREFS.TXT` on Settings › Reading, `N saved` on the bookmark
+list, `SD FILE` on Display), then `draw_list_row` rows with the
+label left and the value right (long titles cut at the value's gutter) and
+pickers through `draw_option_list`. Lists scroll through a window
+(`list_row::visible_rows` / `first_visible`) that keeps the selection on
+screen when the rows do not fit; Opening Book shows the book's title, the
+stage and a bar in the row look, with the live message under it. The old
+headers, boxed status rows, `draw_row` and the two `draw_setting_row`
+helpers are gone. Previews: `reader-options`, `reader-preferences`,
+`reader-toc`, `reader-bookmarks`, `reader-loading`, `settings-reading`,
+`display`, plus `reader-preferences-large-font` and `reader-toc-large-font`;
+all inspected at their sizes. Tests: the rows fit above the bar or scroll
+with the selection on screen at every UI size (rendered at Compact, Standard
+and Large), the scroll window keeps the selection visible, and a long book
+title is cut before its value. Open: nothing known. Device check: the nine
+previews and the screens on the panel at Standard and Large.
 
 ### D47: Settings › System › Memory
 

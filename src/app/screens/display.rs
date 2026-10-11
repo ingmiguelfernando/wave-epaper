@@ -8,7 +8,7 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
 };
 
-use crate::app::typography::{Text, UiTextStyle};
+use crate::app::typography::Text;
 
 use crate::{
     app::{
@@ -16,9 +16,9 @@ use crate::{
         state::AppState,
         widgets::{
             bottom_bar::{draw_bottom_bar, CHANGE_HINTS, CHOOSE_HINTS},
-            header::draw_header,
+            list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             option_list::draw_option_list,
-            status_row::{draw_status_row, StatusRow},
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
     orientation::OrientedFrameBuffer,
@@ -32,86 +32,74 @@ pub fn render_display(
     let body = state.display.body_style();
     let prefs = state.display;
 
-    draw_header(display, state.display, "DISPLAY", "FONT AND SIZE")?;
-    draw_status_row(
+    draw_status_bar(display, state.display, "Settings › Display")?;
+    draw_status_text(
         display,
         state.display,
-        StatusRow {
-            left: prefs.font_family.compact_label(),
-            middle: prefs.font_size.label(),
-            right: prefs.persistence_label(),
-        },
+        prefs.persistence_label(),
+        STATUS_BAR_RIGHT,
     )?;
+    let top = STATUS_BAR_HEIGHT;
     if let Some(highlighted) = state.display_picker {
         let Some(&setting) = DisplaySetting::ALL.get(state.display_action_selected) else {
             return Ok(());
         };
         let (options, current) = prefs.options(setting);
-        Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
-        draw_option_list(display, state.display, 184, &options, current, highlighted)?;
+        Text::new(setting.label(), Point::new(22, top + 40), heading).draw(display)?;
+        draw_option_list(
+            display,
+            state.display,
+            top + 64,
+            &options,
+            current,
+            highlighted,
+        )?;
         draw_bottom_bar(display, state.display, &CHOOSE_HINTS)?;
         return Ok(());
     }
-    Text::new("Display preferences", Point::new(22, 160), heading).draw(display)?;
+    for (index, setting) in DisplaySetting::ALL.iter().copied().enumerate() {
+        let (options, current) = prefs.options(setting);
+        let value = options.get(current).copied().unwrap_or("");
+        let row = ListRow {
+            title: setting.label(),
+            subtitle: "",
+            value,
+            selected: state.display_action_selected == index,
+        };
+        draw_list_row(
+            display,
+            state.display,
+            top + index as i32 * LIST_ROW_HEIGHT,
+            row,
+        )?;
+    }
 
-    draw_setting_row(
-        display,
-        202,
-        DisplaySetting::Font.label(),
-        prefs.font_family.compact_label(),
-        state.display_action_selected == 0,
-        body,
-    )?;
-    draw_setting_row(
-        display,
-        292,
-        DisplaySetting::Size.label(),
-        prefs.font_size.label(),
-        state.display_action_selected == 1,
-        body,
-    )?;
-
-    Text::new("Live preview", Point::new(22, 410), heading).draw(display)?;
-    Rectangle::new(Point::new(22, 438), Size::new(436, 160))
+    let rows_bottom = top + DisplaySetting::ALL.len() as i32 * LIST_ROW_HEIGHT;
+    Text::new("Live preview", Point::new(22, rows_bottom + 44), heading).draw(display)?;
+    let box_top = rows_bottom + 72;
+    Rectangle::new(Point::new(22, box_top), Size::new(436, 160))
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
         .draw(display)?;
-    Text::new("Reader", Point::new(44, 500), prefs.navigation_style()).draw(display)?;
-    Text::new("Books, progress and bookmarks", Point::new(44, 548), body).draw(display)?;
+    Text::new(
+        "Reader",
+        Point::new(44, box_top + 62),
+        prefs.navigation_style(),
+    )
+    .draw(display)?;
+    Text::new(
+        "Books, progress and bookmarks",
+        Point::new(44, box_top + 110),
+        body,
+    )
+    .draw(display)?;
     Text::new(
         "Hold BOOT to return to Settings.",
-        Point::new(22, 666),
+        Point::new(22, box_top + 204),
         body,
     )
     .draw(display)?;
 
     draw_bottom_bar(display, state.display, &CHANGE_HINTS)?;
-    Ok(())
-}
-
-fn draw_setting_row(
-    display: &mut OrientedFrameBuffer<'_>,
-    top: i32,
-    label: &str,
-    value: &str,
-    selected: bool,
-    style: UiTextStyle,
-) -> Result<(), Infallible> {
-    let border = if selected {
-        PrimitiveStyle::with_stroke(BinaryColor::On, 4)
-    } else {
-        PrimitiveStyle::with_stroke(BinaryColor::On, 1)
-    };
-    Rectangle::new(Point::new(22, top), Size::new(436, 70))
-        .into_styled(border)
-        .draw(display)?;
-    Text::new(
-        if selected { ">" } else { " " },
-        Point::new(38, top + 43),
-        style,
-    )
-    .draw(display)?;
-    Text::new(label, Point::new(68, top + 43), style).draw(display)?;
-    Text::new(value, Point::new(258, top + 43), style).draw(display)?;
     Ok(())
 }
 

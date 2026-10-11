@@ -1,4 +1,4 @@
-//! Reader landing, library, bookmarks, loading, TXT / EPUB page, TOC and options screens.
+//! Reader library, bookmarks, loading, TXT / EPUB page, TOC and options screens.
 
 use core::convert::Infallible;
 
@@ -13,17 +13,16 @@ use crate::{
         display::{DisplayPreferences, UiFontSize},
         reader_typography::reader_body_style,
         state::AppState,
-        typography::{Text, TextBounds, UiTextRole, UiTextStyle},
+        typography::{Text, TextBounds, UiTextStyle},
         widgets::{
             bottom_bar::{
                 draw_bottom_bar, hints_right_edge, KeyCap, BACK_HINTS, BOTTOM_BAR_HEIGHT,
                 CHANGE_HINTS, CHOOSE_HINTS, OPEN_HINTS,
             },
-            header::draw_header,
+            list_row::{draw_list_row, first_visible, ListRow, LIST_ROW_HEIGHT},
             option_list::draw_option_list,
             reading_header::{draw_reading_header, READING_HEADER_HEIGHT},
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
-            status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
@@ -171,55 +170,52 @@ pub fn render_bookmarks(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(
-        display,
-        state.display,
-        "BOOKMARKS",
-        "PERSISTENT READER MARKS",
-    )?;
-    draw_status_row(
-        display,
-        state.display,
-        StatusRow {
-            left: "MARKS.TXT",
-            middle: &format!("{} saved", state.reader.bookmarks.len()),
-            right: "SD FILE",
-        },
-    )?;
+    draw_status_bar(display, state.display, "Bookmarks")?;
+    let saved = format!("{} saved", state.reader.bookmarks.len());
+    draw_status_text(display, state.display, &saved, STATUS_BAR_RIGHT)?;
     let body = state.display.body_style();
     if state.reader.bookmarks.is_empty() {
         Text::new(
             "No saved bookmarks",
-            Point::new(24, 210),
+            Point::new(24, 150),
             state.display.heading_style(),
         )
         .draw(display)?;
         Text::new(
             "Open a Reader page, choose Reader Options,",
-            Point::new(24, 264),
+            Point::new(24, 204),
             body,
         )
         .draw(display)?;
         Text::new(
             "then select Add / Remove Bookmark.",
-            Point::new(24, 306),
+            Point::new(24, 246),
             body,
         )
         .draw(display)?;
-    } else {
-        for (index, bookmark) in state.reader.bookmarks.iter().take(8).enumerate() {
-            let top = 164 + index as i32 * 64;
-            let columns = bookmark_entry_columns(&state.reader, bookmark);
-            draw_row(
-                display,
-                state,
-                top,
-                state.reader.bookmarks_selected == index,
-                &truncate(&bookmark.title, 23),
-                columns.badge.as_str(),
-                columns.suffix.as_str(),
-            )?;
-        }
+        return draw_bottom_bar(display, state.display, &OPEN_HINTS);
+    }
+    let top = STATUS_BAR_HEIGHT;
+    let first = first_visible(state.reader.bookmarks_selected, top);
+    for (index, bookmark) in state.reader.bookmarks.iter().enumerate().skip(first) {
+        let columns = bookmark_entry_columns(&state.reader, bookmark);
+        let value = if columns.badge == "PAGE" {
+            format!("P {}", columns.suffix)
+        } else {
+            format!("{} · {}", columns.badge, columns.suffix)
+        };
+        let row = ListRow {
+            title: &bookmark.title,
+            subtitle: "",
+            value: &value,
+            selected: state.reader.bookmarks_selected == index,
+        };
+        draw_list_row(
+            display,
+            state.display,
+            top + (index - first) as i32 * LIST_ROW_HEIGHT,
+            row,
+        )?;
     }
     draw_bottom_bar(display, state.display, &OPEN_HINTS)
 }
@@ -228,28 +224,24 @@ pub fn render_loading(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(
-        display,
-        state.display,
-        "OPENING BOOK",
-        "RESPONSIVE FIRST-PAGE-FIRST CACHE",
-    )?;
+    draw_status_bar(display, state.display, "Opening Book")?;
     let body = state.display.body_style();
-    let heading = state.display.heading_style();
     let loading = state.reader.loading.as_ref();
     let title = loading.map_or("Book", |value| value.book.title.as_str());
     let stage = loading.map_or(ReaderLoadingStage::OpeningFile, |value| value.stage);
-    Text::new(&truncate(title, 36), Point::new(24, 176), heading).draw(display)?;
-    Text::new(stage.label(), Point::new(24, 238), body).draw(display)?;
-    draw_progress(display, stage.progress())?;
+    let format = loading.map_or("", |value| value.book.format.badge());
+    let top = STATUS_BAR_HEIGHT;
+    let row = ListRow {
+        title,
+        subtitle: stage.label(),
+        value: format,
+        selected: false,
+    };
+    draw_list_row(display, state.display, top, row)?;
+    let bar_top = top + LIST_ROW_HEIGHT + 24;
+    draw_progress(display, stage.progress(), bar_top)?;
     let message = loading.map_or("Preparing reader...", |value| value.message.as_str());
-    Text::new(&truncate(message, 52), Point::new(24, 356), body).draw(display)?;
-    Text::new(
-        "The current page opens before full indexing.",
-        Point::new(24, 410),
-        body,
-    )
-    .draw(display)?;
+    Text::new(&body.fit(message, 432), Point::new(34, bar_top + 48), body).draw(display)?;
     draw_bottom_bar(display, state.display, &LOADING_HINTS)
 }
 
@@ -535,8 +527,15 @@ pub fn render_options(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(display, state.display, "READER OPTIONS", "READER ACTIONS")?;
-    for (index, option) in ReaderOption::ALL.iter().copied().enumerate() {
+    draw_status_bar(display, state.display, "Reader Options")?;
+    let body = state.display.body_style();
+    if let Some(session) = state.reader.session.as_ref() {
+        let title = body.fit(&session.book.title, 220);
+        draw_status_text(display, state.display, &title, STATUS_BAR_RIGHT)?;
+    }
+    let top = STATUS_BAR_HEIGHT;
+    let first = first_visible(state.reader.options_selected, top);
+    for (index, option) in ReaderOption::ALL.iter().copied().enumerate().skip(first) {
         let badge = match option {
             ReaderOption::Bookmark if state.reader.current_page_is_bookmarked() => "REMOVE",
             ReaderOption::Bookmark => "ADD",
@@ -544,14 +543,17 @@ pub fn render_options(
             ReaderOption::TableOfContents if state.reader.has_structured_toc() => "LIST",
             _ => option.badge(),
         };
-        draw_row(
+        let row = ListRow {
+            title: option.label(),
+            subtitle: "",
+            value: badge,
+            selected: state.reader.options_selected == index,
+        };
+        draw_list_row(
             display,
-            state,
-            146 + index as i32 * 66,
-            state.reader.options_selected == index,
-            option.label(),
-            badge,
-            "",
+            state.display,
+            top + (index - first) as i32 * LIST_ROW_HEIGHT,
+            row,
         )?;
     }
     draw_bottom_bar(display, state.display, &MENU_HINTS)
@@ -561,27 +563,41 @@ pub fn render_preferences(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(
-        display,
-        state.display,
-        "READING PREFERENCES",
-        "SETTINGS-STYLE ROW EDITOR",
-    )?;
+    draw_status_bar(display, state.display, "Reading Preferences")?;
+    let body = state.display.body_style();
+    if let Some(session) = state.reader.session.as_ref() {
+        let title = body.fit(&session.book.title, 220);
+        draw_status_text(display, state.display, &title, STATUS_BAR_RIGHT)?;
+    }
+    let top = STATUS_BAR_HEIGHT;
     if let Some(highlighted) = state.reader.preferences_picker {
         let (options, current) = state.reader.preference_options();
         let heading = state.display.heading_style();
         Text::new(
             state.reader.selected_preference().label(),
-            Point::new(22, 160),
+            Point::new(22, top + 40),
             heading,
         )
         .draw(display)?;
-        draw_option_list(display, state.display, 184, &options, current, highlighted)?;
+        draw_option_list(
+            display,
+            state.display,
+            top + 64,
+            &options,
+            current,
+            highlighted,
+        )?;
         draw_bottom_bar(display, state.display, &CHOOSE_HINTS)?;
         return Ok(());
     }
-    for (index, preference) in ReadingPreference::ALL.iter().copied().enumerate() {
-        let badge = match preference {
+    let first = first_visible(state.reader.preferences_selected, top);
+    for (index, preference) in ReadingPreference::ALL
+        .iter()
+        .copied()
+        .enumerate()
+        .skip(first)
+    {
+        let value = match preference {
             ReadingPreference::ReadingTheme => state.reader.preferences.theme.label(),
             ReadingPreference::Orientation => state.reader.preferences.orientation.label(),
             ReadingPreference::BookFontSize => state.reader.preferences.font_size.label(),
@@ -596,15 +612,17 @@ pub fn render_preferences(
             ReadingPreference::ReadingStats if state.reader.preferences.record_stats => "On",
             ReadingPreference::ReadingStats => "Off",
         };
-        draw_row(
+        let row = ListRow {
+            title: preference.label(),
+            subtitle: "",
+            value,
+            selected: state.reader.preferences_selected == index,
+        };
+        draw_list_row(
             display,
-            state,
-            // Nine rows share the screen above the bar.
-            156 + index as i32 * 64,
-            state.reader.preferences_selected == index,
-            preference.label(),
-            badge,
-            "",
+            state.display,
+            top + (index - first) as i32 * LIST_ROW_HEIGHT,
+            row,
         )?;
     }
     draw_bottom_bar(display, state.display, &CHANGE_HINTS)
@@ -614,62 +632,50 @@ pub fn render_toc(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(
-        display,
-        state.display,
-        "TABLE OF CONTENTS",
-        if state.reader.has_structured_toc() {
-            "EPUB NAVIGATION"
-        } else {
-            "TXT FOUNDATION"
-        },
-    )?;
+    draw_status_bar(display, state.display, "Table of Contents")?;
     let heading = state.display.heading_style();
     let body = state.display.body_style();
     let toc = state.reader.toc_entries();
     if toc.is_empty() {
-        Text::new("No structured TOC", Point::new(24, 200), heading).draw(display)?;
+        Text::new("No structured TOC", Point::new(24, 140), heading).draw(display)?;
         Text::new(
             "Ordinary TXT files do not provide a formal",
-            Point::new(24, 258),
+            Point::new(24, 198),
             body,
         )
         .draw(display)?;
         Text::new(
             "table of contents. EPUB books expose their",
-            Point::new(24, 300),
+            Point::new(24, 240),
             body,
         )
         .draw(display)?;
         Text::new(
             "navigation entries on this screen.",
-            Point::new(24, 342),
+            Point::new(24, 282),
             body,
         )
         .draw(display)?;
         return draw_bottom_bar(display, state.display, &BACK_HINTS);
     }
 
-    draw_status_row(
-        display,
-        state.display,
-        StatusRow {
-            left: "EPUB TOC",
-            middle: &format!("{} entries", toc.len()),
-            right: "SELECT OPEN",
-        },
-    )?;
-    let first = state.reader.toc_selected.saturating_sub(7);
-    for (row, entry) in toc.iter().skip(first).take(8).enumerate() {
-        let index = first + row;
-        draw_row(
+    let count = format!("{} entries", toc.len());
+    draw_status_text(display, state.display, &count, STATUS_BAR_RIGHT)?;
+    let top = STATUS_BAR_HEIGHT;
+    let first = first_visible(state.reader.toc_selected, top);
+    for (index, entry) in toc.iter().enumerate().skip(first) {
+        let value = format!("CH {}", entry.spine_index + 1);
+        let row = ListRow {
+            title: &entry.label,
+            subtitle: "",
+            value: &value,
+            selected: state.reader.toc_selected == index,
+        };
+        draw_list_row(
             display,
-            state,
-            166 + row as i32 * 64,
-            state.reader.toc_selected == index,
-            &truncate(&entry.label, 27),
-            "CH",
-            &(entry.spine_index + 1).to_string(),
+            state.display,
+            top + (index - first) as i32 * LIST_ROW_HEIGHT,
+            row,
         )?;
     }
     draw_bottom_bar(display, state.display, &OPEN_HINTS)
@@ -990,48 +996,22 @@ fn draw_check(
     Ok(())
 }
 
-fn draw_row(
+/// The opening stage's progress, drawn like a book row's place bar.
+fn draw_progress(
     display: &mut OrientedFrameBuffer<'_>,
-    state: &AppState,
+    percent: u8,
     top: i32,
-    selected: bool,
-    label: &str,
-    badge: &str,
-    suffix: &str,
 ) -> Result<(), Infallible> {
-    let body = if selected {
-        state.display.text_style(UiTextRole::Body, BinaryColor::Off)
-    } else {
-        state.display.body_style()
-    };
-    let style = if selected {
-        PrimitiveStyle::with_fill(BinaryColor::On)
-    } else {
-        PrimitiveStyle::with_stroke(BinaryColor::On, 1)
-    };
-    Rectangle::new(Point::new(20, top), Size::new(440, 50))
-        .into_styled(style)
+    let width = 412_u32;
+    Rectangle::new(Point::new(34, top), Size::new(width, 12))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
         .draw(display)?;
-    Text::new(
-        if selected { ">" } else { " " },
-        Point::new(32, top + 32),
-        body,
+    Rectangle::new(
+        Point::new(34, top),
+        Size::new(width * u32::from(percent.min(100)) / 100, 12),
     )
+    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
     .draw(display)?;
-    Text::new(label, Point::new(58, top + 32), body).draw(display)?;
-    Text::new(badge, Point::new(338, top + 32), body).draw(display)?;
-    Text::new(suffix, Point::new(402, top + 32), body).draw(display)?;
-    Ok(())
-}
-
-fn draw_progress(display: &mut OrientedFrameBuffer<'_>, percent: u8) -> Result<(), Infallible> {
-    Rectangle::new(Point::new(24, 282), Size::new(432, 38))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
-        .draw(display)?;
-    let width = 4 * percent as u32;
-    Rectangle::new(Point::new(30, 288), Size::new(width.min(420), 26))
-        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-        .draw(display)?;
     Ok(())
 }
 
@@ -1575,5 +1555,99 @@ mod tests {
             let body = ReaderBodyGeometry::new(orientation.screen_width(), 80, 42, 700, 24);
             assert_eq!(body.text.width(), preferences.layout().line_width());
         }
+    }
+
+    /// Ink at a logical screen point (the frame stores the screen rotated).
+    fn ink(frame: &FrameBuffer, x: i32, y: i32) -> bool {
+        use embedded_graphics::prelude::Point;
+        frame.is_black(Point::new(y, 479 - x)) == Some(true)
+    }
+
+    /// `count` saved marks of one book, all at their own page.
+    fn sample_marks(count: usize, title: &str) -> Vec<crate::reader::ReaderLocation> {
+        (0..count)
+            .map(|index| crate::reader::ReaderLocation {
+                path: "/sdcard/RUSTMIX/BOOKS/Quijote.txt".into(),
+                title: title.into(),
+                format: crate::reader::BookFormat::Text,
+                size_bytes: 1_000,
+                modified_seconds: 1,
+                page_index: index,
+                byte_offset: index as u64 * 100,
+                epub_chapter: None,
+                place_percent: None,
+            })
+            .collect()
+    }
+
+    /// The restyled screens keep their rows above the bar at every UI size,
+    /// and a list that outgrows the space scrolls its selection on screen.
+    #[test]
+    fn rows_fit_or_scroll_above_the_bar_at_every_ui_size() {
+        use crate::app::display::UiFontSize;
+        use crate::app::widgets::bottom_bar::BOTTOM_BAR_TOP;
+        use crate::app::widgets::list_row::{first_visible, visible_rows, LIST_ROW_HEIGHT};
+        use crate::app::widgets::status_bar::STATUS_BAR_HEIGHT;
+        for size in UiFontSize::ALL {
+            // Twelve marks do not fit; the window keeps the last one visible.
+            let mut scrolling = AppState::default();
+            scrolling.display.font_size = size;
+            scrolling.reader.bookmarks = sample_marks(12, "Quijote");
+            scrolling.reader.bookmarks_selected = 11;
+            scrolling.router.navigate_to(ScreenRoute::ReaderBookmarks);
+            let mut frame = FrameBuffer::new_white();
+            render_current_screen(&mut frame, &scrolling).unwrap();
+            let visible = visible_rows(STATUS_BAR_HEIGHT);
+            let first = first_visible(11, STATUS_BAR_HEIGHT);
+            assert!(first > 0, "{size:?}: the list should scroll");
+            let selected_top = STATUS_BAR_HEIGHT + (11 - first) as i32 * LIST_ROW_HEIGHT;
+            assert!(selected_top + LIST_ROW_HEIGHT <= BOTTOM_BAR_TOP);
+            assert!(
+                ink(&frame, 5, selected_top + LIST_ROW_HEIGHT / 2),
+                "{size:?}: the selected row is off screen"
+            );
+            assert!(
+                !ink(&frame, 240, BOTTOM_BAR_TOP - 12),
+                "{size:?}: rows spill below the last one"
+            );
+
+            // Reader Options fits its rows without a window.
+            let mut options = AppState::default();
+            options.display.font_size = size;
+            options.router.navigate_to(ScreenRoute::ReaderOptions);
+            let mut frame = FrameBuffer::new_white();
+            render_current_screen(&mut frame, &options).unwrap();
+            assert!(crate::reader::ReaderOption::ALL.len() <= visible);
+            let bottom =
+                STATUS_BAR_HEIGHT + crate::reader::ReaderOption::ALL.len() as i32 * LIST_ROW_HEIGHT;
+            assert!(bottom <= BOTTOM_BAR_TOP, "{size:?}: options pass the bar");
+            assert!(!ink(&frame, 240, BOTTOM_BAR_TOP - 12));
+        }
+    }
+
+    /// A long book title is cut at the value's gutter, never drawn under it.
+    #[test]
+    fn a_long_book_title_is_cut_before_the_value() {
+        use crate::app::widgets::list_row::LIST_ROW_HEIGHT;
+        use crate::app::widgets::status_bar::STATUS_BAR_HEIGHT;
+        let mut state = AppState::default();
+        // The second mark holds the selection, so the first row draws its
+        // title on white.
+        state.reader.bookmarks = sample_marks(2, &"A very long book title ".repeat(6));
+        state.reader.bookmarks_selected = 1;
+        state.router.navigate_to(ScreenRoute::ReaderBookmarks);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        let body = state.display.body_style();
+        let value_left = 462 - body.text_width("P 1");
+        let row_top = STATUS_BAR_HEIGHT;
+        let band = (row_top + 2)..(row_top + LIST_ROW_HEIGHT - 4);
+        for x in (value_left - 11)..value_left {
+            for y in band.clone() {
+                assert!(!ink(&frame, x, y), "title ink under the value at {x},{y}");
+            }
+        }
+        let value_inked = (value_left..462).any(|x| band.clone().any(|y| ink(&frame, x, y)));
+        assert!(value_inked, "the page value is missing");
     }
 }
