@@ -201,7 +201,28 @@ light sleep. Restore the owner's original preferences afterward.
 	Spanish translation; the next page turn does not stall (one chapter read
 	per chapter). Versículo del día opens on the page that holds the verse.
 
-## Voice note volume (v0.11.1)
+## Round 9 (D45 to D48)
+
+- [ ] Home › Library opens the books at once: RECENT when there is a recent
+   book, else ALL. Hold BOOT there returns Home; hold BOOT on a reading page
+   returns to the books; Reader Options › Bookmarks returns to Options. The
+   Home card still shows the book to resume, and RECENT's top row opens it
+   at the place the card shows.
+- [ ] Reader Options, Reading Preferences, the table of contents, the
+   bookmark list, Opening Book, Settings › Reading and Settings › Display
+   draw with the black status bar (name left, a short value right) and
+   label-left / value-right rows; long titles cut before the value; a list
+   that does not fit scrolls with the selection on screen at every UI size
+   (Settings › Display changes the size).
+- [ ] Settings › System › Memory shows the internal RAM free, its largest
+   block, the lowest free since boot, the PSRAM free and its lowest, and the
+   main task's stack margin. The numbers move as the device works and the
+   lows never rise.
+- [ ] Reader Options › Go to on a long TXT book: the list marks the place in
+   use; choosing 50% opens near the middle at a line start with the `41+`
+   style label, and the place survives a reboot. On an EPUB, 50% opens the
+   chapter holding the middle of the flattened text.
+
 
 - [ ] Play a note: ▲ makes it louder and ▼ quieter while it plays, the
 	Volume line follows, ● stops, and Settings › System › Audio shows the
