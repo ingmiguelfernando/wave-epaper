@@ -39,6 +39,7 @@ pub mod unit_converter;
 pub mod voice_notes;
 pub mod weather;
 pub mod weather_settings;
+pub mod xiaozhi;
 
 /// Draw the active screen selected by the router.
 pub fn render_active_screen(
@@ -122,7 +123,8 @@ pub fn render_active_screen(
         ScreenRoute::BibleMenu => bible::render_bible_menu(display, state),
         ScreenRoute::BibleTranslations => bible::render_bible_translations(display, state),
         ScreenRoute::BibleMissing => bible::render_bible_missing(display, state),
-        ScreenRoute::Tools | ScreenRoute::GamesTbd | ScreenRoute::XiaoZhi => {
+        ScreenRoute::XiaoZhi => xiaozhi::render_xiaozhi(display, state),
+        ScreenRoute::Tools | ScreenRoute::GamesTbd => {
             unreachable!("category and placeholder routes handled above")
         }
     }

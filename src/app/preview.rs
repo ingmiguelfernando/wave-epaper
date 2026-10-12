@@ -748,7 +748,46 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     ai_hub.ai = Some(sample_ai_config());
     ai_hub.router.navigate_to(ScreenRoute::Ai);
     states.push(("ai-providers", ai_hub));
+
+    let mut call = sample_state();
+    call.router.navigate_to(ScreenRoute::XiaoZhi);
+    call.xiaozhi = sample_xiaozhi_call();
+    states.push(("xiaozhi-call", call.clone()));
+    call.display.font_size = UiFontSize::Large;
+    states.push(("xiaozhi-call-large", call));
+    let mut linking = sample_state();
+    linking.router.navigate_to(ScreenRoute::XiaoZhi);
+    linking.xiaozhi.phase = crate::xiaozhi::call::CallPhase::Linking {
+        code: "482913".into(),
+    };
+    states.push(("xiaozhi-linking", linking));
+    let mut ended = sample_state();
+    ended.router.navigate_to(ScreenRoute::XiaoZhi);
+    ended.xiaozhi.phase = crate::xiaozhi::call::CallPhase::Ended {
+        error: Some("Could not reach the XiaoZhi server.".into()),
+    };
+    states.push(("xiaozhi-ended", ended));
     states
+}
+
+/// The mockup's call: XiaoZhi reads Psalm 23 from the card and explains it.
+fn sample_xiaozhi_call() -> crate::xiaozhi::call::XiaozhiUi {
+    use crate::xiaozhi::call::{CallEvent, CallPhase, XiaozhiUi};
+    let question = "Léeme el Salmo 23 y dime qué significa.";
+    let quote = "«Jehová es mi pastor; nada me faltará…».";
+    let meaning = "Es una oración de confianza: Dios guía y cuida como un pastor, aun en los días difíciles.";
+    let mut call = XiaozhiUi::default();
+    call.linked = true;
+    call.volume = 60;
+    let mut at = |second: u64, event| call.apply(event, second * 1_000);
+    at(0, CallEvent::Phase(CallPhase::Listening));
+    at(4, CallEvent::Heard(question.into()));
+    at(6, CallEvent::Phase(CallPhase::Thinking));
+    at(7, CallEvent::Tool("bible.read(PSA 23)".into()));
+    at(9, CallEvent::Phase(CallPhase::Speaking));
+    at(10, CallEvent::Said(quote.into()));
+    at(134, CallEvent::Said(meaning.into()));
+    call
 }
 
 /// A configured AI setup: Groq for transcription, OpenRouter for summaries.

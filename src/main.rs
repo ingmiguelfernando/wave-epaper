@@ -49,7 +49,7 @@ mod firmware {
             VOICE_RECORD_SCREEN_REFRESH_SECONDS,
         },
         audio::{
-            espidf::AudioRuntime, AudioSnapshot, AudioUiRequest, AUDIO_MCLK_HZ,
+            espidf::AudioRuntime, AudioPlaybackState, AudioSnapshot, AudioUiRequest, AUDIO_MCLK_HZ,
             AUDIO_SAMPLE_RATE_HZ, DEFAULT_AUDIO_VOLUME_PERCENT,
         },
         battery_log::{BatteryLog, BATTERY_LOG_PATH, SAMPLE_MINUTES},
@@ -126,7 +126,17 @@ mod firmware {
             espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
             WifiTransferUiRequest, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
         },
+        xiaozhi::{
+            activation::OTA_URL as XIAOZHI_OTA_URL,
+            call::CallEvent,
+            espidf::{device_info, CallSetup, XiaozhiCall, XiaozhiIdentity},
+        },
     };
+
+    /// The audio runtime as `run` builds it; a XiaoZhi call borrows it.
+    type BoardAudio = AudioRuntime<'static, SharedI2cBus<I2cDriver<'static>>>;
+    /// Call screen redraws for new text, at most this often.
+    const XIAOZHI_REFRESH: Duration = Duration::from_secs(2);
 
     pub fn run() -> Result<()> {
         sys::link_patches();
@@ -589,6 +599,10 @@ mod firmware {
         if let Some(partition) = nvs_partition.clone() {
             let _ = AI_KEYS.set(AiKeyStore::new(partition));
         }
+        let xiaozhi_identity = nvs_partition.clone().map(XiaozhiIdentity::new);
+        state.xiaozhi.linked = xiaozhi_identity
+            .as_ref()
+            .is_some_and(XiaozhiIdentity::linked);
         state.ai_keys = AI_KEYS
             .get()
             .map_or_else(AiKeyPresence::default, AiKeyStore::presence);
@@ -625,6 +639,11 @@ mod firmware {
         state.update_wifi_transfer_snapshot(WifiTransferSnapshot::default());
         let mut voice_recording: Option<VoiceRecordingSession> = None;
         let mut voice_playback: Option<VoicePlaybackSession> = None;
+        // A XiaoZhi call holds the speaker; a requested one waits for Wi-Fi.
+        let mut xiaozhi_call: Option<XiaozhiCall<BoardAudio>> = None;
+        let mut xiaozhi_waiting = false;
+        let mut xiaozhi_drawn = state.xiaozhi.clone();
+        let mut last_xiaozhi_refresh = Instant::now();
         let mut ai_worker = AiWorker::default();
         let mut ai_backoff = AiBackoff::default();
         let mut voice_stereo_buffer = vec![0_u8; VOICE_PCM_STEREO_CAPTURE_BYTES];
@@ -659,6 +678,7 @@ mod firmware {
                 _mounted_sd.is_some(),
             );
             if state.panel_awake
+                && xiaozhi_call.is_none()
                 && last_activity.elapsed() >= Duration::from_secs(PANEL_IDLE_SLEEP_SECONDS)
             {
                 panel.sleep()?;
@@ -863,6 +883,27 @@ mod firmware {
                 }
             }
 
+            // A XiaoZhi call: a request waits for Wi-Fi below; keys go to the
+            // call thread and its events to the screen.
+            if state.active_route() != ScreenRoute::XiaoZhi && state.xiaozhi.phase.is_live() {
+                // Leaving the screen any way, such as for an alarm, hangs up.
+                state.xiaozhi.hang_up();
+            }
+            if xiaozhi_call.is_none() && state.xiaozhi.take_start_request() {
+                xiaozhi_waiting = true;
+            }
+            if !state.xiaozhi.phase.is_live() {
+                xiaozhi_waiting = false;
+            }
+            poll_xiaozhi_call(
+                &mut xiaozhi_call,
+                &mut audio_runtime,
+                &mut state,
+                xiaozhi_identity.as_ref(),
+                uptime.elapsed().as_millis() as u64,
+            );
+            let xiaozhi_busy = xiaozhi_call.is_some() || xiaozhi_waiting;
+
             // Wi-Fi bursts: switch the radio on for due or requested work and
             // off again once that work is done.
             let mut manual_weather_refresh = state.take_weather_refresh_request();
@@ -902,7 +943,10 @@ mod firmware {
             // being recorded or played.
             let portal_active = wifi_transfer_server.is_some() || transfer_waiting;
             if ai_worker.is_busy()
-                && (voice_recording.is_some() || voice_playback.is_some() || portal_active)
+                && (voice_recording.is_some()
+                    || voice_playback.is_some()
+                    || portal_active
+                    || xiaozhi_busy)
             {
                 ai_worker.cancel();
             }
@@ -912,6 +956,7 @@ mod firmware {
                 && voice_recording.is_none()
                 && voice_playback.is_none()
                 && !portal_active
+                && !xiaozhi_busy
                 && _mounted_sd.is_some()
                 && (on_usb_power
                     || ai_battery.map_or(true, |percent| percent >= AI_MIN_BATTERY_PERCENT))
@@ -924,7 +969,9 @@ mod firmware {
                 let now = Instant::now();
                 match radio.phase() {
                     RadioPhase::Off => {
-                        let reason = if manual_weather_refresh && state.weather_enabled() {
+                        let reason = if xiaozhi_waiting {
+                            Some("xiaozhi")
+                        } else if manual_weather_refresh && state.weather_enabled() {
                             Some("weather-refresh")
                         } else if transfer_waiting {
                             Some("wifi-transfer")
@@ -990,6 +1037,7 @@ mod firmware {
                             && wifi_transfer_server.is_none()
                             && !ai_worker.is_busy()
                             && !ai_waiting
+                            && !xiaozhi_busy
                             && radio.work_done(now, weather_settled)
                         {
                             radio_off(
@@ -1025,6 +1073,39 @@ mod firmware {
                         RefreshRequest::Normal,
                     )?;
                 }
+            }
+            if xiaozhi_waiting && radio.phase() != RadioPhase::Connecting {
+                xiaozhi_waiting = false;
+                if radio.phase() == RadioPhase::Connected {
+                    let audio_busy = voice_recording.is_some() || voice_playback.is_some();
+                    start_xiaozhi_call(
+                        &mut xiaozhi_call,
+                        &mut audio_runtime,
+                        &mut state,
+                        xiaozhi_identity.as_ref(),
+                        audio_busy,
+                    );
+                } else if network_config.is_some() {
+                    state.xiaozhi.fail("Wi-Fi did not connect.");
+                } else {
+                    state.xiaozhi.fail("Wi-Fi is not set up. See the user guide.");
+                }
+            }
+            if state.panel_awake
+                && state.active_route() == ScreenRoute::XiaoZhi
+                && state.xiaozhi != xiaozhi_drawn
+                && (state.xiaozhi.phase != xiaozhi_drawn.phase
+                    || last_xiaozhi_refresh.elapsed() >= XIAOZHI_REFRESH)
+            {
+                refresh_screen(
+                    &mut panel,
+                    &mut frame,
+                    &mut state,
+                    &mut panel_refresh,
+                    RefreshRequest::Normal,
+                )?;
+                xiaozhi_drawn = state.xiaozhi.clone();
+                last_xiaozhi_refresh = Instant::now();
             }
 
             if radio.phase() == RadioPhase::Connected {
@@ -1221,6 +1302,7 @@ mod firmware {
                 && voice_recording.is_none()
                 && voice_playback.is_none()
                 && wifi_transfer_server.is_none()
+                && !xiaozhi_busy
                 && !ai_worker.is_busy();
             let power_key_now_ms = uptime.elapsed().as_millis() as u64;
             let power_key_was_down = power_presses.is_down();
@@ -1954,7 +2036,8 @@ mod firmware {
                         || state.apply_bible_boot_short_press()
                         || state.apply_sleep_screen_boot_short_press()
                         || state.apply_weather_boot_short_press()
-                        || state.apply_ai_hub_boot_short_press();
+                        || state.apply_ai_hub_boot_short_press()
+                        || state.apply_xiaozhi_boot_short_press();
                     if calendar_agenda_context
                         || keyboard_context
                         || lua_game_context
@@ -2467,6 +2550,111 @@ mod firmware {
                 state.refresh_voice_notes_catalog();
                 state.reload_note_result(&wav_name);
             }
+        }
+    }
+
+    /// Lend the speaker to a new XiaoZhi call once Wi-Fi is up.
+    fn start_xiaozhi_call(
+        call: &mut Option<XiaozhiCall<BoardAudio>>,
+        audio_runtime: &mut Option<BoardAudio>,
+        state: &mut AppState,
+        identity: Option<&XiaozhiIdentity>,
+        audio_busy: bool,
+    ) {
+        if audio_busy {
+            state.xiaozhi.fail("Finish the voice note first.");
+            return;
+        }
+        let client_id = match identity.map(XiaozhiIdentity::client_id) {
+            Some(Ok(id)) => id,
+            Some(Err(error)) => {
+                warn!("rustmix-wave=xiaozhi status=no-client-id error={error:#}");
+                state.xiaozhi.fail("The device settings could not be read.");
+                return;
+            }
+            None => {
+                state.xiaozhi.fail("The device settings could not be read.");
+                return;
+            }
+        };
+        let Some(runtime) = audio_runtime.take() else {
+            state.xiaozhi.fail("The speaker is not available.");
+            return;
+        };
+        let setup = CallSetup {
+            device: device_info(client_id, &state.network),
+            ota_url: XIAOZHI_OTA_URL.into(),
+            mic_gain: state.voice_notes.mic_gain,
+            battery_percent: state.board.power.and_then(|power| power.battery_percent),
+            rssi: state.network.rssi_dbm,
+            bible_root: state.bible.root().to_path_buf(),
+            bible_translation: state.bible.translation().map(str::to_owned),
+        };
+        let mut snapshot = runtime.snapshot();
+        match XiaozhiCall::start(runtime, setup) {
+            Ok(started) => {
+                snapshot.playback_state = AudioPlaybackState::OnCall;
+                state.update_audio_snapshot(snapshot);
+                *call = Some(started);
+                info!("rustmix-wave=xiaozhi status=call-started");
+            }
+            Err((runtime, error)) => {
+                *audio_runtime = runtime;
+                warn!("rustmix-wave=xiaozhi status=start-failed error={error}");
+                state.xiaozhi.fail("The call could not start.");
+            }
+        }
+    }
+
+    /// One main-loop step of a XiaoZhi call: keys go to the call thread, its
+    /// events to the screen, and the speaker comes back once the call no
+    /// longer needs it.
+    fn poll_xiaozhi_call(
+        call: &mut Option<XiaozhiCall<BoardAudio>>,
+        audio_runtime: &mut Option<BoardAudio>,
+        state: &mut AppState,
+        identity: Option<&XiaozhiIdentity>,
+        now_ms: u64,
+    ) {
+        let Some(running) = call.as_ref() else {
+            return;
+        };
+        for command in state.xiaozhi.take_commands() {
+            running.send(command);
+        }
+        // Checked first, so the thread's last events are still read below.
+        let finished = running.is_finished();
+        for event in running.poll() {
+            if event == CallEvent::Linked && !state.xiaozhi.linked {
+                match identity.map(XiaozhiIdentity::set_linked) {
+                    Some(Ok(())) => info!("rustmix-wave=xiaozhi status=link-saved"),
+                    Some(Err(error)) => {
+                        warn!("rustmix-wave=xiaozhi status=link-save-failed error={error:#}")
+                    }
+                    None => {}
+                }
+            }
+            state.xiaozhi.apply(event, now_ms);
+        }
+        // A call that ended before its conversation never took the speaker.
+        let mut audio = if state.xiaozhi.phase.is_live() {
+            None
+        } else {
+            running.reclaim_audio()
+        };
+        if finished {
+            if let Some(ended) = call.take() {
+                audio = audio.or_else(|| ended.finish());
+            }
+            // The thread ended without saying so.
+            if state.xiaozhi.phase.is_live() {
+                state.xiaozhi.fail("The call stopped.");
+            }
+        }
+        if let Some(runtime) = audio {
+            state.update_audio_snapshot(runtime.snapshot());
+            *audio_runtime = Some(runtime);
+            info!("rustmix-wave=xiaozhi status=speaker-returned");
         }
     }
 

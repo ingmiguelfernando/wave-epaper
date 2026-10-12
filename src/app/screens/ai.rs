@@ -195,7 +195,11 @@ fn draw_xiaozhi_card(
     )
     .draw(display)?;
     let badge_style = card_text(state.display, selected, UiTextRole::Body);
-    let badge = "SOON";
+    let badge = if state.xiaozhi.linked {
+        "LINKED"
+    } else {
+        "NOT LINKED"
+    };
     let badge_left = CARD_RIGHT - 16 - badge_style.text_width(badge);
     Text::new(badge, Point::new(badge_left, CARD_TOP + 40), badge_style).draw(display)?;
     Ok(())
