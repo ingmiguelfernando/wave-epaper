@@ -501,7 +501,238 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 11 tasks (branch `side-tasks-11`)
+## Round 12 tasks (branch `side-tasks-12`)
+
+Start from `main` at v0.12.1, where Round 11 is merged; read its result at
+the top of this file first. Every screen of the mockup is on the device
+now, but four still differ from it: the voice note recording and result
+screens, the details at the right of the Home rows, and the verse of the
+day sleep screen, which Settings › Sleep screen still lists as `SOON`.
+Four tasks, in this order. When they are done, merge `main` into the
+branch and open a pull request.
+
+Before you start, put `voice-note-summary.png`, `home.png` and
+`sleep-screen.png` (the `screen-previews` artifact of `main`) next to the
+mockup's `Voice Notes: resultado`, `Home` and `Settings › Sleep screen`
+figures in `mockups/index.html`. The recording screen has no preview yet;
+D54 adds one to compare with `Voice Notes: grabando`.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8): a second app partition, the download over Wi-Fi and its row in
+Settings › System. Leave these files alone:
+
+- `src/main.rs`, except the lines each task names;
+- updates and network: `partitions.csv`, `sdkconfig.defaults`,
+  `Cargo.toml`, `.github/`, `src/ota*.rs`, `src/network*.rs`,
+  `src/radio_burst.rs`, `src/wifi_transfer.rs`, `src/build_info.rs`,
+  `src/app/screens/settings.rs`, `src/app/screens/device_info.rs`,
+  `src/app/screens/network.rs`;
+- XiaoZhi: `src/xiaozhi/`, `src/app/screens/xiaozhi.rs`, `src/audio/`;
+- drawing: the files already in `src/app/widgets/` (call them; a new file
+  there and its line in `widgets/mod.rs` are fine), `src/app/typography/`,
+  `src/app/display_assets.rs`, `scripts/fonts/`.
+
+Put new previews in `src/app/preview.rs` next to the screen's other
+previews, not at the end of `preview_states`. Run the doc-comment check of
+Round 9 before you hand over. The fonts have no ▲▼●☐▸: draw the shapes
+(the recording dot, the to-do boxes). Look at every new shape enlarged
+next to the mockup's, as Round 11's result asks.
+
+### D54: Voice note recording screen like the mockup
+
+**Why.** The recording screen is still the diagnostic page from before the
+redesign: `RECORD VOICE NOTE` / `ES8311 MICROPHONE TO SD` in the old
+header, then rows of PCM bytes, peak, clipped samples and mic gain, and
+`UP / DOWN pause` as text. The mockup shows the time large, a level meter
+and what the note costs on the card.
+
+**Change.** `render_voice_note_recording` in
+`src/app/screens/voice_notes.rs`, after the mockup's
+`Voice Notes: grabando` (its CSS: `.timer`, `.meter`, `.chips`,
+`.infobox`):
+
+- **Status bar:** `● REC · Voice Notes` with the battery at the right, as
+  the XiaoZhi call screen draws `● On call · 02:14` (`screens/xiaozhi.rs`,
+  `home::draw_battery`); `PAUSED · Voice Notes` while paused.
+- **Title:** `New note · Oct 2, 12:04` centred in Heading, from
+  `active_recorded_at` through `ai::split_stamp`. Under it in Detail:
+  `The title is generated from the summary` when the note goes to the AI
+  on stop, else the file name (`Saved as VOICE012.WAV`). "Goes to the AI"
+  is the test `main.rs` makes after `finalize` (`queues_on_save` with the
+  providers and keys ready); move it into an `AppState` method that both
+  use, which is one named `main.rs` line.
+- **Timer:** the elapsed time centred in the sleep clock's numerals
+  (`draw_numerals` with `Numerals::Clock`, 126 px; the mockup's is
+  120 px). Past an hour (`1:03:27`) use `Numerals::Temperature` when
+  `numerals_width` passes 448.
+- **Level meter:** as the mockup's `.meter`: 30 bars 10 px wide with 5 px
+  gaps, centred in a 130 px band between two 2 px rules, 26 px under the
+  timer, 10 to 110 px tall. One bar per second of audio, from the loudest
+  chunk in it, the newest at the right, on a log scale (6 dB a step, for
+  example `16 - peak.leading_zeros()`) so speech fills the band and
+  silence is the shortest bar. `VoiceNotesUiState` keeps the last 30;
+  `update_recording_progress` takes the chunk's peak and keeps the note's
+  peak itself. `main.rs`: in the capture loop, pass `metrics.peak`
+  instead of `session.peak()`.
+- **Chips:** `● RECORDING` and `PAUSED`, the active one filled: Detail
+  capitals, a 2 px border, as XiaoZhi's `LISTEN ▸ THINK ▸ SPEAK`. Add a
+  `widgets/chips.rs` for a chip with an optional drawn dot; D55 uses it.
+  XiaoZhi's copy stays until the main line is done with that file.
+- **Info box** (`games::draw_info_box`): `WAV · 16 kHz mono · 6.3 MB so
+  far`, `SD: 14.2 GB free (≈ 132 h)` and `Wi-Fi off while recording` (the
+  radio and the AI queue wait for the recording to stop). The free space
+  is `available_storage_bytes` less what the note wrote; sizes have one
+  decimal in the binary units of `format_storage_bytes`
+  (`voice_note_metadata.rs`); the hours are WAV hours at 32 000 bytes a
+  second, grouped with `regional::grouped`. Without the free space, the
+  first line only.
+- **Hints:** `● stop & process` when the note goes to the AI, else
+  `● stop & save`; `BOOT pause`, or `BOOT resume` while paused. ▲▼ keep
+  pausing as today, without a hint, as the mockup shows two. For BOOT: a
+  new `AppState::apply_voice_recording_boot_short_press` that queues the
+  same request as ▲▼ (`PauseRecording` or `ResumeRecording`); `main.rs`:
+  one more `|| state.apply_voice_recording_boot_short_press()` in the BOOT
+  short-press chain, after `apply_xiaozhi_boot_short_press`. The request
+  is then handled where the AI hub's is (`apply_voice_notes_ui_request`
+  runs after the chain). Today a short BOOT here is ignored.
+- **Other modes** on this route (`Saved`, `Error`, `Idle`) keep today's
+  message, in the info box, under the same status bar and title. Playback
+  draws on the details screen: check with `git grep` whether this route
+  can still show `Playing` before you keep a branch for it.
+- **Previews:** `voice-note-recording` (3:27 in, a run of speech-like
+  levels, 14.2 GB free), `voice-note-recording-paused` and
+  `voice-note-recording-large` (Large UI size).
+
+**Tests:** one bar per second, the loudest chunk wins, the 31st second
+drops the oldest; silence gives the shortest bar and a full-scale peak the
+tallest; `update_recording_progress` keeps the note's peak; the info box
+lines for 3:27 written and 14.2 GB free; a short BOOT on the recording
+screen queues a pause, then a resume, and is not claimed on other screens.
+
+**Status:** to do.
+
+### D55: Voice note result screen like the mockup
+
+**Why.** The result screen has the mockup's parts, but under the old
+`VOICE NOTE / AI RESULT` header, with the title in Heading, the tabs as
+body-size boxes and the summary in small body text. The to-dos the summary
+prompt asks for (a line with the word for to-dos, then `☐ ` lines; see
+`summary_request` in `src/ai_client.rs`) show as plain bullets,
+because `prepare_text` turns `☐` into `•`.
+
+**Change.** `render_voice_note_result` in `src/app/screens/voice_notes.rs`
+and `src/voice_note_result.rs`, after the mockup's
+`Voice Notes: resultado` (its CSS: `.sum`):
+
+- **Status bar:** `Voice Note`, with the time at the right as Home draws
+  it (`state.board.time_label`).
+- **Title:** the record's title in the Large role, up to two lines (the
+  second cut with `…`), then the meta line as today.
+- **Tabs:** `SUMMARY`, `TRANSCRIPT` and `AUDIO` as chips from D54's
+  `widgets/chips.rs`, the active one filled, from the left margin.
+- **Body:** one UI size up from the user's (Compact to Standard, Standard
+  to Large; Large stays), near the mockup's 18 px; wrap and scroll with
+  the same style.
+- **To-dos:** parse the summary once into typed lines in
+  `voice_note_result.rs` (bullet, to-do, heading, text) and draw by type.
+  A to-do is a 14 × 14 box with a 2 px border, then its text; a bullet is
+  `•`, then its text; their wrapped lines start under the text, not under
+  the marker. A line that is neither and comes right before a to-do is a
+  heading: Heading role, 12 px above it. The transcript and audio tabs
+  stay plain text.
+- Queued and failed notes keep their status text in the body; the footer
+  and the hints stay.
+- **Previews:** `voice-note-summary` again, with the mockup's summary in
+  the sample record (three bullets, `Pendientes`, three to-dos), and
+  `voice-note-summary-large`; check `voice-note-transcript`,
+  `voice-note-audio`, `voice-note-queued` and `voice-note-failed` too.
+
+**Tests:** the parser: bullets, to-dos with and without a heading line, a
+`☐` inside a sentence stays text, CRLF line ends; the summary frame draws
+one box per to-do; a long to-do's second line starts under its text; the
+last scroll position shows the last to-do.
+
+**Status:** to do.
+
+### D56: Home rows' details like the mockup
+
+**Why.** The mockup's Home shows a short detail at the right of most rows:
+`48` photos, `24` books, `Sal 23`, `5-day streak`, `18°`, `2` games and
+`2 apps`. The device shows only the books, the streak and the temperature
+(`home_meta` in `src/app/screens/home.rs`).
+
+**Change.** `home_meta`:
+
+- **Photos:** the count from the last scan (`state.photos.photos`), empty
+  for none. Today the scan runs only when Photos opens; `main.rs`: one
+  line at boot, `state.photos.refresh()`, after
+  `state.refresh_lua_app_catalog(..)`.
+- **Bible:** where reading continues: the book's short name and the
+  chapter (`Sal 23`), from `state.bible.usable_place()` and its book in
+  `state.bible.books()`; empty without a place. The place is read at boot.
+- **Games:** the hub's count (`state.lua_runtime.games().len()`), empty
+  for none; the catalog is scanned at boot.
+- **AI:** `2 apps`: the AI hub's card count, as a constant next to the
+  hub's cards in `screens/ai.rs`, not a literal in Home.
+- Tools and Settings stay empty. Keep the detail's style and place; check
+  that `1 Cor 13` and `5-day streak` fit at the Large UI size.
+- **Previews:** `home` again with the mockup's details (a place in
+  Psalms, some photos and games), and `home-large-font` again.
+
+**Tests:** each row's detail from a state that has it, and empty without;
+a saved place outside the card's books (`usable_place` is `None`) gives no
+Bible detail.
+
+**Status:** to do.
+
+### D57: Verse of the day sleep screen
+
+**Why.** Settings › Sleep screen lists `Verse of the day`, `From your Bible
+on the SD`, with `SOON`: `SleepMode::Verse` cannot be chosen. What it needs
+is on `main`: the Bible reader, `VERSES.TXT` read at boot
+(`BibleUiState::verse_list`) and `bible::reference_text`, written for this
+mode.
+
+**Change.**
+
+- **Mode** (`src/sleep_screen.rs`): Verse can be chosen when the card has
+  a verse list (`state.bible.has_verse_list()`); keep `SleepMode` free of
+  `AppState` and pass the fact in. It is live (drawn by Wave) and wakes
+  once a day. Settings › Sleep screen (`screens/sleep_settings.rs`) shows
+  `1 WAKE-UP/DAY` for it, as the mockup, or `NO VERSES` when the card has
+  none, and then refuses it as it refuses `SOON` today. A saved `verse`
+  mode on a card without the list draws the clock.
+- **Text:** a new `AppState` field with today's verse: its text, its
+  reference (`VerseRef::label`, `Sal 23:1`) and the translation. One
+  method loads it for `local_day()` with `bible::verse_of_the_day` and
+  `bible::reference_text` (the verse the Bible menu's `Versículo del día`
+  opens), and reads nothing when the day has not changed. Drawing reads
+  nothing from the card.
+- **Layout** (`screens/sleep_screens.rs`, a new `SleepLayout::Verse`):
+  there is no mockup figure, so start from `Reposo: reloj y fecha` and the
+  clock layout. The date at the top as its date line; the verse centred in
+  the reader's style (`reader_body_style` with the reader's font) at the
+  largest `BookFontSize` that fits, from `XLarge` down, else cut with `…`;
+  the reference and the translation under it in Heading; the clock
+  layout's footer (battery and wake hint).
+- **Midnight:** a `verse_redraw_wait(now)` in `sleep_screen.rs` to the next
+  local midnight plus the clock's margin, as `clock_redraw_wait`.
+  `main.rs`, named lines: `next_sleep_redraw` returns it for
+  `SleepLayout::Verse`, and the three `render_sleep_mode` calls (sleep
+  entry, redraw and `sleep_preview`) load the verse first.
+- **Previews:** `sleep-verse` (Psalm 23:1), `sleep-verse-long` (a verse
+  that needs a smaller size) and `sleep-screen-verse` (Settings › Sleep
+  screen with Verse chosen), next to the other sleep previews.
+
+**Tests:** the wait to midnight from 23:59:30 and from 00:00:00 (a whole
+day); two days in a row give the two verses `verse_of_the_day` gives, and
+the same day loads once; Verse is refused without a verse list; the
+status labels; without a card or a verse list the clock layout draws; the
+long verse stays above its reference.
+
+**Status:** to do.
+
+## Round 11 tasks (done in v0.12.1)
 
 Start from `main` at v0.11.3, where Round 10 is merged; read its result at
 the top of this file first. The owner played Race on the device: it plays

@@ -43,6 +43,7 @@ Last updated: 2026-10-12, firmware v0.12.1.
 | Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, tested on the device; the mockup's look and a scrolling Games hub are Round 11 (D51 to D53) |
 | XiaoZhi voice chat: linking, WebSocket call with Opus, device tools (status, volume, Bible), the mockup's call screen | 0.12.0 | 4609d8c | Done, waiting for device test |
 | Delegated tasks D51 to D53: the Games hub scrolls, Race's playing and crash screens from the mockup | 0.12.1 | PR #10 | Done, waiting for device test |
+| Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | | side-tasks-12 | Published (Round 12) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
