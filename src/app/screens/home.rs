@@ -360,8 +360,19 @@ fn home_conditions(state: &AppState) -> Option<&CurrentConditions> {
 fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
     let books = state.reader.books.len();
     match entry.route {
+        ScreenRoute::Photos => photo_count_meta(state),
         ScreenRoute::Library if books > 0 => books.to_string(),
+        ScreenRoute::Bible => bible_meta(state),
         ScreenRoute::ReadingStats => reading_stats_meta(state),
+        ScreenRoute::Games => {
+            let games = state.lua_runtime.games().len();
+            if games > 0 {
+                games.to_string()
+            } else {
+                String::new()
+            }
+        }
+        ScreenRoute::Ai => format!("{} apps", super::ai::AI_HUB_CARDS),
         ScreenRoute::Weather => match home_conditions(state) {
             Some(current) => {
                 let unit = state.regional.temperature_unit;
@@ -372,6 +383,31 @@ fn home_meta(entry: &MenuEntry, state: &AppState) -> String {
         },
         _ => entry.badge.to_string(),
     }
+}
+
+/// The photo count from the last scan; empty before any photo is found.
+fn photo_count_meta(state: &AppState) -> String {
+    let photos = state.photos.photos.len();
+    if photos > 0 {
+        photos.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Where the Bible reading continues: the book's short name and the chapter
+/// (`Sal 23`); empty without a usable place.
+fn bible_meta(state: &AppState) -> String {
+    let Some(place) = state.bible.usable_place() else {
+        return String::new();
+    };
+    let books = state.bible.books();
+    let name = books
+        .iter()
+        .find(|book| book.usfm == place.usfm)
+        .map(|book| book.short_name.as_str())
+        .unwrap_or("Bible");
+    format!("{name} {}", place.chapter)
 }
 
 /// `5-day streak` when the RTC gives a day and more than today reads.
@@ -531,5 +567,99 @@ mod tests {
         // Fractions of a minute stay hidden.
         state.reading_stats.record(today, 59, 0, None);
         assert_eq!(minutes_read_today(&state), Some(25));
+    }
+
+    /// A Bible card with Psalms and its saved place, `place` the USFM book.
+    fn bible_home(tag: &str, place: Option<&str>) -> (AppState, std::path::PathBuf) {
+        let root =
+            std::env::temp_dir().join(format!("wave-home-bible-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let folder = root.join("RVR1960");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("index.tsv"), "PSA\tSalmos\t30\tPSA.txt\n").unwrap();
+        std::fs::write(folder.join("meta.txt"), "format=1\nabbreviation=RVR1960\n").unwrap();
+        std::fs::write(folder.join("PSA.txt"), "C\t23\nV\tUn versículo.\n").unwrap();
+        if let Some(usfm) = place {
+            std::fs::write(
+                root.join("STATE.TXT"),
+                format!("translation=RVR1960\nbook={usfm}\nchapter=23\npage=0\n"),
+            )
+            .unwrap();
+        }
+        let mut state = AppState::default();
+        state.bible = crate::bible_state::BibleUiState::with_root(&root);
+        (state, root)
+    }
+
+    /// Each row's detail from a state that has it, and empty without.
+    #[test]
+    fn the_rows_show_what_the_state_holds() {
+        use crate::photos::PhotoEntry;
+        let entry = |route: ScreenRoute| {
+            home_entries()
+                .iter()
+                .find(|entry| entry.route == route)
+                .unwrap()
+        };
+        // Photos: the count from the last scan.
+        let mut state = AppState::default();
+        assert_eq!(home_meta(entry(ScreenRoute::Photos), &state), "");
+        state.photos.photos.push(PhotoEntry {
+            name: "IMG_0001.jpg".into(),
+            bytes: 1_000,
+            modified: 0,
+        });
+        state.photos.photos.push(PhotoEntry {
+            name: "IMG_0002.jpg".into(),
+            bytes: 1_000,
+            modified: 0,
+        });
+        assert_eq!(home_meta(entry(ScreenRoute::Photos), &state), "2");
+        // Games: the hub's count.
+        let mut state = AppState::default();
+        assert_eq!(home_meta(entry(ScreenRoute::Games), &state), "");
+        let manifest = |id: &str| crate::lua_runtime::manifest::LuaAppManifest {
+            id: id.into(),
+            name: id.into(),
+            kind: crate::lua_runtime::manifest::LuaAppKind::Game,
+            entry: "MAIN.LUA".into(),
+            version: "1.0".into(),
+            input: vec![],
+        };
+        for id in ["tetris", "race"] {
+            state
+                .lua_runtime
+                .catalog
+                .entries
+                .push(crate::lua_runtime::manifest::LuaAppEntry {
+                    directory_name: id.to_ascii_uppercase(),
+                    directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS"),
+                    manifest: manifest(id),
+                });
+        }
+        assert_eq!(home_meta(entry(ScreenRoute::Games), &state), "2");
+        // AI: the hub's card count.
+        assert_eq!(home_meta(entry(ScreenRoute::Ai), &state), "2 apps");
+    }
+
+    /// A saved place gives the Bible row its book and chapter; none gives
+    /// nothing, and so does a place outside the card's books.
+    #[test]
+    fn the_bible_row_follows_the_usable_place() {
+        let entry = home_entries()
+            .iter()
+            .find(|entry| entry.route == ScreenRoute::Bible)
+            .unwrap();
+        let (state, root) = bible_home("home-meta", Some("PSA"));
+        assert_eq!(home_meta(entry, &state), "Sal 23");
+        let _ = std::fs::remove_dir_all(&root);
+        // No place on the card: empty.
+        let (state, root) = bible_home("home-meta-none", None);
+        assert_eq!(home_meta(entry, &state), "");
+        let _ = std::fs::remove_dir_all(&root);
+        // A place outside the card's books: empty.
+        let (state, root) = bible_home("home-meta-foreign", Some("GEN"));
+        assert_eq!(home_meta(entry, &state), "", "no usable place");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

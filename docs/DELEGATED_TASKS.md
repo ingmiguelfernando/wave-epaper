@@ -748,7 +748,25 @@ summarized note on the panel at both UI sizes.
 a saved place outside the card's books (`usable_place` is `None`) gives no
 Bible detail.
 
-**Status:** to do.
+**Status:** done on `side-tasks-12`. Built: `home_meta` shows the mockup's
+details. Photos: the count from the last scan (`photos.photos`), empty
+before any is found — `main.rs` scans at boot now (one line after
+`refresh_lua_app_catalog`). Bible: where the reading continues, the book's
+short name and the chapter (`Sal 23`) from `usable_place()` and its book
+in `books()`; empty without a place, and a saved place outside the card's
+books gives nothing (`usable_place` is `None`). Games: the hub's count
+(`lua_runtime.games()`), empty for none. AI: `2 apps` from the new
+`AI_HUB_CARDS` constant next to the hub's cards in `screens/ai.rs` (its
+`ai_row_count` uses it now), not a literal in Home. Tools and Settings
+stay empty; the style and place are unchanged, and `1 Cor 13` and `5-day
+streak` fit at the Large UI size (checked in `home-large-font`; the row's
+right-aligned value has room beside the labels). Previews: `home` with the
+mockup's details (48 photos, a place in Psalms, the SD games) and
+`home-large-font`. Tests: each row's detail from a state that has it and
+empty without (Photos, Games, AI), and the Bible row with a usable place,
+with none, and with a place outside the card's books. Open: nothing known.
+Device check: the two previews and Home on the panel with a photo folder,
+a Bible place and the sample games.
 
 ### D57: Verse of the day sleep screen
 

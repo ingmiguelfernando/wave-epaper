@@ -84,10 +84,13 @@ pub fn render_ai_hub(
     draw_bottom_bar(display, state.display, &AI_HINTS)
 }
 
-/// Hub rows: two cards plus up to three notes, as selection counts them.
+/// The hub's cards: XiaoZhi and Voice Notes. Home counts them too.
+pub(crate) const AI_HUB_CARDS: usize = 2;
+
+/// Hub rows: the two cards plus up to three notes, as selection counts them.
 #[must_use]
 pub fn ai_row_count(state: &AppState) -> usize {
-    2 + recent_notes(state).len()
+    AI_HUB_CARDS + recent_notes(state).len()
 }
 
 /// The status bar's right text: `Online` or `Offline`.

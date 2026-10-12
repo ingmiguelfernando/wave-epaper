@@ -318,16 +318,19 @@ fn render_sample_reading_stats(preferences: DisplayPreferences, with_data: bool)
 }
 
 fn preview_states() -> Vec<(&'static str, AppState)> {
-    let mut states = vec![
-        ("home", sample_state()),
-        ("home-first-boot", AppState::default()),
-    ];
+    // The mockup's Home row details: photos on the card, a place in
+    // Psalms and the SD games.
+    let mut home = sample_state();
+    sample_home_details(&mut home);
+    let mut states = vec![("home", home), ("home-first-boot", AppState::default())];
 
     let mut selected = sample_state();
     selected.home_selected = 4;
     states.push(("home-weather-selected", selected));
 
+    // The mockup's row details: photos, a place in Psalms and games.
     let mut large = sample_state();
+    sample_home_details(&mut large);
     large.display.font_size = UiFontSize::Large;
     states.push(("home-large-font", large));
 
@@ -1087,6 +1090,34 @@ fn sample_voice_notes() -> Vec<crate::voice_notes::VoiceNoteEntry> {
             1_080,
         ),
     ]
+}
+
+/// The mockup's Home row details: photos on the card, a place in Psalms
+/// and the SD games.
+fn sample_home_details(state: &mut AppState) {
+    use crate::photos::PhotoEntry;
+    for index in 0..48_u32 {
+        state.photos.photos.push(PhotoEntry {
+            name: format!("IMG_{index:04}.jpg"),
+            bytes: 2_800_000,
+            modified: 0,
+        });
+    }
+    sample_games_catalog(state);
+    // A Bible card with Psalms and the place at chapter 23.
+    let root = std::env::temp_dir().join(format!("wave-preview-bible-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let folder = root.join("RVR1960");
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join("index.tsv"), "PSA\tSalmos\t30\tPSA.txt\n").unwrap();
+    fs::write(folder.join("meta.txt"), "format=1\nabbreviation=RVR1960\n").unwrap();
+    fs::write(folder.join("PSA.txt"), "C\t23\nV\tUn versículo.\n").unwrap();
+    fs::write(
+        root.join("STATE.TXT"),
+        "translation=RVR1960\nbook=PSA\nchapter=23\npage=0\n",
+    )
+    .unwrap();
+    state.bible = crate::bible_state::BibleUiState::with_root(&root);
 }
 
 /// Four SD games so the hub preview looks like a card in use.
