@@ -1,4 +1,5 @@
 pub mod bottom_bar;
+pub mod chips;
 pub mod display_numerals;
 pub mod game_sprites;
 pub mod header;

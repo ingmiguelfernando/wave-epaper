@@ -5,35 +5,66 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{Circle, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
     app::{
+        screens::{
+            ai::split_stamp,
+            games::draw_info_box,
+            home::{draw_battery, BATTERY_HEIGHT, BATTERY_WIDTH},
+        },
         state::AppState,
-        typography::{Text, UiTextStyle},
+        typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
             bottom_bar::{
                 draw_bottom_bar, KeyCap, BACK_HINTS, KEYBOARD_HINTS, OPEN_HINTS, RUN_HINTS,
             },
+            chips::{draw_chip_row, Chip},
+            display_numerals::{draw_numerals, numerals_width, Numerals},
             header::draw_header,
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
             status_row::{draw_status_row, StatusRow},
         },
     },
     orientation::OrientedFrameBuffer,
+    regional::grouped,
     voice_note_metadata::format_storage_bytes,
     voice_notes::{
-        ai_action_label, format_duration, VoiceNotesMode, DETAIL_AI, DETAIL_DELETE, DETAIL_EXPORT,
-        DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE, VOICE_TITLE_EDITOR_KEY_ROWS,
+        ai_action_label, bytes_per_second, format_duration, VoiceNotesMode, DETAIL_AI,
+        DETAIL_DELETE, DETAIL_EXPORT, DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE,
+        VOICE_TITLE_EDITOR_KEY_ROWS,
     },
 };
 
+/// The recording screen's layout, from the mockup's `Voice Notes: grabando`.
+const TITLE_BASELINE: i32 = 76;
+const TIMER_BASELINE: i32 = 236;
+const METER_TOP: i32 = 262;
+const METER_HEIGHT: i32 = 130;
+const METER_LEFT: i32 = 58;
+const BAR_WIDTH: i32 = 10;
+const BAR_GAP: i32 = 5;
+const CHIPS_TOP: i32 = 412;
+const INFO_BOX_TOP: i32 = 470;
+
 const DELETE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "move"), (KeyCap::Select, "confirm")];
 
-const RECORDING_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::UpDown, "pause / resume"),
-    (KeyCap::Select, "stop + save"),
-];
+/// The recording screen's two keys: ● stops, BOOT pauses or resumes.
+fn recording_hints(goes_to_ai: bool, paused: bool) -> [(KeyCap, &'static str); 2] {
+    [
+        (
+            KeyCap::Select,
+            if goes_to_ai {
+                "stop & process"
+            } else {
+                "stop & save"
+            },
+        ),
+        (KeyCap::Boot, if paused { "resume" } else { "pause" }),
+    ]
+}
 
 const PLAYING_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "volume"),
@@ -472,115 +503,221 @@ pub fn render_voice_note_result(
     Ok(())
 }
 
+/// The recording screen after the mockup's `Voice Notes: grabando`: the time
+/// large, a level meter and what the note costs on the card.
 pub fn render_voice_note_recording(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    let body = state.display.body_style();
-    let heading = state.display.heading_style();
-    let detail = state.display.detail_style();
     let voice = &state.voice_notes;
-    let elapsed = format_duration(voice.elapsed_seconds);
-    let file = voice.active_file.as_deref().unwrap_or("VOICE---.WAV");
-    draw_header(
-        display,
-        state.display,
-        "RECORD VOICE NOTE",
-        "ES8311 MICROPHONE TO SD",
-    )?;
-    draw_status_row(
-        display,
-        state.display,
-        StatusRow {
-            left: voice.mode.label(),
-            middle: &elapsed,
-            right: "MONO",
-        },
-    )?;
-    Text::new(file, Point::new(22, 176), heading).draw(display)?;
-    line(display, 222, "Elapsed", &elapsed, body)?;
-    line(
-        display,
-        270,
-        "PCM bytes",
-        &voice.pcm_bytes.to_string(),
-        body,
-    )?;
-    line(display, 318, "Peak", &voice.peak.to_string(), body)?;
-    line(
-        display,
-        366,
-        "Started",
-        voice
-            .active_recorded_at
-            .as_deref()
-            .unwrap_or("DATE UNKNOWN"),
-        detail,
-    )?;
-    line(
-        display,
-        414,
-        "Mic gain",
-        &format!("{} ({})", voice.mic_gain.label(), voice.mic_gain.db_label()),
-        body,
-    )?;
-    line(
-        display,
-        462,
-        "Clipped",
-        &voice.clipped_samples.to_string(),
-        body,
-    )?;
-    match voice.mode {
-        VoiceNotesMode::Recording => {
-            Text::new("Streaming VOICE###.TMP", Point::new(22, 546), body).draw(display)?;
-            Text::new(
-                "UP / DOWN pause. SELECT stop + save.",
-                Point::new(22, 598),
-                detail,
-            )
-            .draw(display)?;
-        }
-        VoiceNotesMode::Paused => {
-            Text::new(
-                "Recording paused. WAV remains open.",
-                Point::new(22, 546),
-                body,
-            )
-            .draw(display)?;
-            Text::new(
-                "UP / DOWN resume. SELECT stop + save.",
-                Point::new(22, 598),
-                detail,
-            )
-            .draw(display)?;
-        }
-        VoiceNotesMode::Playing => {
-            Text::new("Saved WAV playback active.", Point::new(22, 546), body).draw(display)?;
-            Text::new("Hold BOOT to stop and return.", Point::new(22, 598), body).draw(display)?;
-        }
-        VoiceNotesMode::Saved => {
-            Text::new("Saved as recovery-safe WAV.", Point::new(22, 546), body).draw(display)?;
-            Text::new("Hold BOOT to return.", Point::new(22, 598), body).draw(display)?;
-        }
-        VoiceNotesMode::Error => {
-            Text::new(
-                voice.error.as_deref().unwrap_or("Recording failed"),
-                Point::new(22, 546),
-                detail,
-            )
-            .draw(display)?;
-            Text::new("Hold BOOT to return.", Point::new(22, 598), body).draw(display)?;
-        }
-        VoiceNotesMode::Idle => {
-            Text::new("Preparing microphone capture...", Point::new(22, 546), body)
-                .draw(display)?;
-        }
+    let recording = matches!(
+        voice.mode,
+        VoiceNotesMode::Recording | VoiceNotesMode::Paused
+    );
+    draw_recording_status_bar(display, state)?;
+    draw_recording_title(display, state)?;
+    if !recording {
+        // Saved, Error and Idle keep their message in the info box.
+        let message = match voice.mode {
+            VoiceNotesMode::Saved => "Saved as recovery-safe WAV.".to_string(),
+            VoiceNotesMode::Error => voice
+                .error
+                .clone()
+                .unwrap_or_else(|| "Recording failed".into()),
+            _ => "Preparing microphone capture...".to_string(),
+        };
+        draw_info_box(display, state.display, &message, 150)?;
+        let hints = recording_hints(state.voice_note_goes_to_ai(), voice.recording_paused);
+        draw_bottom_bar(display, state.display, &hints)?;
+        return Ok(());
     }
-    draw_bottom_bar(display, state.display, &RECORDING_HINTS)?;
+
+    // The elapsed time, centred in the sleep clock's numerals.
+    let timer = elapsed_label(voice.elapsed_seconds);
+    let numerals = if numerals_width(&timer, Numerals::Clock) > 448 {
+        Numerals::Temperature
+    } else {
+        Numerals::Clock
+    };
+    draw_numerals(
+        display,
+        &timer,
+        numerals,
+        (16, 464),
+        TIMER_BASELINE,
+        BinaryColor::On,
+    )?;
+
+    draw_level_meter(display, &voice.level_bars)?;
+
+    // The chips: the active one filled.
+    let detail = state.display.detail_style();
+    let chips = [
+        Chip::dotted("RECORDING", voice.mode == VoiceNotesMode::Recording),
+        Chip::new("PAUSED", voice.mode == VoiceNotesMode::Paused),
+    ];
+    draw_chip_row(display, 16, CHIPS_TOP, 6, detail, &chips)?;
+
+    let lines = recording_info_lines(voice);
+    draw_info_box(display, state.display, &lines.join("\n"), INFO_BOX_TOP)?;
+    let hints = recording_hints(state.voice_note_goes_to_ai(), voice.recording_paused);
+    draw_bottom_bar(display, state.display, &hints)
+}
+
+/// `● REC · Voice Notes` with the battery at the right, `PAUSED · Voice
+/// Notes` while paused, as the XiaoZhi call screen draws its status.
+fn draw_recording_status_bar(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let preferences = state.display;
+    draw_status_bar(display, preferences, "")?;
+    let voice = &state.voice_notes;
+    let recording = voice.mode == VoiceNotesMode::Recording;
+    let mut left = 16;
+    if recording {
+        Circle::with_center(Point::new(22, STATUS_BAR_HEIGHT / 2), 12)
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
+            .draw(display)?;
+        left = 36;
+    }
+    let style = preferences.text_style(UiTextRole::Heading, BinaryColor::Off);
+    let baseline = (STATUS_BAR_HEIGHT + style.cap_height()) / 2;
+    let title = if recording {
+        "REC · Voice Notes"
+    } else {
+        "PAUSED · Voice Notes"
+    };
+    Text::new(title, Point::new(left, baseline), style).draw(display)?;
+    if let Some(percent) = state.board.power.and_then(|power| power.battery_percent) {
+        let text = format!("{percent}%");
+        let right = draw_status_text(display, preferences, &text, STATUS_BAR_RIGHT)?;
+        let top = (STATUS_BAR_HEIGHT - BATTERY_HEIGHT) / 2;
+        draw_battery(display, Point::new(right - 4 - BATTERY_WIDTH, top), percent)?;
+    }
     Ok(())
 }
 
+/// `New note · Oct 2, 12:04` centred in Heading, and under it in Detail what
+/// the note becomes: the AI's title, or the file it is saved as.
+fn draw_recording_title(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let voice = &state.voice_notes;
+    let heading = state.display.heading_style();
+    let detail = state.display.detail_style();
+    let (date, time) = voice
+        .active_recorded_at
+        .as_deref()
+        .map(split_stamp)
+        .unwrap_or((None, None));
+    let title = match (date, time) {
+        (Some(date), Some(time)) => format!("New note · {date}, {time}"),
+        _ => "New note".to_string(),
+    };
+    let left = 240 - heading.text_width(&title) / 2;
+    Text::new(&title, Point::new(left, TITLE_BASELINE), heading).draw(display)?;
+    let note = if state.voice_note_goes_to_ai() {
+        "The title is generated from the summary".to_string()
+    } else {
+        format!(
+            "Saved as {}",
+            voice.active_file.as_deref().unwrap_or("VOICE---.WAV")
+        )
+    };
+    let left = 240 - detail.text_width(&note) / 2;
+    Text::new(&note, Point::new(left, TITLE_BASELINE + 26), detail).draw(display)?;
+    Ok(())
+}
+
+/// The level meter: 30 bars, one per second of audio, the newest at the
+/// right, on a log scale so speech fills the band and silence is the
+/// shortest bar. The band is centred between two rules.
+fn draw_level_meter(display: &mut OrientedFrameBuffer<'_>, bars: &[u16]) -> Result<(), Infallible> {
+    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
+    for y in [METER_TOP, METER_TOP + METER_HEIGHT - 2] {
+        Rectangle::new(Point::new(16, y), Size::new(448, 2))
+            .into_styled(ink)
+            .draw(display)?;
+    }
+    let center = METER_TOP + METER_HEIGHT / 2;
+    for index in 0..30_usize {
+        let peak = bars.get(index).copied().unwrap_or(0);
+        let height = meter_bar_height(peak);
+        let x = METER_LEFT + index as i32 * (BAR_WIDTH + BAR_GAP);
+        Rectangle::new(
+            Point::new(x, center - height / 2),
+            Size::new(BAR_WIDTH as u32, height as u32),
+        )
+        .into_styled(ink)
+        .draw(display)?;
+    }
+    Ok(())
+}
+
+/// A bar's height: 10 px for silence, 110 px for a full-scale peak, in 6 dB
+/// steps (`16 - peak.leading_zeros()`).
+#[must_use]
+pub fn meter_bar_height(peak: u16) -> i32 {
+    let level = 16 - i32::from(peak.leading_zeros() as u8);
+    10 + level * 100 / 16
+}
+
+/// `03:27`, or `1:03:27` past an hour.
+#[must_use]
+pub fn elapsed_label(seconds: u32) -> String {
+    if seconds >= 3600 {
+        format!(
+            "{}:{:02}:{:02}",
+            seconds / 3600,
+            (seconds / 60) % 60,
+            seconds % 60
+        )
+    } else {
+        format_duration(seconds)
+    }
+}
+
+/// What the note costs on the card: its size so far, the free space and the
+/// WAV hours it still takes, and the radio state. Without the free space,
+/// the first line only.
+#[must_use]
+pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Vec<String> {
+    let written = u64::from(voice.pcm_bytes) + 44;
+    let first = format!("WAV · 16 kHz mono · {} so far", size_one_decimal(written));
+    let Some(free) = voice
+        .available_storage_bytes
+        .map(|available| available.saturating_sub(written))
+    else {
+        return vec![first];
+    };
+    let hours = free / u64::from(bytes_per_second()) / 3600;
+    vec![
+        first,
+        format!(
+            "SD: {} free (≈ {} h)",
+            size_one_decimal(free),
+            grouped(hours.min(u64::from(u32::MAX)) as u32)
+        ),
+        "Wi-Fi off while recording".into(),
+    ]
+}
+
+/// `6.3 MB` or `14.2 GB`, one decimal in the binary units.
+#[must_use]
+pub fn size_one_decimal(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+    if bytes >= GB {
+        format!("{}.{:01} GB", bytes / GB, (bytes % GB) * 10 / GB)
+    } else if bytes >= MB {
+        format!("{}.{:01} MB", bytes / MB, (bytes % MB) * 10 / MB)
+    } else {
+        format!("{} KB", bytes / KB)
+    }
+}
 fn line(
     display: &mut OrientedFrameBuffer<'_>,
     y: i32,
@@ -652,5 +789,28 @@ mod tests {
         let mut frame = FrameBuffer::new_white();
         let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
         render_voice_note_details(&mut display, &state).unwrap();
+    }
+
+    /// The info box lines for 3:27 written and 14.2 GB free; without the
+    /// free space, the first line only.
+    #[test]
+    fn the_info_box_counts_the_card_cost() {
+        use super::recording_info_lines;
+        use crate::voice_notes::VoiceNotesUiState;
+        let mut voice = VoiceNotesUiState::default();
+        // 3:27 of WAV at 32 000 bytes a second.
+        voice.pcm_bytes = 207 * 32_000;
+        voice.available_storage_bytes = Some(15_247_133_901 + 6_624_044);
+        let lines = recording_info_lines(&voice);
+        assert_eq!(lines[0], "WAV · 16 kHz mono · 6.3 MB so far");
+        assert_eq!(lines[1], "SD: 14.2 GB free (≈ 132 h)");
+        assert_eq!(lines[2], "Wi-Fi off while recording");
+        voice.available_storage_bytes = None;
+        let lines = recording_info_lines(&voice);
+        assert_eq!(
+            lines,
+            ["WAV · 16 kHz mono · 6.3 MB so far"],
+            "without the free space, the first line only"
+        );
     }
 }

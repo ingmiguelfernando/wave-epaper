@@ -114,7 +114,7 @@ mod firmware {
         voice_note_record::{self, NoteState},
         voice_notes::{
             cleanup_stale_voice_tmp, delete_voice_note, save_voice_note_title, VoiceNotesUiRequest,
-            VoiceNotesUiState, VoicePlaybackSession, VoiceRecordingSession, VOICE_NOTES_ROOT,
+            VoicePlaybackSession, VoiceRecordingSession, VOICE_NOTES_ROOT,
             VOICE_PCM_MONO_CHUNK_BYTES, VOICE_PCM_STEREO_CAPTURE_BYTES,
         },
         weather::{
@@ -723,7 +723,7 @@ mod firmware {
                             } else {
                                 state.voice_notes.update_recording_progress(
                                     session.pcm_bytes(),
-                                    session.peak(),
+                                    metrics.peak,
                                     session.clipped_samples(),
                                 );
                             }
@@ -2042,7 +2042,8 @@ mod firmware {
                         || state.apply_sleep_screen_boot_short_press()
                         || state.apply_weather_boot_short_press()
                         || state.apply_ai_hub_boot_short_press()
-                        || state.apply_xiaozhi_boot_short_press();
+                        || state.apply_xiaozhi_boot_short_press()
+                        || state.apply_voice_recording_boot_short_press();
                     if calendar_agenda_context
                         || keyboard_context
                         || lua_game_context
@@ -3446,11 +3447,7 @@ mod firmware {
                         info!("rustmix-wave=voice-record status=completed file={} recorded-at={} duration-seconds={} pcm-bytes={} wav-bytes={}", entry.file_name, entry.recorded_at, entry.duration_seconds, entry.pcm_bytes, entry.wav_bytes);
                         // With process=online and the providers set, the note goes
                         // straight to the queue; the catalog refresh reads its record.
-                        let queue_now = state.ai.as_ref().is_some_and(|config| {
-                            config.is_ready()
-                                && state.ai_keys.ready(config)
-                                && VoiceNotesUiState::queues_on_save(config.process)
-                        });
+                        let queue_now = state.voice_note_goes_to_ai();
                         if queue_now {
                             let root = std::path::Path::new(VOICE_NOTES_ROOT);
                             match voice_note_record::queue(root, &entry.file_name) {

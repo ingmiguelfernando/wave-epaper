@@ -1794,6 +1794,26 @@ impl AppState {
         true
     }
 
+    /// BOOT short press on the recording screen pauses or resumes, the same
+    /// request the arrow keys queue. `false` on every other screen.
+    pub fn apply_voice_recording_boot_short_press(&mut self) -> bool {
+        if self.router.current() != ScreenRoute::VoiceNoteRecording {
+            return false;
+        }
+        self.voice_notes.apply_recording_boot_short_press()
+    }
+
+    /// Whether a finished recording goes straight to the AI queue: the
+    /// providers and keys are ready and the note's own action is not needed.
+    #[must_use]
+    pub fn voice_note_goes_to_ai(&self) -> bool {
+        self.ai.as_ref().is_some_and(|config| {
+            config.is_ready()
+                && self.ai_keys.ready(config)
+                && crate::voice_notes::VoiceNotesUiState::queues_on_save(config.process)
+        })
+    }
+
     /// The call screen: ● interrupts XiaoZhi or calls again after the end,
     /// ▲▼ set the volume.
     fn apply_xiaozhi(&mut self, event: ButtonEvent) {
@@ -2768,6 +2788,35 @@ mod tests {
         }
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
+
+    /// A short BOOT on the recording screen queues a pause, then a resume,
+    /// and is not claimed on other screens.
+    #[test]
+    fn voice_recording_boot_short_press_pauses_and_resumes() {
+        use crate::voice_notes::VoiceNotesUiRequest;
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::VoiceNotes);
+        assert!(
+            !state.apply_voice_recording_boot_short_press(),
+            "not claimed outside the recording screen"
+        );
+        assert_eq!(state.voice_notes.take_request(), None);
+        state.router.navigate_to(ScreenRoute::VoiceNoteRecording);
+        state
+            .voice_notes
+            .begin_recording("VOICE001.WAV".into(), "2026-10-02  12:04:00".into());
+        assert!(state.apply_voice_recording_boot_short_press());
+        assert_eq!(
+            state.voice_notes.take_request(),
+            Some(VoiceNotesUiRequest::PauseRecording)
+        );
+        state.voice_notes.pause_recording();
+        assert!(state.apply_voice_recording_boot_short_press());
+        assert_eq!(
+            state.voice_notes.take_request(),
+            Some(VoiceNotesUiRequest::ResumeRecording)
+        );
     }
 
     #[test]

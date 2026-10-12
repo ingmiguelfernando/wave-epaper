@@ -454,6 +454,32 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     });
     states.push(("voice-note-failed", queued));
 
+    // The recording screen: 3:27 in, a run of speech-like levels, 14.2 GB
+    // free (D54).
+    let mut recording = sample_state();
+    recording.ai = Some(sample_ai_config());
+    recording.ai_keys = crate::ai_keys::AiKeyPresence {
+        available: true,
+        transcription: true,
+        summary: true,
+    };
+    recording
+        .voice_notes
+        .begin_recording("VOICE012.WAV".into(), "2026-10-02  12:04:00".into());
+    sample_recording_progress(&mut recording.voice_notes, 207);
+    recording
+        .voice_notes
+        .set_available_storage_bytes(Some(15_247_133_901 + 6_624_044));
+    recording
+        .router
+        .navigate_to(ScreenRoute::VoiceNoteRecording);
+    states.push(("voice-note-recording", recording.clone()));
+    recording.voice_notes.pause_recording();
+    states.push(("voice-note-recording-paused", recording.clone()));
+    recording.voice_notes.resume_recording();
+    recording.display.font_size = UiFontSize::Large;
+    states.push(("voice-note-recording-large", recording));
+
     // Details of a note never sent, with its AI action selected.
     let mut details = sample_state();
     details.router.navigate_to(ScreenRoute::VoiceNotes);
@@ -1086,6 +1112,22 @@ fn sample_games_catalog(state: &mut AppState) {
             });
     }
     state.lua_runtime.catalog.warning = None;
+}
+
+/// A run of speech-like levels: `seconds` of audio with an envelope, so the
+/// meter shows the mockup's shape rather than a flat line.
+fn sample_recording_progress(voice: &mut crate::voice_notes::VoiceNotesUiState, seconds: u32) {
+    let second = crate::voice_notes::bytes_per_second();
+    for index in 0..seconds {
+        // Speech-like: an envelope over the run, with quiet gaps.
+        let wave = ((index as f32 / 29.0) * core::f32::consts::PI).sin();
+        let peak = if index % 7 == 6 {
+            200
+        } else {
+            (2_000.0 + 28_000.0 * wave.max(0.0)) as u16
+        };
+        voice.update_recording_progress(second * (index + 1), peak, 0);
+    }
 }
 
 /// A session for any `tetris.init` line, loaded through the device bridge.

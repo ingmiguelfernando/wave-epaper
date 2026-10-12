@@ -609,7 +609,46 @@ tallest; `update_recording_progress` keeps the note's peak; the info box
 lines for 3:27 written and 14.2 GB free; a short BOOT on the recording
 screen queues a pause, then a resume, and is not claimed on other screens.
 
-**Status:** to do.
+**Status:** done on `side-tasks-12`. Built: the recording screen is the
+mockup's `Voice Notes: grabando`. The status bar reads `● REC · Voice Notes`
+(a drawn dot, the battery at the right; `PAUSED · Voice Notes` while
+paused), then `New note · Oct 2, 12:04` centred in Heading from
+`active_recorded_at` through `ai::split_stamp` with `The title is generated
+from the summary` (when the note goes to the AI) or `Saved as
+VOICE012.WAV` under it in Detail — the AI decision is the new
+`AppState::voice_note_goes_to_ai`, which `main.rs`'s finalize path now uses
+(one named line). The timer is centred in the sleep clock's numerals
+(`03:27`; `1:03:27` past an hour falls back to `Numerals::Temperature` when
+the clock strike passes 448 px). The level meter is the mockup's: 30 bars
+of 10 px with 5 px gaps centred in the 130 px band between two rules, one
+bar per second from the loudest chunk in it on a log scale
+(`meter_bar_height`, 6 dB a step), the newest at the right;
+`VoiceNotesUiState` keeps the last 30 in `level_bars` and the note's own
+`note_peak`, fed by `update_recording_progress` — `main.rs` passes
+`metrics.peak` now (one named line). The chips (`widgets/chips.rs`: a
+bordered label, filled when active, with an optional drawn dot) are `●
+RECORDING` and `PAUSED`, the active one filled. The info box (the hub's,
+with its dashed frame) reads `WAV · 16 kHz mono · 6.3 MB so far`,
+`SD: 14.2 GB free (≈ 132 h)` and `Wi-Fi off while recording` — sizes in the
+binary units with one decimal (`size_one_decimal`), the hours as WAV hours
+grouped — and the first line only when the free space is unknown. The
+hints are `● stop & process` (or `stop & save`) and `BOOT pause`/`resume`;
+▲▼ keep pausing without a hint. A short BOOT queues the same
+`PauseRecording`/`ResumeRecording` request via the new
+`AppState::apply_voice_recording_boot_short_press`, added to `main.rs`'s
+BOOT chain after XiaoZhi (one named line); the request is handled where the
+AI hub's is. The route cannot show `Playing` (playback lives on the details
+screen: `begin_playing` is only reached from there), so `Saved`, `Error`
+and `Idle` keep their message in the info box under the same status bar and
+title. Previews: `voice-note-recording` (3:27 in, a speech-like run of
+levels, 14.2 GB free), `voice-note-recording-paused` and
+`voice-note-recording-large`; the chips were checked enlarged next to the
+mockup's. Tests: one bar per second with the loudest chunk winning and the
+31st second dropping the oldest; silence the shortest bar and full scale
+the tallest; the note keeps its peak; the info lines for 3:27 and 14.2 GB
+(132 h) and the first-line-only case; a short BOOT queues pause then resume
+and is not claimed on other screens. Open: nothing known. Device check:
+the three previews and a real recording on the panel.
 
 ### D55: Voice note result screen like the mockup
 

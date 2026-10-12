@@ -235,6 +235,10 @@ pub struct VoiceNotesUiState {
     pub elapsed_seconds: u32,
     pub pcm_bytes: u32,
     pub peak: u16,
+    /// The loudest chunk of each of the last 30 seconds, newest last.
+    pub level_bars: Vec<u16>,
+    /// The loudest chunk of the whole note.
+    pub note_peak: u16,
     pub clipped_samples: u32,
     pub mic_gain: VoiceMicGain,
     pub recording_paused: bool,
@@ -265,6 +269,8 @@ impl Default for VoiceNotesUiState {
             elapsed_seconds: 0,
             pcm_bytes: 0,
             peak: 0,
+            level_bars: Vec::new(),
+            note_peak: 0,
             clipped_samples: 0,
             mic_gain: VoiceMicGain::default(),
             recording_paused: false,
@@ -421,6 +427,24 @@ impl VoiceNotesUiState {
         };
     }
 
+    /// A short BOOT press on the recording screen pauses or resumes, the
+    /// same request the arrow keys queue. `false` when the screen is not
+    /// recording, so the caller can leave the press to someone else.
+    pub fn apply_recording_boot_short_press(&mut self) -> bool {
+        if !matches!(
+            self.mode,
+            VoiceNotesMode::Recording | VoiceNotesMode::Paused
+        ) {
+            return false;
+        }
+        self.request = Some(if self.recording_paused {
+            VoiceNotesUiRequest::ResumeRecording
+        } else {
+            VoiceNotesUiRequest::PauseRecording
+        });
+        true
+    }
+
     pub fn request_cancel_recording(&mut self) {
         if matches!(
             self.mode,
@@ -453,6 +477,8 @@ impl VoiceNotesUiState {
         self.elapsed_seconds = 0;
         self.pcm_bytes = 0;
         self.peak = 0;
+        self.note_peak = 0;
+        self.level_bars.clear();
         self.clipped_samples = 0;
         self.recording_paused = false;
         self.playing_file = None;
@@ -461,6 +487,9 @@ impl VoiceNotesUiState {
         self.error = None;
     }
 
+    /// One capture chunk: the note's totals and the level meter. The meter
+    /// keeps one bar per second of audio, the loudest chunk in that second,
+    /// the newest at the right and the oldest dropped past 30.
     pub fn update_recording_progress(&mut self, pcm_bytes: u32, peak: u16, clipped_samples: u32) {
         self.mode = if self.recording_paused {
             VoiceNotesMode::Paused
@@ -470,7 +499,18 @@ impl VoiceNotesUiState {
         self.pcm_bytes = pcm_bytes;
         self.elapsed_seconds = pcm_bytes / bytes_per_second();
         self.peak = peak;
+        self.note_peak = self.note_peak.max(peak);
         self.clipped_samples = clipped_samples;
+        let second = self.elapsed_seconds as usize;
+        match self.level_bars.get_mut(second) {
+            Some(bar) => *bar = (*bar).max(peak),
+            None => {
+                self.level_bars.push(peak);
+                if self.level_bars.len() > 30 {
+                    self.level_bars.remove(0);
+                }
+            }
+        }
     }
 
     pub fn pause_recording(&mut self) {
@@ -1614,5 +1654,72 @@ mod tests {
         assert_eq!(notes[0].recorded_at, "2026-06-05  21:37:08");
         assert_eq!(notes[0].title, "VOICE NOTE 001");
         fs::remove_dir_all(root).unwrap();
+    }
+
+    /// One bar per second of audio: the loudest chunk in the second wins,
+    /// and the 31st second drops the oldest bar.
+    #[test]
+    fn the_level_meter_keeps_one_bar_per_second() {
+        let mut state = VoiceNotesUiState::default();
+        let second = bytes_per_second();
+        // Second 0: two chunks, the louder wins.
+        state.update_recording_progress(100, 100, 0);
+        state.update_recording_progress(200, 50, 0);
+        assert_eq!(state.level_bars, vec![100]);
+        // Second 1.
+        state.update_recording_progress(second + 10, 200, 0);
+        assert_eq!(state.level_bars, vec![100, 200]);
+        // Seconds 2..=30 fill the window, then second 31 drops the oldest.
+        for index in 2..=30 {
+            state.update_recording_progress(second * index + 10, 300, 0);
+        }
+        assert_eq!(state.level_bars.len(), 30);
+        assert_eq!(
+            state.level_bars[0], 200,
+            "the second-1 bar leads the window"
+        );
+        state.update_recording_progress(second * 31 + 10, 400, 0);
+        assert_eq!(state.level_bars.len(), 30);
+        assert_eq!(state.level_bars[0], 300, "the oldest bar is dropped");
+        assert_eq!(state.level_bars[29], 400, "the newest bar is at the right");
+    }
+
+    /// Silence gives the shortest bar, a full-scale peak the tallest, in
+    /// 6 dB steps; the note keeps its own peak.
+    #[test]
+    fn the_meter_scale_and_the_note_peak() {
+        use crate::app::screens::voice_notes::meter_bar_height;
+        assert_eq!(meter_bar_height(0), 10, "silence is the shortest bar");
+        assert_eq!(meter_bar_height(u16::MAX), 110, "full scale is the tallest");
+        assert!(meter_bar_height(0x0FFF) > meter_bar_height(0x00FF));
+        let mut state = VoiceNotesUiState::default();
+        state.update_recording_progress(100, 1_000, 0);
+        state.update_recording_progress(200, 500, 0);
+        assert_eq!(state.note_peak, 1_000, "the note keeps its loudest chunk");
+        assert_eq!(state.peak, 500, "the current chunk is the last one");
+    }
+
+    /// A short BOOT press pauses and then resumes the recording, and is not
+    /// claimed when the state is not recording.
+    #[test]
+    fn a_short_boot_press_pauses_and_resumes_the_recording() {
+        let mut state = VoiceNotesUiState::default();
+        assert!(
+            !state.apply_recording_boot_short_press(),
+            "nothing is recording"
+        );
+        assert_eq!(state.take_request(), None);
+        state.begin_recording("VOICE001.WAV".into(), "2026-10-02  12:04:00".into());
+        assert!(state.apply_recording_boot_short_press());
+        assert_eq!(
+            state.take_request(),
+            Some(VoiceNotesUiRequest::PauseRecording)
+        );
+        state.pause_recording();
+        assert!(state.apply_recording_boot_short_press());
+        assert_eq!(
+            state.take_request(),
+            Some(VoiceNotesUiRequest::ResumeRecording)
+        );
     }
 }
