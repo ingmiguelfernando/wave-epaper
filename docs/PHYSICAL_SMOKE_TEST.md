@@ -261,6 +261,26 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] The playing screen and the crash screen at the Large UI size: the
    labels and values fit and nothing runs into the road.
 
+## Round 12 (D54 to D57)
+
+- [ ] Voice note recording: the screen shows the title, the meter that
+   moves with the sound, the elapsed time and the size, and the status
+   bar of the other screens; ● stops and the result screen opens.
+- [ ] Voice note result: the summary reads as the mockup's bullets and
+   ☐ to-dos with their headings, its rows scroll with ▲▼ and cut with
+   `…`, and the reference of each row stays right of the marker column.
+- [ ] Home rows: Photos shows how many photos the card holds, the Bible
+   row the place read last (`Sal 23`), Games the games count and the AI
+   hub row `2 apps`.
+- [ ] Settings › Sleep screen: `Verse of the day` reads `1 WAKE-UP/DAY`
+   with a verse list on the SD card and can be chosen; without
+   `VERSES.TXT` it reads `NO VERSES` and cannot.
+- [ ] Sleep with the verse mode: the date is at the top, the verse is
+   centred with `Sal 23:1 · RVR1960` under it and the footer shows the
+   battery and the wake hint; the next wake is the next day (the serial
+   log shows the redraw at the next local midnight). A card with no
+   verse list draws the clock instead.
+
 ## Voice note volume (v0.11.1)
 
 - [ ] Play a note: ▲ makes it louder and ▼ quieter while it plays, the
