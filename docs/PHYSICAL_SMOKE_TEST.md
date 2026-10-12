@@ -242,6 +242,26 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] The road redraws only the cars that moved (less ghosting); a full
    refresh every 30 steps clears what is left.
 
+## Round 11 (D51 to D53)
+
+- [ ] Games hub: with the sample card's five games, ▼ moves the cards one
+   at a time and the selected one is always drawn; ▼ on the last wraps to
+   the first with the list at the top.
+- [ ] Race playing screen: the counters read `DISTANCE`, `BEST` and
+   `NITRO` with their values under them and the charges as blocks at the
+   right edge; the road has the block rumble strips, the edge lines and
+   the dashed lane lines; other cars are outlines, the player's car is
+   solid with speed streaks behind it and the dashed outline shows where
+   ▲ goes. Zen counts `CARS PASSED` and its bar says `step`.
+- [ ] `SPEED 4 AT 3.0 KM` and the bar under the road, and the info box
+   with the mode's own text. Pause shows `PAUSED` and the road stands.
+- [ ] The crash screen: the picture of the impact, the distance large and
+   centred, `Best … · … to go`, the three stat columns and the three rows
+   like the settings lists; ▼ moves the row, ● runs it.
+- [ ] The playing screen and the crash screen at the Large UI size: the
+   labels and values fit and nothing runs into the road.
+
+
 ## Voice note volume (v0.11.1)
 
 - [ ] Play a note: ▲ makes it louder and ▼ quieter while it plays, the

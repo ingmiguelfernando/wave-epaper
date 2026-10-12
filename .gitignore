@@ -28,3 +28,7 @@
 # Extracted patch overlays must not be committed
 /waveshare-epd397-rust-*-repair-*/
 /waveshare-epd397-rust-*-v*/
+
+# ESP-IDF component manager (generated per target)
+/components_esp32s3.lock
+/components_esp32.lock
