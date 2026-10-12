@@ -3346,7 +3346,9 @@ mod tests {
         let mut state = open_from_home(ScreenRoute::Ai);
         state.apply(ButtonEvent::Select);
         assert!(state.xiaozhi.take_start_request());
-        state.xiaozhi.apply(CallEvent::Phase(CallPhase::Speaking), 0);
+        state
+            .xiaozhi
+            .apply(CallEvent::Phase(CallPhase::Speaking), 0);
         state.xiaozhi.apply(CallEvent::Volume(50), 0);
         // ● interrupts, ▲ turns it up, short BOOT turns the microphone off.
         state.apply(ButtonEvent::Select);
@@ -3363,7 +3365,9 @@ mod tests {
             ]
         );
         // After the end, ● calls again.
-        state.xiaozhi.apply(CallEvent::Phase(CallPhase::Ended { error: None }), 0);
+        state
+            .xiaozhi
+            .apply(CallEvent::Phase(CallPhase::Ended { error: None }), 0);
         assert!(!state.apply_xiaozhi_boot_short_press());
         state.apply(ButtonEvent::Select);
         assert!(state.xiaozhi.take_start_request());

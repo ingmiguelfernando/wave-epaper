@@ -775,7 +775,8 @@ fn sample_xiaozhi_call() -> crate::xiaozhi::call::XiaozhiUi {
     use crate::xiaozhi::call::{CallEvent, CallPhase, XiaozhiUi};
     let question = "Léeme el Salmo 23 y dime qué significa.";
     let quote = "«Jehová es mi pastor; nada me faltará…».";
-    let meaning = "Es una oración de confianza: Dios guía y cuida como un pastor, aun en los días difíciles.";
+    let meaning =
+        "Es una oración de confianza: Dios guía y cuida como un pastor, aun en los días difíciles.";
     let mut call = XiaozhiUi::default();
     call.linked = true;
     call.volume = 60;

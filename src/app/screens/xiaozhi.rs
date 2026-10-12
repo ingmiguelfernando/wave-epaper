@@ -4,10 +4,9 @@
 use core::convert::Infallible;
 
 use embedded_graphics::{
-    geometry::Angle,
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Arc, Circle, PrimitiveStyle, Rectangle},
+    primitives::{Circle, PrimitiveStyle, Rectangle, Triangle},
 };
 
 use crate::{
@@ -33,19 +32,26 @@ use super::{
 
 const LEFT: i32 = 16;
 const RIGHT: i32 = 464;
-const FACE_SIZE: i32 = 88;
-const FACE_TOP: i32 = STATUS_BAR_HEIGHT + 18;
-const NAME_BASELINE: i32 = FACE_TOP + FACE_SIZE + 40;
-const CHIPS_TOP: i32 = NAME_BASELINE + 18;
-const CHIP_HEIGHT: i32 = 30;
-const MESSAGES_TOP: i32 = CHIPS_TOP + CHIP_HEIGHT + 18;
-/// The volume row sits just above the bottom bar, as in the mockup.
-const VOLUME_BASELINE: i32 = BOTTOM_BAR_TOP - 26;
-const TOOL_BASELINE: i32 = VOLUME_BASELINE - 42;
-/// Messages end above the tool line.
-const MESSAGES_BOTTOM: i32 = TOOL_BASELINE - 30;
+/// The face's ring: 96 px, as in the mockup's 150 × 107 drawing.
+const FACE_DIAMETER: i32 = 96;
+const FACE_CENTRE: Point = Point::new(240, STATUS_BAR_HEIGHT + 72);
+const NAME_BASELINE: i32 = STATUS_BAR_HEIGHT + 148;
+const CHIPS_TOP: i32 = NAME_BASELINE + 14;
+const CHIP_HEIGHT: i32 = 26;
+const MESSAGES_TOP: i32 = CHIPS_TOP + CHIP_HEIGHT + 14;
+const MESSAGE_GAP: i32 = 12;
+/// The volume row sits above the bottom bar, as in the mockup.
+const VOLUME_BASELINE: i32 = BOTTOM_BAR_TOP - 22;
+/// Messages end here, leaving room for the tool line and the volume row.
+const MESSAGES_BOTTOM: i32 = VOLUME_BASELINE - 84;
 /// Lines of the question kept on screen; the reply takes the rest.
 const QUESTION_LINES: usize = 3;
+/// The mockup's left sound waves on the face grid; the right ones mirror
+/// them.
+const WAVES: [[(f32, f32); 3]; 2] = [
+    [(-2.0, 42.0), (-12.0, 60.0), (-2.0, 78.0)],
+    [(-14.0, 32.0), (-30.0, 60.0), (-14.0, 88.0)],
+];
 
 const TALK_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Select, "interrupt"),
@@ -53,10 +59,8 @@ const TALK_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Boot, "hold: hang up"),
 ];
 const WAIT_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "hold: cancel")];
-const ENDED_HINTS: [(KeyCap, &str); 2] = [
-    (KeyCap::Select, "call again"),
-    (KeyCap::Boot, "hold: back"),
-];
+const ENDED_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "call again"), (KeyCap::Boot, "hold: back")];
 
 /// The XiaoZhi call screen.
 pub fn render_xiaozhi(
@@ -66,7 +70,10 @@ pub fn render_xiaozhi(
     let call = &state.xiaozhi;
     let preferences = state.display;
     draw_call_status_bar(display, state)?;
-    draw_face(display, call.phase == CallPhase::Speaking)?;
+    draw_face(display, FACE_CENTRE, FACE_DIAMETER, BinaryColor::On)?;
+    if call.phase == CallPhase::Speaking {
+        draw_waves(display)?;
+    }
     let name = preferences.large_style();
     draw_centered(display, "XiaoZhi", NAME_BASELINE, name)?;
     let hints: &[(KeyCap, &str)] = match &call.phase {
@@ -145,41 +152,78 @@ fn draw_call_status_bar(
     Ok(())
 }
 
-/// The hub's face, larger; sound waves while XiaoZhi speaks.
-fn draw_face(display: &mut OrientedFrameBuffer<'_>, speaking: bool) -> Result<(), Infallible> {
-    let left = (480 - FACE_SIZE) / 2;
-    let ink = PrimitiveStyle::with_stroke(BinaryColor::On, 4);
-    let fill = PrimitiveStyle::with_fill(BinaryColor::On);
-    Rectangle::new(
-        Point::new(left, FACE_TOP),
-        Size::new(FACE_SIZE as u32, FACE_SIZE as u32),
-    )
-    .into_styled(ink)
-    .draw(display)?;
-    for eye in [22, 54] {
-        Rectangle::new(Point::new(left + eye, FACE_TOP + 26), Size::new(12, 12))
-            .into_styled(fill)
+/// Places on the mockup's face drawing: a 120-unit grid whose ring, 108
+/// units wide, is drawn `diameter` pixels wide around `centre`.
+#[derive(Clone, Copy)]
+struct FaceGrid {
+    centre: Point,
+    diameter: i32,
+}
+
+impl FaceGrid {
+    fn length(self, units: f32) -> i32 {
+        (units * self.diameter as f32 / 108.0).round() as i32
+    }
+
+    fn point(self, (x, y): (f32, f32)) -> Point {
+        self.centre + Point::new(self.length(x - 60.0), self.length(y - 60.0))
+    }
+
+    /// A quadratic curve as round dots `stroke` wide, like the mockup's
+    /// round-capped paths.
+    fn curve(
+        self,
+        display: &mut OrientedFrameBuffer<'_>,
+        [start, control, end]: [(f32, f32); 3],
+        stroke: i32,
+        color: BinaryColor,
+    ) -> Result<(), Infallible> {
+        let dot = PrimitiveStyle::with_fill(color);
+        for step in 0..=32 {
+            let t = step as f32 / 32.0;
+            let u = 1.0 - t;
+            let x = u * u * start.0 + 2.0 * u * t * control.0 + t * t * end.0;
+            let y = u * u * start.1 + 2.0 * u * t * control.1 + t * t * end.1;
+            Circle::with_center(self.point((x, y)), stroke as u32)
+                .into_styled(dot)
+                .draw(display)?;
+        }
+        Ok(())
+    }
+}
+
+/// The mockup's face: a ring, two eyes and a smile.
+pub(crate) fn draw_face(
+    display: &mut OrientedFrameBuffer<'_>,
+    centre: Point,
+    diameter: i32,
+    color: BinaryColor,
+) -> Result<(), Infallible> {
+    let grid = FaceGrid { centre, diameter };
+    let stroke = grid.length(6.0).max(2);
+    Circle::with_center(centre, diameter as u32)
+        .into_styled(PrimitiveStyle::with_stroke(color, stroke as u32))
+        .draw(display)?;
+    for eye in [42.0, 78.0] {
+        Circle::with_center(grid.point((eye, 50.0)), grid.length(15.0) as u32)
+            .into_styled(PrimitiveStyle::with_fill(color))
             .draw(display)?;
     }
-    Rectangle::new(Point::new(left + 26, FACE_TOP + 60), Size::new(36, 6))
-        .into_styled(fill)
-        .draw(display)?;
-    if speaking {
-        let middle = FACE_TOP + FACE_SIZE / 2;
-        for (offset, diameter) in [(14, 40), (30, 72)] {
-            let right_centre = Point::new(left + FACE_SIZE + offset - diameter / 2, middle);
-            let left_centre = Point::new(left - offset + diameter / 2, middle);
-            for (centre, start) in [(right_centre, -40.0), (left_centre, 140.0)] {
-                Arc::with_center(
-                    centre,
-                    diameter as u32,
-                    Angle::from_degrees(start),
-                    Angle::from_degrees(80.0),
-                )
-                .into_styled(ink)
-                .draw(display)?;
-            }
-        }
+    let smile = [(38.0, 73.0), (60.0, 95.0), (82.0, 73.0)];
+    grid.curve(display, smile, stroke, color)
+}
+
+/// Sound waves at both sides of the face while XiaoZhi speaks.
+fn draw_waves(display: &mut OrientedFrameBuffer<'_>) -> Result<(), Infallible> {
+    let grid = FaceGrid {
+        centre: FACE_CENTRE,
+        diameter: FACE_DIAMETER,
+    };
+    let stroke = grid.length(5.0);
+    for wave in WAVES {
+        grid.curve(display, wave, stroke, BinaryColor::On)?;
+        let mirrored = wave.map(|(x, y)| (120.0 - x, y));
+        grid.curve(display, mirrored, stroke, BinaryColor::On)?;
     }
     Ok(())
 }
@@ -238,21 +282,18 @@ fn draw_conversation(
         call.heard.as_str()
     };
     if !question.is_empty() {
-        top = draw_message(display, preferences, "You", question, top, false)? + 12;
+        top = draw_message(display, preferences, "YOU", question, top, false)? + MESSAGE_GAP;
     }
     if !call.said.is_empty() {
-        draw_message(display, preferences, "XiaoZhi", &call.said, top, true)?;
+        top = draw_message(display, preferences, "XIAOZHI", &call.said, top, true)? + MESSAGE_GAP;
     }
-    let body = preferences.body_style();
     if let Some(tool) = call.tool.as_deref() {
-        let tool = format!("Device tool: {}", screen_text(tool));
-        let line = body.fit(&tool, RIGHT - LEFT);
-        Text::new(&line, Point::new(LEFT, TOOL_BASELINE), body).draw(display)?;
+        draw_tool(display, preferences, tool, top)?;
     }
     draw_volume(display, preferences, call.volume)
 }
 
-/// LISTEN › THINK › SPEAK, the current turn filled.
+/// LISTEN ▸ THINK ▸ SPEAK, the current turn filled.
 fn draw_chips(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -265,20 +306,25 @@ fn draw_chips(
         ("SPEAK", CallPhase::Speaking),
     ];
     let label = preferences.detail_style();
-    let separator_width = label.text_width("›") + 20;
     let widths: Vec<i32> = chips
         .iter()
         .map(|(text, _)| label.text_width(text) + 24)
         .collect();
-    let total = widths.iter().sum::<i32>() + 2 * separator_width;
+    // Between two chips: 8 px, a 6 px triangle, 8 px.
+    let total = widths.iter().sum::<i32>() + 2 * 22;
     let mut left = (480 - total) / 2;
     let baseline = CHIPS_TOP + (CHIP_HEIGHT + label.cap_height()) / 2;
+    let middle = CHIPS_TOP + CHIP_HEIGHT / 2;
+    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
     for (index, ((text, phase), &width)) in chips.iter().zip(&widths).enumerate() {
         let on = call.phase == *phase;
-        let (style, ink) = if on {
-            (PrimitiveStyle::with_fill(BinaryColor::On), BinaryColor::Off)
+        let (style, color) = if on {
+            (ink, BinaryColor::Off)
         } else {
-            (PrimitiveStyle::with_stroke(BinaryColor::On, 2), BinaryColor::On)
+            (
+                PrimitiveStyle::with_stroke(BinaryColor::On, 2),
+                BinaryColor::On,
+            )
         };
         Rectangle::new(
             Point::new(left, CHIPS_TOP),
@@ -286,12 +332,18 @@ fn draw_chips(
         )
         .into_styled(style)
         .draw(display)?;
-        let text_style = label.with_color(ink);
+        let text_style = label.with_color(color);
         Text::new(text, Point::new(left + 12, baseline), text_style).draw(display)?;
         left += width;
         if index + 1 < chips.len() {
-            Text::new("›", Point::new(left + 10, baseline), label).draw(display)?;
-            left += separator_width;
+            Triangle::new(
+                Point::new(left + 8, middle - 4),
+                Point::new(left + 8, middle + 4),
+                Point::new(left + 14, middle),
+            )
+            .into_styled(ink)
+            .draw(display)?;
+            left += 22;
         }
     }
     Ok(())
@@ -310,17 +362,24 @@ fn draw_message(
     let (ink, style) = if reply {
         (BinaryColor::Off, PrimitiveStyle::with_fill(BinaryColor::On))
     } else {
-        (BinaryColor::On, PrimitiveStyle::with_stroke(BinaryColor::On, 2))
+        (
+            BinaryColor::On,
+            PrimitiveStyle::with_stroke(BinaryColor::On, 2),
+        )
     };
     let label_style = preferences.text_style(UiTextRole::Detail, ink);
-    let body = preferences.text_style(UiTextRole::Body, ink);
+    let body = preferences.text_style(UiTextRole::Heading, ink);
     let label_height = i32::from(label_style.line_height());
     let line_height = i32::from(body.line_height()) + 2;
-    let room = usize::try_from((MESSAGES_BOTTOM - top - 18 - label_height) / line_height)
+    let room = usize::try_from((MESSAGES_BOTTOM - top - 27 - label_height) / line_height)
         .unwrap_or(0)
         .max(1);
-    let limit = if reply { room } else { room.min(QUESTION_LINES) };
-    let mut lines = body.wrap(&screen_text(text), RIGHT - LEFT - 24);
+    let limit = if reply {
+        room
+    } else {
+        room.min(QUESTION_LINES)
+    };
+    let mut lines = body.wrap(&screen_text(text), RIGHT - LEFT - 32);
     if lines.len() > limit {
         if reply {
             lines.drain(..lines.len() - limit);
@@ -332,21 +391,71 @@ fn draw_message(
             }
         }
     }
-    let height = 18 + label_height + lines.len() as i32 * line_height;
+    // Border and padding as the mockup's: 12 px above and below, 16 at the
+    // sides, 3 px under the label.
+    let height = 27 + label_height + lines.len() as i32 * line_height;
     Rectangle::new(
         Point::new(LEFT, top),
         Size::new((RIGHT - LEFT) as u32, height as u32),
     )
     .into_styled(style)
     .draw(display)?;
-    let label_baseline = top + 10 + label_style.cap_height();
-    Text::new(label, Point::new(LEFT + 12, label_baseline), label_style).draw(display)?;
-    let mut baseline = top + 12 + label_height + body.cap_height();
+    let label_baseline = top + 12 + label_style.cap_height();
+    Text::new(label, Point::new(LEFT + 16, label_baseline), label_style).draw(display)?;
+    let mut baseline = top + 15 + label_height + (line_height + body.cap_height()) / 2;
     for line in &lines {
-        Text::new(line, Point::new(LEFT + 12, baseline), body).draw(display)?;
+        Text::new(line, Point::new(LEFT + 16, baseline), body).draw(display)?;
         baseline += line_height;
     }
     Ok(top + height)
+}
+
+/// The device tool XiaoZhi used, in a dashed box under the messages.
+fn draw_tool(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    tool: &str,
+    top: i32,
+) -> Result<(), Infallible> {
+    let style = preferences.detail_style();
+    let height = i32::from(style.line_height()) + 16;
+    let size = Size::new((RIGHT - LEFT) as u32, height as u32);
+    draw_dashed_box(display, Point::new(LEFT, top), size)?;
+    let mut text = format!("Device tool: {}", screen_text(tool));
+    if tool.starts_with("bible.") {
+        text.push_str(" from your SD");
+    }
+    let line = style.fit(&text, RIGHT - LEFT - 24);
+    let baseline = top + (height + style.cap_height()) / 2;
+    Text::new(&line, Point::new(LEFT + 12, baseline), style).draw(display)?;
+    Ok(())
+}
+
+/// A 2 px dashed outline: 6 px dashes with 4 px gaps.
+fn draw_dashed_box(
+    display: &mut OrientedFrameBuffer<'_>,
+    top_left: Point,
+    size: Size,
+) -> Result<(), Infallible> {
+    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
+    let (width, height) = (size.width as i32, size.height as i32);
+    for x in (0..width).step_by(10) {
+        let dash = Size::new((width - x).min(6) as u32, 2);
+        for y in [0, height - 2] {
+            Rectangle::new(top_left + Point::new(x, y), dash)
+                .into_styled(ink)
+                .draw(display)?;
+        }
+    }
+    for y in (0..height).step_by(10) {
+        let dash = Size::new(2, (height - y).min(6) as u32);
+        for x in [0, width - 2] {
+            Rectangle::new(top_left + Point::new(x, y), dash)
+                .into_styled(ink)
+                .draw(display)?;
+        }
+    }
+    Ok(())
 }
 
 /// `Volume` and ten segments, filled up to the level.
@@ -355,23 +464,20 @@ fn draw_volume(
     preferences: DisplayPreferences,
     volume: u8,
 ) -> Result<(), Infallible> {
-    let label = preferences.heading_style();
+    let label = preferences.body_style();
     let end = Text::new("Volume", Point::new(LEFT, VOLUME_BASELINE), label).draw(display)?;
     let filled = i32::from(volume.min(100) + 5) / 10;
-    let height = 16;
-    let top = VOLUME_BASELINE - height;
+    let top = VOLUME_BASELINE - 14;
     for segment in 0..10 {
         let style = if segment < filled {
             PrimitiveStyle::with_fill(BinaryColor::On)
         } else {
             PrimitiveStyle::with_stroke(BinaryColor::On, 2)
         };
-        Rectangle::new(
-            Point::new(end.x + 16 + segment * 26, top),
-            Size::new(20, height as u32),
-        )
-        .into_styled(style)
-        .draw(display)?;
+        let left = end.x + 10 + segment * 18;
+        Rectangle::new(Point::new(left, top), Size::new(14, 16))
+            .into_styled(style)
+            .draw(display)?;
     }
     Ok(())
 }
@@ -429,8 +535,15 @@ mod tests {
             let mut state = AppState::default();
             state.router.navigate_to(ScreenRoute::XiaoZhi);
             state.xiaozhi.apply(CallEvent::Phase(phase), 0);
-            state.xiaozhi.apply(CallEvent::Heard("A question".repeat(30)), 1_000);
-            state.xiaozhi.apply(CallEvent::Said("A long reply.".repeat(90)), 2_000);
+            state
+                .xiaozhi
+                .apply(CallEvent::Heard("A question".repeat(30)), 1_000);
+            state
+                .xiaozhi
+                .apply(CallEvent::Said("A long reply.".repeat(90)), 2_000);
+            state
+                .xiaozhi
+                .apply(CallEvent::Tool("bible.read(PSA 23)".into()), 3_000);
             let mut frame = FrameBuffer::new_white();
             render_current_screen(&mut frame, &state).unwrap();
         }

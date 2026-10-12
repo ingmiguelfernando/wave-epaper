@@ -1088,7 +1088,9 @@ mod firmware {
                 } else if network_config.is_some() {
                     state.xiaozhi.fail("Wi-Fi did not connect.");
                 } else {
-                    state.xiaozhi.fail("Wi-Fi is not set up. See the user guide.");
+                    state
+                        .xiaozhi
+                        .fail("Wi-Fi is not set up. See the user guide.");
                 }
             }
             if state.panel_awake

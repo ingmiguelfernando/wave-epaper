@@ -17,13 +17,17 @@ pub enum CallPhase {
     /// Wi-Fi, the OTA check and the WebSocket handshake.
     Connecting,
     /// The device is not linked to an account: type the code at xiaozhi.me.
-    Linking { code: String },
+    Linking {
+        code: String,
+    },
     Listening,
     /// The server heard a question and is preparing the reply.
     Thinking,
     Speaking,
     /// The call ended; an error says why it could not go on.
-    Ended { error: Option<String> },
+    Ended {
+        error: Option<String>,
+    },
 }
 
 impl CallPhase {

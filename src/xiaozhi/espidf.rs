@@ -180,7 +180,7 @@ impl XiaozhiIdentity {
 
     /// The UUID this device sends as its Client-Id, made on first use.
     pub fn client_id(&self) -> Result<String> {
-        let mut nvs = self.open()?;
+        let nvs = self.open()?;
         let mut buffer = [0_u8; 40];
         if let Some(id) = nvs.get_str("uuid", &mut buffer)? {
             if !id.is_empty() {
@@ -215,8 +215,6 @@ pub fn device_info(client_id: String, network: &NetworkSnapshot) -> DeviceInfo {
     let mut mac = [0_u8; 6];
     unsafe { sys::esp_read_mac(mac.as_mut_ptr(), sys::esp_mac_type_t_ESP_MAC_WIFI_STA) };
     let app = unsafe { &*sys::esp_app_get_description() };
-    let mut chip: sys::esp_chip_info_t = unsafe { core::mem::zeroed() };
-    unsafe { sys::esp_chip_info(&mut chip) };
     let mut flash_size = 0_u32;
     unsafe { sys::esp_flash_get_size(core::ptr::null_mut(), &mut flash_size) };
     let running = unsafe { sys::esp_ota_get_running_partition().as_ref() };
@@ -231,10 +229,11 @@ pub fn device_info(client_id: String, network: &NetworkSnapshot) -> DeviceInfo {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect(),
-        chip_model: chip.model as u32,
-        chip_cores: u32::from(chip.cores),
-        chip_revision: u32::from(chip.revision),
-        chip_features: chip.features,
+        // esp-idf-sys does not bind esp_chip_info: an ESP32-S3, Wi-Fi and BLE.
+        chip_model: 9,
+        chip_cores: 2,
+        chip_revision: 0,
+        chip_features: 0x12,
         flash_size,
         minimum_free_heap: unsafe { sys::esp_get_minimum_free_heap_size() },
         partitions: partitions(),
@@ -398,7 +397,9 @@ fn wait_for_link(
     let url = activation::activate_url(&setup.ota_url);
     let timeout = activation
         .timeout_ms
-        .map_or(ACTIVATE_TIMEOUT, |ms| Duration::from_millis(ms) + OTA_TIMEOUT)
+        .map_or(ACTIVATE_TIMEOUT, |ms| {
+            Duration::from_millis(ms) + OTA_TIMEOUT
+        })
         .min(ACTIVATE_TIMEOUT);
     let deadline = Instant::now() + LINK_TIMEOUT;
     while Instant::now() < deadline {
@@ -526,7 +527,9 @@ fn handshake(
                 }
             }
             Ok(WsEvent::Closed(reason)) => {
-                return Err(anyhow!("The XiaoZhi server closed the conversation ({reason})."));
+                return Err(anyhow!(
+                    "The XiaoZhi server closed the conversation ({reason})."
+                ));
             }
             Ok(WsEvent::Binary(_)) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
@@ -936,7 +939,8 @@ impl OpusEncoder {
         config.bits_per_sample = 16;
         // ESP_OPUS_BITRATE_AUTO
         config.bitrate = -1000;
-        config.frame_duration = codec::esp_opus_enc_frame_duration_t_ESP_OPUS_ENC_FRAME_DURATION_60_MS;
+        config.frame_duration =
+            codec::esp_opus_enc_frame_duration_t_ESP_OPUS_ENC_FRAME_DURATION_60_MS;
         config.application_mode = codec::esp_opus_enc_application_t_ESP_OPUS_ENC_APPLICATION_AUDIO;
         config.complexity = 0;
         config.enable_dtx = true;
@@ -944,9 +948,16 @@ impl OpusEncoder {
         let mut handle = core::ptr::null_mut();
         let size = u32::try_from(core::mem::size_of::<codec::esp_opus_enc_config_t>())?;
         let opened = unsafe {
-            codec::esp_opus_enc_open((&mut config as *mut codec::esp_opus_enc_config_t).cast(), size, &mut handle)
+            codec::esp_opus_enc_open(
+                (&mut config as *mut codec::esp_opus_enc_config_t).cast(),
+                size,
+                &mut handle,
+            )
         };
-        ensure!(opened == 0 && !handle.is_null(), "Opus encoder error {opened}");
+        ensure!(
+            opened == 0 && !handle.is_null(),
+            "Opus encoder error {opened}"
+        );
         let mut encoder = Self {
             handle,
             frame_bytes: 0,
@@ -1009,9 +1020,16 @@ impl OpusDecoder {
         let mut handle = core::ptr::null_mut();
         let size = u32::try_from(core::mem::size_of::<codec::esp_opus_dec_cfg_t>())?;
         let opened = unsafe {
-            codec::esp_opus_dec_open((&mut config as *mut codec::esp_opus_dec_cfg_t).cast(), size, &mut handle)
+            codec::esp_opus_dec_open(
+                (&mut config as *mut codec::esp_opus_dec_cfg_t).cast(),
+                size,
+                &mut handle,
+            )
         };
-        ensure!(opened == 0 && !handle.is_null(), "Opus decoder error {opened}");
+        ensure!(
+            opened == 0 && !handle.is_null(),
+            "Opus decoder error {opened}"
+        );
         Ok(Self { handle })
     }
 
