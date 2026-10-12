@@ -100,8 +100,8 @@ mod firmware {
             light_sleep_budget, LightSleepShare, SleepModeState, SleepReport, SleepWakeCause,
         },
         sleep_screen::{
-            choose_sleep_picture, clock_redraw_wait, SleepScreenSettings, SLEEP_GLOBAL_REFRESH,
-            SLEEP_SCREEN_CONFIG_PATH,
+            choose_sleep_picture, clock_redraw_wait, verse_redraw_wait, SleepScreenSettings,
+            SLEEP_GLOBAL_REFRESH, SLEEP_SCREEN_CONFIG_PATH,
         },
         storage::{
             StorageBrowser, StorageSnapshot, StorageUiOutcome, SDMMC_COMMAND_TIMEOUT_MS,
@@ -1499,6 +1499,7 @@ mod firmware {
                                     state.update_board_snapshot(
                                         board_services.read_snapshot(&mut service_delay),
                                     );
+                                    state.load_verse_of_day();
                                     let layout = render_sleep_mode(&mut frame, &state)?;
                                     (format!("live-{}", layout.marker()), Some(layout))
                                 }
@@ -1584,6 +1585,7 @@ mod firmware {
             // The live sleep screen: partial redraws, a global one every half hour.
             if sleep_mode.is_sleeping() && sleep_redraw_at.is_some_and(|at| Instant::now() >= at) {
                 state.update_board_snapshot(board_services.read_snapshot(&mut service_delay));
+                state.load_verse_of_day();
                 let layout = render_sleep_mode(&mut frame, &state)?;
                 let global = sleep_last_global.elapsed() >= SLEEP_GLOBAL_REFRESH;
                 if global {
@@ -2098,7 +2100,7 @@ mod firmware {
                         sync_weather_config(&state, &mut weather_config);
                         if state.take_sleep_preview_request() {
                             let previous = sleep_mode.last_image();
-                            let picture = sleep_preview(&state, &sleep_images, previous)?;
+                            let picture = sleep_preview(&mut state, &sleep_images, previous)?;
                             state.show_sleep_preview(picture);
                         }
                         let full_refresh = state.take_full_refresh();
@@ -2716,12 +2718,13 @@ mod firmware {
     /// What the next sleep would show, or the card that explains why it shows
     /// no picture. A copy of the folder keeps its order where it was.
     fn sleep_preview(
-        state: &AppState,
+        state: &mut AppState,
         folder: &SleepImageCatalog,
         previous: Option<&str>,
     ) -> Result<FrameBuffer> {
         if state.sleep_screen.mode.is_live() {
             let mut picture = FrameBuffer::new_white();
+            state.load_verse_of_day();
             let layout = render_sleep_mode(&mut picture, state)?;
             info!("rustmix-wave=sleep-preview layout={}", layout.marker());
             return Ok(picture);
@@ -2802,8 +2805,14 @@ mod firmware {
     }
 
     /// When the clock of a live sleep screen next changes; `None` for the
-    /// weather layout, which redraws after each weather update.
+    /// weather layout, which redraws after each weather update. The verse
+    /// screen wakes once a day, at the next local midnight.
     fn next_sleep_redraw(state: &AppState, layout: SleepLayout) -> Option<Instant> {
+        if layout == SleepLayout::Verse {
+            let rtc = state.board.rtc?;
+            let local = state.regional.localize_rtc(rtc);
+            return Some(Instant::now() + verse_redraw_wait(local));
+        }
         if layout != SleepLayout::Clock {
             return None;
         }

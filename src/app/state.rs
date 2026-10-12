@@ -47,6 +47,19 @@ pub const DISPLAY_ACTION_COUNT: usize = DisplaySetting::ALL.len();
 /// Start/stop portal and provisioning-details rows on the Network screen.
 pub const NETWORK_ACTION_COUNT: usize = 2;
 
+/// Today's verse for the sleep screen: kept in memory once a day, so
+/// drawing reads nothing from the card. Its text is empty when the card
+/// has no verse for the day.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct VerseOfDay {
+    /// The `local_day()` it was loaded for.
+    pub day: u32,
+    pub text: String,
+    /// `Sal 23:1`.
+    pub reference: String,
+    pub translation: String,
+}
+
 /// Settings › System › Memory: the snapshot from the last status-bar
 /// refresh (`main.rs` captures one) and the lowest free values seen since
 /// boot. The remembered lows never rise again across snapshots.
@@ -180,6 +193,8 @@ pub struct AppState {
     pub storage: StorageSnapshot,
     /// Memory telemetry from the status-bar refresh; Settings › System › Memory.
     pub memory: MemoryUiState,
+    /// Today's verse for the sleep screen, loaded once a day.
+    pub verse_of_day: Option<VerseOfDay>,
     /// Password-free snapshot owned by the networking boundary.
     pub network: NetworkSnapshot,
     /// Cached weather snapshot retained across transient HTTP failures.
@@ -285,6 +300,7 @@ impl Default for AppState {
             board: BoardSnapshot::default(),
             storage: StorageSnapshot::default(),
             memory: MemoryUiState::default(),
+            verse_of_day: None,
             network: NetworkSnapshot::default(),
             weather: WeatherSnapshot::default(),
             weather_config: None,
@@ -1597,7 +1613,7 @@ impl AppState {
             ButtonEvent::Select => {
                 self.note_select_press();
                 if let Some(mode) = SleepMode::ALL.get(selected).copied() {
-                    if mode.is_available() {
+                    if mode.is_available(self.bible.has_verse_list()) {
                         self.sleep_screen.mode = mode;
                     }
                 } else if let Some(setting) = setting {
@@ -2014,6 +2030,29 @@ impl AppState {
         snapshot: crate::runtime_memory::RuntimeMemorySnapshot,
     ) {
         self.memory.note_snapshot(snapshot);
+    }
+
+    /// Load today's verse for the sleep screen: the verse the Bible menu's
+    /// `Versículo del día` opens. The card is read once a day; a later call
+    /// on the same day reads nothing.
+    pub fn load_verse_of_day(&mut self) {
+        let Some(day) = self.local_day() else {
+            return;
+        };
+        if self
+            .verse_of_day
+            .as_ref()
+            .is_some_and(|verse| verse.day == day)
+        {
+            return;
+        }
+        let (text, reference, translation) = self.bible.verse_for_sleep(day);
+        self.verse_of_day = Some(VerseOfDay {
+            day,
+            text,
+            reference,
+            translation,
+        });
     }
 
     pub fn update_storage_snapshot(&mut self, storage: StorageSnapshot) {
@@ -3752,6 +3791,49 @@ mod bible_routing_tests {
         let position = state.bible.position().expect("the place is kept");
         assert_eq!(state.bible.books()[position.book].usfm, "GEN");
         assert_eq!(position.chapter, 1);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The sleep screen's verse: one card read per day, the verse
+    /// `verse_of_the_day` picks for it, and nothing on a same-day reload.
+    #[test]
+    fn the_sleep_screen_loads_the_verse_of_each_day_once() {
+        let root = temp_card("verse-of-day");
+        fs::write(root.join("VERSES.TXT"), "PSA 1:1-3\nGEN 2:1\n").unwrap();
+        let mut state = with_clock(home_with_card(&root));
+        let list = crate::bible::parse_verse_list("PSA 1:1-3\nGEN 2:1\n").unwrap();
+        let day = state.local_day().unwrap();
+
+        state.load_verse_of_day();
+        let first = state.verse_of_day.clone().unwrap();
+        assert!(!first.text.is_empty());
+        assert_eq!(
+            first.text,
+            "Texto del versículo 1 Texto del versículo 2 Texto del versículo 3"
+        );
+        assert_eq!(
+            first.reference,
+            list[day as usize % 2].label(state.bible.books())
+        );
+        assert_eq!(first.translation, "RVR1960");
+        let reads = state.bible.reads();
+        state.load_verse_of_day();
+        assert_eq!(state.bible.reads(), reads, "the same day loads once");
+        assert_eq!(
+            state.verse_of_day.as_ref().unwrap().reference,
+            first.reference
+        );
+
+        // The next day gives the verse `verse_of_the_day` gives for it.
+        state.board.rtc.as_mut().unwrap().day = 9;
+        state.load_verse_of_day();
+        let second = state.verse_of_day.clone().unwrap();
+        let next_day = state.local_day().unwrap();
+        assert_eq!(
+            second.reference,
+            list[next_day as usize % 2].label(state.bible.books())
+        );
+        assert_ne!(first.reference, second.reference);
         let _ = fs::remove_dir_all(&root);
     }
 

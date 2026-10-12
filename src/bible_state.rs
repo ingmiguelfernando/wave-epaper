@@ -321,6 +321,23 @@ impl BibleUiState {
         self.verse_position(verse)
     }
 
+    /// Today's verse for the sleep screen: its text, its reference (`Sal
+    /// 23:1`) and the translation. Empty strings when the card has no verse
+    /// for the day. The book file it reads counts as a card read.
+    pub fn verse_for_sleep(&mut self, epoch_day: u32) -> (String, String, String) {
+        let empty = (String::new(), String::new(), String::new());
+        let Some(reference) = bible::verse_of_the_day(self.verse_list(), epoch_day).copied() else {
+            return empty;
+        };
+        let translation = self.translation().unwrap_or_default().to_string();
+        self.reads += 1;
+        let Ok(text) = bible::reference_text(&self.root, &translation, self.books(), &reference)
+        else {
+            return empty;
+        };
+        (text, reference.label(self.books()), translation)
+    }
+
     /// The open translation's language, for hyphenation.
     pub fn language(&self) -> Option<Language> {
         self.language

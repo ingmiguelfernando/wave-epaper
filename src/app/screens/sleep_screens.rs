@@ -12,7 +12,8 @@ use embedded_graphics::{
 use crate::{
     app::{
         display::DisplayPreferences,
-        state::AppState,
+        reader_typography::reader_body_style,
+        state::{AppState, VerseOfDay},
         typography::{Text, TextBounds, UiTextStyle},
         widgets::{
             display_numerals::{draw_numerals, numerals_width, Numerals},
@@ -21,6 +22,7 @@ use crate::{
     },
     civil_date,
     orientation::OrientedFrameBuffer,
+    reader::{BookFont, BookFontSize, ReadingTheme},
     rtc::RtcDateTime,
     sleep_screen::SleepMode,
     weather::{short_degrees_label, CurrentConditions},
@@ -64,6 +66,107 @@ pub struct SleepWeatherDay<'a> {
     pub icon: WeatherIcon,
     pub range: &'a str,
     pub rain: &'a str,
+}
+
+/// The verse of the day sleep screen: the clock's date line at the top, the
+/// verse centred in the reader's style at the largest size that fits (from
+/// `XLarge` down, else cut with `…`), its reference and translation under
+/// it in Heading, and the clock layout's footer.
+pub fn render_sleep_verse(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    reader_font: BookFont,
+    reader_theme: ReadingTheme,
+    verse: &VerseOfDay,
+    local: Option<RtcDateTime>,
+    battery_percent: Option<u8>,
+    wake_hint: &str,
+) -> Result<SleepLayout, Infallible> {
+    draw_frame(display)?;
+    let date = local.map_or_else(String::new, |local| long_date(local));
+    if !date.is_empty() {
+        let date_height = text_height(&date, preferences.large_style(), 408, 2);
+        text_block(
+            display,
+            &date,
+            preferences.large_style(),
+            TextBounds::new(36, 48, 444, 48 + date_height),
+            2,
+            true,
+        )?;
+    }
+    // The verse sits in a fixed band, so the reference below it never
+    // moves into the footer.
+    const VERSE_TOP: i32 = 170;
+    const VERSE_BOTTOM: i32 = 590;
+    const VERSE_WIDTH: i32 = 408;
+    const REFERENCE_TOP: i32 = 620;
+    let band = VERSE_BOTTOM - VERSE_TOP;
+    let mut lines: Vec<String> = Vec::new();
+    let mut style = reader_body_style(reader_font, BookFontSize::Small, reader_theme);
+    for size in BookFontSize::ALL.iter().rev() {
+        let candidate = reader_body_style(reader_font, *size, reader_theme);
+        let wrapped = candidate.wrap(&verse.text, VERSE_WIDTH);
+        if wrapped.len() as i32 * i32::from(candidate.line_height()) <= band {
+            style = candidate;
+            lines = wrapped;
+            break;
+        }
+    }
+    if lines.is_empty() {
+        // Even the smallest size does not fit: cut the verse with `…`.
+        style = reader_body_style(reader_font, BookFontSize::Small, reader_theme);
+        lines = cut_verse_lines(&verse.text, style, VERSE_WIDTH, band);
+    }
+    let line_height = i32::from(style.line_height());
+    let top = VERSE_TOP + (band - lines.len() as i32 * line_height) / 2;
+    for (index, line) in lines.iter().enumerate() {
+        let left = 240 - style.text_width(line) / 2;
+        let baseline = top + style.cap_height() + index as i32 * line_height;
+        Text::new(line, Point::new(left, baseline), style)
+            .draw_clipped(display, TextBounds::new(36, VERSE_TOP, 444, VERSE_BOTTOM))?;
+    }
+    let reference = if verse.translation.is_empty() {
+        verse.reference.clone()
+    } else {
+        format!("{} · {}", verse.reference, verse.translation)
+    };
+    let reference_height = text_height(&reference, preferences.heading_style(), 408, 1);
+    text_block(
+        display,
+        &reference,
+        preferences.heading_style(),
+        TextBounds::new(36, REFERENCE_TOP, 444, REFERENCE_TOP + reference_height),
+        1,
+        true,
+    )?;
+    draw_footer(display, preferences, wake_hint, battery_percent)?;
+    Ok(SleepLayout::Verse)
+}
+
+/// Wrap the verse to as many `width` lines as `band` allows, cutting the
+/// overflow with a trailing `…` (the spec's cut for this screen).
+fn cut_verse_lines(text: &str, style: UiTextStyle, width: i32, band: i32) -> Vec<String> {
+    let line_height = i32::from(style.line_height());
+    if line_height <= 0 {
+        return Vec::new();
+    }
+    let limit = (band / line_height).max(1) as usize;
+    let wrapped = style.wrap(text, width);
+    if wrapped.len() <= limit {
+        return wrapped;
+    }
+    let mut lines: Vec<String> = wrapped[..limit - 1].to_vec();
+    let mut last = wrapped[limit - 1].clone();
+    let budget = width - style.text_width("…");
+    while !last.is_empty() && style.text_width(&last) > budget {
+        last = match last.rsplit_once(' ') {
+            Some((head, _)) => head.to_string(),
+            None => String::new(),
+        };
+    }
+    lines.push(format!("{last}…"));
+    lines
 }
 
 pub fn render_sleep_clock(
@@ -239,6 +342,7 @@ pub fn render_sleep_weather(
 pub enum SleepLayout {
     Clock,
     Weather,
+    Verse,
 }
 
 impl SleepLayout {
@@ -247,6 +351,7 @@ impl SleepLayout {
         match self {
             Self::Clock => "clock",
             Self::Weather => "weather",
+            Self::Verse => "verse",
         }
     }
 }
@@ -262,6 +367,28 @@ pub fn render_sleep_mode(
     let local = state.board.rtc.map(|rtc| state.regional.localize_rtc(rtc));
     let battery_percent = state.board.power.and_then(|power| power.battery_percent);
     let wake_hint = state.power.wake_keys.wake_hint();
+    // The verse screen: the date at the top, the verse centred in the
+    // reader's style, its reference and translation under it. Without a
+    // verse (no card, no list, or the day not loaded) the clock draws.
+    if mode == SleepMode::Verse {
+        if let Some(verse) = state
+            .verse_of_day
+            .as_ref()
+            .filter(|verse| !verse.text.is_empty())
+        {
+            render_sleep_verse(
+                display,
+                state.display,
+                state.reader.preferences.book_font,
+                state.reader.preferences.theme,
+                verse,
+                local,
+                battery_percent,
+                wake_hint,
+            )?;
+            return Ok(SleepLayout::Verse);
+        }
+    }
     let forecast = state
         .weather
         .current
@@ -617,7 +744,7 @@ mod tests {
     use crate::{
         app::{
             display::{UiFontFamily, UiFontSize},
-            render_sleep_clock, render_sleep_weather,
+            render_sleep_clock, render_sleep_mode, render_sleep_weather,
         },
         framebuffer::FrameBuffer,
     };
@@ -711,6 +838,65 @@ mod tests {
         assert!(!black(frame, 240, 14));
         assert!(!black(frame, 240, 785));
         assert!(!black(frame, 0, 0));
+    }
+
+    /// A saved verse mode draws the clock without a verse for the day (no
+    /// card or no list), and the verse screen with one.
+    #[test]
+    fn the_verse_mode_falls_back_to_the_clock_without_a_verse() {
+        use crate::app::state::{AppState, VerseOfDay};
+        let mut state = AppState::default();
+        state.sleep_screen.mode = SleepMode::Verse;
+        let mut frame = FrameBuffer::new_white();
+        assert_eq!(
+            render_sleep_mode(&mut frame, &state).unwrap(),
+            SleepLayout::Clock
+        );
+        // The day loaded and found no verse: the clock again.
+        state.verse_of_day = Some(VerseOfDay {
+            day: 1,
+            text: String::new(),
+            reference: "Sal 23:1".into(),
+            translation: "RVR1960".into(),
+        });
+        assert_eq!(
+            render_sleep_mode(&mut frame, &state).unwrap(),
+            SleepLayout::Clock
+        );
+        state.verse_of_day.as_mut().unwrap().text = "El Señor es mi pastor; nada me falta.".into();
+        assert_eq!(
+            render_sleep_mode(&mut frame, &state).unwrap(),
+            SleepLayout::Verse
+        );
+    }
+
+    /// The long verse is cut to its band: its ink ends above the gap and
+    /// the reference, which stay below it.
+    #[test]
+    fn the_long_verse_stays_above_its_reference() {
+        use crate::app::state::{AppState, VerseOfDay};
+        let mut state = AppState::default();
+        state.sleep_screen.mode = SleepMode::Verse;
+        state.verse_of_day = Some(VerseOfDay {
+            day: 1,
+            text: "Bienaventurados los que andan en la ley de Jehová. ".repeat(20),
+            reference: "Sal 119:1-6".into(),
+            translation: "RVR1960".into(),
+        });
+        let mut frame = FrameBuffer::new_white();
+        assert_eq!(
+            render_sleep_mode(&mut frame, &state).unwrap(),
+            SleepLayout::Verse
+        );
+        assert!(
+            inked(&frame, TextBounds::new(36, 170, 444, 590)),
+            "verse band"
+        );
+        assert!(!inked(&frame, TextBounds::new(36, 592, 444, 618)), "gap");
+        assert!(
+            inked(&frame, TextBounds::new(36, 620, 444, 700)),
+            "reference"
+        );
     }
 
     #[test]

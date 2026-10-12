@@ -201,7 +201,13 @@ fn mode_status(state: &AppState, mode: SleepMode) -> String {
     let weather = weather_interval(state);
     match mode {
         SleepMode::Photo => "NO WAKE-UPS".into(),
-        SleepMode::Verse => "SOON".into(),
+        SleepMode::Verse => {
+            if state.bible.has_verse_list() {
+                "1 WAKE-UP/DAY".into()
+            } else {
+                "NO VERSES".into()
+            }
+        }
         SleepMode::Weather if weather.is_err() => "OFF".into(),
         _ => {
             let refresh = state.sleep_screen.clock_refresh;
@@ -290,6 +296,33 @@ mod tests {
         state.apply(ButtonEvent::Select);
         assert_eq!(state.sleep_screen.mode, SleepMode::Clock);
         render_current_screen(&mut frame, &state).unwrap();
+    }
+
+    /// The verse mode's status, as the mockup: one wake-up a day with a
+    /// verse list on the card, `NO VERSES` and a refusal without one.
+    #[test]
+    fn the_verse_mode_shows_its_wake_ups_and_needs_a_verse_list() {
+        let mut state = AppState::default();
+        assert_eq!(super::mode_status(&state, SleepMode::Verse), "NO VERSES");
+        state.router.navigate_to(ScreenRoute::SleepScreen);
+        state.sleep_screen_ui.selected = 4;
+        state.apply(ButtonEvent::Select);
+        assert_ne!(state.sleep_screen.mode, SleepMode::Verse);
+
+        let root =
+            std::env::temp_dir().join(format!("wave-sleep-verse-status-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("VERSES.TXT"), "PSA 23:1\n").unwrap();
+        state.bible = crate::bible_state::BibleUiState::with_root(&root);
+        assert_eq!(
+            super::mode_status(&state, SleepMode::Verse),
+            "1 WAKE-UP/DAY"
+        );
+        state.sleep_screen_ui.selected = 4;
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.sleep_screen.mode, SleepMode::Verse);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

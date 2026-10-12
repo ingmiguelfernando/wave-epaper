@@ -110,6 +110,14 @@ fn render_screen_previews() {
             render_live_sleep(SleepMode::Weather, true),
         ),
         (
+            "sleep-verse",
+            render_verse_sleep(VERSE_SAMPLE, "Sal 23:1", "RVR1960"),
+        ),
+        (
+            "sleep-verse-long",
+            render_verse_sleep(VERSE_LONG, "Jn 1:1-9", "RVR1960"),
+        ),
+        (
             "reading-stats",
             render_sample_reading_stats(sample_state().display, true),
         ),
@@ -284,6 +292,49 @@ fn render_live_sleep(mode: SleepMode, stale: bool) -> FrameBuffer {
         rtc.weekday = 6;
         rtc.hour = 8;
     }
+    let mut frame = FrameBuffer::new_white();
+    super::render_sleep_mode(&mut frame, &state).unwrap();
+    frame
+}
+
+/// Psalm 23:1, the `sleep-verse` sample.
+const VERSE_SAMPLE: &str = "Jehová es mi pastor; nada me faltará.";
+/// A verse that needs a smaller size to fit its band.
+const VERSE_LONG: &str = "En el principio era el Verbo, y el Verbo era con Dios, y el Verbo era \
+                         Dios. Este era en el principio con Dios. Todas las cosas por él fueron \
+                         hechas, y sin él nada de lo que ha sido hecho, fue hecho. En él estaba \
+                         la vida, y la vida era la luz de los hombres. La luz en las tinieblas \
+                         resplandece, y las tinieblas no prevalecieron contra ella. Hubo un \
+                         hombre enviado de Dios, el cual se llamaba Juan. Este vino por \
+                         testimonio, para que diese testimonio de la luz, a fin de que todos \
+                         creyesen por él. No era él la luz, sino para que diese testimonio de la \
+                         luz.";
+
+/// A state whose Bible card keeps a verse list, as the verse screens need.
+fn sample_verse_card_state(tag: &str) -> AppState {
+    let root = std::env::temp_dir().join(format!("{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let folder = root.join("RVR1960");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("index.tsv"), "PSA\tSalmos\t150\tPSA.txt\n").unwrap();
+    std::fs::write(folder.join("meta.txt"), "format=1\nabbreviation=RVR1960\n").unwrap();
+    std::fs::write(root.join("VERSES.TXT"), "PSA 23:1\n").unwrap();
+    let mut state = sample_state();
+    state.bible = crate::bible_state::BibleUiState::with_root(&root);
+    state
+}
+
+/// The verse of the day sleep screen with `text`, `reference` and
+/// `translation` as the card gave them.
+fn render_verse_sleep(text: &str, reference: &str, translation: &str) -> FrameBuffer {
+    let mut state = sample_verse_card_state("wave-preview-sleep-verse");
+    state.sleep_screen.mode = SleepMode::Verse;
+    state.verse_of_day = Some(crate::app::state::VerseOfDay {
+        day: 20_729,
+        text: text.into(),
+        reference: reference.into(),
+        translation: translation.into(),
+    });
     let mut frame = FrameBuffer::new_white();
     super::render_sleep_mode(&mut frame, &state).unwrap();
     frame
@@ -691,6 +742,12 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     sleep_screen.sleep_screen_ui.picker = Some(0);
     states.push(("sleep-screen-clock-picker", sleep_screen.clone()));
     sleep_screen.sleep_screen_ui.picker = None;
+    // The verse mode chosen, with the verse list its status needs on the card.
+    let mut verse_screen = sample_verse_card_state("wave-preview-sleep-verse-screen");
+    verse_screen.router.navigate_to(ScreenRoute::SleepScreen);
+    verse_screen.sleep_screen.mode = SleepMode::Verse;
+    verse_screen.sleep_screen_ui.selected = 4;
+    states.push(("sleep-screen-verse", verse_screen));
     sleep_screen.display.font_size = UiFontSize::Large;
     sleep_screen.sleep_screen.mode = SleepMode::Photo;
     states.push(("sleep-screen-large-font", sleep_screen));

@@ -813,7 +813,7 @@ the same day loads once; Verse is refused without a verse list; the
 status labels; without a card or a verse list the clock layout draws; the
 long verse stays above its reference.
 
-**Status:** to do.
+**Status:** done on `side-tasks-12`.
 
 ## Round 11 tasks (done in v0.12.1)
 

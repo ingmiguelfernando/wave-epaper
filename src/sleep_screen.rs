@@ -62,15 +62,19 @@ impl SleepMode {
         }
     }
 
+    /// Verse of the day needs the card's verse list to be choosable.
     #[must_use]
-    pub const fn is_available(self) -> bool {
-        !matches!(self, Self::Verse)
+    pub const fn is_available(self, has_verses: bool) -> bool {
+        !matches!(self, Self::Verse) || has_verses
     }
 
     /// Drawn by Wave rather than a picture, so it can change while asleep.
     #[must_use]
     pub const fn is_live(self) -> bool {
-        matches!(self, Self::Clock | Self::Weather | Self::ClockWeather)
+        matches!(
+            self,
+            Self::Clock | Self::Weather | Self::ClockWeather | Self::Verse
+        )
     }
 
     #[must_use]
@@ -127,6 +131,14 @@ pub fn clock_redraw_wait(now: RtcDateTime, refresh: ClockRefresh) -> Duration {
     let step = u64::from(refresh.minutes()) * 60;
     let into = u64::from(now.minute) * 60 + u64::from(now.second);
     Duration::from_secs(step - into % step) + Duration::from_millis(500)
+}
+
+/// Time until the verse screen shows the next verse: the next local
+/// midnight, plus the margin the clock waits so the RTC has turned.
+#[must_use]
+pub fn verse_redraw_wait(now: RtcDateTime) -> Duration {
+    let into = u64::from(now.hour) * 3600 + u64::from(now.minute) * 60 + u64::from(now.second);
+    Duration::from_secs(86_400 - into) + Duration::from_millis(500)
 }
 
 /// Extra battery a day, in tenths of a mAh, for the wake-ups `mode` needs:
@@ -486,7 +498,8 @@ mod tests {
         assert_eq!(restored.option_rows(), [SleepScreenSetting::ClockRefresh]);
         assert_eq!(SleepScreenSettings::default().option_rows().len(), 3);
         assert!(SleepScreenSettings::parse("mode=slideshow").is_err());
-        assert!(!SleepMode::Verse.is_available());
+        assert!(!SleepMode::Verse.is_available(false));
+        assert!(SleepMode::Verse.is_available(true));
         assert!(SleepMode::Weather.is_live() && !SleepMode::Photo.is_live());
     }
 
@@ -519,6 +532,22 @@ mod tests {
         assert_eq!(wait(41, 0, one), 60_500);
         assert_eq!(wait(42, 30, five), 150_500);
         assert_eq!(wait(45, 0, five), 300_500);
+    }
+
+    #[test]
+    fn the_verse_redraws_at_the_next_local_midnight() {
+        let wait = |hour, minute, second| {
+            let now = RtcDateTime {
+                hour,
+                minute,
+                second,
+                ..RtcDateTime::default()
+            };
+            super::verse_redraw_wait(now).as_millis()
+        };
+        // Half a minute to midnight, and the whole day from just past it.
+        assert_eq!(wait(23, 59, 30), 30_500);
+        assert_eq!(wait(0, 0, 0), 86_400_500);
     }
 
     #[test]
