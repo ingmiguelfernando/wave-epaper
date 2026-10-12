@@ -261,7 +261,6 @@ light sleep. Restore the owner's original preferences afterward.
 - [ ] The playing screen and the crash screen at the Large UI size: the
    labels and values fit and nothing runs into the road.
 
-
 ## Voice note volume (v0.11.1)
 
 - [ ] Play a note: ▲ makes it louder and ▼ quieter while it plays, the
