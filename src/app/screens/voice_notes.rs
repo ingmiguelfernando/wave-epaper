@@ -10,6 +10,7 @@ use embedded_graphics::{
 
 use crate::{
     app::{
+        display::DisplayPreferences,
         screens::{
             ai::split_stamp,
             games::draw_info_box,
@@ -48,6 +49,14 @@ const BAR_WIDTH: i32 = 10;
 const BAR_GAP: i32 = 5;
 const CHIPS_TOP: i32 = 412;
 const INFO_BOX_TOP: i32 = 470;
+
+/// The result screen's layout, from the mockup's `Voice Notes: resultado`.
+const RESULT_TITLE_BASELINE: i32 = 86;
+const RESULT_CHIPS_TOP: i32 = 210;
+const BODY_TOP: i32 = 254;
+const FOOTER_TOP: i32 = 704;
+/// Extra space above a heading line.
+const HEADING_GAP: i32 = 12;
 
 const DELETE_HINTS: [(KeyCap, &str); 2] = [(KeyCap::UpDown, "move"), (KeyCap::Select, "confirm")];
 
@@ -364,21 +373,42 @@ const RESULT_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Select, "actions"),
 ];
 
-/// The active tab's text, cleaned for the device fonts and wrapped to width.
-fn result_body_lines(
+/// One row of the result body: a wrapped line with its marker and indent.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BodyRow {
+    text: String,
+    /// The text's x offset from the body's left; the marker sits before it.
+    indent: i32,
+    marker: BodyMarker,
+    heading: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BodyMarker {
+    None,
+    Bullet,
+    Todo,
+}
+
+/// The marker column: a 14 px marker and an 8 px gap before the text.
+const MARKER_COLUMN: i32 = 22;
+
+/// The active tab's text as draw rows: the summary keeps its markers and
+/// headings, the other tabs stay plain text. The first row of a marker line
+/// draws the marker; its wrapped lines start under the text.
+fn result_body_rows(
     state: &AppState,
     record: &crate::voice_note_record::NoteRecord,
     audio: &str,
     width: i32,
-) -> Vec<String> {
-    use crate::voice_note_result::{prepare_text, ResultTab};
+) -> Vec<BodyRow> {
+    use crate::voice_note_result::{parse_summary, prepare_text, ResultTab, SummaryLine};
+    let body = result_body_style(state.display);
     let text = match state.voice_notes_result.tab {
         ResultTab::Summary => record.summary.as_str(),
         ResultTab::Transcript => record.transcript.as_str(),
         ResultTab::Audio => audio,
     };
-    let body = state.display.body_style();
-    let mut lines = Vec::new();
     // A note not summarized yet says where it is, above what it already has.
     let status = match state.voice_notes_result.tab {
         ResultTab::Summary => crate::voice_note_result::status_text(record),
@@ -389,14 +419,118 @@ fn result_body_lines(
         Some(status) => format!("{status}\n\n{text}"),
         None => text.to_string(),
     };
-    for paragraph in prepare_text(&text).split('\n') {
-        if paragraph.trim().is_empty() {
-            lines.push(String::new());
+    let plain_row = |text: String| BodyRow {
+        text,
+        indent: 0,
+        marker: BodyMarker::None,
+        heading: false,
+    };
+    if state.voice_notes_result.tab != ResultTab::Summary {
+        let mut rows = Vec::new();
+        for paragraph in prepare_text(&text).split('\n') {
+            if paragraph.trim().is_empty() {
+                rows.push(plain_row(String::new()));
+            } else {
+                rows.extend(body.wrap(paragraph, width).into_iter().map(plain_row));
+            }
+        }
+        return rows;
+    }
+    let mut rows = Vec::new();
+    for line in parse_summary(&text) {
+        let (marker, indent, heading, content) = match &line {
+            SummaryLine::Bullet(text) => (BodyMarker::Bullet, MARKER_COLUMN, false, text),
+            SummaryLine::Todo(text) => (BodyMarker::Todo, MARKER_COLUMN, false, text),
+            SummaryLine::Heading(text) => (BodyMarker::None, 0, true, text),
+            SummaryLine::Text(text) => (BodyMarker::None, 0, false, text),
+        };
+        let content = prepare_text(content);
+        let wrapped = if content.trim().is_empty() {
+            vec![String::new()]
         } else {
-            lines.extend(body.wrap(paragraph, width));
+            body.wrap(&content, width - indent)
+        };
+        for (index, line) in wrapped.into_iter().enumerate() {
+            rows.push(BodyRow {
+                text: line,
+                indent,
+                marker: if index == 0 { marker } else { BodyMarker::None },
+                heading,
+            });
         }
     }
-    lines
+    rows
+}
+
+/// Where each drawn row goes: its index and its text band's top. Heading
+/// rows add their gap; rows past the footer are not drawn.
+fn body_row_tops(
+    rows: &[BodyRow],
+    first: usize,
+    count: usize,
+    body_top: i32,
+    line_step: i32,
+    footer: i32,
+) -> Vec<(usize, i32)> {
+    let mut tops = Vec::new();
+    let mut y = body_top;
+    for (offset, row) in rows.iter().enumerate().skip(first).take(count) {
+        if row.heading {
+            y += HEADING_GAP;
+        }
+        if y + line_step > footer {
+            break;
+        }
+        tops.push((offset, y));
+        y += line_step;
+    }
+    tops
+}
+
+/// The first row of the last page, counted from the end so the heading gaps
+/// cannot push the last row off it.
+fn last_visible_start(rows: &[BodyRow], body_top: i32, line_step: i32, footer: i32) -> usize {
+    let budget = footer - body_top;
+    let mut used = 0;
+    let mut start = rows.len();
+    while start > 0 {
+        let row = &rows[start - 1];
+        let height = line_step + if row.heading { HEADING_GAP } else { 0 };
+        if used + height > budget {
+            break;
+        }
+        used += height;
+        start -= 1;
+    }
+    start
+}
+
+/// The body style one UI size up from the user's, near the mockup's 18 px.
+fn result_body_style(preferences: DisplayPreferences) -> UiTextStyle {
+    let mut bigger = preferences;
+    bigger.font_size = match preferences.font_size {
+        crate::app::display::UiFontSize::Compact => crate::app::display::UiFontSize::Standard,
+        crate::app::display::UiFontSize::Standard => crate::app::display::UiFontSize::Large,
+        crate::app::display::UiFontSize::Large => crate::app::display::UiFontSize::Large,
+    };
+    bigger.body_style()
+}
+
+/// Cut `text` so `text…` fits `max_width`.
+fn cut_with_ellipsis(style: UiTextStyle, text: &str, max_width: i32) -> String {
+    let budget = max_width - style.text_width("\u{2026}");
+    let mut width = 0;
+    let mut out = String::new();
+    for character in text.chars() {
+        let advance = style.char_advance(character);
+        if width + advance > budget {
+            break;
+        }
+        width += advance;
+        out.push(character);
+    }
+    out.push('\u{2026}');
+    out
 }
 
 pub fn render_voice_note_result(
@@ -404,24 +538,37 @@ pub fn render_voice_note_result(
     state: &AppState,
 ) -> Result<(), Infallible> {
     use crate::voice_note_result::ResultTab;
-    let body = state.display.body_style();
-    let detail = state.display.detail_style();
-    draw_header(display, state.display, "VOICE NOTE", "AI RESULT")?;
+    let preferences = state.display;
+    let detail = preferences.detail_style();
+    let large = preferences.text_style(UiTextRole::Large, BinaryColor::On);
+    draw_status_bar(display, preferences, "Voice Note")?;
+    let clock = state.board.time_label(state.regional);
+    draw_status_text(display, preferences, &clock, STATUS_BAR_RIGHT)?;
     let Some(note) = state.voice_notes.selected_note() else {
         Text::new("No saved note selected.", Point::new(22, 232), detail).draw(display)?;
-        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
+        draw_bottom_bar(display, preferences, &BACK_HINTS)?;
         return Ok(());
     };
-    let heading = state.display.heading_style();
-    // The summarized title when the record has one, as the mockup shows.
+
+    // The title in the Large role, up to two lines; the second cut with `…`.
     let record = state.voice_notes_result.record.as_ref();
     let title = record
         .map(|record| record.title.as_str())
         .filter(|title| !title.trim().is_empty())
         .unwrap_or(note.title.as_str());
-    Text::new(&heading.fit(title, 436), Point::new(22, 158), heading).draw(display)?;
+    let mut title_lines = large.wrap(title, 436);
+    if title_lines.len() > 2 {
+        title_lines.truncate(2);
+        title_lines[1] = cut_with_ellipsis(large, &title_lines[1], 436);
+    }
+    let mut y = RESULT_TITLE_BASELINE;
+    for line in &title_lines {
+        Text::new(line, Point::new(22, y), large).draw(display)?;
+        y += i32::from(large.line_height());
+    }
+
     // Stamp, language, then the providers: transcriber → summarizer.
-    let (date, time) = crate::app::screens::ai::split_stamp(&note.recorded_at);
+    let (date, time) = split_stamp(&note.recorded_at);
     let when = match (date, time) {
         (Some(date), Some(time)) => format!("{date} · {time}"),
         (Some(date), None) => date,
@@ -434,75 +581,79 @@ pub fn render_voice_note_result(
     let meta = crate::voice_note_result::prepare_text(&meta);
     // The provider line may need two rows; both show in full, as the mockup has them.
     for (row, line) in detail.wrap(&meta, 436).iter().take(2).enumerate() {
-        Text::new(line, Point::new(22, 186 + row as i32 * 20), detail).draw(display)?;
+        Text::new(line, Point::new(22, y + 10 + row as i32 * 20), detail).draw(display)?;
     }
 
-    // Tabs: the active one is filled, the others outlined.
+    // The tabs as chips, the active one filled, from the left margin.
     let tabs = [ResultTab::Summary, ResultTab::Transcript, ResultTab::Audio];
-    let mut tab_left = 22;
-    for tab in tabs {
-        let active = tab == state.voice_notes_result.tab;
-        let tab_style = if active {
-            PrimitiveStyle::with_fill(BinaryColor::On)
-        } else {
-            PrimitiveStyle::with_stroke(BinaryColor::On, 2)
-        };
-        let tab_width = body.text_width(tab.label()) + 20;
-        Rectangle::new(Point::new(tab_left, 230), Size::new(tab_width as u32, 30))
-            .into_styled(tab_style)
-            .draw(display)?;
-        let text_style = state.display.text_style(
-            crate::app::typography::UiTextRole::Body,
-            if active {
-                BinaryColor::Off
-            } else {
-                BinaryColor::On
-            },
-        );
-        Text::new(tab.label(), Point::new(tab_left + 10, 250), text_style).draw(display)?;
-        tab_left += tab_width + 8;
-    }
+    let chips: Vec<Chip<'_>> = tabs
+        .iter()
+        .map(|tab| Chip::new(tab.label(), *tab == state.voice_notes_result.tab))
+        .collect();
+    draw_chip_row(display, 22, RESULT_CHIPS_TOP, 8, detail, &chips)?;
 
-    // Body: wrapped lines from the scroll offset, between the tabs and the footer.
-    let body_top = 280;
-    let footer_top = 700;
-    let line_step = i32::from(body.line_height()) + 4;
-    let visible = ((footer_top - body_top) / line_step).max(1) as usize;
-    match state.voice_notes_result.record.as_ref() {
+    // The body, one UI size up, scrolled by wrapped row.
+    let body = result_body_style(preferences);
+    let rows = match state.voice_notes_result.record.as_ref() {
         Some(record) => {
             let audio = crate::voice_note_result::audio_text(
                 &note.file_name,
                 note.duration_seconds,
                 note.pcm_bytes,
             );
-            let lines = result_body_lines(state, &record, &audio, 436);
-            // Clamp to the last page here: input has no line count, so it scrolls freely.
-            let last_start = lines.len().saturating_sub(visible);
-            let scroll = state.voice_notes_result.scroll.min(last_start);
-            for (row, line) in lines.iter().skip(scroll).take(visible).enumerate() {
-                Text::new(
-                    line,
-                    Point::new(22, body_top + row as i32 * line_step + 16),
-                    body,
-                )
-                .draw(display)?;
+            result_body_rows(state, record, &audio, 436)
+        }
+        None => vec![BodyRow {
+            text: "No AI result yet.".into(),
+            indent: 0,
+            marker: BodyMarker::None,
+            heading: false,
+        }],
+    };
+    let line_step = i32::from(body.line_height()) + 4;
+    // Clamp to the last page here: input has no line count, so it scrolls freely.
+    let last_start = last_visible_start(&rows, BODY_TOP, line_step, FOOTER_TOP);
+    let scroll = state.voice_notes_result.scroll.min(last_start);
+    for (index, y) in body_row_tops(&rows, scroll, rows.len(), BODY_TOP, line_step, FOOTER_TOP) {
+        let row = &rows[index];
+        match row.marker {
+            BodyMarker::Bullet => {
+                Text::new("\u{2022}", Point::new(22, y + body.cap_height()), body).draw(display)?;
             }
+            BodyMarker::Todo => {
+                Rectangle::new(Point::new(22, y + 2), Size::new(14, 14))
+                    .into_styled(
+                        embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                            .stroke_color(BinaryColor::On)
+                            .stroke_width(2)
+                            .build(),
+                    )
+                    .draw(display)?;
+            }
+            BodyMarker::None => {}
         }
-        None => {
-            Text::new("No AI result yet.", Point::new(22, body_top + 16), body).draw(display)?;
-        }
+        let style = if row.heading {
+            preferences.heading_style()
+        } else {
+            body
+        };
+        Text::new(
+            &row.text,
+            Point::new(22 + row.indent, y + style.cap_height()),
+            style,
+        )
+        .draw(display)?;
     }
 
     Text::new(
         "AI-generated · may contain mistakes · audio kept on SD",
-        Point::new(22, footer_top + 16),
+        Point::new(22, FOOTER_TOP + 16),
         detail,
     )
     .draw(display)?;
-    draw_bottom_bar(display, state.display, &RESULT_HINTS)?;
+    draw_bottom_bar(display, preferences, &RESULT_HINTS)?;
     Ok(())
 }
-
 /// The recording screen after the mockup's `Voice Notes: grabando`: the time
 /// large, a level meter and what the note costs on the card.
 pub fn render_voice_note_recording(
@@ -756,7 +907,12 @@ fn draw_action(
 
 #[cfg(test)]
 mod tests {
-    use super::{render_voice_note_details, render_voice_note_recording, render_voice_notes};
+    use embedded_graphics::prelude::Point;
+
+    use super::{
+        render_voice_note_details, render_voice_note_recording, render_voice_note_result,
+        render_voice_notes,
+    };
     use crate::{
         app::AppState, framebuffer::FrameBuffer, orientation::OrientedFrameBuffer,
         voice_notes::VoiceNoteEntry,
@@ -811,6 +967,156 @@ mod tests {
             lines,
             ["WAV · 16 kHz mono · 6.3 MB so far"],
             "without the free space, the first line only"
+        );
+    }
+
+    /// The mockup's summary: three bullets, a heading and three to-dos.
+    fn summary_state() -> AppState {
+        use crate::{app::router::ScreenRoute, voice_note_record::NoteRecord};
+        let mut state = AppState::default();
+        state
+            .voice_notes
+            .notes
+            .push(crate::voice_notes::VoiceNoteEntry {
+                file_name: "VOICE012.WAV".into(),
+                title: "Reunión de equipo: presupuesto Q4".into(),
+                recorded_at: "2026-10-02  12:04:00".into(),
+                wav_bytes: 4_000_000,
+                pcm_bytes: 3_999_956,
+                duration_seconds: 124,
+                ai_state: None,
+            });
+        state.voice_notes.selected = 2;
+        state.voice_notes_result.record = Some(NoteRecord {
+            state: crate::voice_note_record::NoteState::Done,
+            error: String::new(),
+            title: "Reunión de equipo: presupuesto Q4".into(),
+            language: "Spanish".into(),
+            transcribed_by: "Groq whisper".into(),
+            summarized_by: "OpenRouter llama".into(),
+            summary: "• Se aprobó el presupuesto.\n\
+                      • El lanzamiento pasa al 15 de noviembre.\n\
+                      • Ana presentará el plan el viernes.\n\
+                      Pendientes\n\
+                      \u{2610} Carlos: enviar este resumen al equipo (hoy).\n\
+                      \u{2610} Ana: plan de contratación (viernes).\n\
+                      \u{2610} Revisar proveedores de impresión (próxima semana)."
+                .into(),
+            transcript: "Hablamos del presupuesto.".into(),
+        });
+        state.router.navigate_to(ScreenRoute::VoiceNoteResult);
+        state
+    }
+
+    /// Ink at a logical screen point (the frame stores the screen rotated).
+    fn ink(frame: &FrameBuffer, x: i32, y: i32) -> bool {
+        frame.is_black(Point::new(y, 479 - x)) == Some(true)
+    }
+
+    /// The 2 px ring of a to-do box at a row's top: its top border and its
+    /// paper interior. The stroke is centred on the rect's edge.
+    fn has_todo_box(frame: &FrameBuffer, row_top: i32) -> bool {
+        let border = (row_top + 1..row_top + 4).any(|y| (22..36).all(|x| ink(frame, x, y)));
+        let interior = !ink(frame, 28, row_top + 9);
+        border && interior
+    }
+
+    /// The summary frame draws one box per to-do: every to-do row has its
+    /// ring and no other row has one.
+    #[test]
+    fn the_summary_frame_draws_one_box_per_todo() {
+        use super::{body_row_tops, result_body_rows, BODY_TOP, FOOTER_TOP};
+        let state = summary_state();
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
+        render_voice_note_result(&mut display, &state).unwrap();
+        drop(display);
+        let record = state.voice_notes_result.record.as_ref().unwrap();
+        let rows = result_body_rows(&state, record, "", 436);
+        let body = super::result_body_style(state.display);
+        let line_step = i32::from(body.line_height()) + 4;
+        let mut boxes = 0;
+        for (index, y) in body_row_tops(&rows, 0, rows.len(), BODY_TOP, line_step, FOOTER_TOP) {
+            let is_todo = rows[index].marker == super::BodyMarker::Todo;
+            assert_eq!(
+                has_todo_box(&frame, y),
+                is_todo,
+                "row {index} draws its box exactly when it is a to-do"
+            );
+            boxes += usize::from(is_todo);
+        }
+        assert_eq!(boxes, 3, "the mockup's three to-dos draw three boxes");
+    }
+
+    /// A long to-do's second wrapped line starts under its text, not under
+    /// the box.
+    #[test]
+    fn a_long_todo_wraps_under_its_text() {
+        use super::{body_row_tops, result_body_rows, BodyMarker, BODY_TOP, FOOTER_TOP};
+        let mut state = summary_state();
+        let record = state.voice_notes_result.record.as_mut().unwrap();
+        record.summary =
+            "☐ Carlos: enviar este resumen al equipo hoy mismo antes de que acabe el día.".into();
+        let record = state.voice_notes_result.record.as_ref().unwrap();
+        let rows = result_body_rows(&state, record, "", 436);
+        assert!(rows.len() >= 2, "the to-do wraps");
+        assert_eq!(rows[0].marker, BodyMarker::Todo);
+        assert_eq!(
+            rows[1].marker,
+            BodyMarker::None,
+            "the second line has no box"
+        );
+        assert_eq!(rows[0].indent, rows[1].indent, "it starts under the text");
+        // And the frame: the second line's ink starts at the text column.
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
+        render_voice_note_result(&mut display, &state).unwrap();
+        drop(display);
+        let body = super::result_body_style(state.display);
+        let line_step = i32::from(body.line_height()) + 4;
+        let tops = body_row_tops(&rows, 0, rows.len(), BODY_TOP, line_step, FOOTER_TOP);
+        let second_y = tops[1].1;
+        let first_ink =
+            (22..200).find(|x| (second_y..second_y + line_step).any(|y| ink(&frame, *x, y)));
+        assert!(
+            first_ink.is_some_and(|x| x >= 44),
+            "the second line starts under the text, not under the box: {first_ink:?}"
+        );
+    }
+
+    /// The last scroll position shows the last to-do.
+    #[test]
+    fn the_last_scroll_position_shows_the_last_todo() {
+        use super::{
+            body_row_tops, last_visible_start, result_body_rows, BodyMarker, BODY_TOP, FOOTER_TOP,
+        };
+        let mut state = summary_state();
+        state.voice_notes_result.scroll = usize::MAX / 2;
+        let record = state.voice_notes_result.record.as_ref().unwrap();
+        let rows = result_body_rows(&state, record, "", 436);
+        let todo_index = rows
+            .iter()
+            .rposition(|row| row.marker == BodyMarker::Todo)
+            .expect("the summary has to-dos");
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
+        render_voice_note_result(&mut display, &state).unwrap();
+        drop(display);
+        let body = super::result_body_style(state.display);
+        let line_step = i32::from(body.line_height()) + 4;
+        let last_start = last_visible_start(&rows, BODY_TOP, line_step, FOOTER_TOP);
+        let tops = body_row_tops(
+            &rows,
+            last_start,
+            rows.len(),
+            BODY_TOP,
+            line_step,
+            FOOTER_TOP,
+        );
+        assert!(
+            tops.iter()
+                .any(|(index, y)| *index == todo_index && has_todo_box(&frame, *y)),
+            "the last to-do's box is on the last page"
         );
     }
 }

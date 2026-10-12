@@ -691,7 +691,33 @@ and `src/voice_note_result.rs`, after the mockup's
 one box per to-do; a long to-do's second line starts under its text; the
 last scroll position shows the last to-do.
 
-**Status:** to do.
+**Status:** done on `side-tasks-12`. Built: the result screen is the
+mockup's `Voice Notes: resultado`. The status bar reads `Voice Note` with
+the clock at the right (`board.time_label`); the title is the record's in
+the Large role, up to two lines with the second cut with `…`, then the
+meta line as before. The tabs are chips (D54's `widgets/chips.rs`), the
+active one filled, from the left margin. The body wraps and scrolls one
+UI size up from the user's (`result_body_style`: Compact→Standard,
+Standard→Large, Large stays). The summary parses once into typed lines in
+`voice_note_result.rs` (`parse_summary`: bullet, to-do, heading, text —
+`☐`/`•` at the line start with a space, a clean plain line right before a
+to-do is its heading, a marker inside a sentence stays text, CRLF counts
+as one ending) and draws by type: a to-do is a 14 × 14 box with a 2 px
+border then its text, a bullet is `•`, their wrapped lines start under the
+text (`BodyRow::indent`), and a heading is the Heading role with 12 px
+above it. The transcript and audio tabs stay plain text; queued and failed
+notes keep their status text in the body. The footer and hints stay. The
+scroll clamps to the last page counted from the end
+(`last_visible_start`), so the heading gaps cannot push the last row off.
+Previews: `voice-note-summary` (the mockup's summary: three bullets,
+`Pendientes`, three to-dos — the boxes checked enlarged next to the
+mockup's), `voice-note-summary-large`, and the transcript, audio, queued
+and failed previews re-checked. Tests: the parser (bullets, to-dos with
+and without a heading, a `☐` inside a sentence, CRLF); the summary frame
+draws exactly one box per to-do (probed per row); a long to-do's second
+line starts under its text; the last scroll position shows the last
+to-do's box. Open: nothing known. Device check: the six previews and a
+summarized note on the panel at both UI sizes.
 
 ### D56: Home rows' details like the mockup
 

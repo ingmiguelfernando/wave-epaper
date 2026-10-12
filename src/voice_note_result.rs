@@ -136,6 +136,61 @@ pub fn prepare_text(text: &str) -> String {
         .collect()
 }
 
+/// One typed line of an AI summary, drawn by type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SummaryLine {
+    /// A `•` bullet and its text.
+    Bullet(String),
+    /// A `☐` to-do and its text; drawn with its box.
+    Todo(String),
+    /// A plain line right before a to-do: its heading.
+    Heading(String),
+    /// Any other line.
+    Text(String),
+}
+
+/// Parse the summary once into typed lines: `☐` and `•` lines keep their
+/// marker, a plain line right before a to-do becomes its heading, and the
+/// rest is text. A `☐` inside a sentence stays text; CRLF line ends count
+/// as one.
+#[must_use]
+pub fn parse_summary(text: &str) -> Vec<SummaryLine> {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let raw: Vec<&str> = normalized.lines().collect();
+    let mut typed = Vec::new();
+    for (index, line) in raw.iter().enumerate() {
+        let trimmed = line.trim();
+        if let Some(rest) = marker_text(trimmed, '\u{2610}') {
+            typed.push(SummaryLine::Todo(rest.to_string()));
+        } else if let Some(rest) = marker_text(trimmed, '\u{2022}') {
+            typed.push(SummaryLine::Bullet(rest.to_string()));
+        } else {
+            // A clean plain line right before a to-do is its heading; a line
+            // with a stray marker inside stays text.
+            let next_is_todo = raw
+                .get(index + 1)
+                .is_some_and(|next| marker_text(next.trim(), '\u{2610}').is_some());
+            let clean = !trimmed.contains('\u{2610}') && !trimmed.contains('\u{2022}');
+            if next_is_todo && clean && !trimmed.is_empty() {
+                typed.push(SummaryLine::Heading(trimmed.to_string()));
+            } else {
+                typed.push(SummaryLine::Text(line.trim_end().to_string()));
+            }
+        }
+    }
+    typed
+}
+
+/// The marker at the start of a line: `☐ text` or a bare `☐`. A marker
+/// mid-sentence, or one welded to its text, is not a marker.
+fn marker_text<'a>(line: &'a str, marker: char) -> Option<&'a str> {
+    let rest = line.strip_prefix(marker)?;
+    if rest.is_empty() {
+        return Some("");
+    }
+    rest.strip_prefix(' ').map(str::trim_start)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,5 +319,54 @@ mod tests {
             ..NoteRecord::queued()
         };
         assert_eq!(meta_line("Oct 2", &half), "Oct 2 \u{b7} Groq whisper");
+    }
+
+    /// Bullets, to-dos with and without a heading line, a `☐` inside a
+    /// sentence staying text, and CRLF line ends.
+    #[test]
+    fn the_summary_parses_into_typed_lines() {
+        let summary = "• Se aprobó el presupuesto.\r\n\
+                       \r\n\
+                       Pendientes\r\n\
+                       \u{2610} Carlos: enviar el resumen.\r\n\
+                       \u{2610} Ana: plan de contratación.\r\n\
+                       Hay que comprar leche \u{2610} y pan.\r\n\
+                       \u{2610} Revisar proveedores.";
+        let lines = parse_summary(summary);
+        assert_eq!(
+            lines[0],
+            SummaryLine::Bullet("Se aprobó el presupuesto.".into())
+        );
+        assert_eq!(lines[1], SummaryLine::Text(String::new()), "the blank line");
+        assert_eq!(lines[2], SummaryLine::Heading("Pendientes".into()));
+        assert_eq!(
+            lines[3],
+            SummaryLine::Todo("Carlos: enviar el resumen.".into())
+        );
+        assert_eq!(
+            lines[4],
+            SummaryLine::Todo("Ana: plan de contratación.".into())
+        );
+        assert_eq!(
+            lines[5],
+            SummaryLine::Text("Hay que comprar leche \u{2610} y pan.".into()),
+            "a marker inside a sentence stays text"
+        );
+        assert_eq!(
+            lines[6],
+            SummaryLine::Todo("Revisar proveedores.".into()),
+            "a to-do without a heading line is still a to-do"
+        );
+    }
+
+    /// A plain line right before a to-do is its heading; one before a
+    /// bullet is not.
+    #[test]
+    fn only_a_line_before_a_todo_is_a_heading() {
+        let lines = parse_summary("Notas\n• Un bullet\nPendientes\n\u{2610} Una tarea");
+        assert_eq!(lines[0], SummaryLine::Text("Notas".into()));
+        assert_eq!(lines[1], SummaryLine::Bullet("Un bullet".into()));
+        assert_eq!(lines[2], SummaryLine::Heading("Pendientes".into()));
+        assert_eq!(lines[3], SummaryLine::Todo("Una tarea".into()));
     }
 }

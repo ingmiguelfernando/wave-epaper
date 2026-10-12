@@ -433,6 +433,9 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     result.router.navigate_to(ScreenRoute::VoiceNoteResult);
     result.voice_notes_result.record = Some(sample_result_record());
     states.push(("voice-note-summary", result.clone()));
+    result.display.font_size = UiFontSize::Large;
+    states.push(("voice-note-summary-large", result.clone()));
+    result.display.font_size = UiFontSize::Standard;
     result.voice_notes_result.cycle_tab();
     states.push(("voice-note-transcript", result.clone()));
     result.voice_notes_result.cycle_tab();
@@ -1028,8 +1031,10 @@ fn sample_result_record() -> crate::voice_note_record::NoteRecord {
         summary: "• Se aprobó el presupuesto del Q4 con un recorte del 10 % en viajes.\n\
 • El lanzamiento pasa al 15 de noviembre.\n\
 • Ana presentará el plan de contratación el viernes.\n\
+Pendientes\n\
 ☐ Carlos: enviar este resumen al equipo (hoy).\n\
-☐ Ana: plan de contratación (viernes)."
+☐ Ana: plan de contratación (viernes).\n\
+☐ Revisar proveedores de impresión (próxima semana)."
             .into(),
         transcript: "Hablamos del presupuesto del cuarto trimestre. Se aprobó con un recorte del diez por ciento en viajes. El lanzamiento pasa al quince de noviembre.".into(),
     }
