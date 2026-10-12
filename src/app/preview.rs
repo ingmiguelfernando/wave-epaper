@@ -396,6 +396,19 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         states.push((name, state));
     }
 
+    // The hub scrolled to the fifth of five games: the window holds the last
+    // four cards and the selected one is drawn (D51).
+    let mut scrolled = sample_state();
+    sample_games_catalog(&mut scrolled);
+    scrolled.lua_runtime.sudoku_save = Some(sample_sudoku_save());
+    scrolled.lua_runtime.records.tetris_zen = 18_950;
+    scrolled.lua_runtime.records.sudoku_medium = 761;
+    scrolled.router.navigate_to(ScreenRoute::Games);
+    for _ in 0..4 {
+        scrolled.apply(ButtonEvent::Down);
+    }
+    states.push(("games-scrolled", scrolled));
+
     // The AI state labels, one note per state, online and offline.
     let mut ai_states = sample_state();
     ai_states.router.navigate_to(ScreenRoute::Ai);

@@ -525,7 +525,19 @@ selected card and does not run past the last game; the hub rendered with
 the fifth of five games selected draws its inverted card in the fourth
 slot.
 
-**Status:**
+**Status:** done on `side-tasks-11`. Built: the Games hub's cards scroll one
+at a time (`first_card` in `screens/games.rs`): the window keeps the
+selected card in view and never runs past the last game, so ▼ on the last
+card wraps to the first with the list back at the top and ▲ on the first
+shows the last at the bottom. The status bar keeps the game count and the
+info box stays under the cards. Preview: `games-scrolled` (the fifth of
+five games selected: the window holds the last four cards and the selected
+one is drawn in the fourth slot). Tests: for one to nine games and every
+selection the window holds the selected card and stops at the last game
+(a short list never scrolls); the hub rendered with the fifth of five
+games selected draws its inverted card in the fourth slot and an
+unselected card in the first. Open: nothing known. Device check: the
+preview and ▼ through five games on the panel.
 
 ### D52: Race playing screen like the mockup
 

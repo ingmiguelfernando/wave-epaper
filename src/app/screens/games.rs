@@ -44,6 +44,15 @@ pub const GAMES_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::Boot, "hold: back"),
 ];
 
+/// First card of the scrolling window that keeps `selected` in view: the
+/// cards scroll one at a time, and the window never runs past the last game.
+#[must_use]
+fn first_card(len: usize, selected: usize) -> usize {
+    selected
+        .saturating_sub(CARDS_SHOWN - 1)
+        .min(len.saturating_sub(CARDS_SHOWN))
+}
+
 /// The Home › Games hub.
 pub fn render_games_hub(
     display: &mut OrientedFrameBuffer<'_>,
@@ -61,7 +70,7 @@ pub fn render_games_hub(
     let selected = state
         .category_selection(ScreenRoute::Games)
         .min(games.len().saturating_sub(1));
-    let first = selected.saturating_sub(CARDS_SHOWN - 1) / CARDS_SHOWN * CARDS_SHOWN;
+    let first = first_card(games.len(), selected);
     for (visible, index) in (first..games.len().min(first + CARDS_SHOWN)).enumerate() {
         let top = CARDS_TOP + visible as i32 * (CARD_HEIGHT + CARD_GAP);
         draw_game_card(display, state, games[index], top, index == selected)?;
@@ -697,5 +706,68 @@ mod d25_tests {
         };
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
+    }
+
+    /// The cards scroll one at a time: for one to nine games and every
+    /// selection the window holds the selected card and never runs past the
+    /// last game.
+    #[test]
+    fn the_card_window_keeps_the_selection_and_stays_in_range() {
+        for len in 1..=9_usize {
+            for selected in 0..len {
+                let first = super::first_card(len, selected);
+                assert!(first <= selected, "{len} games, selection {selected}");
+                assert!(
+                    selected < first + super::CARDS_SHOWN,
+                    "{len} games, selection {selected}: the selection is drawn"
+                );
+                if len >= super::CARDS_SHOWN {
+                    assert!(
+                        first + super::CARDS_SHOWN <= len,
+                        "{len} games, selection {selected}: the window stops at the last game"
+                    );
+                } else {
+                    assert_eq!(first, 0, "a short list never scrolls");
+                }
+            }
+        }
+        // ▼ on the last card shows it at the bottom; ▲ on the first at the top.
+        assert_eq!(
+            super::first_card(5, 4),
+            1,
+            "the last card sits in the last slot"
+        );
+        assert_eq!(
+            super::first_card(5, 0),
+            0,
+            "the first card sits in the first slot"
+        );
+    }
+
+    /// The hub with the fifth of five games selected draws its inverted card
+    /// in the fourth slot, and the first slot holds an unselected card.
+    #[test]
+    fn the_fifth_of_five_games_shows_in_the_fourth_slot() {
+        use embedded_graphics::prelude::Point;
+        let mut state = hub_state_with_games();
+        for _ in 0..4 {
+            state.apply(crate::buttons::ButtonEvent::Down);
+        }
+        assert_eq!(state.category_selection(ScreenRoute::Games), 4);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        // The frame stores the portrait screen rotated: (logical y, 479 - x).
+        // The fourth slot's card is filled black where nothing is written.
+        assert_eq!(
+            frame.is_black(Point::new(566, 479 - 455)),
+            Some(true),
+            "the selected card fills the fourth slot"
+        );
+        // The first slot's card keeps its white interior.
+        assert_eq!(
+            frame.is_black(Point::new(170, 479 - 455)),
+            Some(false),
+            "the first slot holds an unselected card"
+        );
     }
 }
