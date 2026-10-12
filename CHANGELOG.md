@@ -3,6 +3,24 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.0 — XiaoZhi
+
+- **XiaoZhi voice chat** in Home › AI. Opening it calls XiaoZhi from
+  xiaozhi.me over Wi-Fi. The first call shows a six-digit code: add the
+  device at xiaozhi.me with it and the call goes on; the hub card then
+  says `LINKED`. Speak, and the screen shows LISTEN › THINK › SPEAK, your
+  question and the reply as text. ● interrupts, ▲▼ set the volume, a
+  short BOOT turns the microphone off or on, and hold BOOT hangs up.
+- **Device tools.** XiaoZhi can read the device status, set the volume and
+  read a Bible passage from the SD card in the reader's translation.
+- The call is the mockup's: the face with sound waves while XiaoZhi
+  speaks, `On call · 02:14` and the battery in the status bar, the
+  messages, the tool line and the volume bar. The AI hub's card has the
+  mockup's face too.
+- Under the hood: a port of xiaozhi-esp32's protocol to Rust, with ESP-IDF's
+  WebSocket client and Espressif's Opus codec (16 kHz, 60 ms frames) as
+  managed components; the call runs on the second core.
+
 ## v0.11.3 — Race
 
 - **Race** in Games: a four-lane road that runs right to left in steps.

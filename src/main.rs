@@ -895,13 +895,16 @@ mod firmware {
             if !state.xiaozhi.phase.is_live() {
                 xiaozhi_waiting = false;
             }
-            poll_xiaozhi_call(
+            if poll_xiaozhi_call(
                 &mut xiaozhi_call,
                 &mut audio_runtime,
                 &mut state,
                 xiaozhi_identity.as_ref(),
                 uptime.elapsed().as_millis() as u64,
-            );
+            ) {
+                // A call is use: the panel and auto-sleep wait for its end.
+                last_activity = Instant::now();
+            }
             let xiaozhi_busy = xiaozhi_call.is_some() || xiaozhi_waiting;
 
             // Wi-Fi bursts: switch the radio on for due or requested work and
@@ -2610,23 +2613,25 @@ mod firmware {
 
     /// One main-loop step of a XiaoZhi call: keys go to the call thread, its
     /// events to the screen, and the speaker comes back once the call no
-    /// longer needs it.
+    /// longer needs it. `true` when something happened.
     fn poll_xiaozhi_call(
         call: &mut Option<XiaozhiCall<BoardAudio>>,
         audio_runtime: &mut Option<BoardAudio>,
         state: &mut AppState,
         identity: Option<&XiaozhiIdentity>,
         now_ms: u64,
-    ) {
+    ) -> bool {
         let Some(running) = call.as_ref() else {
-            return;
+            return false;
         };
         for command in state.xiaozhi.take_commands() {
             running.send(command);
         }
         // Checked first, so the thread's last events are still read below.
         let finished = running.is_finished();
-        for event in running.poll() {
+        let events = running.poll();
+        let happened = finished || !events.is_empty();
+        for event in events {
             if event == CallEvent::Linked && !state.xiaozhi.linked {
                 match identity.map(XiaozhiIdentity::set_linked) {
                     Some(Ok(())) => info!("rustmix-wave=xiaozhi status=link-saved"),
@@ -2658,6 +2663,7 @@ mod firmware {
             *audio_runtime = Some(runtime);
             info!("rustmix-wave=xiaozhi status=speaker-returned");
         }
+        happened
     }
 
     fn time_left(since: Instant, period_seconds: u64) -> Duration {
