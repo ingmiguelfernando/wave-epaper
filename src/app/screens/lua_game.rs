@@ -15,7 +15,10 @@ use crate::{
         typography::{Text, UiTextRole, UiTextStyle},
         widgets::{
             bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, CHOOSE_HINTS, OPEN_HINTS},
+            display_numerals::{draw_numerals, Numerals},
+            game_sprites,
             header::draw_header,
+            list_row::{draw_list_row, ListRow},
             status_row::{draw_status_row, StatusRow},
         },
     },
@@ -70,6 +73,12 @@ const RACE_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "lane"),
     (KeyCap::Select, "nitro"),
     (KeyCap::Boot, "pause"),
+];
+
+const RACE_ZEN_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "lane"),
+    (KeyCap::Select, "step"),
+    (KeyCap::Boot, "hold: back"),
 ];
 
 const RACE_CRASH_HINTS: [(KeyCap, &str); 3] = [
@@ -197,6 +206,8 @@ fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
         LuaEventBridge::Race(game) => {
             if game.game().is_over() {
                 &RACE_CRASH_HINTS
+            } else if game.game().mode() == crate::games::race::RaceMode::Zen {
+                &RACE_ZEN_HINTS
             } else {
                 &RACE_HINTS
             }
@@ -330,6 +341,55 @@ fn draw_command(
                 .into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 3))
                 .draw(display)?;
         }
+        DrawCommand::Sprite { x, y, sprite } => {
+            game_sprites::draw_sprite(display, Point::new(*x, *y), *sprite, BinaryColor::On)?;
+        }
+        DrawCommand::Numerals {
+            text,
+            left,
+            right,
+            baseline,
+        } => {
+            draw_numerals(
+                display,
+                text,
+                Numerals::Temperature,
+                (*left, *right),
+                *baseline,
+                BinaryColor::On,
+            )?;
+        }
+        DrawCommand::TextCenter {
+            center_x,
+            baseline,
+            text,
+            style,
+        } => {
+            let style = canvas_text_style(state, *style);
+            let left = *center_x - style.text_width(text) / 2;
+            Text::new(text, Point::new(left, *baseline), style).draw(display)?;
+        }
+        DrawCommand::ListRow {
+            top,
+            title,
+            value,
+            selected,
+        } => {
+            draw_list_row(
+                display,
+                state.display,
+                *top,
+                ListRow {
+                    title,
+                    subtitle: "",
+                    value,
+                    selected: *selected,
+                },
+            )?;
+        }
+        DrawCommand::InfoBox { top, text } => {
+            super::games::draw_info_box(display, state.display, text, *top)?;
+        }
     }
     Ok(())
 }
@@ -400,5 +460,15 @@ mod tests {
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
         assert!(frame.is_black(Point::new(220, 399)).is_some());
+    }
+
+    /// Zen's bottom bar says what its keys do: lane, step and hold: back.
+    #[test]
+    fn zen_race_shows_its_own_key_hints() {
+        let mut canvas = NativeGameCanvas::default();
+        let bridge = LuaEventBridge::load("race.init('zen', 3)", &mut canvas).unwrap();
+        let hints = super::game_hints(&bridge);
+        let labels: Vec<&str> = hints.iter().map(|(_, label)| *label).collect();
+        assert_eq!(labels, ["lane", "step", "hold: back"]);
     }
 }

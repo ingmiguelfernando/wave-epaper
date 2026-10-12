@@ -252,27 +252,13 @@ fn draw_icon(
             }
         }
         "race" => {
-            // A car seen from the side: body, roof and two wheels.
-            Rectangle::new(
-                Point::new(top_left.x + 4, top_left.y + 26),
-                Size::new(52, 20),
-            )
-            .into_styled(ink)
-            .draw(display)?;
-            Rectangle::new(
-                Point::new(top_left.x + 16, top_left.y + 12),
-                Size::new(28, 16),
-            )
-            .into_styled(ink)
-            .draw(display)?;
-            for x in [12_i32, 36] {
-                Rectangle::new(
-                    Point::new(top_left.x + x, top_left.y + 42),
-                    Size::new(12, 12),
-                )
-                .into_styled(ink)
-                .draw(display)?;
-            }
+            // The player's car sprite, paper on the selected card.
+            crate::app::widgets::game_sprites::draw_sprite(
+                display,
+                top_left + Point::new(-6, 4),
+                crate::games::canvas::GameSprite::PlayerCar,
+                color,
+            )?;
         }
         _ => {
             Rectangle::new(top_left, Size::new(ICON as u32, ICON as u32))

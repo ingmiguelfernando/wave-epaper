@@ -1,5 +1,6 @@
 pub mod bottom_bar;
 pub mod display_numerals;
+pub mod game_sprites;
 pub mod header;
 pub mod icons;
 pub mod list_row;

@@ -18,6 +18,42 @@ pub enum CanvasTextStyle {
     Player,
 }
 
+/// Named sprite shapes the game canvas draws in one command, from the
+/// mockup's Race symbols: cars seen from above, a cone, the impact star and
+/// the player's speed streaks. Each stays inside its own size, so the cells
+/// a step dirties cover what changed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GameSprite {
+    /// Another car: a 3 px outline with paper inside (`race-traffic`).
+    Traffic,
+    /// The player's car: solid with paper windows (`race-car`).
+    PlayerCar,
+    /// One cone; a cone obstacle draws two (`race-cone`).
+    Cone,
+    /// The impact star: an ink star with a paper star inside (`race-burst`).
+    Burst,
+    /// The dashed rounded outline of the cell Up would move to.
+    MoveHint,
+    /// Three speed streaks in the cell behind the player's car.
+    Streaks,
+    /// The player's car turned 14 degrees, for the crash picture.
+    CrashCar,
+}
+
+impl GameSprite {
+    /// The sprite's bounding size; it draws no pixel outside it.
+    #[must_use]
+    pub const fn size(self) -> (i32, i32) {
+        match self {
+            Self::Traffic | Self::PlayerCar | Self::MoveHint => (72, 53),
+            Self::Cone => (34, 42),
+            Self::Burst => (60, 60),
+            Self::Streaks => (38, 34),
+            Self::CrashCar => (84, 70),
+        }
+    }
+}
+
 impl CanvasTextStyle {
     #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
@@ -85,6 +121,38 @@ pub enum DrawCommand {
         y1: i32,
         x2: i32,
         y2: i32,
+    },
+    /// One named sprite at its top-left corner.
+    Sprite {
+        x: i32,
+        y: i32,
+        sprite: GameSprite,
+    },
+    /// Large display numerals, centred between `left` and `right`.
+    Numerals {
+        text: String,
+        left: i32,
+        right: i32,
+        baseline: i32,
+    },
+    /// Text centred on `center_x`; the screen measures it with the real font.
+    TextCenter {
+        center_x: i32,
+        baseline: i32,
+        text: String,
+        style: CanvasTextStyle,
+    },
+    /// One settings-style list row (rule, marker and right value included).
+    ListRow {
+        top: i32,
+        title: String,
+        value: String,
+        selected: bool,
+    },
+    /// The framed info box: the screen wraps `text` with the real font.
+    InfoBox {
+        top: i32,
+        text: String,
     },
 }
 
@@ -280,6 +348,119 @@ impl NativeGameCanvas {
             (x1.max(x2) - left + 1).max(1),
             (y1.max(y2) - top + 1).max(1),
         ));
+        Ok(())
+    }
+
+    /// One named sprite at `(x, y)`, its top-left corner. The sprite draws
+    /// nothing outside its own size, which the dirty area matches.
+    pub fn sprite(&mut self, x: i32, y: i32, sprite: GameSprite) -> Result<(), String> {
+        let (width, height) = sprite.size();
+        self.validate_rect(DirtyRect::new(x, y, width, height))?;
+        self.push(DrawCommand::Sprite { x, y, sprite })?;
+        self.dirty.invalidate(DirtyRect::new(x, y, width, height));
+        Ok(())
+    }
+
+    /// Large display numerals, centred between `left` and `right` at
+    /// `baseline`.
+    pub fn numerals(
+        &mut self,
+        text: String,
+        left: i32,
+        right: i32,
+        baseline: i32,
+    ) -> Result<(), String> {
+        if text.len() > MAX_GAME_TEXT_BYTES {
+            return Err(format!(
+                "game text exceeds {MAX_GAME_TEXT_BYTES}-byte command limit"
+            ));
+        }
+        self.validate_point(left, baseline)?;
+        self.validate_point(right, baseline)?;
+        self.push(DrawCommand::Numerals {
+            text,
+            left,
+            right,
+            baseline,
+        })?;
+        self.dirty.invalidate(DirtyRect::new(
+            left,
+            (baseline - 84).max(0),
+            (right - left).max(1),
+            96,
+        ));
+        Ok(())
+    }
+
+    /// Text centred on `center_x`, measured by the screen's real font.
+    pub fn text_center(
+        &mut self,
+        center_x: i32,
+        baseline: i32,
+        text: String,
+        style: CanvasTextStyle,
+    ) -> Result<(), String> {
+        if text.len() > MAX_GAME_TEXT_BYTES {
+            return Err(format!(
+                "game text exceeds {MAX_GAME_TEXT_BYTES}-byte command limit"
+            ));
+        }
+        self.validate_point(center_x, baseline)?;
+        let width = (text.len() as i32).saturating_mul(14).max(8);
+        self.push(DrawCommand::TextCenter {
+            center_x,
+            baseline,
+            text,
+            style,
+        })?;
+        let left = (center_x - width / 2).max(0);
+        self.dirty.invalidate(DirtyRect::new(
+            left,
+            (baseline - 28).max(0),
+            width.min(GAME_CANVAS_WIDTH - left),
+            36,
+        ));
+        Ok(())
+    }
+
+    /// One settings-style list row at `top`, drawn like every list on the
+    /// device: full width, a rule under it and the marker when selected.
+    pub fn list_row(
+        &mut self,
+        top: i32,
+        title: String,
+        value: String,
+        selected: bool,
+    ) -> Result<(), String> {
+        if title.len() + value.len() > MAX_GAME_TEXT_BYTES {
+            return Err(format!(
+                "game text exceeds {MAX_GAME_TEXT_BYTES}-byte command limit"
+            ));
+        }
+        // Matches `widgets::list_row::LIST_ROW_HEIGHT`.
+        const ROW_HEIGHT: i32 = 72;
+        self.validate_rect(DirtyRect::new(0, top, GAME_CANVAS_WIDTH, ROW_HEIGHT))?;
+        self.push(DrawCommand::ListRow {
+            top,
+            title,
+            value,
+            selected,
+        })?;
+        self.dirty
+            .invalidate(DirtyRect::new(0, top, GAME_CANVAS_WIDTH, ROW_HEIGHT));
+        Ok(())
+    }
+
+    /// The framed info box under the road; the screen wraps `text`.
+    pub fn info_box(&mut self, top: i32, text: String) -> Result<(), String> {
+        if text.len() > MAX_GAME_TEXT_BYTES {
+            return Err(format!(
+                "game text exceeds {MAX_GAME_TEXT_BYTES}-byte command limit"
+            ));
+        }
+        self.validate_point(16, top)?;
+        self.push(DrawCommand::InfoBox { top, text })?;
+        self.dirty.invalidate(DirtyRect::new(16, top, 448, 96));
         Ok(())
     }
 

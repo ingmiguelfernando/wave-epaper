@@ -5,7 +5,7 @@
 //! holds no drawing; `tetris.rs` renders the sibling game the same way.
 
 use super::{
-    canvas::{CanvasTextStyle, NativeGameCanvas},
+    canvas::{CanvasTextStyle, GameSprite, NativeGameCanvas},
     dirty_regions::{DirtyRect, GAME_CANVAS_HEIGHT, GAME_CANVAS_WIDTH},
 };
 use crate::buttons::ButtonEvent;
@@ -322,6 +322,15 @@ impl RaceGame {
     }
 }
 
+/// The road and the player as one action found them, for the redraw that
+/// follows: the cells that changed and the player's old lane.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RoadSnapshot {
+    grid: [[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES],
+    player_lane: usize,
+    steps: u32,
+}
+
 /// What one key press or step did, for the device log and the redraw.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RaceEventResult {
@@ -526,7 +535,7 @@ impl RaceApp {
         event: ButtonEvent,
         canvas: &mut NativeGameCanvas,
     ) -> Result<RaceEventResult, String> {
-        let before = self.grid_snapshot();
+        let before = self.snapshot();
         if self.game.is_over() {
             return self.apply_crash_menu(event, canvas);
         }
@@ -543,7 +552,13 @@ impl RaceApp {
             ButtonEvent::Select => RaceAction::Nitro,
         };
         let moved = self.game.apply(action);
-        self.note_progress();
+        let road_steps = match (moved, action) {
+            (false, _) => 0,
+            (true, RaceAction::Nitro) if self.game.mode() == RaceMode::Classic => 3,
+            (true, _) if self.game.mode() == RaceMode::Zen => 1,
+            (true, _) => 0,
+        };
+        self.note_progress(road_steps);
         let reason = match (moved, action) {
             (false, RaceAction::Nitro) if self.game.mode() == RaceMode::Classic => "no-nitro",
             (false, _) => "blocked",
@@ -567,7 +582,7 @@ impl RaceApp {
         &mut self,
         canvas: &mut NativeGameCanvas,
     ) -> Result<RaceEventResult, String> {
-        let before = self.grid_snapshot();
+        let before = self.snapshot();
         if self.game.is_over() {
             return self.finish_and_render("game-finished", None, &before, canvas);
         }
@@ -578,7 +593,7 @@ impl RaceApp {
             }
             RaceMode::Zen => {
                 self.game.tick();
-                self.note_progress();
+                self.note_progress(1);
                 let reason = if self.game.is_over() {
                     "game-over"
                 } else {
@@ -616,11 +631,11 @@ impl RaceApp {
         if self.paused {
             return Ok(None);
         }
-        let before = self.grid_snapshot();
+        let before = self.snapshot();
         if !self.game.tick() {
             return Ok(None);
         }
-        self.note_progress();
+        self.note_progress(1);
         let reason = if self.game.is_over() {
             "game-over"
         } else {
@@ -636,7 +651,7 @@ impl RaceApp {
         event: ButtonEvent,
         canvas: &mut NativeGameCanvas,
     ) -> Result<RaceEventResult, String> {
-        let before = self.grid_snapshot();
+        let before = self.snapshot();
         let reason = match event {
             ButtonEvent::Up => {
                 self.crash_cursor = self.crash_cursor.checked_sub(1).unwrap_or(2);
@@ -669,28 +684,34 @@ impl RaceApp {
         self.finish_and_render(reason, None, &before, canvas)
     }
 
-    /// Keep the top speed and the best distance as the game runs.
-    fn note_progress(&mut self) {
-        self.steps = self.steps.saturating_add(1);
+    /// Keep the top speed and the best distance as the game runs, and count
+    /// the road steps taken, for the refresh policy.
+    fn note_progress(&mut self, road_steps: u32) {
+        self.steps = self.steps.saturating_add(road_steps);
         self.top_speed = self.top_speed.max(self.game.speed());
         self.best = self.best.max(self.game.distance_m());
     }
 
-    fn grid_snapshot(&self) -> [[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES] {
-        let mut before = [[None; RACE_COLUMNS]; RACE_LANES];
+    /// The road and the player as one action found them.
+    fn snapshot(&self) -> RoadSnapshot {
+        let mut grid = [[None; RACE_COLUMNS]; RACE_LANES];
         for lane in 0..RACE_LANES {
             for column in 0..RACE_COLUMNS {
-                before[lane][column] = self.game.cell(lane, column);
+                grid[lane][column] = self.game.cell(lane, column);
             }
         }
-        before
+        RoadSnapshot {
+            grid,
+            player_lane: self.game.player_lane(),
+            steps: self.steps,
+        }
     }
 
     fn finish_and_render(
         &mut self,
         reason: &'static str,
         action: Option<RaceAction>,
-        before: &[[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES],
+        before: &RoadSnapshot,
         canvas: &mut NativeGameCanvas,
     ) -> Result<RaceEventResult, String> {
         self.render_commands(canvas)?;
@@ -715,30 +736,36 @@ impl RaceApp {
         })
     }
 
-    /// Only the cells whose content changed are redrawn, plus the counters;
-    /// every 30 steps a full refresh clears ghosting.
-    fn dirty_regions(
-        &self,
-        reason: &'static str,
-        before: &[[Option<RaceObstacle>; RACE_COLUMNS]; RACE_LANES],
-    ) -> Vec<DirtyRect> {
+    /// Only the cells whose content changed are redrawn, plus the counters; a
+    /// lane change moves the player's car, its streaks and the move hint, and
+    /// every 30 road steps a full refresh clears ghosting.
+    fn dirty_regions(&self, reason: &'static str, before: &RoadSnapshot) -> Vec<DirtyRect> {
         if matches!(
             reason,
-            "new-game" | "mode-list" | "back-to-games" | "start-choose"
+            "new-game" | "mode-list" | "back-to-games" | "start-choose" | "game-over"
         ) {
             return vec![RACE_FULL_RECT];
         }
-        if reason == "game-over" {
-            return vec![RACE_FULL_RECT];
+        if reason == "pause-toggle" {
+            return vec![RACE_PAUSE_RECT];
         }
-        if self.steps % RACE_REFRESH_STEPS == 0 {
+        if before.steps / RACE_REFRESH_STEPS != self.steps / RACE_REFRESH_STEPS {
             return vec![RACE_FULL_RECT];
         }
         let mut regions = vec![RACE_STATS_RECT];
         for lane in 0..RACE_LANES {
             for column in 0..RACE_COLUMNS {
-                if before[lane][column] != self.game.cell(lane, column) {
+                if before.grid[lane][column] != self.game.cell(lane, column) {
                     regions.push(cell_rect(lane, column));
+                }
+            }
+        }
+        if before.player_lane != self.game.player_lane() {
+            for lane in [before.player_lane, self.game.player_lane()] {
+                regions.push(cell_rect(lane, PLAYER_COLUMN));
+                regions.push(cell_rect(lane, PLAYER_COLUMN - 1));
+                if lane > 0 {
+                    regions.push(cell_rect(lane - 1, PLAYER_COLUMN));
                 }
             }
         }
@@ -759,44 +786,37 @@ impl RaceApp {
         let speed = format!("Speed {}", self.game.speed());
         canvas.text_right(464, 30, speed, CanvasTextStyle::Inverse)?;
 
-        // Distance, best and the nitro charges.
-        canvas.text(
-            16,
-            74,
-            distance_label(self.game.distance_m()),
-            CanvasTextStyle::Heading,
-        )?;
-        canvas.text(
-            16,
-            100,
-            format!("Best {}", distance_label(self.best)),
-            CanvasTextStyle::Detail,
-        )?;
-        canvas.text(320, 74, "NITRO".into(), CanvasTextStyle::Detail)?;
-        for charge in 0..u32::from(self.game.nitro_charges()) {
-            canvas.rect(320 + charge as i32 * 26, 84, 20, 14, true)?;
-        }
-
+        self.draw_counters(canvas)?;
         self.draw_road(canvas)?;
 
-        // The speed line and its bar toward the next kilometre.
+        // SPEED 4 AT 3.0 KM and the bar toward the next kilometre.
         let next_km = (self.game.distance_m() / 1000 + 1) * 1000;
-        canvas.text(
-            16,
-            632,
-            format!(
-                "Speed {} at {}",
-                self.game.speed() + 1,
-                distance_label(next_km)
-            ),
-            CanvasTextStyle::Detail,
-        )?;
+        let speed_line = format!(
+            "SPEED {} AT {}",
+            self.game.speed() + 1,
+            distance_label(next_km).to_ascii_uppercase()
+        );
+        canvas.text(16, 608, speed_line, CanvasTextStyle::Detail)?;
         let into_km = self.game.distance_m() % 1000;
-        canvas.rect(16, 642, 448, 12, false)?;
-        let fill = 448 * into_km as i32 / 1000;
+        canvas.rect(16, 616, 448, 14, true)?;
+        canvas.paper_rect(18, 618, 444, 10, true)?;
+        let fill = 444 * into_km as i32 / 1000;
         if fill > 0 {
-            canvas.rect(16, 642, fill, 12, true)?;
+            canvas.rect(18, 618, fill, 10, true)?;
         }
+
+        // The hub's info box, wrapped by the screen with the real font.
+        let info = match self.game.mode() {
+            RaceMode::Classic => {
+                "One step a second at first, faster every kilometre. \
+                 A full refresh now and then clears ghosting."
+            }
+            RaceMode::Zen => {
+                "The road moves only when you press. \
+                 A full refresh now and then clears ghosting."
+            }
+        };
+        canvas.info_box(642, info.into())?;
 
         if self.paused {
             canvas.rect(120, 300, 240, 80, true)?;
@@ -805,40 +825,124 @@ impl RaceApp {
         Ok(())
     }
 
-    /// The road: rumble strips, lane lines and the cars. Other cars are
-    /// outlines; the player's car is solid.
+    /// Distance, best and the charges: three columns as the mockup's, the
+    /// labels in capitals at the Detail size and the values in Heading under
+    /// them. Zen has no nitro: its third column counts the cars passed.
+    fn draw_counters(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
+        canvas.text(16, 66, "DISTANCE".into(), CanvasTextStyle::Detail)?;
+        canvas.text(
+            16,
+            102,
+            distance_label(self.game.distance_m()),
+            CanvasTextStyle::Heading,
+        )?;
+        canvas.text(232, 66, "BEST".into(), CanvasTextStyle::Detail)?;
+        canvas.text(
+            232,
+            102,
+            distance_label(self.best),
+            CanvasTextStyle::Heading,
+        )?;
+        match self.game.mode() {
+            RaceMode::Classic => {
+                canvas.text_right(464, 66, "NITRO".into(), CanvasTextStyle::Detail)?;
+                for charge in 0..3_u32 {
+                    let x = 416 + charge as i32 * 17;
+                    if charge < u32::from(self.game.nitro_charges()) {
+                        canvas.rect(x, 82, 14, 16, true)?;
+                    } else {
+                        canvas.rect(x, 82, 14, 16, true)?;
+                        canvas.paper_rect(x + 2, 84, 10, 12, true)?;
+                    }
+                }
+            }
+            RaceMode::Zen => {
+                canvas.text_right(464, 66, "CARS PASSED".into(), CanvasTextStyle::Detail)?;
+                canvas.text_right(
+                    464,
+                    102,
+                    self.game.cars_passed().to_string(),
+                    CanvasTextStyle::Heading,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The road as the mockup's SVG: rumble strips of 16 px blocks every 32
+    /// px, a 3 px edge line inside each, lane lines of 30 × 4 px dashes
+    /// every 52 px. Other cars are outlines; the player's car is solid. The
+    /// sprites stay inside their cells, so the cells a step dirties cover
+    /// what changed.
     fn draw_road(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
-        canvas.rect(ROAD_X, ROAD_TOP, ROAD_WIDTH, RUMBLE_HEIGHT, true)?;
+        for x in (ROAD_X..ROAD_X + ROAD_WIDTH).step_by(32) {
+            let width = 16.min(ROAD_X + ROAD_WIDTH - x);
+            canvas.rect(x, ROAD_TOP, width, RUMBLE_HEIGHT, true)?;
+            canvas.rect(x, ROAD_BOTTOM - RUMBLE_HEIGHT, width, RUMBLE_HEIGHT, true)?;
+        }
         canvas.rect(
             ROAD_X,
-            ROAD_BOTTOM - RUMBLE_HEIGHT,
+            ROAD_TOP + RUMBLE_HEIGHT,
             ROAD_WIDTH,
-            RUMBLE_HEIGHT,
+            EDGE_HEIGHT,
             true,
         )?;
-        canvas.line(ROAD_X, ROAD_TOP + 2, ROAD_X + ROAD_WIDTH, ROAD_TOP + 2)?;
-        canvas.line(
+        canvas.rect(
             ROAD_X,
-            ROAD_BOTTOM - 2,
-            ROAD_X + ROAD_WIDTH,
-            ROAD_BOTTOM - 2,
+            ROAD_BOTTOM - RUMBLE_HEIGHT - EDGE_HEIGHT,
+            ROAD_WIDTH,
+            EDGE_HEIGHT,
+            true,
         )?;
-        for lane in 1..RACE_LANES {
-            let y = ROAD_TOP + lane as i32 * LANE_HEIGHT;
+        for y in LANE_LINES {
             for x in (ROAD_X..ROAD_X + ROAD_WIDTH).step_by(52) {
-                canvas.line(x, y, (x + 30).min(ROAD_X + ROAD_WIDTH), y)?;
+                let width = 30.min(ROAD_X + ROAD_WIDTH - x);
+                canvas.rect(x, y, width, 4, true)?;
             }
         }
         for lane in 0..RACE_LANES {
             for column in 0..RACE_COLUMNS {
                 match self.game.cell(lane, column) {
-                    Some(RaceObstacle::Car) => draw_traffic(canvas, lane, column)?,
-                    Some(RaceObstacle::Cone) => draw_cone(canvas, lane, column)?,
+                    Some(RaceObstacle::Car) => {
+                        let (x, y) = sprite_origin(lane, column, GameSprite::Traffic);
+                        canvas.sprite(x, y, GameSprite::Traffic)?;
+                    }
+                    Some(RaceObstacle::Cone) => {
+                        for offset in [2, 38] {
+                            let cell = cell_rect(lane, column);
+                            canvas.sprite(
+                                cell.x + offset,
+                                cell.y + (cell.height - 42) / 2,
+                                GameSprite::Cone,
+                            )?;
+                        }
+                    }
                     None => {}
                 }
             }
         }
-        draw_player_car(canvas, self.game.player_lane())
+        // Where Up would move the car; none in the top lane.
+        if self.game.player_lane() > 0 {
+            let (x, y) = sprite_origin(
+                self.game.player_lane() - 1,
+                PLAYER_COLUMN,
+                GameSprite::MoveHint,
+            );
+            canvas.sprite(x, y, GameSprite::MoveHint)?;
+        }
+        // Speed streaks in the cell behind the player's car.
+        let (x, y) = sprite_origin(
+            self.game.player_lane(),
+            PLAYER_COLUMN - 1,
+            GameSprite::Streaks,
+        );
+        canvas.sprite(x, y, GameSprite::Streaks)?;
+        let (x, y) = sprite_origin(
+            self.game.player_lane(),
+            PLAYER_COLUMN,
+            GameSprite::PlayerCar,
+        );
+        canvas.sprite(x, y, GameSprite::PlayerCar)
     }
 
     /// The mockup's crash screen: the distance, the best and how far it was,
@@ -907,59 +1011,46 @@ impl RaceApp {
     }
 }
 
-/// The road's geometry: four lanes and six columns between the rumble strips.
+/// The road's geometry as the mockup's SVG: four lanes and six columns
+/// between the rumble strips.
 const RACE_BAR_HEIGHT: i32 = 44;
-const ROAD_X: i32 = 18;
+const ROAD_X: i32 = 16;
+const ROAD_WIDTH: i32 = 448;
 const ROAD_TOP: i32 = 118;
 const RUMBLE_HEIGHT: i32 = 14;
-const ROAD_WIDTH: i32 = 444;
-const LANE_HEIGHT: i32 = 112;
-const ROAD_BOTTOM: i32 = ROAD_TOP + RACE_LANES as i32 * LANE_HEIGHT;
+const EDGE_HEIGHT: i32 = 3;
+const ROAD_HEIGHT: i32 = 468;
+const ROAD_BOTTOM: i32 = ROAD_TOP + ROAD_HEIGHT;
+/// The dashed lane lines, 4 px tall, between the lane bands.
+const LANE_LINES: [i32; 3] = [241, 350, 459];
+/// The lane bands sprites sit in; the dirty cells use the same rectangles.
+const LANE_TOPS: [i32; 4] = [135, 245, 354, 463];
+const LANE_HEIGHTS: [i32; 4] = [106, 105, 105, 106];
 const CELL_WIDTH: i32 = ROAD_WIDTH / RACE_COLUMNS as i32;
-/// A full refresh every 30 steps clears ghosting.
+/// A full refresh every 30 road steps clears ghosting.
 const RACE_REFRESH_STEPS: u32 = 30;
 const RACE_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
-const RACE_STATS_RECT: DirtyRect = DirtyRect::new(0, RACE_BAR_HEIGHT, GAME_CANVAS_WIDTH, 64);
+const RACE_STATS_RECT: DirtyRect = DirtyRect::new(0, RACE_BAR_HEIGHT, GAME_CANVAS_WIDTH, 74);
+const RACE_PAUSE_RECT: DirtyRect = DirtyRect::new(120, 300, 240, 80);
 
 /// The cell's rectangle on the road.
 fn cell_rect(lane: usize, column: usize) -> DirtyRect {
     DirtyRect::new(
         ROAD_X + column as i32 * CELL_WIDTH,
-        ROAD_TOP + lane as i32 * LANE_HEIGHT,
+        LANE_TOPS[lane],
         CELL_WIDTH,
-        LANE_HEIGHT,
+        LANE_HEIGHTS[lane],
     )
 }
 
-/// An outline car: less ink to move and less ghosting than a solid one.
-fn draw_traffic(canvas: &mut NativeGameCanvas, lane: usize, column: usize) -> Result<(), String> {
-    let rect = cell_rect(lane, column);
-    let x = rect.x + (CELL_WIDTH - 64) / 2;
-    let y = rect.y + (LANE_HEIGHT - 44) / 2;
-    canvas.rect(x, y, 64, 44, false)?;
-    canvas.line(x + 44, y + 4, x + 44, y + 40)?;
-    Ok(())
-}
-
-/// A cone: a small solid triangle stand-in with a paper stripe.
-fn draw_cone(canvas: &mut NativeGameCanvas, lane: usize, column: usize) -> Result<(), String> {
-    let rect = cell_rect(lane, column);
-    let x = rect.x + (CELL_WIDTH - 36) / 2;
-    let y = rect.y + (LANE_HEIGHT - 40) / 2;
-    canvas.rect(x + 10, y, 16, 40, true)?;
-    canvas.paper_rect(x + 12, y + 16, 12, 8, true)?;
-    Ok(())
-}
-
-/// The player's car: solid, with paper windows.
-fn draw_player_car(canvas: &mut NativeGameCanvas, lane: usize) -> Result<(), String> {
-    let rect = cell_rect(lane, PLAYER_COLUMN);
-    let x = rect.x + (CELL_WIDTH - 64) / 2;
-    let y = rect.y + (LANE_HEIGHT - 44) / 2;
-    canvas.rect(x, y, 64, 44, true)?;
-    canvas.paper_rect(x + 8, y + 8, 18, 28, true)?;
-    canvas.paper_rect(x + 34, y + 14, 22, 16, true)?;
-    Ok(())
+/// Where a sprite goes in a cell: centred, so it stays inside the cell.
+fn sprite_origin(lane: usize, column: usize, sprite: GameSprite) -> (i32, i32) {
+    let cell = cell_rect(lane, column);
+    let (width, height) = sprite.size();
+    (
+        cell.x + (CELL_WIDTH - width) / 2,
+        cell.y + (cell.height - height) / 2,
+    )
 }
 
 /// `2.4 km` above a kilometre, `350 m` below it.
@@ -1208,5 +1299,95 @@ mod tests {
             .unwrap();
         assert_eq!(result.reason, "back-to-games");
         assert!(app.exit_requested());
+    }
+
+    /// The fullest road — three obstacles in every column — still fits the
+    /// command budget: one command per sprite keeps a frame cheap.
+    #[test]
+    fn the_fullest_road_stays_under_the_command_limit() {
+        use super::{NativeGameCanvas, RaceApp};
+        use crate::games::canvas::MAX_GAME_DRAW_COMMANDS;
+        let mut app = RaceApp::new(RaceMode::Classic, 7);
+        let mut canvas = NativeGameCanvas::default();
+        // Three obstacles in every column, cones worst-case (two commands).
+        for column in 0..RACE_COLUMNS {
+            for lane in 0..3 {
+                app.game.place(
+                    lane,
+                    column,
+                    if column % 2 == 0 {
+                        RaceObstacle::Cone
+                    } else {
+                        RaceObstacle::Car
+                    },
+                );
+            }
+        }
+        app.render_initial(&mut canvas).unwrap();
+        assert!(
+            canvas.commands().len() < MAX_GAME_DRAW_COMMANDS,
+            "the fullest road draws {} commands",
+            canvas.commands().len()
+        );
+    }
+
+    /// A Classic lane change dirties the player's old and new cells.
+    #[test]
+    fn a_lane_change_dirties_both_player_cells() {
+        use super::{cell_rect, NativeGameCanvas, RaceApp, PLAYER_COLUMN};
+        let mut app = RaceApp::new(RaceMode::Classic, 7);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        let before = app.game().player_lane();
+        let result = app
+            .apply_button_and_render(ButtonEvent::Up, &mut canvas)
+            .unwrap();
+        assert_eq!(result.reason, "lane-up");
+        assert_eq!(app.game().player_lane(), before - 1);
+        assert!(
+            result
+                .dirty_regions
+                .contains(&cell_rect(before, PLAYER_COLUMN)),
+            "the old player cell is redrawn"
+        );
+        assert!(
+            result
+                .dirty_regions
+                .contains(&cell_rect(before - 1, PLAYER_COLUMN)),
+            "the new player cell is redrawn"
+        );
+    }
+
+    /// Zen counts the cars passed instead of nitro charges it cannot spend.
+    #[test]
+    fn zen_counts_cars_passed_and_draws_no_nitro_slots() {
+        use super::{NativeGameCanvas, RaceApp};
+        use crate::games::canvas::DrawCommand;
+        let mut app = RaceApp::new(RaceMode::Zen, 7);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        let texts = |name: &str| {
+            canvas
+                .commands()
+                .iter()
+                .filter(|command| match command {
+                    DrawCommand::Text { text, .. } | DrawCommand::TextRight { text, .. } => {
+                        text.contains(name)
+                    }
+                    _ => false,
+                })
+                .count()
+        };
+        assert_eq!(texts("CARS PASSED"), 1, "the third column counts cars");
+        assert_eq!(texts("NITRO"), 0, "Zen has no nitro column");
+        let slots = canvas
+            .commands()
+            .iter()
+            .filter(|command| match command {
+                DrawCommand::Rect { width, height, .. } => *width == 14 && *height == 16,
+                _ => false,
+            })
+            .count();
+        assert_eq!(slots, 0, "no nitro slots on Zen");
     }
 }

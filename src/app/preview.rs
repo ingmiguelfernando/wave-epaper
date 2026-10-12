@@ -711,6 +711,18 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     race_play.router.navigate_to(ScreenRoute::LuaGame);
     states.push(("race-play", race_play));
 
+    // The same road at the Large UI size and a Zen run.
+    let mut race_play_large = sample_state();
+    race_play_large.display.font_size = UiFontSize::Large;
+    race_play_large.lua_runtime.session = Some(race_play_session());
+    race_play_large.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("race-play-large", race_play_large));
+
+    let mut race_zen = sample_state();
+    race_zen.lua_runtime.session = Some(race_zen_session());
+    race_zen.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("race-zen", race_zen));
+
     let mut race_crash = sample_state();
     race_crash.lua_runtime.session = Some(race_crash_session());
     race_crash.router.navigate_to(ScreenRoute::LuaGame);
@@ -1124,14 +1136,29 @@ fn race_start_session() -> LuaAppSession {
     race_app_session(source, canvas, event_bridge)
 }
 
-/// A Classic race a few kilometres in, with a best to beat.
+/// A Classic race a few kilometres in, with a best to beat. One nitro is
+/// spent on the clear start, so the slots show the filled-and-empty mix.
 fn race_play_session() -> LuaAppSession {
     let source = "race.init('classic', 1803)";
     let (mut canvas, mut event_bridge) = race_session(source);
     if let LuaEventBridge::Race(app) = &mut event_bridge {
         app.set_best(5_100);
     }
+    event_bridge
+        .apply_button(ButtonEvent::Select, 1_000, &mut canvas)
+        .unwrap();
     drive_sample(&mut event_bridge, &mut canvas, 2_400);
+    race_app_session(source, canvas, event_bridge)
+}
+
+/// A Zen race: the road moves only on a key.
+fn race_zen_session() -> LuaAppSession {
+    let source = "race.init('zen', 1803)";
+    let (mut canvas, mut event_bridge) = race_session(source);
+    if let LuaEventBridge::Race(app) = &mut event_bridge {
+        app.set_best(2_400);
+    }
+    drive_sample(&mut event_bridge, &mut canvas, 1_200);
     race_app_session(source, canvas, event_bridge)
 }
 
@@ -1157,23 +1184,16 @@ fn race_crash_session() -> LuaAppSession {
     race_app_session(source, canvas, event_bridge)
 }
 
-/// Drive by the gap until `metres`, the way a careful player would: step the
-/// road, then dodge into a lane that survives the next column.
+/// Drive by the gap until `metres`, the way a careful player would: one key
+/// per look. Zen moves only on a key, so every press is checked against the
+/// road as it stands; Classic steps on the clock between the dodges.
 fn drive_sample(event_bridge: &mut LuaEventBridge, canvas: &mut NativeGameCanvas, metres: u32) {
     for _ in 0..600_u32 {
-        let (distance, over) = match event_bridge {
-            LuaEventBridge::Race(app) => (app.game().distance_m(), app.game().is_over()),
-            _ => return,
-        };
-        if over || distance >= metres {
-            return;
-        }
-        let dodge = match event_bridge {
+        let (distance, over, mode, target) = match event_bridge {
             LuaEventBridge::Race(app) => {
                 let game = app.game();
-                if game.cell(game.player_lane(), 2).is_none() {
-                    None
-                } else {
+                let threatened = game.cell(game.player_lane(), 2).is_some();
+                let target = if threatened {
                     (0..4_usize)
                         .filter(|lane| {
                             *lane != game.player_lane()
@@ -1181,26 +1201,41 @@ fn drive_sample(event_bridge: &mut LuaEventBridge, canvas: &mut NativeGameCanvas
                                 && game.cell(*lane, 2).is_none()
                         })
                         .min_by_key(|lane| lane.abs_diff(game.player_lane()))
-                }
+                } else {
+                    None
+                };
+                (
+                    game.distance_m(),
+                    game.is_over(),
+                    game.mode(),
+                    target.map(|target| (target, game.player_lane())),
+                )
             }
             _ => return,
         };
-        if let Some(target) = dodge {
-            // One press moves one lane; the cells beside the car are clear.
-            for _ in 0..4 {
-                let event = match event_bridge {
-                    LuaEventBridge::Race(app) if target < app.game().player_lane() => {
-                        ButtonEvent::Up
-                    }
-                    LuaEventBridge::Race(app) if target > app.game().player_lane() => {
-                        ButtonEvent::Down
-                    }
-                    _ => break,
-                };
+        if over || distance >= metres {
+            return;
+        }
+        let press = match target {
+            Some((target, lane)) if target < lane => Some(ButtonEvent::Up),
+            Some((target, lane)) if target > lane => Some(ButtonEvent::Down),
+            _ => None,
+        };
+        match press {
+            Some(event) => {
                 event_bridge.apply_button(event, 3_000, canvas).unwrap();
             }
+            None => match mode {
+                crate::games::race::RaceMode::Zen => {
+                    event_bridge
+                        .apply_button(ButtonEvent::Select, 3_000, canvas)
+                        .unwrap();
+                }
+                _ => {
+                    event_bridge.tick_game(canvas).unwrap();
+                }
+            },
         }
-        event_bridge.tick_game(canvas).unwrap();
     }
 }
 

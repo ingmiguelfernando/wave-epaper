@@ -597,7 +597,38 @@ under the speed bar.
 outside it; a Classic lane change dirties both of the player's cells; Zen
 draws `CARS PASSED`, no nitro slots and its own hints.
 
-**Status:**
+**Status:** done on `side-tasks-11`. Built: the playing screen has the
+mockup's look. **Sprites:** `DrawCommand::Sprite { x, y, sprite }` with
+`GameSprite` in `games/canvas.rs`, drawn by the new `widgets/game_sprites.rs`
+from the mockup's symbols — `race-traffic` (a 3 px outline car with paper
+inside, four wheels, windshield and door lines), `race-car` (solid with
+paper windows and hood stripe), `race-cone` (solid triangle with a paper
+band; a cone obstacle draws two), `race-burst` (ink star with a paper star)
+and the move hint's dashed rounded outline. One command per sprite; the
+sprites stay inside their cell (72 × 53 cars in a 74 × 105 cell), so the
+cells a step dirties cover what changed. **Counters:** three columns —
+`DISTANCE`, `BEST` and `NITRO` in capitals at the Detail size with the
+values in Heading under them; the charges are three 14 × 16 slots with a
+2 px border at the right edge, one filled each. Zen's third column is
+`CARS PASSED` with the count. **Road:** the mockup's geometry — rumble
+strips of 16 px blocks every 32 px, a 3 px edge line inside each, lane
+lines of 30 × 4 px dashes every 52 px; the move hint outlines the cell ▲
+would move to (none in the top lane), three speed streaks sit in the cell
+behind the player. Under the road `SPEED 4 AT 3.0 KM` in Detail capitals,
+a 10 px bar with a 2 px border filled to the kilometre's progress, then
+the hub's info box through the new `InfoBox` command (Classic's and Zen's
+own text). Zen's bottom bar says `lane`, `step`, `hold: back`. A lane
+change dirties the player's old and new cells, its streaks' and the hint's
+(`RoadSnapshot` carries the player lane); the full refresh comes when the
+road step count crosses 30. The Games hub's Race icon is the player's car
+sprite, paper on the selected card. `PAUSED` stays as it was. Previews:
+`race-play` (with one nitro spent, so the slots mix fills and empties),
+`race-play-large` and `race-zen`. Tests: the fullest road (three obstacles
+in every column, cones worst-case) stays under `MAX_GAME_DRAW_COMMANDS`;
+every sprite drawn alone leaves no ink outside its size; a Classic lane
+change dirties both player cells; Zen draws `CARS PASSED`, no nitro slots
+and its own hints. Open: nothing known. Device check: the three previews
+and a Classic run on the panel at both UI sizes.
 
 ### D53: Race crash screen like the mockup
 
