@@ -749,6 +749,9 @@ impl RaceApp {
         if reason == "pause-toggle" {
             return vec![RACE_PAUSE_RECT];
         }
+        if reason == "crash-choose" {
+            return vec![RACE_CRASH_ROWS_RECT];
+        }
         if before.steps / RACE_REFRESH_STEPS != self.steps / RACE_REFRESH_STEPS {
             return vec![RACE_FULL_RECT];
         }
@@ -945,7 +948,8 @@ impl RaceApp {
         canvas.sprite(x, y, GameSprite::PlayerCar)
     }
 
-    /// The mockup's crash screen: the distance, the best and how far it was,
+    /// The mockup's crash screen: the picture of the impact under the status
+    /// bar, the distance in display numerals, the best and how far it was,
     /// top speed, cars passed and nitro used, then the three rows.
     fn render_crash(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         canvas.clear_frame();
@@ -957,11 +961,31 @@ impl RaceApp {
         canvas.text(16, 30, title.into(), CanvasTextStyle::Inverse)?;
         canvas.text_right(464, 30, "Crash!".into(), CanvasTextStyle::Inverse)?;
 
-        canvas.text(
-            16,
-            130,
+        // The picture: a short road with the impact in its lower lane. The
+        // same picture for every crash.
+        let top = CRASH_PICTURE_TOP;
+        for x in (ROAD_X..ROAD_X + ROAD_WIDTH).step_by(32) {
+            let width = 16.min(ROAD_X + ROAD_WIDTH - x);
+            canvas.rect(x, top, width, RUMBLE_HEIGHT, true)?;
+            canvas.rect(x, top + 198, width, RUMBLE_HEIGHT, true)?;
+        }
+        canvas.rect(ROAD_X, top + 15, ROAD_WIDTH, EDGE_HEIGHT, true)?;
+        canvas.rect(ROAD_X, top + 195, ROAD_WIDTH, EDGE_HEIGHT, true)?;
+        for x in (ROAD_X..ROAD_X + ROAD_WIDTH).step_by(52) {
+            let width = 30.min(ROAD_X + ROAD_WIDTH - x);
+            canvas.rect(x, top + 104, width, 4, true)?;
+        }
+        canvas.sprite(380, top + 32, GameSprite::Traffic)?;
+        canvas.sprite(228, top + 124, GameSprite::Traffic)?;
+        canvas.sprite(158, top + 117, GameSprite::CrashCar)?;
+        canvas.sprite(202, top + 116, GameSprite::Burst)?;
+
+        // The distance, large and centred in the display numerals.
+        canvas.numerals(
             distance_label(self.game.distance_m()),
-            CanvasTextStyle::Heading,
+            16,
+            464,
+            CRASH_DISTANCE_BASELINE,
         )?;
         let to_go = self.best.saturating_sub(self.game.distance_m());
         let best_line = if to_go > 0 {
@@ -973,17 +997,23 @@ impl RaceApp {
         } else {
             format!("Best {} · new record!", distance_label(self.best))
         };
-        canvas.text(16, 162, best_line, CanvasTextStyle::Body)?;
+        canvas.text_center(240, 412, best_line, CanvasTextStyle::Heading)?;
 
         for (label, value, x) in [
-            ("Top speed", self.top_speed.to_string(), 16),
-            ("Cars passed", self.game.cars_passed().to_string(), 176),
-            ("Nitro used", self.game.nitro_used().to_string(), 336),
+            ("TOP SPEED", self.top_speed.to_string(), 16),
+            ("CARS PASSED", self.game.cars_passed().to_string(), 232),
+            ("NITRO USED", self.game.nitro_used().to_string(), 464),
         ] {
-            canvas.text(x, 216, label.into(), CanvasTextStyle::Detail)?;
-            canvas.text(x, 248, value, CanvasTextStyle::Heading)?;
+            if x == 464 {
+                canvas.text_right(464, 460, label.into(), CanvasTextStyle::Detail)?;
+                canvas.text_right(464, 492, value, CanvasTextStyle::Heading)?;
+            } else {
+                canvas.text(x, 460, label.into(), CanvasTextStyle::Detail)?;
+                canvas.text(x, 492, value, CanvasTextStyle::Heading)?;
+            }
         }
 
+        // The rows, like every list on the device.
         let mode = match self.game.mode() {
             RaceMode::Classic => "Classic",
             RaceMode::Zen => "Zen",
@@ -994,18 +1024,12 @@ impl RaceApp {
             ("Back to Games", ""),
         ];
         for (index, (label, value)) in rows.iter().enumerate() {
-            let top = 300 + index as i32 * 64;
-            let selected = index == self.crash_cursor;
-            canvas.rect(24, top, 432, 52, selected)?;
-            let style = if selected {
-                CanvasTextStyle::Inverse
-            } else {
-                CanvasTextStyle::Body
-            };
-            canvas.text(44, top + 34, (*label).into(), style)?;
-            if !value.is_empty() {
-                canvas.text_right(436, top + 34, (*value).into(), style)?;
-            }
+            canvas.list_row(
+                CRASH_ROWS_TOP + index as i32 * CRASH_ROW_HEIGHT,
+                (*label).into(),
+                (*value).into(),
+                index == self.crash_cursor,
+            )?;
         }
         Ok(())
     }
@@ -1032,6 +1056,13 @@ const RACE_REFRESH_STEPS: u32 = 30;
 const RACE_FULL_RECT: DirtyRect = DirtyRect::new(0, 0, GAME_CANVAS_WIDTH, GAME_CANVAS_HEIGHT);
 const RACE_STATS_RECT: DirtyRect = DirtyRect::new(0, RACE_BAR_HEIGHT, GAME_CANVAS_WIDTH, 74);
 const RACE_PAUSE_RECT: DirtyRect = DirtyRect::new(120, 300, 240, 80);
+/// The crash picture's road band, its distance and its rows.
+const CRASH_PICTURE_TOP: i32 = 54;
+const CRASH_DISTANCE_BASELINE: i32 = 380;
+const CRASH_ROWS_TOP: i32 = 510;
+const CRASH_ROW_HEIGHT: i32 = 72;
+const RACE_CRASH_ROWS_RECT: DirtyRect =
+    DirtyRect::new(0, CRASH_ROWS_TOP, GAME_CANVAS_WIDTH, 3 * CRASH_ROW_HEIGHT);
 
 /// The cell's rectangle on the road.
 fn cell_rect(lane: usize, column: usize) -> DirtyRect {
@@ -1363,7 +1394,7 @@ mod tests {
     fn zen_counts_cars_passed_and_draws_no_nitro_slots() {
         use super::{NativeGameCanvas, RaceApp};
         use crate::games::canvas::DrawCommand;
-        let mut app = RaceApp::new(RaceMode::Zen, 7);
+        let app = RaceApp::new(RaceMode::Zen, 7);
         let mut canvas = NativeGameCanvas::default();
         app.render_initial(&mut canvas).unwrap();
         let texts = |name: &str| {
@@ -1389,5 +1420,59 @@ mod tests {
             })
             .count();
         assert_eq!(slots, 0, "no nitro slots on Zen");
+    }
+
+    /// The crash frame holds one numerals command with the distance and
+    /// three list-row commands with the first selected; ▼ selects the second
+    /// row and the frame keeps its command count.
+    #[test]
+    fn the_crash_frame_draws_the_distance_and_the_three_rows() {
+        use super::{NativeGameCanvas, RaceApp};
+        use crate::games::canvas::DrawCommand;
+        let mut app = RaceApp::new(RaceMode::Classic, 7);
+        let mut canvas = NativeGameCanvas::default();
+        app.render_initial(&mut canvas).unwrap();
+        for _ in 0..200 {
+            if app.game().is_over() {
+                break;
+            }
+            app.tick_and_render(&mut canvas).unwrap();
+        }
+        assert!(app.game().is_over());
+        // The crashing step drew the crash frame, with the first row selected.
+        let count = canvas.commands().len();
+        let numerals: Vec<_> = canvas
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DrawCommand::Numerals { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(numerals.len(), 1, "one numerals command holds the distance");
+        assert!(numerals[0].ends_with('m'), "the distance shows its unit");
+        let rows: Vec<bool> = canvas
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DrawCommand::ListRow { selected, .. } => Some(*selected),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows.len(), 3, "the three rows are list rows");
+        assert_eq!(rows, [true, false, false], "the first row is selected");
+        // ▼ selects the second row: same frame, same command count.
+        app.apply_button_and_render(ButtonEvent::Down, &mut canvas)
+            .unwrap();
+        assert_eq!(canvas.commands().len(), count);
+        let rows: Vec<bool> = canvas
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                DrawCommand::ListRow { selected, .. } => Some(*selected),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows, [false, true, false], "the second row is selected");
     }
 }

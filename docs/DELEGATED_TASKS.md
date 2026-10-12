@@ -660,7 +660,26 @@ as a form, not as a crash.
 three list-row commands with the first selected; ▼ selects the second row
 and the frame keeps its command count.
 
-**Status:**
+**Status:** done on `side-tasks-11`. Built: `render_crash` has the mockup's
+picture and numbers. Under the status bar the picture: a 212 px road (the
+rumble strips of 16 px blocks, the 3 px edges and one lane line), a car
+ahead in the top lane, the player's car turned 14° into another car (the
+`CrashCar` sprite: the tilt baked in, since the shapes layer has no
+rotation) with the `race-burst` star on the impact. The same picture for
+every crash. The distance is large and centred in the display numerals
+(`Numerals::Temperature` through the new `Numerals` canvas command), the
+`Best 5.1 km · 2.7 km to go` line (or `· new record!`) centred under it in
+Heading through `TextCenter`, and `TOP SPEED`, `CARS PASSED` and `NITRO
+USED` in Detail capitals with the values in Heading in three columns. The
+three rows are `draw_list_row` rows through the new `ListRow` canvas
+command: full width, a rule under each, the selected row inverted with its
+marker and the value at the right; their order, actions and hints stay.
+The cursor's row moves dirty only the rows band. Previews: `race-crash`
+and `race-crash-large` (both inspected). Tests: the crash frame holds one
+numerals command with the distance and three list-row commands with the
+first selected; ▼ selects the second row and the frame keeps its command
+count. Open: nothing known. Device check: the two previews and a crash on
+the panel at both UI sizes.
 
 ## Round 10 tasks (done in v0.11.3)
 

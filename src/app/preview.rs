@@ -726,7 +726,9 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     let mut race_crash = sample_state();
     race_crash.lua_runtime.session = Some(race_crash_session());
     race_crash.router.navigate_to(ScreenRoute::LuaGame);
-    states.push(("race-crash", race_crash));
+    states.push(("race-crash", race_crash.clone()));
+    race_crash.display.font_size = UiFontSize::Large;
+    states.push(("race-crash-large", race_crash));
 
     let mut sudoku_start = sample_state();
     sudoku_start.lua_runtime.session = Some(sudoku_start_session());
