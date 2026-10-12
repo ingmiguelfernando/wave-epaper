@@ -473,6 +473,152 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
+## Round 11 tasks (branch `side-tasks-11`)
+
+Start from `main` at v0.11.3, where Round 10 is merged; read its result at
+the top of this file first. The owner played Race on the device: it plays
+well and is fine as a first version, but it does not look like the mockup.
+With the sample games on the SD card, the Games hub also never shows
+Tetris. Three tasks, in this order. When they are done, merge `main` into
+the branch and open a pull request.
+
+Before you start, put `race-play.png` and `race-crash.png` (the
+`screen-previews` artifact of `main`) next to the two Race screens of
+`mockups/index.html` (section Juegos). Most of the gap is drawing: the game
+canvas has only 1 px lines and boxes, so the road reads as black bars and
+the cars as empty boxes.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8). Leave these files alone:
+
+- `src/main.rs`: the game timer and the canvas need nothing there;
+- updates and network: `src/ota*.rs`, `src/wifi_transfer.rs`,
+  `src/network*.rs`, `sdkconfig.defaults`, `partitions.csv`, `.github/`;
+- voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,
+  `src/ai_*.rs`, `src/xiaozhi/`, `src/app/screens/voice_notes.rs`,
+  `src/app/screens/ai.rs`;
+- drawing: the files already in `src/app/widgets/` (call them; a new file
+  there and its line in `widgets/mod.rs` are fine), `src/app/typography/`,
+  `src/app/display_assets.rs`, `scripts/fonts/`.
+
+Run the doc-comment check of Round 9 before you hand over. The fonts have
+no ▲▼●▸: draw shapes, and let `draw_list_row` draw the ▸ of a selected row.
+
+### D51: Games hub scrolls
+
+**Why.** The sample SD card has five games and the hub draws four cards.
+Its window, `selected.saturating_sub(3) / 4 * 4`, stays on the first four
+until the eighth game is selected, so ▼ on Sudoku selects Tetris off
+screen.
+
+**Change.** `src/app/screens/games.rs`:
+
+- The cards scroll one at a time and the selected card is always drawn, as
+  the Settings lists keep their row in view (`first_visible` in
+  `widgets/list_row.rs`). ▼ on the last card goes back to the first and
+  the list back to the top; ▲ on the first shows the last at the bottom.
+- The status bar keeps the game count; the info box stays under the cards.
+- **Preview:** `games-scrolled`, the fifth of five games selected.
+
+**Tests:** for one to nine games and every selection, the window holds the
+selected card and does not run past the last game; the hub rendered with
+the fifth of five games selected draws its inverted card in the fourth
+slot.
+
+**Status:**
+
+### D52: Race playing screen like the mockup
+
+**Why.** The playing screen has the mockup's parts but not its look: solid
+black bars for the rumble strips, faint 1 px lane lines, empty boxes for
+cars, small bars for cones, no labels over the counters and a blank band
+under the speed bar.
+
+**Change.** `src/games/race.rs` and the game canvas:
+
+- **Sprites.** One canvas command that draws a named shape at a point, for
+  example `DrawCommand::Sprite { x, y, sprite }` with a `GameSprite` enum
+  in `games/canvas.rs`. `screens/lua_game.rs` draws it through a new
+  `widgets/game_sprites.rs`, from the mockup's SVG symbols (`race-car`,
+  `race-traffic`, `race-cone`, `race-burst`), with embedded-graphics
+  shapes: `RoundedRectangle`, `Triangle`, `Line` with a stroke width,
+  `Arc`. A filled star is a fan of triangles, as `draw_star` in
+  `screens/photos.rs`. One command per sprite keeps a frame far below
+  `MAX_GAME_DRAW_COMMANDS`.
+- **Counters.** Three columns as in the mockup: `DISTANCE`, `BEST` and
+  `NITRO` in capitals at the Detail size (as Reading Stats' `TODAY`), the
+  values in Heading under them. Nitro is three 14 × 16 slots with a 2 px
+  border, one filled per charge, at the right edge. Zen has no nitro: its
+  third column is `CARS PASSED` (today Zen shows a charge it cannot spend).
+- **Road** as the mockup's SVG (`<svg class="road" viewBox="0 0 448 468">`;
+  both screens are 480 × 800, so its numbers carry over): rumble strips of
+  16 px black blocks every 32 px, 14 px tall, at the top and the bottom; a
+  3 px edge line inside each; lane lines of 30 × 4 px dashes every 52 px.
+- **Cars** seen from above, nose to the right: four wheels, a rounded nose
+  and windows. Other cars are a 3 px outline with paper inside; the
+  player's car is solid with paper windows, with three speed streaks in
+  the cell behind it. A cone obstacle is two cones: solid triangles with a
+  paper band. Every sprite stays inside its cell, so the cells a step
+  dirties cover what changed: scale the 60 × 44 symbols by about 1.2, not
+  the mockup's 1.25.
+- **Where ▲ goes:** the mockup's dashed rounded outline in the cell ▲ would
+  move the car to; none in the top lane.
+- **Under the road:** `SPEED 4 AT 3.0 KM` in capitals at the Detail size,
+  and a 10 px bar with a 2 px border, filled to the kilometre's progress.
+  Then the hub's info box (`draw_info_box` in `screens/games.rs`, through
+  a canvas command, so the screen wraps the text with the real font).
+  Classic: `One step a second at first, faster every kilometre. A full
+  refresh now and then clears ghosting.` Zen: `The road moves only when you
+  press. A full refresh now and then clears ghosting.`
+- **Zen's bottom bar** says what its keys do: `▲▼ lane`, `● step`,
+  `BOOT hold: back`. Today it shows Classic's `nitro` and `pause`.
+- A lane change dirties the player's old and new cells and the outline's;
+  today a Classic lane change dirties only the counters.
+- The Games hub's Race icon becomes the player's car sprite, in paper on
+  the selected card.
+- `PAUSED` stays as it is.
+- **Previews:** `race-play` again, `race-play-large` (Large UI size) and
+  `race-zen`.
+
+**Tests:** the fullest road (three obstacles in every column) stays under
+`MAX_GAME_DRAW_COMMANDS`; each sprite drawn alone in a cell leaves no ink
+outside it; a Classic lane change dirties both of the player's cells; Zen
+draws `CARS PASSED`, no nitro slots and its own hints.
+
+**Status:**
+
+### D53: Race crash screen like the mockup
+
+**Why.** The crash screen has the right numbers, but the distance is a
+Heading at the left, there is no picture, and the rows are boxes: it reads
+as a form, not as a crash.
+
+**Change.** `render_crash` in `src/games/race.rs`, with the sprites of D52:
+
+- Under the status bar, the mockup's picture: a 212 px road (rumble
+  strips, edges, one lane line), a car ahead in the top lane, and the
+  player's car turned 14° into another car, with the burst (`race-burst`,
+  a star with a paper star inside) on the impact. The same picture for
+  every crash.
+- The distance large and centred, in the Weather screen's display numerals
+  (`draw_numerals` with `Numerals::Temperature` in
+  `widgets/display_numerals.rs`), through a canvas command.
+- `Best 5.1 km · 2.7 km to go` (or `· new record!`) centred under it, in
+  Heading; the screen measures centred text, as it does for `TextRight`.
+- `TOP SPEED`, `CARS PASSED` and `NITRO USED` in capitals at the Detail
+  size, the values in Heading under them, in three columns as the mockup.
+- The three rows like every list on the device: full width, a rule under
+  each, the selected row inverted with the ▸ marker, the value at the
+  right. Draw them with `draw_list_row` (`widgets/list_row.rs`) through a
+  canvas command. Their order, actions and hints stay.
+- **Previews:** `race-crash` again and `race-crash-large`.
+
+**Tests:** the crash frame holds one numerals command with the distance and
+three list-row commands with the first selected; ▼ selects the second row
+and the frame keeps its command count.
+
+**Status:**
+
 ## Round 10 tasks (done in v0.11.3)
 
 Start from `main` at v0.11.2, where Round 9 is merged; read its result at

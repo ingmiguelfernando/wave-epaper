@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-11, firmware v0.11.3.
+Last updated: 2026-10-12, firmware v0.11.3.
 
 ## Status
 
@@ -40,7 +40,7 @@ Last updated: 2026-10-11, firmware v0.11.3.
 | Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, waiting for device test |
 | Delegated tasks D39 to D43: EPUB chapter titles and minutes left, Library authors and finished books, Settings › Reading, add and delete alarms, Bible menu without card reads | 0.10.4 | PR #7 | Done, waiting for device test |
 | Delegated tasks D44 to D48: reading place saved in batches, Library straight from Home, Reader screens in the new style, Settings › System › Memory, Go to a percent | 0.11.2 | PR #8 | Done, waiting for device test |
-| Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, waiting for device test |
+| Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, tested on the device; the mockup's look and a scrolling Games hub are Round 11 (D51 to D53) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
