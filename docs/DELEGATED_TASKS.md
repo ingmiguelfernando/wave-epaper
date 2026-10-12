@@ -488,10 +488,13 @@ Before you start, put `race-play.png` and `race-crash.png` (the
 canvas has only 1 px lines and boxes, so the road reads as black bars and
 the cars as empty boxes.
 
-**Main line during this round.** The main developer works on OTA updates
-(Phase 8). Leave these files alone:
+**Main line during this round.** The main developer works on XiaoZhi
+voice chat (Phase 7), then OTA updates (Phase 8). Leave these files alone:
 
 - `src/main.rs`: the game timer and the canvas need nothing there;
+- XiaoZhi: `src/app/screens/xiaozhi.rs`, `src/audio/`, `src/shared_i2c.rs`,
+  `src/photos/worker.rs`; put new previews in `src/app/preview.rs` next to
+  the Race ones, not at the end of `preview_states`;
 - updates and network: `src/ota*.rs`, `src/wifi_transfer.rs`,
   `src/network*.rs`, `sdkconfig.defaults`, `partitions.csv`, `.github/`;
 - voice notes and AI: `src/voice_note*.rs`, `src/voice_notes.rs`,

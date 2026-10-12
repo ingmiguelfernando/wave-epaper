@@ -43,7 +43,8 @@ work are in [ROADMAP.md](ROADMAP.md).
   `weather.rs`; `network.rs`, `radio_burst.rs` (Wi-Fi); `alarm.rs`, `rtc*.rs`;
   `audio/`, `voice_notes.rs`, `voice_note_record.rs`; `ai_jobs.rs` (one note
   through the providers), `ai_worker.rs` (its thread and the HTTPS client),
-  `ai_keys.rs` (keys in encrypted NVS); `calendar.rs`, `dictionary.rs`,
+  `ai_keys.rs` (keys in encrypted NVS); `xiaozhi/` (voice chat, below);
+  `calendar.rs`, `dictionary.rs`,
   `unit_converter.rs`; `lua_runtime/`, `games/` (SD apps); `wifi_transfer.rs`
   (file portal); `sleep_images.rs`, `sleep_mode.rs`, `sleep_screen.rs`;
   `photos/` and `dither.rs` (gallery, JPEG decoding, cache files, worker);
@@ -89,6 +90,35 @@ Rules that keep it stable:
 - The photo worker (`photos/worker.rs`) runs alongside the loop, pinned to
   core 1 at priority 1, so a JPEG decode never delays the keys. Light sleep
   waits until it is idle, and a photo is deleted only then.
+
+## XiaoZhi call
+
+`src/xiaozhi/` ports the protocol of xiaozhi-esp32 (which now needs ESP-IDF
+6) to Rust:
+
+- `activation.rs`: the OTA check-in (system information POST, the reply's
+  WebSocket address and activation code) and the `activate` long poll.
+- `protocol.rs`: JSON messages and binary audio frames (versions 1 to 3).
+- `call.rs`: `Conversation`, the turn logic in auto mode (listen until the
+  server's voice detection ends the turn, speak with the microphone closed,
+  listen again), and `XiaozhiUi`, the screen's copy of the call with the
+  keys' requests.
+- `mcp.rs`: the device's MCP tools: status, volume and a Bible passage.
+- `espidf.rs` (device only): the call thread. It runs on core 1 at priority
+  4 with a 40 KB stack, so a panel refresh never starves the audio. The
+  WebSocket is ESP-IDF's `esp_websocket_client` used through its C API, Opus
+  is `esp_audio_codec` (16 kHz mono, 60 ms frames), both managed components
+  declared in `Cargo.toml`; `src/xiaozhi/opus.h` gives the Opus bindings.
+  The client id and the linked flag live in NVS namespace `xiaozhi`.
+
+`main.rs` lends the audio runtime to the call: the thread takes it only
+once the conversation opens, so a hang-up while connecting or linking gives
+it back at once; otherwise it returns when the thread ends. Keys reach the
+thread as `CallCommand`s and its `CallEvent`s update the screen, redrawn on
+a new phase or at most every 2 s. The I2C bus is an `Arc<Mutex>`
+(`shared_i2c.rs`), since the call thread sets the codec volume. While a
+call runs or waits for Wi-Fi, the radio stays on with power save off, AI
+jobs wait and the panel, auto-sleep and light sleep stay away.
 
 ## Power
 

@@ -1,0 +1,551 @@
+//! Home › AI › XiaoZhi: the call as the mockup draws it, plus connecting,
+//! linking the device at xiaozhi.me and the end of the call.
+
+use core::convert::Infallible;
+
+use embedded_graphics::{
+    pixelcolor::BinaryColor,
+    prelude::{Drawable, Point, Primitive, Size},
+    primitives::{Circle, PrimitiveStyle, Rectangle, Triangle},
+};
+
+use crate::{
+    app::{
+        display::DisplayPreferences,
+        state::AppState,
+        typography::{Text, UiTextRole, UiTextStyle},
+        widgets::{
+            bottom_bar::{draw_bottom_bar, KeyCap, BOTTOM_BAR_TOP},
+            display_numerals::{draw_numerals, Numerals},
+            status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
+        },
+    },
+    charset::glyph_index,
+    orientation::OrientedFrameBuffer,
+    xiaozhi::call::{CallPhase, XiaozhiUi},
+};
+
+use super::{
+    games::draw_info_box,
+    home::{draw_battery, BATTERY_HEIGHT, BATTERY_WIDTH},
+};
+
+const LEFT: i32 = 16;
+const RIGHT: i32 = 464;
+/// The face's ring: 96 px, as in the mockup's 150 × 107 drawing.
+const FACE_DIAMETER: i32 = 96;
+const FACE_CENTRE: Point = Point::new(240, STATUS_BAR_HEIGHT + 72);
+const NAME_BASELINE: i32 = STATUS_BAR_HEIGHT + 148;
+const CHIPS_TOP: i32 = NAME_BASELINE + 14;
+const CHIP_HEIGHT: i32 = 26;
+const MESSAGES_TOP: i32 = CHIPS_TOP + CHIP_HEIGHT + 14;
+const MESSAGE_GAP: i32 = 12;
+/// The volume row sits above the bottom bar, as in the mockup.
+const VOLUME_BASELINE: i32 = BOTTOM_BAR_TOP - 22;
+/// Messages end here, leaving room for the tool line and the volume row.
+const MESSAGES_BOTTOM: i32 = VOLUME_BASELINE - 84;
+/// Lines of the question kept on screen; the reply takes the rest.
+const QUESTION_LINES: usize = 3;
+/// The mockup's left sound waves on the face grid; the right ones mirror
+/// them.
+const WAVES: [[(f32, f32); 3]; 2] = [
+    [(-2.0, 42.0), (-12.0, 60.0), (-2.0, 78.0)],
+    [(-14.0, 32.0), (-30.0, 60.0), (-14.0, 88.0)],
+];
+
+const TALK_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::Select, "interrupt"),
+    (KeyCap::UpDown, "volume"),
+    (KeyCap::Boot, "hold: hang up"),
+];
+const WAIT_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "hold: cancel")];
+const ENDED_HINTS: [(KeyCap, &str); 2] =
+    [(KeyCap::Select, "call again"), (KeyCap::Boot, "hold: back")];
+
+/// The XiaoZhi call screen.
+pub fn render_xiaozhi(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let call = &state.xiaozhi;
+    let preferences = state.display;
+    draw_call_status_bar(display, state)?;
+    draw_face(display, FACE_CENTRE, FACE_DIAMETER, BinaryColor::On)?;
+    if call.phase == CallPhase::Speaking {
+        draw_waves(display)?;
+    }
+    let name = preferences.large_style();
+    draw_centered(display, "XiaoZhi", NAME_BASELINE, name)?;
+    let hints: &[(KeyCap, &str)] = match &call.phase {
+        CallPhase::Idle | CallPhase::Connecting => {
+            draw_centered(
+                display,
+                "Connecting…",
+                CHIPS_TOP + 24,
+                preferences.heading_style(),
+            )?;
+            draw_info_box(display, preferences, connecting_text(call), MESSAGES_TOP)?;
+            &WAIT_HINTS
+        }
+        CallPhase::Linking { code } => {
+            draw_linking(display, preferences, code)?;
+            &WAIT_HINTS
+        }
+        CallPhase::Ended { error } => {
+            draw_centered(
+                display,
+                "Call ended",
+                CHIPS_TOP + 24,
+                preferences.heading_style(),
+            )?;
+            if let Some(error) = error {
+                draw_info_box(display, preferences, &screen_text(error), MESSAGES_TOP)?;
+            }
+            &ENDED_HINTS
+        }
+        CallPhase::Listening | CallPhase::Thinking | CallPhase::Speaking => {
+            draw_conversation(display, preferences, call)?;
+            &TALK_HINTS
+        }
+    };
+    draw_bottom_bar(display, preferences, hints)
+}
+
+fn connecting_text(call: &XiaozhiUi) -> &'static str {
+    if call.linked {
+        "Wi-Fi first, then the XiaoZhi server."
+    } else {
+        "Wi-Fi first, then the XiaoZhi server. The first call links this device to your \
+         account at xiaozhi.me."
+    }
+}
+
+/// `● On call · 02:14` during the conversation, the battery at the right.
+fn draw_call_status_bar(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let preferences = state.display;
+    let call = &state.xiaozhi;
+    let length = call
+        .duration_label(call.clock_ms)
+        .filter(|_| call.phase.is_talking());
+    if let Some(length) = length {
+        draw_status_bar(display, preferences, "")?;
+        Circle::with_center(Point::new(22, STATUS_BAR_HEIGHT / 2), 12)
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
+            .draw(display)?;
+        let style = preferences.text_style(UiTextRole::Heading, BinaryColor::Off);
+        let baseline = (STATUS_BAR_HEIGHT + style.cap_height()) / 2;
+        let title = format!("On call · {length}");
+        Text::new(&title, Point::new(36, baseline), style).draw(display)?;
+    } else {
+        draw_status_bar(display, preferences, "XiaoZhi")?;
+    }
+    if let Some(percent) = state.board.power.and_then(|power| power.battery_percent) {
+        let text = format!("{percent}%");
+        let right = draw_status_text(display, preferences, &text, STATUS_BAR_RIGHT)?;
+        let left = right - 4 - BATTERY_WIDTH;
+        let top = (STATUS_BAR_HEIGHT - BATTERY_HEIGHT) / 2;
+        draw_battery(display, Point::new(left, top), percent)?;
+    }
+    Ok(())
+}
+
+/// Places on the mockup's face drawing: a 120-unit grid whose ring, 108
+/// units wide, is drawn `diameter` pixels wide around `centre`.
+#[derive(Clone, Copy)]
+struct FaceGrid {
+    centre: Point,
+    diameter: i32,
+}
+
+impl FaceGrid {
+    fn length(self, units: f32) -> i32 {
+        (units * self.diameter as f32 / 108.0).round() as i32
+    }
+
+    fn point(self, (x, y): (f32, f32)) -> Point {
+        self.centre + Point::new(self.length(x - 60.0), self.length(y - 60.0))
+    }
+
+    /// A quadratic curve as round dots `stroke` wide, like the mockup's
+    /// round-capped paths.
+    fn curve(
+        self,
+        display: &mut OrientedFrameBuffer<'_>,
+        [start, control, end]: [(f32, f32); 3],
+        stroke: i32,
+        color: BinaryColor,
+    ) -> Result<(), Infallible> {
+        let dot = PrimitiveStyle::with_fill(color);
+        for step in 0..=32 {
+            let t = step as f32 / 32.0;
+            let u = 1.0 - t;
+            let x = u * u * start.0 + 2.0 * u * t * control.0 + t * t * end.0;
+            let y = u * u * start.1 + 2.0 * u * t * control.1 + t * t * end.1;
+            Circle::with_center(self.point((x, y)), stroke as u32)
+                .into_styled(dot)
+                .draw(display)?;
+        }
+        Ok(())
+    }
+}
+
+/// The mockup's face: a ring, two eyes and a smile.
+pub(crate) fn draw_face(
+    display: &mut OrientedFrameBuffer<'_>,
+    centre: Point,
+    diameter: i32,
+    color: BinaryColor,
+) -> Result<(), Infallible> {
+    let grid = FaceGrid { centre, diameter };
+    let stroke = grid.length(6.0).max(2);
+    Circle::with_center(centre, diameter as u32)
+        .into_styled(PrimitiveStyle::with_stroke(color, stroke as u32))
+        .draw(display)?;
+    for eye in [42.0, 78.0] {
+        Circle::with_center(grid.point((eye, 50.0)), grid.length(15.0) as u32)
+            .into_styled(PrimitiveStyle::with_fill(color))
+            .draw(display)?;
+    }
+    let smile = [(38.0, 73.0), (60.0, 95.0), (82.0, 73.0)];
+    grid.curve(display, smile, stroke, color)
+}
+
+/// Sound waves at both sides of the face while XiaoZhi speaks.
+fn draw_waves(display: &mut OrientedFrameBuffer<'_>) -> Result<(), Infallible> {
+    let grid = FaceGrid {
+        centre: FACE_CENTRE,
+        diameter: FACE_DIAMETER,
+    };
+    let stroke = grid.length(5.0);
+    for wave in WAVES {
+        grid.curve(display, wave, stroke, BinaryColor::On)?;
+        let mirrored = wave.map(|(x, y)| (120.0 - x, y));
+        grid.curve(display, mirrored, stroke, BinaryColor::On)?;
+    }
+    Ok(())
+}
+
+/// The code to type at xiaozhi.me, in large digits.
+fn draw_linking(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    code: &str,
+) -> Result<(), Infallible> {
+    draw_centered(
+        display,
+        "Link this device",
+        CHIPS_TOP + 24,
+        preferences.heading_style(),
+    )?;
+    draw_info_box(
+        display,
+        preferences,
+        "On xiaozhi.me, sign in, choose Add device and type this code.",
+        MESSAGES_TOP,
+    )?;
+    let digits = screen_text(code);
+    let baseline = MESSAGES_TOP + 110 + Numerals::Temperature.digit_height();
+    draw_numerals(
+        display,
+        &digits,
+        Numerals::Temperature,
+        (LEFT, RIGHT),
+        baseline,
+        BinaryColor::On,
+    )?;
+    draw_centered(
+        display,
+        "Waiting for the code…",
+        baseline + 60,
+        preferences.body_style(),
+    )
+}
+
+/// The turn chips, the question and the reply, the tool and the volume.
+fn draw_conversation(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    call: &XiaozhiUi,
+) -> Result<(), Infallible> {
+    draw_chips(display, preferences, call)?;
+    let mut top = MESSAGES_TOP;
+    let question = if call.heard.is_empty() && call.phase == CallPhase::Listening {
+        if call.muted {
+            "The microphone is off. Short BOOT turns it on."
+        } else {
+            "Listening…"
+        }
+    } else {
+        call.heard.as_str()
+    };
+    if !question.is_empty() {
+        top = draw_message(display, preferences, "YOU", question, top, false)? + MESSAGE_GAP;
+    }
+    if !call.said.is_empty() {
+        top = draw_message(display, preferences, "XIAOZHI", &call.said, top, true)? + MESSAGE_GAP;
+    }
+    if let Some(tool) = call.tool.as_deref() {
+        draw_tool(display, preferences, tool, top)?;
+    }
+    draw_volume(display, preferences, call.volume)
+}
+
+/// LISTEN ▸ THINK ▸ SPEAK, the current turn filled.
+fn draw_chips(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    call: &XiaozhiUi,
+) -> Result<(), Infallible> {
+    let listen = if call.muted { "MIC OFF" } else { "LISTEN" };
+    let chips = [
+        (listen, CallPhase::Listening),
+        ("THINK", CallPhase::Thinking),
+        ("SPEAK", CallPhase::Speaking),
+    ];
+    let label = preferences.detail_style();
+    let widths: Vec<i32> = chips
+        .iter()
+        .map(|(text, _)| label.text_width(text) + 24)
+        .collect();
+    // Between two chips: 8 px, a 6 px triangle, 8 px.
+    let total = widths.iter().sum::<i32>() + 2 * 22;
+    let mut left = (480 - total) / 2;
+    let baseline = CHIPS_TOP + (CHIP_HEIGHT + label.cap_height()) / 2;
+    let middle = CHIPS_TOP + CHIP_HEIGHT / 2;
+    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
+    for (index, ((text, phase), &width)) in chips.iter().zip(&widths).enumerate() {
+        let on = call.phase == *phase;
+        let (style, color) = if on {
+            (ink, BinaryColor::Off)
+        } else {
+            (
+                PrimitiveStyle::with_stroke(BinaryColor::On, 2),
+                BinaryColor::On,
+            )
+        };
+        Rectangle::new(
+            Point::new(left, CHIPS_TOP),
+            Size::new(width as u32, CHIP_HEIGHT as u32),
+        )
+        .into_styled(style)
+        .draw(display)?;
+        let text_style = label.with_color(color);
+        Text::new(text, Point::new(left + 12, baseline), text_style).draw(display)?;
+        left += width;
+        if index + 1 < chips.len() {
+            Triangle::new(
+                Point::new(left + 8, middle - 4),
+                Point::new(left + 8, middle + 4),
+                Point::new(left + 14, middle),
+            )
+            .into_styled(ink)
+            .draw(display)?;
+            left += 22;
+        }
+    }
+    Ok(())
+}
+
+/// A labelled message, filled black for XiaoZhi. Text that does not fit
+/// keeps the start of a question and the end of a reply. Returns its bottom.
+fn draw_message(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    label: &str,
+    text: &str,
+    top: i32,
+    reply: bool,
+) -> Result<i32, Infallible> {
+    let (ink, style) = if reply {
+        (BinaryColor::Off, PrimitiveStyle::with_fill(BinaryColor::On))
+    } else {
+        (
+            BinaryColor::On,
+            PrimitiveStyle::with_stroke(BinaryColor::On, 2),
+        )
+    };
+    let label_style = preferences.text_style(UiTextRole::Detail, ink);
+    let body = preferences.text_style(UiTextRole::Heading, ink);
+    let label_height = i32::from(label_style.line_height());
+    let line_height = i32::from(body.line_height()) + 2;
+    let room = usize::try_from((MESSAGES_BOTTOM - top - 27 - label_height) / line_height)
+        .unwrap_or(0)
+        .max(1);
+    let limit = if reply {
+        room
+    } else {
+        room.min(QUESTION_LINES)
+    };
+    let mut lines = body.wrap(&screen_text(text), RIGHT - LEFT - 32);
+    if lines.len() > limit {
+        if reply {
+            lines.drain(..lines.len() - limit);
+            lines[0].insert_str(0, "… ");
+        } else {
+            lines.truncate(limit);
+            if let Some(last) = lines.last_mut() {
+                last.push_str(" …");
+            }
+        }
+    }
+    // Border and padding as the mockup's: 12 px above and below, 16 at the
+    // sides, 3 px under the label.
+    let height = 27 + label_height + lines.len() as i32 * line_height;
+    Rectangle::new(
+        Point::new(LEFT, top),
+        Size::new((RIGHT - LEFT) as u32, height as u32),
+    )
+    .into_styled(style)
+    .draw(display)?;
+    let label_baseline = top + 12 + label_style.cap_height();
+    Text::new(label, Point::new(LEFT + 16, label_baseline), label_style).draw(display)?;
+    let mut baseline = top + 15 + label_height + (line_height + body.cap_height()) / 2;
+    for line in &lines {
+        Text::new(line, Point::new(LEFT + 16, baseline), body).draw(display)?;
+        baseline += line_height;
+    }
+    Ok(top + height)
+}
+
+/// The device tool XiaoZhi used, in a dashed box under the messages.
+fn draw_tool(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    tool: &str,
+    top: i32,
+) -> Result<(), Infallible> {
+    let style = preferences.detail_style();
+    let height = i32::from(style.line_height()) + 16;
+    let size = Size::new((RIGHT - LEFT) as u32, height as u32);
+    draw_dashed_box(display, Point::new(LEFT, top), size)?;
+    let mut text = format!("Device tool: {}", screen_text(tool));
+    if tool.starts_with("bible.") {
+        text.push_str(" from your SD");
+    }
+    let line = style.fit(&text, RIGHT - LEFT - 24);
+    let baseline = top + (height + style.cap_height()) / 2;
+    Text::new(&line, Point::new(LEFT + 12, baseline), style).draw(display)?;
+    Ok(())
+}
+
+/// A 2 px dashed outline: 6 px dashes with 4 px gaps.
+fn draw_dashed_box(
+    display: &mut OrientedFrameBuffer<'_>,
+    top_left: Point,
+    size: Size,
+) -> Result<(), Infallible> {
+    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
+    let (width, height) = (size.width as i32, size.height as i32);
+    for x in (0..width).step_by(10) {
+        let dash = Size::new((width - x).min(6) as u32, 2);
+        for y in [0, height - 2] {
+            Rectangle::new(top_left + Point::new(x, y), dash)
+                .into_styled(ink)
+                .draw(display)?;
+        }
+    }
+    for y in (0..height).step_by(10) {
+        let dash = Size::new(2, (height - y).min(6) as u32);
+        for x in [0, width - 2] {
+            Rectangle::new(top_left + Point::new(x, y), dash)
+                .into_styled(ink)
+                .draw(display)?;
+        }
+    }
+    Ok(())
+}
+
+/// `Volume` and ten segments, filled up to the level.
+fn draw_volume(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: DisplayPreferences,
+    volume: u8,
+) -> Result<(), Infallible> {
+    let label = preferences.body_style();
+    let end = Text::new("Volume", Point::new(LEFT, VOLUME_BASELINE), label).draw(display)?;
+    let filled = i32::from(volume.min(100) + 5) / 10;
+    let top = VOLUME_BASELINE - 14;
+    for segment in 0..10 {
+        let style = if segment < filled {
+            PrimitiveStyle::with_fill(BinaryColor::On)
+        } else {
+            PrimitiveStyle::with_stroke(BinaryColor::On, 2)
+        };
+        let left = end.x + 10 + segment * 18;
+        Rectangle::new(Point::new(left, top), Size::new(14, 16))
+            .into_styled(style)
+            .draw(display)?;
+    }
+    Ok(())
+}
+
+fn draw_centered(
+    display: &mut OrientedFrameBuffer<'_>,
+    text: &str,
+    baseline: i32,
+    style: UiTextStyle,
+) -> Result<(), Infallible> {
+    let width = style.text_width(text);
+    Text::new(text, Point::new((480 - width) / 2, baseline), style).draw(display)?;
+    Ok(())
+}
+
+/// The text without the characters the fonts lack, such as Chinese or
+/// emoji, which would otherwise draw as `?`.
+#[must_use]
+pub fn screen_text(text: &str) -> String {
+    text.chars()
+        .filter(|character| character.is_whitespace() || glyph_index(*character).is_some())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::screen_text;
+    use crate::{
+        app::{render_current_screen, router::ScreenRoute, AppState},
+        framebuffer::FrameBuffer,
+        xiaozhi::call::{CallEvent, CallPhase},
+    };
+
+    #[test]
+    fn screen_text_drops_what_the_fonts_cannot_draw() {
+        assert_eq!(screen_text("Hola 你好 «Salmo» 😀"), "Hola  «Salmo» ");
+    }
+
+    #[test]
+    fn every_phase_renders() {
+        let phases = [
+            CallPhase::Idle,
+            CallPhase::Connecting,
+            CallPhase::Linking {
+                code: "482913".into(),
+            },
+            CallPhase::Listening,
+            CallPhase::Thinking,
+            CallPhase::Speaking,
+            CallPhase::Ended {
+                error: Some("Could not reach the XiaoZhi server.".into()),
+            },
+        ];
+        for phase in phases {
+            let mut state = AppState::default();
+            state.router.navigate_to(ScreenRoute::XiaoZhi);
+            state.xiaozhi.apply(CallEvent::Phase(phase), 0);
+            state
+                .xiaozhi
+                .apply(CallEvent::Heard("A question".repeat(30)), 1_000);
+            state
+                .xiaozhi
+                .apply(CallEvent::Said("A long reply.".repeat(90)), 2_000);
+            state
+                .xiaozhi
+                .apply(CallEvent::Tool("bible.read(PSA 23)".into()), 3_000);
+            let mut frame = FrameBuffer::new_white();
+            render_current_screen(&mut frame, &state).unwrap();
+        }
+    }
+}

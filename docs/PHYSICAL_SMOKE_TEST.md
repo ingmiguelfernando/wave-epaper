@@ -21,9 +21,9 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.11.3), not an upstream v1.0.0 marker.
+	expected release version (currently v0.12.0), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
-	XiaoZhi remains SOON. Reading Stats opens its screen.
+	Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
 	picker first; short BOOT moves to the next section, ● opens a book's
 	chapters, short BOOT jumps ten chapters and hold BOOT returns to the
@@ -348,13 +348,29 @@ light sleep. Restore the owner's original preferences afterward.
         reads `Ready`; without it, `Not set up`. Choose Language: the list opens
         on the value in use, choosing another saves it, and it is still there
         after a reboot.
-- [ ] Home › AI hub: XiaoZhi card with SOON, Voice Notes card, `RECENT
-	NOTES` with the three newest (newest first, `Oct 2 · 12:04 · 18 min`
-	stamps), the SD-card info box and the `move / open / BOOT new note` bar.
-	Select opens the placeholder, the list or the chosen note's details;
-	short BOOT starts a recording directly (the recording screen counts up
-	without another press). With no notes the hub still renders, and the
-	status bar says `Online` or `Offline`.
+- [ ] Home › AI hub: XiaoZhi card with `NOT LINKED` (or `LINKED`), Voice
+	Notes card, `RECENT NOTES` with the three newest (newest first, `Oct 2 ·
+	12:04 · 18 min` stamps), the SD-card info box and the `move / open / BOOT
+	new note` bar. Select opens a XiaoZhi call, the list or the chosen note's
+	details; short BOOT starts a recording directly (the recording screen
+	counts up without another press). With no notes the hub still renders,
+	and the status bar says `Online` or `Offline`.
+- [ ] XiaoZhi, first call: `Connecting…`, then `Link this device` with a
+	six-digit code. Add the device at xiaozhi.me with the code; the call goes
+	on without a key press, and after hanging up the hub card says `LINKED`
+	(also after a reboot). Hold BOOT on the code screen cancels at once.
+- [ ] XiaoZhi call: ask a question; the chips go LISTEN › THINK › SPEAK, the
+	question and the reply show as text, the reply is heard clearly and the
+	call listens again by itself. ● during a reply stops it; ▲▼ change the
+	volume (the bar and the sound); short BOOT shows `MIC OFF` and XiaoZhi
+	hears nothing until the next short BOOT. Ask "read me Psalm 23" with a
+	Bible on the card: the reply reads it and `Device tool:
+	bible.read(PSA 23) from your SD` shows. Hold BOOT hangs up; the Audio
+	screen works afterwards (test chime) and Wi-Fi switches off after the
+	burst. The status bar shows `On call · mm:ss` and the battery.
+- [ ] XiaoZhi without Wi-Fi set up says `Wi-Fi is not set up`; with the
+	router off it says `Wi-Fi did not connect`. A five-minute call does not
+	sleep the panel or the device, and the serial log shows no task watchdog.
 - [ ] AI › Voice Notes: record, pause/resume, save, playback, friendly-title
 	edit/cancel, delete confirmation and LAN export; WAV survives reboot.
 - [ ] AI result: a note with a `VOICE###.AI` record shows its state label on

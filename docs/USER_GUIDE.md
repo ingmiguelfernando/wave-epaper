@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.11.3: what is implemented, not the future
+This guide describes firmware v0.12.0: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -42,12 +42,12 @@ highlighted one.
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |
-| AI | Hub: XiaoZhi (SOON), Voice Notes and its three newest notes. Voice Notes shows its transcription and summary providers (`GROQ` over `OPENROUTER`) once both are set in `AI.TXT` |
+| AI | Hub: XiaoZhi voice chat (`LINKED` once linked to an account), Voice Notes and its three newest notes. Voice Notes shows its transcription and summary providers (`GROQ` over `OPENROUTER`) once both are set in `AI.TXT` |
 | Tools | File Browser, Dictionary, Unit Converter, Calendar |
 | Settings | One page of groups: Display, Sleep screen, Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. AI shows `Ready` once `/RUSTMIX/AI.TXT` sets both a transcription and a summary provider |
 
 Hold BOOT to return from a category or placeholder. On Home, Back does nothing.
-XiaoZhi voice chat and OTA updates are not implemented yet.
+OTA updates are not implemented yet.
 
 ## Photos
 
@@ -372,12 +372,40 @@ best time.
 ## AI
 
 Home › AI opens the hub: the status bar shows the network state, a XiaoZhi
-card (`Voice chat · xiaozhi.me`, SOON), a Voice Notes card (`Record ›
-transcript › summary`), the three newest notes (title, then `Oct 2 · 12:04 ·
-18 min`) and a note that recordings stay on the SD card. ▲▼ moves through
-the cards and notes, ● opens XiaoZhi, Voice Notes or the note's details,
-and a short BOOT starts a new recording from anywhere on the hub.
-XiaoZhi voice chat is not implemented yet.
+card (`Voice chat · xiaozhi.me`, `LINKED` or `NOT LINKED`), a Voice Notes
+card (`Record › transcript › summary`), the three newest notes (title, then
+`Oct 2 · 12:04 · 18 min`) and a note that recordings stay on the SD card.
+▲▼ moves through the cards and notes, ● opens XiaoZhi, Voice Notes or the
+note's details, and a short BOOT starts a new recording from anywhere on
+the hub.
+
+### XiaoZhi
+
+XiaoZhi is a voice assistant from [xiaozhi.me](https://xiaozhi.me). Opening
+it from the hub calls it: the device switches Wi-Fi on, checks in with the
+XiaoZhi server and opens the conversation. The call needs Wi-Fi set up in
+`/RUSTMIX/WIFI.TXT`.
+
+- **Linking.** The first call shows a six-digit code. Sign in at
+	xiaozhi.me, choose Add device and type the code; the call goes on by itself
+	once the device is linked, and the hub card then says `LINKED`. The
+	device remembers the link; there is nothing to set up on the card. In
+	xiaozhi.me you choose the voice, the language model and the language
+	XiaoZhi speaks.
+- **Talking.** Speak after `LISTEN` lights up; XiaoZhi hears the end of
+	the question by itself (`THINK`), then answers (`SPEAK`) with the
+	microphone off, and listens again. The screen shows your question and the
+	reply as text; characters the fonts lack, such as Chinese, are left out.
+- **Keys.** ● interrupts XiaoZhi while it speaks; ▲▼ change the speaker
+	volume; a short BOOT turns the microphone off or on (`MIC OFF`); hold BOOT
+	hangs up. Leaving the screen any other way, such as an alarm, hangs up
+	too. After the call ends, ● calls again.
+- **Device tools.** XiaoZhi can read the device status, change the volume
+	and read a Bible passage from the SD card in the Bible reader's
+	translation ("read me Psalm 23"). The tool it used shows under the
+	reply.
+- During a call the screen stays on, the device does not sleep and voice
+	notes wait. A call with nothing from the server for two minutes ends.
 
 ### Voice Notes
 

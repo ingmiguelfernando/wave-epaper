@@ -195,7 +195,11 @@ fn draw_xiaozhi_card(
     )
     .draw(display)?;
     let badge_style = card_text(state.display, selected, UiTextRole::Body);
-    let badge = "SOON";
+    let badge = if state.xiaozhi.linked {
+        "LINKED"
+    } else {
+        "NOT LINKED"
+    };
     let badge_left = CARD_RIGHT - 16 - badge_style.text_width(badge);
     Text::new(badge, Point::new(badge_left, CARD_TOP + 40), badge_style).draw(display)?;
     Ok(())
@@ -325,41 +329,18 @@ fn draw_card_frame(
     Ok(())
 }
 
-/// The mockup's face: a frame, two eyes and a mouth bar.
+/// The mockup's face, the call screen's drawn small.
 fn draw_face_icon(
     display: &mut OrientedFrameBuffer<'_>,
     top_left: Point,
     selected: bool,
 ) -> Result<(), Infallible> {
-    let ink = if selected {
-        PrimitiveStyle::with_stroke(BinaryColor::Off, 3)
+    let color = if selected {
+        BinaryColor::Off
     } else {
-        PrimitiveStyle::with_stroke(BinaryColor::On, 3)
+        BinaryColor::On
     };
-    let fill = if selected {
-        PrimitiveStyle::with_fill(BinaryColor::Off)
-    } else {
-        PrimitiveStyle::with_fill(BinaryColor::On)
-    };
-    const SIZE: u32 = 56;
-    Rectangle::new(top_left, Size::new(SIZE, SIZE))
-        .into_styled(ink)
-        .draw(display)?;
-    for eye in [12_i32, 36_i32] {
-        Rectangle::new(
-            Point::new(top_left.x + eye, top_left.y + 16),
-            Size::new(8, 8),
-        )
-        .into_styled(fill)
-        .draw(display)?;
-    }
-    Rectangle::new(
-        Point::new(top_left.x + 16, top_left.y + 38),
-        Size::new(24, 4),
-    )
-    .into_styled(fill)
-    .draw(display)?;
-    Ok(())
+    super::xiaozhi::draw_face(display, top_left + Point::new(28, 28), 56, color)
 }
 
 /// The mockup's microphone: a capsule, a stem and a base.

@@ -264,7 +264,7 @@ impl ScreenRoute {
 
     #[must_use]
     pub const fn is_placeholder(self) -> bool {
-        matches!(self, Self::GamesTbd | Self::XiaoZhi)
+        matches!(self, Self::GamesTbd)
     }
 
     #[must_use]

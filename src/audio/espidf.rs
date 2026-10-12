@@ -3,14 +3,20 @@
 use anyhow::{anyhow, Result};
 use embedded_hal::{delay::DelayNs, i2c::I2c};
 use es8311::{ClockConfig, Resolution};
-use esp_idf_svc::hal::{
-    delay::{FreeRtos, BLOCK, NON_BLOCK},
-    gpio::{Output, PinDriver},
-    i2s::{I2sBiDir, I2sDriver},
+use esp_idf_svc::{
+    hal::{
+        delay::{FreeRtos, TickType, BLOCK, NON_BLOCK},
+        gpio::{Output, PinDriver},
+        i2s::{I2sBiDir, I2sDriver},
+    },
+    sys::TickType_t,
 };
 
-use crate::voice_notes::{
-    apply_pcm16_gain_in_place, expand_pcm16_mono_to_stereo, VoiceCaptureMetrics, VoiceMicGain,
+use crate::{
+    voice_notes::{
+        apply_pcm16_gain_in_place, expand_pcm16_mono_to_stereo, VoiceCaptureMetrics, VoiceMicGain,
+    },
+    xiaozhi::espidf::CallAudio,
 };
 
 use super::{
@@ -250,10 +256,21 @@ where
         mono: &mut [u8],
         gain: VoiceMicGain,
     ) -> Result<VoiceCaptureMetrics> {
+        self.read_pcm_mono(stereo, mono, gain, NON_BLOCK)
+    }
+
+    /// Read up to `stereo` bytes within `timeout` ticks into mono PCM16.
+    fn read_pcm_mono(
+        &mut self,
+        stereo: &mut [u8],
+        mono: &mut [u8],
+        gain: VoiceMicGain,
+        timeout: TickType_t,
+    ) -> Result<VoiceCaptureMetrics> {
         if stereo.len() < mono.len().saturating_mul(2) || mono.len() % 2 != 0 {
             return Err(anyhow!("invalid voice PCM buffers"));
         }
-        let bytes = match self.tx.read(stereo, NON_BLOCK) {
+        let bytes = match self.tx.read(stereo, timeout) {
             Ok(bytes) => bytes,
             Err(error) if error.code() == esp_idf_svc::sys::ESP_ERR_TIMEOUT => {
                 return Ok(VoiceCaptureMetrics::default());
@@ -386,6 +403,84 @@ where
     fn rest_codec(&mut self) {
         if self.codec_awake && self.codec.suspend(&mut self.bus).is_ok() {
             self.codec_awake = false;
+        }
+    }
+}
+
+impl<I2C> CallAudio for AudioRuntime<'static, I2C>
+where
+    I2C: I2c + Send + 'static,
+    I2C::Error: core::fmt::Debug,
+{
+    fn start_call(&mut self) -> Result<()> {
+        self.chime.stop();
+        self.wake_codec()?;
+        self.set_speaker(false)?;
+        self.snapshot.playback_state = AudioPlaybackState::OnCall;
+        self.snapshot.error = None;
+        Ok(())
+    }
+
+    fn set_speaker(&mut self, on: bool) -> Result<()> {
+        if on {
+            self.codec
+                .mute(&mut self.bus, false)
+                .map_err(|error| anyhow!("failed to unmute ES8311 for a call: {error:?}"))?;
+            self.amplifier
+                .set_high()
+                .map_err(|error| anyhow!("failed to enable audio amplifier: {error:?}"))?;
+        } else {
+            self.amplifier
+                .set_low()
+                .map_err(|error| anyhow!("failed to disable audio amplifier: {error:?}"))?;
+            self.codec
+                .mute(&mut self.bus, true)
+                .map_err(|error| anyhow!("failed to mute ES8311 for a call: {error:?}"))?;
+        }
+        self.snapshot.amplifier_enabled = on;
+        self.snapshot.muted = !on;
+        Ok(())
+    }
+
+    fn read_mic(
+        &mut self,
+        stereo: &mut [u8],
+        mono: &mut [u8],
+        gain: VoiceMicGain,
+        timeout_ms: u32,
+    ) -> Result<usize> {
+        let timeout = TickType::new_millis(u64::from(timeout_ms)).ticks();
+        Ok(self.read_pcm_mono(stereo, mono, gain, timeout)?.bytes)
+    }
+
+    fn flush_mic(&mut self, stereo: &mut [u8]) -> Result<()> {
+        // A few reads empty the DMA buffers; new audio keeps coming meanwhile.
+        for _ in 0..8 {
+            if self.discard_voice_pcm(stereo)? == 0 {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn play(&mut self, mono: &[u8], stereo: &mut [u8]) -> Result<()> {
+        let bytes = expand_pcm16_mono_to_stereo(mono, stereo)?;
+        self.tx
+            .write_all(&stereo[..bytes], BLOCK)
+            .map_err(|error| anyhow!("I2S call TX write failed: {error:?}"))
+    }
+
+    fn call_volume(&self) -> u8 {
+        self.snapshot.volume_percent
+    }
+
+    fn set_call_volume(&mut self, percent: u8) -> Result<()> {
+        self.set_volume(percent)
+    }
+
+    fn end_call(&mut self) {
+        if let Err(error) = self.stop_playback() {
+            self.record_failure(format!("{error:#}"));
         }
     }
 }

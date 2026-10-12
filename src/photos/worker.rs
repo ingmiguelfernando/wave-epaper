@@ -128,11 +128,24 @@ pub(crate) fn spawn_on_second_core<F>(
 where
     F: FnOnce() + Send + 'static,
 {
+    spawn_on_second_core_at(builder, 1, task)
+}
+
+/// The same at a chosen FreeRTOS priority.
+#[cfg(target_os = "espidf")]
+pub(crate) fn spawn_on_second_core_at<F>(
+    builder: std::thread::Builder,
+    priority: u8,
+    task: F,
+) -> io::Result<JoinHandle<()>>
+where
+    F: FnOnce() + Send + 'static,
+{
     use esp_idf_svc::hal::{cpu::Core, task::thread::ThreadSpawnConfiguration};
 
     let previous = ThreadSpawnConfiguration::get().unwrap_or_default();
     let pinned = ThreadSpawnConfiguration {
-        priority: 1,
+        priority,
         pin_to_core: Some(Core::Core1),
         ..Default::default()
     };

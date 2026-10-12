@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.11.3. This is not a list of promised mockup features. See
+Firmware v0.12.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -64,6 +64,21 @@ estimates until the battery log confirms them on the device.
   rebuilds them). A chip whose block 5 already holds another key cannot
   open NVS: Wi-Fi then runs without saved calibration and the portal says
   key storage is unavailable.
+
+## XiaoZhi
+
+- The call is half duplex, as xiaozhi-esp32 runs without echo
+  cancellation: the microphone is off while XiaoZhi speaks, so speaking over
+  it does nothing; ● interrupts.
+- The screen shows Latin-1 text only. A conversation in Chinese or with
+  emoji keeps its audio, but those characters are left out of the text.
+- Only the official server (`api.tenclass.net`, linked at xiaozhi.me) is
+  supported; a self-hosted server cannot be set yet.
+- The server sends 24 kHz speech; the device decodes it at its 16 kHz
+  speaker rate.
+- Speech still in the speaker's buffer when a reply ends (under 0.1 s) is
+  cut when the microphone opens again.
+- Not yet tested on the device; see the physical smoke test.
 
 ## EPUB scope
 

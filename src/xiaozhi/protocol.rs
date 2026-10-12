@@ -43,8 +43,9 @@ pub enum DeviceMessage {
         mode: Option<ListenMode>,
         text: Option<String>,
     },
-    /// Abort the current TTS playback or the voice channel.
-    Abort { reason: String },
+    /// Abort the current TTS playback or the voice channel; upstream sends a
+    /// reason only for a wake word.
+    Abort { reason: Option<String> },
     /// IoT control: the JSON-RPC 2.0 payload passes through verbatim.
     Mcp { payload: String },
 }
@@ -94,11 +95,17 @@ impl DeviceMessage {
                 out.push('}');
                 out
             }
-            Self::Abort { reason } => format!(
-                "{{\"session_id\":\"{}\",\"type\":\"abort\",\"reason\":\"{}\"}}",
-                json_lite::escape(session_id),
-                json_lite::escape(reason)
-            ),
+            Self::Abort { reason } => {
+                let mut out = format!(
+                    "{{\"session_id\":\"{}\",\"type\":\"abort\"",
+                    json_lite::escape(session_id)
+                );
+                if let Some(reason) = reason {
+                    out.push_str(&format!(",\"reason\":\"{}\"", json_lite::escape(reason)));
+                }
+                out.push('}');
+                out
+            }
             Self::Mcp { payload } => format!(
                 "{{\"session_id\":\"{}\",\"type\":\"mcp\",\"payload\":{}}}",
                 json_lite::escape(session_id),
@@ -260,7 +267,7 @@ fn mcp_payload_json(payload: &JsonValue) -> String {
     out
 }
 
-fn json_text(value: &JsonValue) -> String {
+pub(crate) fn json_text(value: &JsonValue) -> String {
     match value {
         JsonValue::Null => "null".into(),
         JsonValue::Bool(true) => "true".into(),
@@ -468,12 +475,17 @@ mod tests {
     #[test]
     fn abort_and_mcp_pass_payloads_through() {
         let abort = DeviceMessage::Abort {
-            reason: "wake_word_detected".into(),
+            reason: Some("wake_word_detected".into()),
         }
         .to_json(SESSION);
         assert_eq!(
             abort,
             "{\"session_id\":\"session-42\",\"type\":\"abort\",\"reason\":\"wake_word_detected\"}"
+        );
+        let interrupt = DeviceMessage::Abort { reason: None }.to_json(SESSION);
+        assert_eq!(
+            interrupt,
+            "{\"session_id\":\"session-42\",\"type\":\"abort\"}"
         );
         let payload = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"true\"}],\"isError\":false}}";
         let mcp = DeviceMessage::Mcp {

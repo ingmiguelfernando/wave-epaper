@@ -39,8 +39,8 @@ const CARD_HEIGHT: i32 = 98;
 const ROWS_TOP: i32 = CARD_TOP + CARD_HEIGHT + 10;
 const ROW_HEIGHT: i32 = 54;
 const ROW_PITCH: i32 = ROW_HEIGHT + 5;
-const BATTERY_WIDTH: i32 = 26;
-const BATTERY_HEIGHT: i32 = 14;
+pub(crate) const BATTERY_WIDTH: i32 = 26;
+pub(crate) const BATTERY_HEIGHT: i32 = 14;
 
 const HOME_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "move"),
@@ -88,7 +88,7 @@ fn draw_home_status_bar(
 }
 
 /// Battery outline with a fill proportional to `percent`, in paper color.
-fn draw_battery(
+pub(crate) fn draw_battery(
     display: &mut OrientedFrameBuffer<'_>,
     top_left: Point,
     percent: u8,

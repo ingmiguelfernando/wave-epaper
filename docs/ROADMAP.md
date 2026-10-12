@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-12, firmware v0.11.3.
+Last updated: 2026-10-12, firmware v0.12.0.
 
 ## Status
 
@@ -25,7 +25,7 @@ Last updated: 2026-10-12, firmware v0.11.3.
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3 |
 | Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3 |
-| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0; XiaoZhi open |
+| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0; Opus voice notes open |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
@@ -41,6 +41,7 @@ Last updated: 2026-10-12, firmware v0.11.3.
 | Delegated tasks D39 to D43: EPUB chapter titles and minutes left, Library authors and finished books, Settings › Reading, add and delete alarms, Bible menu without card reads | 0.10.4 | PR #7 | Done, waiting for device test |
 | Delegated tasks D44 to D48: reading place saved in batches, Library straight from Home, Reader screens in the new style, Settings › System › Memory, Go to a percent | 0.11.2 | PR #8 | Done, waiting for device test |
 | Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, tested on the device; the mockup's look and a scrolling Games hub are Round 11 (D51 to D53) |
+| XiaoZhi voice chat: linking, WebSocket call with Opus, device tools (status, volume, Bible), the mockup's call screen | 0.12.0 | 4609d8c | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -322,8 +323,8 @@ Done in v0.9.7 (D27); kept as the reference.
   thread on core 1; Wi-Fi stays on for it; recording, playback, the portal
   and sleep stop it and queue it again; network errors back off from 2
   minutes to an hour.
-  - Left: Opus at 24 kbps would make uploads about ten times smaller. It
-    needs an encoder (an ESP-IDF Opus component), which XiaoZhi needs too.
+  - Left: Opus at 24 kbps would make uploads about ten times smaller. The
+    Opus encoder XiaoZhi brought in 0.12.0 (`esp_audio_codec`) can do it.
 - **Settings › AI.** Two providers, each with a base URL, model and key, plus
   language, summary style and "process when online". Done in 0.10.1; the
   keys row in 0.11.0.
@@ -331,10 +332,14 @@ Done in v0.9.7 (D27); kept as the reference.
   partition, encrypted with the HMAC scheme (key in eFuse block 5, burned
   on the first boot of 0.11.0). Never written to the SD card, never shown
   again. One key serves both providers on the same host.
-- **XiaoZhi** voice chat (WebSocket and Opus streaming, device tools such as
-  reading a Bible verse) is the largest item. xiaozhi-esp32 now needs ESP-IDF
-  6.0.1 or later (Wave uses 5.5.1), so port its documented WebSocket protocol
-  to Rust and use Opus through an ESP-IDF component.
+- **XiaoZhi** voice chat. Done in 0.12.0: xiaozhi-esp32 needs ESP-IDF 6.0.1
+  or later (Wave uses 5.5.1), so its protocol is ported to Rust
+  (`src/xiaozhi/`, see [architecture](architecture.md#xiaozhi-call)): the
+  OTA check-in and linking with a code at xiaozhi.me, the WebSocket call in
+  auto mode with Opus both ways, and MCP device tools (status, volume, a
+  Bible passage from the SD card).
+  - Left: a server other than the official one; echo cancellation, so
+    one can speak over XiaoZhi; text in scripts the fonts lack.
 - **Delegated groundwork (v0.9.3).** `json_lite.rs` (D21), `ai_client.rs`
   (D22, OpenAI-compatible requests and responses) and `xiaozhi/protocol.rs`
   (D23, messages and binary frames) are libraries without network access;

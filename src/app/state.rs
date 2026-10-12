@@ -31,6 +31,7 @@ use crate::{
     weather::{WeatherFetchState, WeatherSnapshot},
     weather_config::{WeatherConfig, WeatherSetting},
     wifi_transfer::{WifiTransferSnapshot, WifiTransferState, WifiTransferUiRequest},
+    xiaozhi::call::{CallCommand, CallPhase, XiaozhiUi},
 };
 
 use super::{
@@ -213,6 +214,8 @@ pub struct AppState {
     pub voice_notes: VoiceNotesUiState,
     /// AI result screen: the open tab and the body scroll.
     pub voice_notes_result: crate::voice_note_result::ResultUiState,
+    /// The XiaoZhi call as its screen shows it.
+    pub xiaozhi: XiaozhiUi,
     /// Settings › Reading: the highlighted row and the open option list.
     pub reader_settings_selected: usize,
     pub reader_settings_picker: Option<usize>,
@@ -300,6 +303,7 @@ impl Default for AppState {
             wifi_transfer_request: None,
             voice_notes: VoiceNotesUiState::default(),
             voice_notes_result: crate::voice_note_result::ResultUiState::default(),
+            xiaozhi: XiaozhiUi::default(),
             reader_settings_selected: 0,
             reader_settings_picker: None,
             power_key_menu: PowerKeyMenuUiState::default(),
@@ -352,6 +356,8 @@ impl AppState {
             self.apply_games_hub(event);
         } else if route == ScreenRoute::Ai {
             self.apply_ai_hub(event);
+        } else if route == ScreenRoute::XiaoZhi {
+            self.apply_xiaozhi(event);
         } else if route.is_category() {
             self.apply_category(route, event);
         } else if route == ScreenRoute::SettingsReading {
@@ -567,7 +573,10 @@ impl AppState {
                 self.note_select_press();
                 let chosen = self.category_selection(ScreenRoute::Ai);
                 match chosen {
-                    0 => self.router.navigate_to(ScreenRoute::XiaoZhi),
+                    0 => {
+                        self.router.navigate_to(ScreenRoute::XiaoZhi);
+                        self.xiaozhi.request_call();
+                    }
                     1 => self.router.navigate_to(ScreenRoute::VoiceNotes),
                     note_index => {
                         // The hub lists newest first; the Voice Notes list
@@ -1775,6 +1784,33 @@ impl AppState {
         true
     }
 
+    /// BOOT short press during a XiaoZhi call turns the microphone off or on.
+    pub fn apply_xiaozhi_boot_short_press(&mut self) -> bool {
+        if self.router.current() != ScreenRoute::XiaoZhi || !self.xiaozhi.phase.is_talking() {
+            return false;
+        }
+        self.xiaozhi.muted = !self.xiaozhi.muted;
+        self.xiaozhi.command(CallCommand::ToggleMute);
+        true
+    }
+
+    /// The call screen: ● interrupts XiaoZhi or calls again after the end,
+    /// ▲▼ set the volume.
+    fn apply_xiaozhi(&mut self, event: ButtonEvent) {
+        match event {
+            ButtonEvent::Up => self.xiaozhi.step_volume(true),
+            ButtonEvent::Down => self.xiaozhi.step_volume(false),
+            ButtonEvent::Select => {
+                self.note_select_press();
+                match self.xiaozhi.phase {
+                    CallPhase::Speaking => self.xiaozhi.command(CallCommand::Interrupt),
+                    CallPhase::Idle | CallPhase::Ended { .. } => self.xiaozhi.request_call(),
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// Apply one Audio-overview event. Hardware requests are returned to
     /// main.rs so this product state remains independent of ESP-IDF handles.
     pub fn apply_audio_button(&mut self, event: ButtonEvent) -> Option<AudioUiRequest> {
@@ -1880,6 +1916,9 @@ impl AppState {
         }
         if self.router.current() == ScreenRoute::WifiTransfer {
             self.wifi_transfer_request = Some(WifiTransferUiRequest::Stop);
+        }
+        if self.router.current() == ScreenRoute::XiaoZhi {
+            self.xiaozhi.hang_up();
         }
         if self.router.current() == ScreenRoute::VoiceNoteRecording {
             self.voice_notes.request_cancel_recording();
@@ -2121,6 +2160,7 @@ mod tests {
         regional::TemperatureUnit,
         weather::WeatherFetchState,
         weather_config::{WeatherConfig, WeatherUnits, SAMPLE_CONFIG},
+        xiaozhi::call::{CallCommand, CallPhase},
     };
 
     fn open_from_home(route: ScreenRoute) -> AppState {
@@ -3255,12 +3295,17 @@ mod tests {
     }
 
     #[test]
-    fn ai_hub_opens_xiaozhi_placeholder_and_note_details_newest_first() {
+    fn ai_hub_opens_a_xiaozhi_call_and_note_details_newest_first() {
         let mut state = open_from_home(ScreenRoute::Ai);
-        // XiaoZhi is the first hub row.
+        // XiaoZhi is the first hub row; opening it asks for a call.
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::XiaoZhi);
+        assert_eq!(state.xiaozhi.phase, CallPhase::Connecting);
+        assert!(state.xiaozhi.take_start_request());
+        // Leaving the screen hangs up.
         state.back();
+        assert_eq!(state.xiaozhi.phase, CallPhase::Ended { error: None });
+        assert_eq!(state.xiaozhi.take_commands(), [CallCommand::HangUp]);
         // Two notes: hub order is newest first, list order is oldest first.
         state.voice_notes.notes = vec![
             crate::voice_notes::VoiceNoteEntry {
@@ -3293,6 +3338,39 @@ mod tests {
                 .map(|note| note.title.as_str()),
             Some("Newest")
         );
+    }
+
+    #[test]
+    fn the_call_screen_keys_reach_the_call() {
+        use crate::xiaozhi::call::CallEvent;
+        let mut state = open_from_home(ScreenRoute::Ai);
+        state.apply(ButtonEvent::Select);
+        assert!(state.xiaozhi.take_start_request());
+        state
+            .xiaozhi
+            .apply(CallEvent::Phase(CallPhase::Speaking), 0);
+        state.xiaozhi.apply(CallEvent::Volume(50), 0);
+        // ● interrupts, ▲ turns it up, short BOOT turns the microphone off.
+        state.apply(ButtonEvent::Select);
+        state.apply(ButtonEvent::Up);
+        assert!(state.apply_xiaozhi_boot_short_press());
+        assert!(state.xiaozhi.muted);
+        assert_eq!(state.xiaozhi.volume, 60);
+        assert_eq!(
+            state.xiaozhi.take_commands(),
+            [
+                CallCommand::Interrupt,
+                CallCommand::Volume(60),
+                CallCommand::ToggleMute
+            ]
+        );
+        // After the end, ● calls again.
+        state
+            .xiaozhi
+            .apply(CallEvent::Phase(CallPhase::Ended { error: None }), 0);
+        assert!(!state.apply_xiaozhi_boot_short_press());
+        state.apply(ButtonEvent::Select);
+        assert!(state.xiaozhi.take_start_request());
     }
 
     #[test]

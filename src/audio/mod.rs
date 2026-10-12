@@ -64,6 +64,8 @@ pub enum AudioPlaybackState {
     PlayingAlarm,
     PlayingVoiceNote,
     RecordingVoiceNote,
+    /// A XiaoZhi call holds the speaker and the microphone.
+    OnCall,
     Error,
 }
 
@@ -78,6 +80,7 @@ impl AudioPlaybackState {
             Self::PlayingAlarm => "ALARM CHIME",
             Self::PlayingVoiceNote => "VOICE NOTE",
             Self::RecordingVoiceNote => "VOICE RECORD",
+            Self::OnCall => "XIAOZHI CALL",
             Self::Error => "ERROR",
         }
     }
@@ -91,6 +94,7 @@ impl AudioPlaybackState {
                 | Self::PlayingAlarm
                 | Self::PlayingVoiceNote
                 | Self::RecordingVoiceNote
+                | Self::OnCall
         )
     }
 }
@@ -141,6 +145,7 @@ impl AudioSnapshot {
             AudioPlaybackState::PlayingAlarm => "RING",
             AudioPlaybackState::PlayingVoiceNote => "NOTE",
             AudioPlaybackState::RecordingVoiceNote => "REC",
+            AudioPlaybackState::OnCall => "CALL",
             AudioPlaybackState::Error => "ERROR",
         }
     }
@@ -151,6 +156,7 @@ impl AudioSnapshot {
             AudioPlaybackState::PlayingAlarm => "Audible alarm chime is active.",
             AudioPlaybackState::PlayingVoiceNote => "Saved voice-note playback owns the codec.",
             AudioPlaybackState::RecordingVoiceNote => "Voice-note recording owns the codec.",
+            AudioPlaybackState::OnCall => "A XiaoZhi call owns the codec.",
             AudioPlaybackState::Unavailable | AudioPlaybackState::Error => {
                 "Audio unavailable - visual alarm only."
             }
