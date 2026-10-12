@@ -26,7 +26,7 @@ use crate::{
 };
 
 use super::{
-    games::draw_info_box,
+    games::{draw_dashed_box, draw_info_box},
     home::{draw_battery, BATTERY_HEIGHT, BATTERY_WIDTH},
 };
 
@@ -428,33 +428,6 @@ fn draw_tool(
     let line = style.fit(&text, RIGHT - LEFT - 24);
     let baseline = top + (height + style.cap_height()) / 2;
     Text::new(&line, Point::new(LEFT + 12, baseline), style).draw(display)?;
-    Ok(())
-}
-
-/// A 2 px dashed outline: 6 px dashes with 4 px gaps.
-fn draw_dashed_box(
-    display: &mut OrientedFrameBuffer<'_>,
-    top_left: Point,
-    size: Size,
-) -> Result<(), Infallible> {
-    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
-    let (width, height) = (size.width as i32, size.height as i32);
-    for x in (0..width).step_by(10) {
-        let dash = Size::new((width - x).min(6) as u32, 2);
-        for y in [0, height - 2] {
-            Rectangle::new(top_left + Point::new(x, y), dash)
-                .into_styled(ink)
-                .draw(display)?;
-        }
-    }
-    for y in (0..height).step_by(10) {
-        let dash = Size::new(2, (height - y).min(6) as u32);
-        for x in [0, width - 2] {
-            Rectangle::new(top_left + Point::new(x, y), dash)
-                .into_styled(ink)
-                .draw(display)?;
-        }
-    }
     Ok(())
 }
 

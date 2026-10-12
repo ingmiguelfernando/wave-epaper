@@ -8,11 +8,12 @@
 use core::convert::Infallible;
 
 use embedded_graphics::{
+    geometry::Angle,
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
     primitives::{
-        Line, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StrokeAlignment,
-        Triangle,
+        Arc, CornerRadii, Line, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle,
+        StrokeAlignment, Triangle,
     },
 };
 
@@ -51,27 +52,43 @@ fn traffic_car(
     paper: BinaryColor,
 ) -> Result<(), Infallible> {
     wheels(display, origin, ink)?;
-    let body = RoundedRectangle::with_equal_corners(
-        Rectangle::new(origin + Point::new(2, 5), Size::new(68, 43)),
-        Size::new(10, 10),
-    );
-    body.into_styled(
-        PrimitiveStyleBuilder::new()
-            .fill_color(paper)
-            .stroke_color(ink)
-            .stroke_width(3)
-            .stroke_alignment(StrokeAlignment::Inside)
-            .build(),
-    )
-    .draw(display)?;
-    // The windshield curve and the door line.
-    Line::new(origin + Point::new(45, 15), origin + Point::new(45, 37))
-        .into_styled(PrimitiveStyle::with_stroke(ink, 3))
+    car_body(origin)
+        .into_styled(
+            PrimitiveStyleBuilder::new()
+                .fill_color(paper)
+                .stroke_color(ink)
+                .stroke_width(3)
+                .stroke_alignment(StrokeAlignment::Inside)
+                .build(),
+        )
         .draw(display)?;
+    // The windshield curve and the door line.
+    Arc::with_center(
+        origin + Point::new(22, 26),
+        47,
+        Angle::from_degrees(-29.0),
+        Angle::from_degrees(58.0),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(ink, 3))
+    .draw(display)?;
     Line::new(origin + Point::new(18, 16), origin + Point::new(18, 36))
         .into_styled(PrimitiveStyle::with_stroke(ink, 3))
         .draw(display)?;
     Ok(())
+}
+
+/// The body outline: the back corners rounded, the nose rounder.
+fn car_body(origin: Point) -> RoundedRectangle {
+    let (back, nose) = (Size::new(10, 10), Size::new(17, 21));
+    RoundedRectangle::new(
+        Rectangle::new(origin + Point::new(2, 5), Size::new(68, 43)),
+        CornerRadii {
+            top_left: back,
+            top_right: nose,
+            bottom_right: nose,
+            bottom_left: back,
+        },
+    )
 }
 
 /// The player's car: solid, with paper windows: `race-car`.
@@ -82,12 +99,9 @@ fn player_car(
     paper: BinaryColor,
 ) -> Result<(), Infallible> {
     wheels(display, origin, ink)?;
-    RoundedRectangle::with_equal_corners(
-        Rectangle::new(origin + Point::new(2, 5), Size::new(68, 43)),
-        Size::new(10, 10),
-    )
-    .into_styled(PrimitiveStyle::with_fill(ink))
-    .draw(display)?;
+    car_body(origin)
+        .into_styled(PrimitiveStyle::with_fill(ink))
+        .draw(display)?;
     windows(display, origin, paper)
 }
 
@@ -215,7 +229,7 @@ fn move_hint(
 ) -> Result<(), Infallible> {
     const DASH: f32 = 7.0;
     const GAP: f32 = 6.0;
-    let points = rounded_rect_points(2, 2, 68, 49, 12);
+    let points = rounded_rect_points(2, 2, 68, 49, (12, 12), (12, 12));
     let style = PrimitiveStyle::with_stroke(ink, 3);
     let mut walked = 0.0;
     for pair in 0..points.len() {
@@ -237,9 +251,7 @@ fn move_hint(
             };
             let to = (at + step).min(length);
             if phase < DASH {
-                let lerp = |t: f32| {
-                    origin + start + Point::new((dx * t / length) as i32, (dy * t / length) as i32)
-                };
+                let lerp = |t: f32| origin + start + Point::new((dx * t) as i32, (dy * t) as i32);
                 Line::new(lerp(at / length), lerp(to / length))
                     .into_styled(style)
                     .draw(display)?;
@@ -303,7 +315,7 @@ fn crash_car(
         )?;
     }
     // The body as a fan of triangles over its rounded outline.
-    let outline = rounded_rect_points(2, 5, 68, 43, 10);
+    let outline = rounded_rect_points(2, 5, 68, 43, (10, 10), (17, 21));
     let fill = PrimitiveStyle::with_fill(ink);
     let center = origin + Point::new(42, 35);
     for index in 0..outline.len() {
@@ -321,22 +333,31 @@ fn crash_car(
 }
 
 /// Points around a rounded rectangle's outline, clockwise from the top edge.
-fn rounded_rect_points(x: i32, y: i32, width: i32, height: i32, radius: i32) -> Vec<Point> {
+/// The left corners take the `back` radii, the right ones the `front` radii.
+fn rounded_rect_points(
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    back: (i32, i32),
+    front: (i32, i32),
+) -> Vec<Point> {
     let x1 = x + width - 1;
     let y1 = y + height - 1;
-    let radius = radius.min(width / 2).min(height / 2);
+    let fit = |(rx, ry): (i32, i32)| (rx.min(width / 2), ry.min(height / 2));
+    let (back, front) = (fit(back), fit(front));
     let mut points = Vec::new();
-    for (cx, cy, start) in [
-        (x1 - radius, y + radius, -90),
-        (x1 - radius, y1 - radius, 0),
-        (x + radius, y1 - radius, 90),
-        (x + radius, y + radius, 180),
+    for (cx, cy, (rx, ry), start) in [
+        (x1 - front.0, y + front.1, front, -90),
+        (x1 - front.0, y1 - front.1, front, 0),
+        (x + back.0, y1 - back.1, back, 90),
+        (x + back.0, y + back.1, back, 180),
     ] {
         for step in 0..=6 {
             let angle = (start + step * 15) as f32 * core::f32::consts::PI / 180.0;
             points.push(Point::new(
-                cx + (radius as f32 * angle.cos()) as i32,
-                cy + (radius as f32 * angle.sin()) as i32,
+                cx + (rx as f32 * angle.cos()) as i32,
+                cy + (ry as f32 * angle.sin()) as i32,
             ));
         }
     }

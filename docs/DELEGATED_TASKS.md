@@ -4,6 +4,34 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 11 result (2026-10-12)
+
+Branch `side-tasks-11` (D51 to D53) came as pull request #10 from v0.11.3,
+with `main` (XiaoZhi, v0.12.0) merged in, CI and the firmware build green.
+It was reviewed on `review-11`, merged and released as v0.12.1 (milestone
+`race-look`). The screens now read like the mockup: real car shapes, the
+block rumble strips, the counters, the crash picture and list rows. The
+hub scrolls one card at a time, the doc-comment check was clean, and the
+new canvas commands keep a full road far below the command limit.
+
+What the main developer changed at merge time:
+
+- **The move hint** drew a few dots at its corners instead of a dashed
+  outline: each dash's end was divided by the edge length twice, so every
+  dash shrank onto the start of its edge. The previews were reported as
+  inspected, but the hint in `race-play` shows the dots.
+- **Cars:** the nose is rounder than the back and the traffic car's
+  windshield is a curve, as the mockup's `race-car` and `race-traffic`.
+- **Info boxes** have the mockup's 2 px dashed frame (`.infobox`), on the
+  Race screens and on every other screen that draws one.
+
+Verdict: D51 to D53 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- Look at a new shape enlarged next to the mockup's, not only through pixel
+  probes: a probe on one dash passes while the outline is missing.
+
 ## Round 10 result (2026-10-11)
 
 Branch `side-tasks-10` (D49 and D50) came as pull request #9 from v0.11.2,

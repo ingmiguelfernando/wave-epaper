@@ -3,6 +3,21 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.1 — Race from the mockup
+
+- **Race looks like the mockup.** Cars seen from above (outlines for the
+  traffic, solid for yours, with speed streaks), pairs of cones, block
+  rumble strips, the dashed outline where ▲ would take you, and
+  `DISTANCE`, `BEST` and `NITRO` over the road with the charges as
+  blocks. Zen counts `CARS PASSED`. Under the road, `SPEED 4 AT 3.0 KM`
+  with its bar.
+- **Crash screen:** a picture of the impact, the distance in large
+  numerals, the stats in three columns and the rows like every list.
+- **Games hub scrolls:** with five games or more, the selected card is
+  always on screen (before, Tetris stayed hidden below the fourth card).
+- Info boxes (AI hub, Games hub, Race, XiaoZhi) have the mockup's dashed
+  frame.
+
 ## v0.12.0 — XiaoZhi
 
 - **XiaoZhi voice chat** in Home › AI. Opening it calls XiaoZhi from

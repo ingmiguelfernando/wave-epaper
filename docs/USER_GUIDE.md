@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.12.0: what is implemented, not the future
+This guide describes firmware v0.12.1: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -339,7 +339,8 @@ costs about 2 mAh a day.
 
 Open **Home › Games** for the hub: one card per SD game — icon, name, and
 its state (Sudoku's running game and best time; Tetris' best score; Race's
-best distances; other games' version). ▲▼ picks a card, ● plays it, hold
+best distances; other games' version). ▲▼ picks a card, and the cards
+scroll when there are more than four; ● plays it, hold
 BOOT in a game returns to the hub and hold BOOT on the hub returns Home.
 Install the bundled SD samples with the installer; there are no
 IMU-controlled games or BLE remote page-turner in this build.

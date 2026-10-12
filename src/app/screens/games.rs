@@ -269,7 +269,7 @@ fn draw_icon(
     Ok(())
 }
 
-/// The mockup's framed info box, as tall as its wrapped text.
+/// The mockup's info box: a dashed frame as tall as its wrapped text.
 pub(crate) fn draw_info_box(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -280,16 +280,39 @@ pub(crate) fn draw_info_box(
     let lines = body.wrap(text, CARD_RIGHT - CARD_LEFT - 24);
     let line_height = i32::from(body.line_height()) + 2;
     let height = lines.len() as i32 * line_height + 18;
-    Rectangle::new(
-        Point::new(CARD_LEFT, top),
-        Size::new((CARD_RIGHT - CARD_LEFT) as u32, height as u32),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-    .draw(display)?;
+    let size = Size::new((CARD_RIGHT - CARD_LEFT) as u32, height as u32);
+    draw_dashed_box(display, Point::new(CARD_LEFT, top), size)?;
     let mut baseline = top + 10 + body.cap_height();
     for line in lines {
         Text::new(&line, Point::new(CARD_LEFT + 12, baseline), body).draw(display)?;
         baseline += line_height;
+    }
+    Ok(())
+}
+
+/// A 2 px dashed outline: 6 px dashes with 4 px gaps.
+pub(crate) fn draw_dashed_box(
+    display: &mut OrientedFrameBuffer<'_>,
+    top_left: Point,
+    size: Size,
+) -> Result<(), Infallible> {
+    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
+    let (width, height) = (size.width as i32, size.height as i32);
+    for x in (0..width).step_by(10) {
+        let dash = Size::new((width - x).min(6) as u32, 2);
+        for y in [0, height - 2] {
+            Rectangle::new(top_left + Point::new(x, y), dash)
+                .into_styled(ink)
+                .draw(display)?;
+        }
+    }
+    for y in (0..height).step_by(10) {
+        let dash = Size::new(2, (height - y).min(6) as u32);
+        for x in [0, width - 2] {
+            Rectangle::new(top_left + Point::new(x, y), dash)
+                .into_styled(ink)
+                .draw(display)?;
+        }
     }
     Ok(())
 }
