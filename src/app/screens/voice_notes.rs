@@ -796,7 +796,9 @@ fn draw_level_meter(display: &mut OrientedFrameBuffer<'_>, bars: &[u16]) -> Resu
     }
     let center = METER_TOP + METER_HEIGHT / 2;
     let silent = METER_BARS.saturating_sub(bars.len());
-    let peaks = core::iter::repeat(0).take(silent).chain(bars.iter().copied());
+    let peaks = core::iter::repeat(0)
+        .take(silent)
+        .chain(bars.iter().copied());
     for (index, peak) in peaks.take(METER_BARS).enumerate() {
         let height = meter_bar_height(peak);
         let x = METER_LEFT + index as i32 * (BAR_WIDTH + BAR_GAP);
