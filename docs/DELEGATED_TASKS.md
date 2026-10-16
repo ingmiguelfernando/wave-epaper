@@ -543,6 +543,168 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
+## Round 13 tasks (branch `side-tasks-13`)
+
+Start from `main` at v0.12.2, where Round 12 is merged; read its result at
+the top of this file first. The screens match the mockup now, so this
+round is about what the device remembers and counts: the forecast across
+a restart, the verse of the day on its page, Bible reading in Reading
+Stats, and the file format the Opus voice notes will use. Four tasks, in
+this order. When they are done, merge `main` into the branch and open a
+pull request.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8): a second app partition, the download over Wi-Fi and its row in
+Settings › System. An update restarts the device, which is one more reason
+for D58. Leave these files alone:
+
+- `src/main.rs`, except the lines each task names;
+- updates and network: `partitions.csv`, `sdkconfig.defaults`,
+  `Cargo.toml`, `.github/`, `src/ota*.rs`, `src/network*.rs`,
+  `src/radio_burst.rs`, `src/wifi_transfer.rs`, `src/build_info.rs`,
+  `src/app/screens/settings.rs`, `src/app/screens/device_info.rs`,
+  `src/app/screens/network.rs`;
+- XiaoZhi and audio: `src/xiaozhi/`, `src/app/screens/xiaozhi.rs`,
+  `src/audio/`, and the voice note recorder in `src/voice_notes.rs`;
+- drawing: the files already in `src/app/widgets/` (call them; a new file
+  there and its line in `widgets/mod.rs` are fine), `src/app/typography/`,
+  `src/app/display_assets.rs`, `scripts/fonts/`.
+
+Put new previews in `src/app/preview.rs` next to the screen's other
+previews. Run the doc-comment check of Round 9 before you hand over. As
+Round 12's result asks: feed state in tests the way the device does, and
+check the edges and every mode of what you draw.
+
+### D58: Keep the last forecast across a restart
+
+**Why.** The forecast lives in memory only. After a restart (an update, a
+flat battery, a crash), Home, Weather and the weather sleep screens show
+nothing until the next fetch, which can be hours away with Wi-Fi off
+between bursts (KNOWN_ISSUES, `Weather provider reliability`).
+
+**Change.**
+
+- `src/weather.rs`, or a new `src/weather_cache.rs`: write a `WeatherData`
+  to `/RUSTMIX/FORECAST.TXT` and read it back. Text as the other settings
+  files: `# Wave forecast v1` on the first line, then one `key=value` per
+  line, with the location it was fetched for; `current` once, `day` and
+  `hour` once per entry, the numbers as the integers `WeatherData` keeps.
+  Write with `sd_file::replace`, read with `sd_file::read_to_string`.
+- Reading drops what has passed: hours before the current local hour and
+  days before today, when the clock is set.
+- `WeatherSnapshot`: a way to adopt cached data that keeps its
+  `observed_at` and the state `Stale`, not `Ready`, until a fetch
+  succeeds. The screens then say `Updated 13:45 · stale` as they do after
+  failed fetches; `sleep-live-weather-stale` shows that state, so no new
+  preview.
+- `main.rs`, named lines: at boot, after the first `update_board_snapshot`
+  (the clock is read there), load the cache when the weather is set up and
+  on, and the cache's location is the config's; after
+  `state.weather.record_success(data)` in the weather fetch, save it (log a
+  failure, do not retry).
+- A cache from another location, a broken line, another version or an
+  empty file is ignored, never an error on screen.
+
+**Tests:** a round trip of a full `WeatherData` (negative temperatures, a
+day and an hour without a rain chance); past hours and days dropped by
+the clock and kept without one; another location, another version, a
+broken line and an empty file give no cache; a snapshot from a cache is
+`Stale` with its `observed_at`, and a fetch afterwards makes it `Ready`.
+
+**Status:** to do.
+
+### D59: Mark the verse of the day on its page
+
+**Why.** `Versículo del día` in the Bible menu opens the chapter at the
+verse's page, but nothing on the page says which verse it is: a page of
+Psalms holds a dozen.
+
+**Change.**
+
+- `src/bible_state.rs`: the marked verses: the book, the chapter and the
+  `VerseRef`'s range (`first..=last`). The menu's `Versículo del día`
+  (`open_bible_menu_item` in `src/app/state.rs`) sets it; any other
+  `open_at` clears it (`Ir a libro`, `Ir a capítulo`, a translation
+  switch, the Bible opened again from Home). Paging through the chapter
+  keeps it.
+- `render_bible_reading` (`screens/bible.rs`): a 3 px bar in the left
+  margin, x 6 to 8, beside every line of the marked verses on the page:
+  the line with the number and the lines it wraps to. A range marks every
+  verse in it, across a page break too. Nothing else on the page moves.
+- **Preview:** `bible-verse-of-day`, a two-verse range whose second verse
+  wraps, next to `bible-reading`.
+
+**Tests:** the bar covers exactly the lines of the marked verses (a
+wrapped verse, a range across a page break, a range label such as `1-2`
+on the card); turning the page keeps the mark and opening a chapter from
+the grid clears it; no bar without a mark or in another chapter.
+
+**Status:** to do.
+
+### D60: Bible reading counts in Reading Stats
+
+**Why.** Reading Stats counts time and pages only while a book is open
+(`note_reading_key` needs a Reader session). Reading the Bible adds
+nothing to today's minutes, the week's chart or the streak.
+
+**Change.** `src/app/state.rs`:
+
+- In the Bible reading view, ▲▼ count as reading keys
+  (`ReadingClock::on_key`) and a turn that moves counts as a page, as in
+  a book (`turn_bible_page`). The other Bible screens do not count.
+- `collect_reading_stats` records the Bible's time and pages for the day,
+  but no book: the per-book totals and `Books finished` stay the books'.
+- `Settings › Reading`'s stats switch applies to the Bible as well.
+- No `main.rs` change: the five-minute save and the save before sleep
+  already run on every screen. Check that and say so in the Status line.
+
+**Tests:** minutes and pages from a Bible session land on the day, with
+the same two-minute cap as a book; a turn at the last page of the last
+book counts no page; the Bible adds nothing to the per-book totals; with
+stats off nothing is recorded.
+
+**Status:** to do.
+
+### D61: Ogg Opus files (library only)
+
+**Why.** Voice notes go as WAV, about 1.9 MB a minute; the mockup records
+Opus at 24 kbps, ten times smaller, so uploads are faster and use less
+battery (KNOWN_ISSUES, `Voice Notes AI`). The encoder is already in the
+firmware for XiaoZhi. What is missing is the file: Ogg pages around the
+Opus packets, as RFC 7845 says, which the transcription providers accept
+as `.ogg`.
+
+**Change.** A new host-tested `src/ogg_opus.rs`, with no ESP-IDF code:
+
+- **Writer** over any `Write`: the `OpusHead` page first (beginning of
+  stream; 1 channel, the pre-skip, input rate 16 000, gain 0, mapping 0),
+  then `OpusTags` (the vendor `wave`, no comments), then the audio pages;
+  `finish` marks the last page as the end of the stream.
+- One audio page per second of audio (50 packets of 20 ms), so a crash
+  loses at most a second, and never more than 255 segments. The granule
+  is the 48 kHz sample count at the end of the page's last packet
+  (960 per 20 ms packet).
+- **Reader** over any `Read`: checks each page's capture pattern and CRC,
+  joins packets that continue across pages, and returns the head's
+  fields and the packets in order. A cut or damaged page ends the stream
+  without an error for the pages before it, as the WAV recorder's crash
+  recovery does today.
+- `duration_ms` from the last page's granule less the pre-skip, read from
+  the end of the file, not by reading the whole file.
+- The CRC is Ogg's: polynomial `0x04C11DB7`, initial value 0, no
+  reflection, no final XOR; `123456789` gives `0x89A1897F`.
+- Nothing uses it yet: the main developer wires the encoder into
+  recording, the upload and playback after OTA.
+
+**Tests:** the CRC check value; the `OpusHead` (19 bytes) and `OpusTags`
+bytes against RFC 7845 sections 5.1 and 5.2; lacing for packets of 0,
+254, 255, 256 and 510 bytes; page flags, sequence numbers and granules; a
+round trip of a few hundred packets; a file cut inside a page gives the
+packets of the pages before it; a changed byte fails that page's CRC; the
+duration of a 3:27 file read from its end.
+
+**Status:** to do.
+
 ## Round 12 tasks (done in v0.12.2)
 
 Start from `main` at v0.12.1, where Round 11 is merged; read its result at
