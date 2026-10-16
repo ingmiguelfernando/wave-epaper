@@ -104,6 +104,13 @@ pub fn draw_chip(
     Ok(width)
 }
 
+/// A row's width with `gap` between its chips, to centre it.
+#[must_use]
+pub fn chip_row_width(style: UiTextStyle, chips: &[Chip<'_>], gap: i32) -> i32 {
+    let widths: i32 = chips.iter().map(|chip| chip_width(style, chip)).sum();
+    widths + gap * (chips.len() as i32 - 1).max(0)
+}
+
 /// A row of chips with `gap` between them, starting at `left`.
 pub fn draw_chip_row(
     display: &mut OrientedFrameBuffer<'_>,

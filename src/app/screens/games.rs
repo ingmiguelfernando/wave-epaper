@@ -269,7 +269,8 @@ fn draw_icon(
     Ok(())
 }
 
-/// The mockup's info box: a dashed frame as tall as its wrapped text.
+/// The mockup's info box: a dashed frame as tall as its wrapped text. A
+/// `\n` starts a new line.
 pub(crate) fn draw_info_box(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -277,7 +278,10 @@ pub(crate) fn draw_info_box(
     top: i32,
 ) -> Result<(), Infallible> {
     let body = preferences.body_style();
-    let lines = body.wrap(text, CARD_RIGHT - CARD_LEFT - 24);
+    let lines: Vec<String> = text
+        .split('\n')
+        .flat_map(|paragraph| body.wrap(paragraph, CARD_RIGHT - CARD_LEFT - 24))
+        .collect();
     let line_height = i32::from(body.line_height()) + 2;
     let height = lines.len() as i32 * line_height + 18;
     let size = Size::new((CARD_RIGHT - CARD_LEFT) as u32, height as u32);

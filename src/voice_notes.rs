@@ -37,6 +37,8 @@ pub const VOICE_RECORD_MAX_SECONDS: u32 = 30 * 60;
 pub const VOICE_NOTE_LIMIT: usize = 128;
 pub const VOICE_NOTE_LIST_VISIBLE_ROWS: usize = 6;
 pub const VOICE_RECORD_SCREEN_REFRESH_SECONDS: u64 = 5;
+/// Seconds the recording screen's level meter shows, one bar each.
+pub const METER_BARS: usize = 30;
 /// Shared-grid keyboard used by the friendly-title editor.
 pub const VOICE_TITLE_EDITOR_KEY_ROWS: [[&str; 7]; 6] = [
     ["A", "B", "C", "D", "E", "F", "G"],
@@ -234,11 +236,12 @@ pub struct VoiceNotesUiState {
     pub active_recorded_at: Option<String>,
     pub elapsed_seconds: u32,
     pub pcm_bytes: u32,
-    pub peak: u16,
-    /// The loudest chunk of each of the last 30 seconds, newest last.
-    pub level_bars: Vec<u16>,
     /// The loudest chunk of the whole note.
-    pub note_peak: u16,
+    pub peak: u16,
+    /// The loudest chunk of each of the last `METER_BARS` seconds, newest last.
+    pub level_bars: Vec<u16>,
+    /// The second of audio the newest bar holds.
+    pub level_second: u32,
     pub clipped_samples: u32,
     pub mic_gain: VoiceMicGain,
     pub recording_paused: bool,
@@ -270,7 +273,7 @@ impl Default for VoiceNotesUiState {
             pcm_bytes: 0,
             peak: 0,
             level_bars: Vec::new(),
-            note_peak: 0,
+            level_second: 0,
             clipped_samples: 0,
             mic_gain: VoiceMicGain::default(),
             recording_paused: false,
@@ -477,8 +480,8 @@ impl VoiceNotesUiState {
         self.elapsed_seconds = 0;
         self.pcm_bytes = 0;
         self.peak = 0;
-        self.note_peak = 0;
         self.level_bars.clear();
+        self.level_second = 0;
         self.clipped_samples = 0;
         self.recording_paused = false;
         self.playing_file = None;
@@ -487,9 +490,8 @@ impl VoiceNotesUiState {
         self.error = None;
     }
 
-    /// One capture chunk: the note's totals and the level meter. The meter
-    /// keeps one bar per second of audio, the loudest chunk in that second,
-    /// the newest at the right and the oldest dropped past 30.
+    /// One capture chunk with its own `peak`: the note's totals and the
+    /// level meter, one bar per second of audio from its loudest chunk.
     pub fn update_recording_progress(&mut self, pcm_bytes: u32, peak: u16, clipped_samples: u32) {
         self.mode = if self.recording_paused {
             VoiceNotesMode::Paused
@@ -498,15 +500,15 @@ impl VoiceNotesUiState {
         };
         self.pcm_bytes = pcm_bytes;
         self.elapsed_seconds = pcm_bytes / bytes_per_second();
-        self.peak = peak;
-        self.note_peak = self.note_peak.max(peak);
+        self.peak = self.peak.max(peak);
         self.clipped_samples = clipped_samples;
-        let second = self.elapsed_seconds as usize;
-        match self.level_bars.get_mut(second) {
-            Some(bar) => *bar = (*bar).max(peak),
-            None => {
+        let second = self.elapsed_seconds;
+        match self.level_bars.last_mut() {
+            Some(bar) if second == self.level_second => *bar = (*bar).max(peak),
+            _ => {
                 self.level_bars.push(peak);
-                if self.level_bars.len() > 30 {
+                self.level_second = second;
+                if self.level_bars.len() > METER_BARS {
                     self.level_bars.remove(0);
                 }
             }
@@ -1656,36 +1658,43 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    /// One bar per second of audio: the loudest chunk in the second wins,
-    /// and the 31st second drops the oldest bar.
+    /// One bar per second of audio at the device's chunk size: the loudest
+    /// chunk of each second, the last 30 seconds, the newest at the right.
     #[test]
     fn the_level_meter_keeps_one_bar_per_second() {
         let mut state = VoiceNotesUiState::default();
-        let second = bytes_per_second();
         // Second 0: two chunks, the louder wins.
         state.update_recording_progress(100, 100, 0);
         state.update_recording_progress(200, 50, 0);
         assert_eq!(state.level_bars, vec![100]);
-        // Second 1.
-        state.update_recording_progress(second + 10, 200, 0);
-        assert_eq!(state.level_bars, vec![100, 200]);
-        // Seconds 2..=30 fill the window, then second 31 drops the oldest.
-        for index in 2..=30 {
-            state.update_recording_progress(second * index + 10, 300, 0);
+
+        // 40 seconds of 4 KB chunks, each peaking at its own number, so the
+        // loudest chunk of a second is its last one.
+        let mut state = VoiceNotesUiState::default();
+        let chunk = VOICE_PCM_MONO_CHUNK_BYTES as u32;
+        let chunks = 40 * bytes_per_second() / chunk;
+        for index in 1..=chunks {
+            state.update_recording_progress(index * chunk, index as u16, 0);
         }
-        assert_eq!(state.level_bars.len(), 30);
+        assert_eq!(state.level_bars.len(), METER_BARS);
         assert_eq!(
-            state.level_bars[0], 200,
-            "the second-1 bar leads the window"
+            state.level_bars.last().copied(),
+            Some(chunks as u16),
+            "the newest bar is at the right"
         );
-        state.update_recording_progress(second * 31 + 10, 400, 0);
-        assert_eq!(state.level_bars.len(), 30);
-        assert_eq!(state.level_bars[0], 300, "the oldest bar is dropped");
-        assert_eq!(state.level_bars[29], 400, "the newest bar is at the right");
+        // About eight chunks a second: bars a second apart, not a chunk.
+        assert!(
+            state
+                .level_bars
+                .windows(2)
+                .all(|pair| (7..=8).contains(&(pair[1] - pair[0]))),
+            "one bar per second: {:?}",
+            state.level_bars
+        );
     }
 
     /// Silence gives the shortest bar, a full-scale peak the tallest, in
-    /// 6 dB steps; the note keeps its own peak.
+    /// 6 dB steps; the note keeps its loudest chunk.
     #[test]
     fn the_meter_scale_and_the_note_peak() {
         use crate::app::screens::voice_notes::meter_bar_height;
@@ -1695,8 +1704,7 @@ mod tests {
         let mut state = VoiceNotesUiState::default();
         state.update_recording_progress(100, 1_000, 0);
         state.update_recording_progress(200, 500, 0);
-        assert_eq!(state.note_peak, 1_000, "the note keeps its loudest chunk");
-        assert_eq!(state.peak, 500, "the current chunk is the last one");
+        assert_eq!(state.peak, 1_000, "the note keeps its loudest chunk");
     }
 
     /// A short BOOT press pauses and then resumes the recording, and is not

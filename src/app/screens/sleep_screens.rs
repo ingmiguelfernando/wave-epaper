@@ -1,5 +1,5 @@
-//! Clock and weather sleep screens: the layouts, and the live screen of the
-//! sleep mode in use, built from state.
+//! Clock, weather and verse sleep screens: the layouts, and the live screen
+//! of the sleep mode in use, built from state.
 
 use core::convert::Infallible;
 
@@ -68,10 +68,11 @@ pub struct SleepWeatherDay<'a> {
     pub rain: &'a str,
 }
 
-/// The verse of the day sleep screen: the clock's date line at the top, the
-/// verse centred in the reader's style at the largest size that fits (from
-/// `XLarge` down, else cut with `…`), its reference and translation under
-/// it in Heading, and the clock layout's footer.
+/// The verse of the day sleep screen: the clock's date line and rule at the
+/// top, then the verse in the reader's style at the largest size that fits
+/// (from `XLarge` down, else cut with `…`) with its reference and
+/// translation under it in Heading, centred as one block above the clock
+/// layout's footer.
 pub fn render_sleep_verse(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -83,8 +84,8 @@ pub fn render_sleep_verse(
     wake_hint: &str,
 ) -> Result<SleepLayout, Infallible> {
     draw_frame(display)?;
-    let date = local.map_or_else(String::new, |local| long_date(local));
-    if !date.is_empty() {
+    let mut block_top = VERSE_BLOCK_TOP;
+    if let Some(date) = local.map(long_date) {
         let date_height = text_height(&date, preferences.large_style(), 408, 2);
         text_block(
             display,
@@ -94,54 +95,96 @@ pub fn render_sleep_verse(
             2,
             true,
         )?;
-    }
-    // The verse sits in a fixed band, so the reference below it never
-    // moves into the footer.
-    const VERSE_TOP: i32 = 170;
-    const VERSE_BOTTOM: i32 = 590;
-    const VERSE_WIDTH: i32 = 408;
-    const REFERENCE_TOP: i32 = 620;
-    let band = VERSE_BOTTOM - VERSE_TOP;
-    let mut lines: Vec<String> = Vec::new();
-    let mut style = reader_body_style(reader_font, BookFontSize::Small, reader_theme);
-    for size in BookFontSize::ALL.iter().rev() {
-        let candidate = reader_body_style(reader_font, *size, reader_theme);
-        let wrapped = candidate.wrap(&verse.text, VERSE_WIDTH);
-        if wrapped.len() as i32 * i32::from(candidate.line_height()) <= band {
-            style = candidate;
-            lines = wrapped;
-            break;
-        }
-    }
-    if lines.is_empty() {
-        // Even the smallest size does not fit: cut the verse with `…`.
-        style = reader_body_style(reader_font, BookFontSize::Small, reader_theme);
-        lines = cut_verse_lines(&verse.text, style, VERSE_WIDTH, band);
-    }
-    let line_height = i32::from(style.line_height());
-    let top = VERSE_TOP + (band - lines.len() as i32 * line_height) / 2;
-    for (index, line) in lines.iter().enumerate() {
-        let left = 240 - style.text_width(line) / 2;
-        let baseline = top + style.cap_height() + index as i32 * line_height;
-        Text::new(line, Point::new(left, baseline), style)
-            .draw_clipped(display, TextBounds::new(36, VERSE_TOP, 444, VERSE_BOTTOM))?;
+        let rule_y = 48 + date_height + 28;
+        Line::new(Point::new(70, rule_y), Point::new(410, rule_y))
+            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
+            .draw(display)?;
+        block_top = rule_y + 32;
     }
     let reference = if verse.translation.is_empty() {
         verse.reference.clone()
     } else {
         format!("{} · {}", verse.reference, verse.translation)
     };
-    let reference_height = text_height(&reference, preferences.heading_style(), 408, 1);
+    let heading = preferences.heading_style();
+    let reference_height = text_height(&reference, heading, 408, 1);
+    let layout = verse_layout(
+        &verse.text,
+        reader_styles_largest_first(reader_font, reader_theme),
+        block_top,
+        reference_height,
+    );
+    let line_height = i32::from(layout.style.line_height());
+    let bounds = TextBounds::new(36, block_top, 444, layout.reference_top);
+    for (index, line) in layout.lines.iter().enumerate() {
+        let left = 240 - layout.style.text_width(line) / 2;
+        let baseline = layout.verse_top + layout.style.cap_height() + index as i32 * line_height;
+        Text::new(line, Point::new(left, baseline), layout.style).draw_clipped(display, bounds)?;
+    }
     text_block(
         display,
         &reference,
-        preferences.heading_style(),
-        TextBounds::new(36, REFERENCE_TOP, 444, REFERENCE_TOP + reference_height),
+        heading,
+        TextBounds::new(
+            36,
+            layout.reference_top,
+            444,
+            layout.reference_top + reference_height,
+        ),
         1,
         true,
     )?;
     draw_footer(display, preferences, wake_hint, battery_percent)?;
     Ok(SleepLayout::Verse)
+}
+
+/// Where the verse block may sit: under the date's rule, above the footer.
+const VERSE_BLOCK_TOP: i32 = 120;
+const VERSE_BLOCK_BOTTOM: i32 = 716;
+const VERSE_WIDTH: i32 = 408;
+/// Between the verse's last line and its reference.
+const REFERENCE_GAP: i32 = 28;
+
+/// The verse's lines in the chosen size, and where they and the reference go.
+struct VerseLayout {
+    style: UiTextStyle,
+    lines: Vec<String>,
+    verse_top: i32,
+    reference_top: i32,
+}
+
+/// The reader's style at each size, largest first.
+fn reader_styles_largest_first(font: BookFont, theme: ReadingTheme) -> [UiTextStyle; 4] {
+    let [small, medium, large, xlarge] = BookFontSize::ALL;
+    [xlarge, large, medium, small].map(|size| reader_body_style(font, size, theme))
+}
+
+/// The largest style whose lines fit above the reference, else the smallest
+/// cut with `…`; the verse and reference centred as one block from `top`.
+fn verse_layout(
+    text: &str,
+    styles: [UiTextStyle; 4],
+    top: i32,
+    reference_height: i32,
+) -> VerseLayout {
+    let room = VERSE_BLOCK_BOTTOM - top - REFERENCE_GAP - reference_height;
+    let fitted = styles.iter().find_map(|style| {
+        let lines = style.wrap(text, VERSE_WIDTH);
+        let height = lines.len() as i32 * i32::from(style.line_height());
+        (height <= room).then_some((*style, lines))
+    });
+    let (style, lines) = fitted.unwrap_or_else(|| {
+        let smallest = styles[3];
+        (smallest, cut_verse_lines(text, smallest, VERSE_WIDTH, room))
+    });
+    let height = lines.len() as i32 * i32::from(style.line_height());
+    let verse_top = top + (room - height) / 2;
+    VerseLayout {
+        style,
+        lines,
+        verse_top,
+        reference_top: verse_top + height + REFERENCE_GAP,
+    }
 }
 
 /// Wrap the verse to as many `width` lines as `band` allows, cutting the
@@ -870,16 +913,18 @@ mod tests {
         );
     }
 
-    /// The long verse is cut to its band: its ink ends above the gap and
-    /// the reference, which stay below it.
+    /// The long verse takes a smaller size or a cut and stays above its
+    /// reference: the verse, an empty gap, the reference, then nothing down
+    /// to the footer, the block centred in its room.
     #[test]
     fn the_long_verse_stays_above_its_reference() {
         use crate::app::state::{AppState, VerseOfDay};
         let mut state = AppState::default();
         state.sleep_screen.mode = SleepMode::Verse;
+        let text = "Bienaventurados los que andan en la ley de Jehová. ".repeat(20);
         state.verse_of_day = Some(VerseOfDay {
             day: 1,
-            text: "Bienaventurados los que andan en la ley de Jehová. ".repeat(20),
+            text: text.clone(),
             reference: "Sal 119:1-6".into(),
             translation: "RVR1960".into(),
         });
@@ -888,15 +933,24 @@ mod tests {
             render_sleep_mode(&mut frame, &state).unwrap(),
             SleepLayout::Verse
         );
-        assert!(
-            inked(&frame, TextBounds::new(36, 170, 444, 590)),
-            "verse band"
-        );
-        assert!(!inked(&frame, TextBounds::new(36, 592, 444, 618)), "gap");
-        assert!(
-            inked(&frame, TextBounds::new(36, 620, 444, 700)),
-            "reference"
-        );
+        // No clock here, so no date: the block starts at the top of its room.
+        let heading = state.display.heading_style();
+        let reference_height = text_height("Sal 119:1-6 · RVR1960", heading, 408, 1);
+        let reader = &state.reader.preferences;
+        let styles = reader_styles_largest_first(reader.book_font, reader.theme);
+        let layout = verse_layout(&text, styles, VERSE_BLOCK_TOP, reference_height);
+        let verse_bottom = layout.reference_top - REFERENCE_GAP;
+        let reference_bottom = layout.reference_top + reference_height;
+        let verse = TextBounds::new(36, layout.verse_top, 444, verse_bottom);
+        assert!(inked(&frame, verse), "verse");
+        let gap = TextBounds::new(36, verse_bottom + 4, 444, layout.reference_top - 2);
+        assert!(!inked(&frame, gap), "gap");
+        let reference = TextBounds::new(36, layout.reference_top, 444, reference_bottom);
+        assert!(inked(&frame, reference), "reference");
+        let below = TextBounds::new(36, reference_bottom + 2, 444, 744);
+        assert!(!inked(&frame, below), "nothing down to the footer");
+        let above = layout.verse_top - VERSE_BLOCK_TOP;
+        assert!((above - (VERSE_BLOCK_BOTTOM - reference_bottom)).abs() <= 1);
     }
 
     #[test]

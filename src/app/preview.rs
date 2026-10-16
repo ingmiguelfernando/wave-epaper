@@ -1161,8 +1161,9 @@ fn sample_home_details(state: &mut AppState) {
         });
     }
     sample_games_catalog(state);
-    // A Bible card with Psalms and the place at chapter 23.
-    let root = std::env::temp_dir().join(format!("wave-preview-bible-{}", std::process::id()));
+    // A Bible card with Psalms and the place at chapter 23; its own folder,
+    // as the Bible previews rewrite theirs.
+    let root = std::env::temp_dir().join(format!("wave-preview-home-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let folder = root.join("RVR1960");
     fs::create_dir_all(&folder).unwrap();

@@ -22,7 +22,7 @@ use crate::{
             bottom_bar::{
                 draw_bottom_bar, KeyCap, BACK_HINTS, KEYBOARD_HINTS, OPEN_HINTS, RUN_HINTS,
             },
-            chips::{draw_chip_row, Chip},
+            chips::{chip_row_width, draw_chip_row, Chip},
             display_numerals::{draw_numerals, numerals_width, Numerals},
             header::draw_header,
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
@@ -34,7 +34,7 @@ use crate::{
     voice_note_metadata::format_storage_bytes,
     voice_notes::{
         ai_action_label, bytes_per_second, format_duration, VoiceNotesMode, DETAIL_AI,
-        DETAIL_DELETE, DETAIL_EXPORT, DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE,
+        DETAIL_DELETE, DETAIL_EXPORT, DETAIL_PLAY, DETAIL_RETURN, DETAIL_TITLE, METER_BARS,
         VOICE_TITLE_EDITOR_KEY_ROWS,
     },
 };
@@ -44,9 +44,9 @@ const TITLE_BASELINE: i32 = 76;
 const TIMER_BASELINE: i32 = 236;
 const METER_TOP: i32 = 262;
 const METER_HEIGHT: i32 = 130;
-const METER_LEFT: i32 = 58;
 const BAR_WIDTH: i32 = 10;
 const BAR_GAP: i32 = 5;
+const METER_LEFT: i32 = (480 - (METER_BARS as i32 * (BAR_WIDTH + BAR_GAP) - BAR_GAP)) / 2;
 const CHIPS_TOP: i32 = 412;
 const INFO_BOX_TOP: i32 = 470;
 
@@ -654,6 +654,7 @@ pub fn render_voice_note_result(
     draw_bottom_bar(display, preferences, &RESULT_HINTS)?;
     Ok(())
 }
+
 /// The recording screen after the mockup's `Voice Notes: grabando`: the time
 /// large, a level meter and what the note costs on the card.
 pub fn render_voice_note_recording(
@@ -678,8 +679,8 @@ pub fn render_voice_note_recording(
             _ => "Preparing microphone capture...".to_string(),
         };
         draw_info_box(display, state.display, &message, 150)?;
-        let hints = recording_hints(state.voice_note_goes_to_ai(), voice.recording_paused);
-        draw_bottom_bar(display, state.display, &hints)?;
+        // Only a hold of BOOT leaves: ● and ▲▼ have no recording to act on.
+        draw_bottom_bar(display, state.display, &BACK_HINTS)?;
         return Ok(());
     }
 
@@ -707,7 +708,8 @@ pub fn render_voice_note_recording(
         Chip::dotted("RECORDING", voice.mode == VoiceNotesMode::Recording),
         Chip::new("PAUSED", voice.mode == VoiceNotesMode::Paused),
     ];
-    draw_chip_row(display, 16, CHIPS_TOP, 6, detail, &chips)?;
+    let left = (480 - chip_row_width(detail, &chips, 6)) / 2;
+    draw_chip_row(display, left, CHIPS_TOP, 6, detail, &chips)?;
 
     let lines = recording_info_lines(voice);
     draw_info_box(display, state.display, &lines.join("\n"), INFO_BOX_TOP)?;
@@ -734,10 +736,10 @@ fn draw_recording_status_bar(
     }
     let style = preferences.text_style(UiTextRole::Heading, BinaryColor::Off);
     let baseline = (STATUS_BAR_HEIGHT + style.cap_height()) / 2;
-    let title = if recording {
-        "REC · Voice Notes"
-    } else {
-        "PAUSED · Voice Notes"
+    let title = match voice.mode {
+        VoiceNotesMode::Recording => "REC · Voice Notes",
+        VoiceNotesMode::Paused => "PAUSED · Voice Notes",
+        _ => "Voice Notes",
     };
     Text::new(title, Point::new(left, baseline), style).draw(display)?;
     if let Some(percent) = state.board.power.and_then(|power| power.battery_percent) {
@@ -782,9 +784,9 @@ fn draw_recording_title(
     Ok(())
 }
 
-/// The level meter: 30 bars, one per second of audio, the newest at the
-/// right, on a log scale so speech fills the band and silence is the
-/// shortest bar. The band is centred between two rules.
+/// The level meter: one bar per second of audio, the newest at the right
+/// and silence before the first, on a log scale so speech fills the band.
+/// The bars are centred on the screen between two rules.
 fn draw_level_meter(display: &mut OrientedFrameBuffer<'_>, bars: &[u16]) -> Result<(), Infallible> {
     let ink = PrimitiveStyle::with_fill(BinaryColor::On);
     for y in [METER_TOP, METER_TOP + METER_HEIGHT - 2] {
@@ -793,8 +795,9 @@ fn draw_level_meter(display: &mut OrientedFrameBuffer<'_>, bars: &[u16]) -> Resu
             .draw(display)?;
     }
     let center = METER_TOP + METER_HEIGHT / 2;
-    for index in 0..30_usize {
-        let peak = bars.get(index).copied().unwrap_or(0);
+    let silent = METER_BARS.saturating_sub(bars.len());
+    let peaks = core::iter::repeat(0).take(silent).chain(bars.iter().copied());
+    for (index, peak) in peaks.take(METER_BARS).enumerate() {
         let height = meter_bar_height(peak);
         let x = METER_LEFT + index as i32 * (BAR_WIDTH + BAR_GAP);
         Rectangle::new(
@@ -847,7 +850,7 @@ pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Ve
     vec![
         first,
         format!(
-            "SD: {} free (≈ {} h)",
+            "SD: {} free (~{} h)",
             size_one_decimal(free),
             grouped(hours.min(u64::from(u32::MAX)) as u32)
         ),
@@ -869,6 +872,7 @@ pub fn size_one_decimal(bytes: u64) -> String {
         format!("{} KB", bytes / KB)
     }
 }
+
 fn line(
     display: &mut OrientedFrameBuffer<'_>,
     y: i32,
@@ -959,7 +963,7 @@ mod tests {
         voice.available_storage_bytes = Some(15_247_133_901 + 6_624_044);
         let lines = recording_info_lines(&voice);
         assert_eq!(lines[0], "WAV · 16 kHz mono · 6.3 MB so far");
-        assert_eq!(lines[1], "SD: 14.2 GB free (≈ 132 h)");
+        assert_eq!(lines[1], "SD: 14.2 GB free (~132 h)");
         assert_eq!(lines[2], "Wi-Fi off while recording");
         voice.available_storage_bytes = None;
         let lines = recording_info_lines(&voice);
@@ -968,6 +972,34 @@ mod tests {
             ["WAV · 16 kHz mono · 6.3 MB so far"],
             "without the free space, the first line only"
         );
+    }
+
+    /// The meter stays between the ends of its rules, and a note's first
+    /// second is the bar at the right, with silence before it.
+    #[test]
+    fn the_meter_fits_with_the_newest_bar_at_the_right() {
+        use super::{METER_HEIGHT, METER_LEFT, METER_TOP};
+        let mut state = AppState::default();
+        state
+            .voice_notes
+            .begin_recording("VOICE001.WAV".into(), "2026-10-02  12:04:00".into());
+        state
+            .voice_notes
+            .update_recording_progress(4_096, u16::MAX, 0);
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
+        render_voice_note_recording(&mut display, &state).unwrap();
+        drop(display);
+        let band = METER_TOP + 2..METER_TOP + METER_HEIGHT - 2;
+        let outside = (0..480)
+            .filter(|x| !(16..464).contains(x))
+            .any(|x| band.clone().any(|y| ink(&frame, x, y)));
+        assert!(!outside, "no bar runs past the rules");
+        let center = METER_TOP + METER_HEIGHT / 2;
+        let newest = METER_LEFT + 29 * 15 + 5;
+        assert!(ink(&frame, newest, center - 50), "newest at the right");
+        assert!(ink(&frame, METER_LEFT + 5, center), "silence is a stub");
+        assert!(!ink(&frame, METER_LEFT + 5, center - 50));
     }
 
     /// The mockup's summary: three bullets, a heading and three to-dos.
