@@ -4,6 +4,48 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 12 result (2026-10-16)
+
+Branch `side-tasks-12` (D54 to D57) came as pull request #11 from v0.12.1,
+with CI and the firmware build green. It was reviewed on `review-12`,
+merged and released as v0.12.2 (milestone `verse-sleep`). The result
+screen, the Home details and the verse mode needed little: the summary
+parser is typed, its tests probe the frame, and the verse loads once a
+day without reading the card while drawing.
+
+What the main developer changed at merge time:
+
+- **The meter after 30 seconds:** the bars were indexed by the second of
+  audio, so past the 30th second every 4 KB chunk (about eight a second)
+  pushed a new bar and the meter showed the last four seconds. The test
+  sent one chunk a second, so it passed; it sends 4 KB chunks now.
+- **The meter's place:** it started at x 58, so its last bars ran past the
+  rules and off the screen, and until 30 seconds had passed the newest bar
+  was at the left. It is centred now, with silence before the first bar.
+- **The info box** ran its three lines together (`draw_info_box` wrapped a
+  `\n` as a space; it breaks the line now) and drew `≈` as `?`: the fonts
+  have no `≈`. The task asked for it; it reads `~132 h` now.
+- The chips are centred, as the mockup's. After ● the screen said
+  `PAUSED · Voice Notes` with the recording keys; it says `Voice Notes`
+  with `hold: back`.
+- **Verse screen:** the reference sat at a fixed height, far under a short
+  verse. The verse and its reference are one centred block now, under the
+  date and a rule as on the clock screen.
+- The Home preview's Bible card used the Bible previews' temp folder,
+  which they rewrite; it has its own.
+
+Verdict: D54 to D57 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- Feed state the way the device does: a meter fed one chunk a second
+  hides a bug that eight chunks a second show.
+- Check the edges of a new drawing: the first and last bar, the right
+  margin, and every mode the screen can show, not only the one in the
+  preview.
+- Look up every character you draw in `src/charset.rs`, even when the task
+  text has it.
+
 ## Round 11 result (2026-10-12)
 
 Branch `side-tasks-11` (D51 to D53) came as pull request #10 from v0.11.3,
@@ -501,7 +543,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 12 tasks (branch `side-tasks-12`)
+## Round 12 tasks (done in v0.12.2)
 
 Start from `main` at v0.12.1, where Round 11 is merged; read its result at
 the top of this file first. Every screen of the mockup is on the device

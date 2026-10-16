@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.12.1: what is implemented, not the future
+This guide describes firmware v0.12.2: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -13,7 +13,7 @@ The wheel has Up, Select and Down keys; there is no touch input.
 |---|---|
 | Up / Down | Move a highlighted row; in a book, previous / next page |
 | Select | Open the highlighted row or run its action |
-| BOOT short | Contextual action only: Calendar agenda, keyboard axis, game axis/cancel, star a photo, preview the sleep picture, or switch °C/°F on Weather |
+| BOOT short | Contextual action only: Calendar agenda, keyboard axis, game axis/cancel, star a photo, preview the sleep picture, pause a voice recording, or switch °C/°F on Weather |
 | Hold BOOT (at least 900 ms, then release) | Back one level; cancel an open option list before leaving its screen |
 | Power short | Open the display-maintenance menu: Clear ghosting now or Cancel |
 | Hold Power | Enter sleep-image mode; after releasing and waiting for the wake guard, Power wakes it |
@@ -32,7 +32,9 @@ summary card is informational: open **Home › Library** and pick the book on
 RECENT to resume it where the card shows; while you read, the card shows
 `N% · M min today` when the clock is set and today has reading time.
 Up/Down wraps through the nine application rows; Select opens the
-highlighted one.
+highlighted one. A row shows a short detail at its right: the photo count,
+the book count, the Bible place (`Sal 23`), the reading streak, the
+temperature, the game count and `2 apps`.
 
 | Home row | Current behavior |
 |---|---|
@@ -215,7 +217,11 @@ one. Each row says what it shows and its estimated battery cost a day:
   first update it shows the clock. A forecast older than six hours says
   `stale`. Needs Settings › Weather on.
 - **Clock + weather**: the clock with a line of today's weather.
-- **Verse of the day**: not available yet (`SOON`).
+- **Verse of the day**: the date, the day's verse from `VERSES.TXT` in the
+  reader's font and its reference (`Sal 23:1 · RVR1960`). It changes at
+  midnight, one wake-up a day; it is the verse the Bible menu's
+  `Versículo del día` opens. Needs the Bible and `VERSES.TXT` on the card
+  (the row says `NO VERSES` otherwise); without them it shows the clock.
 
 Below the modes are the options of the mode in use: **Source**, **Order** and
 **Fit** for Photo; **Refresh** (every minute or every 5 minutes) for the clock
@@ -441,8 +447,11 @@ Navigation:
 
 - List: Up/Down chooses Record new note, microphone gain or a saved note;
 	Select starts recording, cycles gain or opens details.
-- Recording: Up/Down toggles pause/resume; Select stops and saves; hold BOOT
-	cancels. The screen reports duration, peak and clipping.
+- Recording: short BOOT (or Up/Down) pauses and resumes; Select stops and
+	saves, and queues the note for the AI when `AI.TXT` says
+	`process=online`; hold BOOT cancels. The screen shows the time, a level
+	meter with one bar a second, the size so far and the free space on the
+	card.
 - Saved note: Up/Down chooses Play/Stop, the AI action (Transcribe and
 	summarize, Retry or Summarize again), Edit friendly title,
 	Export/download, Delete or Return; Select runs the action. Delete asks for

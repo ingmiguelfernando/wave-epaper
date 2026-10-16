@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-12, firmware v0.12.1.
+Last updated: 2026-10-16, firmware v0.12.2.
 
 ## Status
 
@@ -21,11 +21,11 @@ Last updated: 2026-10-12, firmware v0.12.1.
 | Phase 1b: idle light sleep, Wi-Fi bursts, IMU and codec off when idle | 0.6.0 | 038269f | Done |
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
-| Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5 |
+| Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5, verse of the day mode in 0.12.2 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
-| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3 |
+| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3; the verse as a sleep screen and the place on Home in 0.12.2 |
 | Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3, Race from the mockup and a scrolling hub in 0.12.1 |
-| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0; Opus voice notes open |
+| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
@@ -43,7 +43,7 @@ Last updated: 2026-10-12, firmware v0.12.1.
 | Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, tested on the device; the mockup's look and a scrolling Games hub are Round 11 (D51 to D53) |
 | XiaoZhi voice chat: linking, WebSocket call with Opus, device tools (status, volume, Bible), the mockup's call screen | 0.12.0 | 4609d8c | Done, waiting for device test |
 | Delegated tasks D51 to D53: the Games hub scrolls, Race's playing and crash screens from the mockup | 0.12.1 | PR #10 | Done, waiting for device test |
-| Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | | side-tasks-12 | Published (Round 12) |
+| Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | 0.12.2 | PR #11 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -167,7 +167,7 @@ the mockup:
 | Clock & date | Large time, date, optional weather line, battery | about 13 mAh/day at 1 min | Every 1 or 5 min (setting) |
 | Weather | Place, updated time, now, three days | about 2 mAh/day | After each weather update (default 2 h) |
 | Clock + weather | Clock and weather line | about 5 mAh/day | Clock 5 min, weather 2 h |
-| Verse of the day | Verse from the Bible on the SD | 1 wake-up per day | Disabled until Phase 5 |
+| Verse of the day | Verse from the Bible on the SD | 1 wake-up per day | At local midnight (0.12.2) |
 
 - Layouts come from tasks D5 and D7 (`src/app/screens/sleep_screens.rs`),
   already close to the mockup: the clock's weather icon and summary centered
@@ -376,4 +376,3 @@ Done in v0.9.7 (D27); kept as the reference.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics. Reading is done (0.10.4).
-- **Verse of the day sleep mode** (mockup: "Photo, clock, weather, verse").

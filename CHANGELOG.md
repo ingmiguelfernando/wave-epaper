@@ -3,6 +3,21 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.2 — Voice note screens and the verse of the day
+
+- **Recording a voice note** looks like the mockup: `● REC · Voice
+  Notes`, the time large, a level meter with one bar a second, the
+  `RECORDING` and `PAUSED` chips, and a box with the size so far, the free
+  space and the hours it still holds. A short BOOT pauses and resumes.
+- **The result screen:** the title large, the tabs as chips and the
+  summary one size larger, with its to-dos as boxes under their heading.
+- **Home rows** show the photo count, the Bible place (`Sal 23`), the game
+  count and `2 apps`, as the mockup.
+- **Verse of the day sleep screen:** Settings › Sleep screen can choose it
+  when the card has `VERSES.TXT`. It shows the date, the day's verse in the
+  reader's font and its reference, and changes at midnight with one
+  wake-up a day.
+
 ## v0.12.1 — Race from the mockup
 
 - **Race looks like the mockup.** Cars seen from above (outlines for the
