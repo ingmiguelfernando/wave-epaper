@@ -155,9 +155,14 @@ jobs wait and the panel, auto-sleep and light sleep stay away.
 
 ## Memory
 
-- Internal SRAM holds stacks (main task 16 KB), Wi-Fi buffers and DMA.
+- Internal SRAM holds stacks (main task 24 KB), Wi-Fi buffers and DMA.
 - Allocations of 16 KB or more go to PSRAM (`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384`).
   That covers frame buffers, page caches, EPUB chapters and decoded pictures.
+  Smaller ones stay in internal SRAM, so caches of small items take room
+  from the worker stacks, which need one free block of 32 to 64 KB.
+- The main loop runs on the main task: no recursion there (the Sudoku
+  generator is a loop), and short-lived threads are joined when they end,
+  since an unjoined thread keeps its stack.
 - Font atlases are `static` data in flash.
 
 ## SD card files

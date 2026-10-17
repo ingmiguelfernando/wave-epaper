@@ -111,27 +111,41 @@ pub fn generate(difficulty: SudokuDifficulty, seed: u32) -> GeneratedPuzzle {
     }
 }
 
-/// Fill an empty grid by backtracking with shuffled candidates.
+/// Fill an empty grid by backtracking with shuffled candidates. A loop, not
+/// recursion: 81 nested calls overflowed the main task's stack.
 fn fill_solution(grid: &mut [u8; SUDOKU_CELL_COUNT], random: &mut Xorshift) {
-    let _ = backtrack_fill(grid, 0, random);
-}
-
-fn backtrack_fill(grid: &mut [u8; SUDOKU_CELL_COUNT], index: usize, random: &mut Xorshift) -> bool {
-    if index == SUDOKU_CELL_COUNT {
-        return true;
-    }
-    let mut digits = [1_u8, 2, 3, 4, 5, 6, 7, 8, 9];
-    shuffle(&mut digits, random);
-    for &value in &digits {
-        if !conflicts(grid, index, value) {
-            grid[index] = value;
-            if backtrack_fill(grid, index + 1, random) {
-                return true;
+    // Each cell's shuffled digits and how many of them were tried.
+    let mut digits = [[0_u8; 9]; SUDOKU_CELL_COUNT];
+    let mut tried = [0_usize; SUDOKU_CELL_COUNT];
+    let mut index = 0;
+    let mut entering = true;
+    while index < SUDOKU_CELL_COUNT {
+        if entering {
+            digits[index] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+            shuffle(&mut digits[index], random);
+            tried[index] = 0;
+        }
+        grid[index] = 0;
+        let mut placed = false;
+        while tried[index] < 9 {
+            let value = digits[index][tried[index]];
+            tried[index] += 1;
+            if !conflicts(grid, index, value) {
+                grid[index] = value;
+                placed = true;
+                break;
             }
-            grid[index] = 0;
+        }
+        if placed {
+            index += 1;
+            entering = true;
+        } else if index == 0 {
+            return;
+        } else {
+            index -= 1;
+            entering = false;
         }
     }
-    false
 }
 
 /// True when `value` already appears in `index`'s row, column or box.
@@ -195,10 +209,9 @@ const fn units(index: usize) -> [usize; 3] {
     [row, column, row / 3 * 3 + column / 3]
 }
 
-/// Fill the empty cell with the fewest candidates first. A sparse Hard grid
-/// then takes thousands of steps instead of millions, so the device's
-/// generator answers within a press.
-fn count_from(grid: &mut [u8; SUDOKU_CELL_COUNT], used: &mut [[u16; 9]; 3], limit: usize) -> usize {
+/// The empty cell with the fewest candidates and those candidates; `None`
+/// when the grid is full.
+fn fewest_options(grid: &[u8; SUDOKU_CELL_COUNT], used: &[[u16; 9]; 3]) -> Option<(usize, u16)> {
     let mut best: Option<(usize, u16, u32)> = None;
     for (index, &value) in grid.iter().enumerate() {
         if value != 0 {
@@ -214,34 +227,199 @@ fn count_from(grid: &mut [u8; SUDOKU_CELL_COUNT], used: &mut [[u16; 9]; 3], limi
             }
         }
     }
-    let Some((index, mut options, _)) = best else {
-        return 1;
-    };
-    let [row, column, square] = units(index);
+    best.map(|(index, options, _)| (index, options))
+}
+
+/// Fill the empty cell with the fewest candidates first. A sparse Hard grid
+/// then takes thousands of steps instead of millions, so the device's
+/// generator answers within a press. A loop with its own stack of cells,
+/// not recursion, for the main task's stack.
+fn count_from(grid: &mut [u8; SUDOKU_CELL_COUNT], used: &mut [[u16; 9]; 3], limit: usize) -> usize {
+    // The cells being filled, each with the candidates still to try.
+    let mut path = [(0_usize, 0_u16); SUDOKU_CELL_COUNT];
+    let mut depth = 0;
     let mut found = 0;
-    while options != 0 && found < limit {
-        let bit = options & options.wrapping_neg();
-        options &= options - 1;
-        grid[index] = bit.trailing_zeros() as u8;
-        used[0][row] |= bit;
-        used[1][column] |= bit;
-        used[2][square] |= bit;
-        found += count_from(grid, used, limit - found);
-        used[0][row] &= !bit;
-        used[1][column] &= !bit;
-        used[2][square] &= !bit;
+    loop {
+        match fewest_options(grid, used) {
+            Some((index, options)) => {
+                path[depth] = (index, options);
+                depth += 1;
+            }
+            None => {
+                found += 1;
+                if found >= limit {
+                    return found;
+                }
+            }
+        }
+        // The next candidate of the deepest cell that has one left.
+        loop {
+            let Some(&(index, options)) = depth.checked_sub(1).map(|top| &path[top]) else {
+                return found;
+            };
+            let [row, column, square] = units(index);
+            if grid[index] != 0 {
+                let bit = 1 << grid[index];
+                used[0][row] &= !bit;
+                used[1][column] &= !bit;
+                used[2][square] &= !bit;
+                grid[index] = 0;
+            }
+            if options == 0 {
+                depth -= 1;
+                continue;
+            }
+            let bit = options & options.wrapping_neg();
+            path[depth - 1].1 = options & (options - 1);
+            grid[index] = bit.trailing_zeros() as u8;
+            used[0][row] |= bit;
+            used[1][column] |= bit;
+            used[2][square] |= bit;
+            break;
+        }
     }
-    grid[index] = 0;
-    found
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{count_solutions, generate, SudokuDifficulty};
+    use super::{
+        conflicts, count_solutions, generate, shuffle, units, GeneratedPuzzle, SudokuDifficulty,
+        Xorshift, ALL_VALUES,
+    };
 
     /// A tiny solver for the tests: counts solutions of a copy.
     fn solve_and_count(grid: &[u8; 81], limit: usize) -> usize {
         count_solutions(grid, limit)
+    }
+
+    /// The recursive generator of v0.12.3 and before, kept to show the loops
+    /// give the same puzzles.
+    fn recursive_generate(difficulty: SudokuDifficulty, seed: u32) -> GeneratedPuzzle {
+        let mut random = Xorshift(if seed == 0 { 0x9E37_79B9 } else { seed });
+        let mut solution = [0_u8; 81];
+        recursive_fill(&mut solution, 0, &mut random);
+        let mut puzzle = solution;
+        let mut order: Vec<usize> = (0..81).collect();
+        shuffle(&mut order, &mut random);
+        let mut givens = 81;
+        for &index in &order {
+            if givens <= difficulty.target_givens() {
+                break;
+            }
+            let removed = puzzle[index];
+            puzzle[index] = 0;
+            if recursive_count_solutions(&puzzle, 2) != 1 {
+                puzzle[index] = removed;
+            } else {
+                givens -= 1;
+            }
+        }
+        GeneratedPuzzle {
+            puzzle,
+            solution,
+            difficulty,
+            givens,
+        }
+    }
+
+    fn recursive_fill(grid: &mut [u8; 81], index: usize, random: &mut Xorshift) -> bool {
+        if index == 81 {
+            return true;
+        }
+        let mut digits = [1_u8, 2, 3, 4, 5, 6, 7, 8, 9];
+        shuffle(&mut digits, random);
+        for &value in &digits {
+            if !conflicts(grid, index, value) {
+                grid[index] = value;
+                if recursive_fill(grid, index + 1, random) {
+                    return true;
+                }
+                grid[index] = 0;
+            }
+        }
+        false
+    }
+
+    fn recursive_count_solutions(grid: &[u8; 81], limit: usize) -> usize {
+        let mut used = [[0_u16; 9]; 3];
+        for (index, &value) in grid.iter().enumerate() {
+            if value == 0 {
+                continue;
+            }
+            let bit = 1 << value;
+            let [row, column, square] = units(index);
+            if (used[0][row] | used[1][column] | used[2][square]) & bit != 0 {
+                return 0;
+            }
+            used[0][row] |= bit;
+            used[1][column] |= bit;
+            used[2][square] |= bit;
+        }
+        let mut grid = *grid;
+        recursive_count(&mut grid, &mut used, limit)
+    }
+
+    fn recursive_count(grid: &mut [u8; 81], used: &mut [[u16; 9]; 3], limit: usize) -> usize {
+        let mut best: Option<(usize, u16, u32)> = None;
+        for (index, &value) in grid.iter().enumerate() {
+            if value != 0 {
+                continue;
+            }
+            let [row, column, square] = units(index);
+            let options = !(used[0][row] | used[1][column] | used[2][square]) & ALL_VALUES;
+            let count = options.count_ones();
+            if best.map_or(true, |(_, _, fewest)| count < fewest) {
+                best = Some((index, options, count));
+                if count <= 1 {
+                    break;
+                }
+            }
+        }
+        let Some((index, mut options, _)) = best else {
+            return 1;
+        };
+        let [row, column, square] = units(index);
+        let mut found = 0;
+        while options != 0 && found < limit {
+            let bit = options & options.wrapping_neg();
+            options &= options - 1;
+            grid[index] = bit.trailing_zeros() as u8;
+            used[0][row] |= bit;
+            used[1][column] |= bit;
+            used[2][square] |= bit;
+            found += recursive_count(grid, used, limit - found);
+            used[0][row] &= !bit;
+            used[1][column] &= !bit;
+            used[2][square] &= !bit;
+        }
+        grid[index] = 0;
+        found
+    }
+
+    #[test]
+    fn the_loops_give_the_puzzles_the_recursion_gave() {
+        for difficulty in SudokuDifficulty::ALL {
+            for seed in [0, 1, 7, 42, 99, 1234, 0xDEAD_BEEF] {
+                assert_eq!(
+                    generate(difficulty, seed),
+                    recursive_generate(difficulty, seed),
+                    "{difficulty:?} seed {seed}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn counting_stops_at_the_limit_and_finds_clashes() {
+        let empty = [0_u8; 81];
+        assert_eq!(count_solutions(&empty, 2), 2);
+        assert_eq!(count_solutions(&empty, 5), 5);
+        let mut clash = [0_u8; 81];
+        clash[0] = 5;
+        clash[1] = 5;
+        assert_eq!(count_solutions(&clash, 2), 0);
+        let full = generate(SudokuDifficulty::Easy, 7).solution;
+        assert_eq!(count_solutions(&full, 2), 1);
     }
 
     #[test]
