@@ -42,6 +42,9 @@ jobs:
 
       - name: Install Rust Xtensa toolchain
         uses: esp-rs/xtensa-toolchain@v1.5
+        # espup queries the GitHub API; anonymous calls hit the rate limit (403).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           default: true
           buildtargets: esp32s3
