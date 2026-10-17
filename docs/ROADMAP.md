@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-16, firmware v0.12.2.
+Last updated: 2026-10-17, firmware v0.12.3.
 
 ## Status
 
@@ -44,6 +44,7 @@ Last updated: 2026-10-16, firmware v0.12.2.
 | XiaoZhi voice chat: linking, WebSocket call with Opus, device tools (status, volume, Bible), the mockup's call screen | 0.12.0 | 4609d8c | Done, waiting for device test |
 | Delegated tasks D51 to D53: the Games hub scrolls, Race's playing and crash screens from the mockup | 0.12.1 | PR #10 | Done, waiting for device test |
 | Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | 0.12.2 | PR #11 | Done, waiting for device test |
+| Fix: games could not start for lack of internal RAM (the ended photo thread kept its stack, thumbnails read at boot) | 0.12.3 | 22bc5cd | Done, waiting for device test |
 | Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | | side-tasks-13 | Published (Round 13) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a

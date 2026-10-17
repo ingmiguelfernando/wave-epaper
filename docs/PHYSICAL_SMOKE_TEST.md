@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.12.2), not an upstream v1.0.0 marker.
+	expected release version (currently v0.12.3), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
@@ -285,6 +285,14 @@ light sleep. Restore the owner's original preferences afterward.
    footer with the battery and the wake hint. The serial log shows the
    next redraw at local midnight, and the next day shows the next verse.
    A card without the list draws the clock instead.
+
+## Games after Photos (v0.12.3)
+
+- [ ] Right after boot, Home › Games opens a game.
+- [ ] Open Photos with new photos on the card and wait until their
+   thumbnails appear, go back to Home, then open a game: it starts, with
+   no `not enough free memory` message. If one shows, note the numbers on
+   Settings › System › Memory.
 
 ## Voice note volume (v0.11.1)
 

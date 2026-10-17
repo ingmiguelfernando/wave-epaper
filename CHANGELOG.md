@@ -3,6 +3,16 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.3 — Games start again
+
+- **Games said "not enough free memory right now; try again".** A game
+  starts on a thread that needs 32 KB of the chip's internal RAM in one
+  block, and Photos kept some of it: the thread that prepares photos kept
+  its 48 KB after it finished, and since v0.12.2 the photo count on Home
+  read the gallery's thumbnails at boot. The ended thread is now let go at
+  once, Home counts the photos without reading thumbnails, and leaving
+  Photos drops them.
+
 ## v0.12.2 — Voice note screens and the verse of the day
 
 - **Recording a voice note** looks like the mockup: `● REC · Voice
