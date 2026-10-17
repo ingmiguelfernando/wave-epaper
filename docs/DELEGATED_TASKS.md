@@ -693,7 +693,20 @@ the same two-minute cap as a book; a turn at the last page of the last
 book counts no page; the Bible adds nothing to the per-book totals; with
 stats off nothing is recorded.
 
-**Status:** to do.
+**Status:** done on `side-tasks-13`. Built: ▲▼ on `BibleReading` call
+`note_reading_key` (the same `ReadingClock` two-minute cap as a book) and
+`turn_bible_page` counts a page only when the position moves, so the last
+page of the last book counts none. Other Bible screens do not call them.
+`collect_reading_stats` records the day's minutes and pages with no book
+when the session is Bible (`reading_on_bible`); `record_stats` off
+discards them as for a book. `main.rs` needs no change: the five-minute
+`save_reading_stats_if_dirty` cadence and the save before sleep both call
+`collect_reading_stats` on every screen (`main.rs` around the
+`READING_STATS_SAVE_INTERVAL` check and the sleep path). Tests: a Bible
+session's minutes (30 + capped 120) and pages land on the day with no
+per-book row; an edge turn counts no page; stats off records nothing; menu
+keys record nothing. Open: nothing known. Device check: read the Bible a
+few pages, sleep, and see today's minutes in Reading Stats.
 
 ### D61: Ogg Opus files (library only)
 
