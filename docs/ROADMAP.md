@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-17, firmware v0.12.4.
+Last updated: 2026-10-17, firmware v0.12.5.
 
 ## Status
 
@@ -25,7 +25,7 @@ Last updated: 2026-10-17, firmware v0.12.4.
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3; the verse as a sleep screen and the place on Home in 0.12.2 |
 | Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3, Race from the mockup and a scrolling hub in 0.12.1 |
-| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open |
+| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open (the Ogg Opus file in 0.12.5) |
 | Phase 8: OTA updates | | | Planned |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
@@ -46,7 +46,8 @@ Last updated: 2026-10-17, firmware v0.12.4.
 | Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | 0.12.2 | PR #11 | Done, waiting for device test |
 | Fix: games could not start for lack of internal RAM (the ended photo thread kept its stack, thumbnails read at boot) | 0.12.3 | 22bc5cd | Done, waiting for device test |
 | Fix: a new Sudoku overflowed the main task's stack (recursive generator); main task stack 24 KB | 0.12.4 | 47c21ab | Done, waiting for device test |
-| Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | | side-tasks-13 | Published (Round 13) |
+| Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | 0.12.5 | PR #12 | Done, waiting for device test |
+| Delegated tasks D62 to D64: the upload form and parts for Ogg Opus, previews of the cached forecast and the verse mark | | side-tasks-14 | Published (Round 14) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -272,14 +273,16 @@ its wiring.
     verse numbers; short BOOT jumps to the chapter grid.
   - The last position is remembered, and Home shows it (for example `Sal 23`).
 - **Verse of the day.** Picked from `/RUSTMIX/BIBLE/VERSES.TXT` (one reference
-  per line) by date. Used by the sleep screen in Phase 3b.
+  per line) by date. Used by the sleep screen in Phase 3b; the Bible menu
+  opens its page with a bar in the left margin beside the verse (D59).
 
 ### Reading Stats
 
 Done in v0.9.7 (D27); kept as the reference.
 
-- Reading time counts while a Reader page is open: each key press adds the
-  time since the previous one, at most 2 minutes. Only page turns that move
+- Reading time counts while a Reader page or the Bible's reading view is
+  open (the Bible adds to the day only, no book; D60): each key press adds
+  the time since the previous one, at most 2 minutes. Only page turns that move
   count as pages. The day is the local date (`AppState::local_day`).
 - Stored in `/RUSTMIX/READER/STATS.TXT`, one line per day
   (`date,seconds,pages`) plus per-book totals. Writes are batched: every five
@@ -330,7 +333,9 @@ Done in v0.9.7 (D27); kept as the reference.
   and sleep stop it and queue it again; network errors back off from 2
   minutes to an hour.
   - Left: Opus at 24 kbps would make uploads about ten times smaller. The
-    Opus encoder XiaoZhi brought in 0.12.0 (`esp_audio_codec`) can do it.
+    Ogg Opus file (`src/ogg_opus.rs`, D61) is done in 0.12.5; the encoder
+    XiaoZhi brought in 0.12.0 (`esp_audio_codec`) is not wired to
+    recording, the upload or playback yet.
 - **Settings › AI.** Two providers, each with a base URL, model and key, plus
   language, summary style and "process when online". Done in 0.10.1; the
   keys row in 0.11.0.

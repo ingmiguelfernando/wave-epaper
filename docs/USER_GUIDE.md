@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.12.4: what is implemented, not the future
+This guide describes firmware v0.12.5: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -40,7 +40,7 @@ temperature, the game count and `2 apps`.
 |---|---|
 | Photos | Gallery of the JPEG photos in `/RUSTMIX/PHOTOS`; see [Photos](#photos) |
 | Library | The books: RECENT, ALL, BOOKMARKS and FILES |
-| Bible | Offline reader in Spanish; opens at the last place, or the book picker on first use. In the book list short BOOT jumps to the next section; in the chapter grid it jumps ten chapters, and hold BOOT goes back to the books. ▼ turns to the next page and ▲ back, across chapters and books; short BOOT opens the chapter grid; ● opens the menu (`Ir a libro`, `Ir a capítulo`, and `Versículo del día` when `VERSES.TXT` has today's verse). The place is saved when you leave and before sleep |
+| Bible | Offline reader in Spanish; opens at the last place, or the book picker on first use. In the book list short BOOT jumps to the next section; in the chapter grid it jumps ten chapters, and hold BOOT goes back to the books. ▼ turns to the next page and ▲ back, across chapters and books; short BOOT opens the chapter grid; ● opens the menu (`Ir a libro`, `Ir a capítulo`, and `Versículo del día` when `VERSES.TXT` has today's verse, which opens its page with a bar in the left margin beside the verse). The place is saved when you leave and before sleep |
 | Reading Stats | Reading time, streaks and finished books; row shows `N-day streak` while one is live |
 | Weather | Now, next hours and next days; see [Weather](#weather) |
 | Games | Games hub (SD games with their state) |
@@ -146,7 +146,8 @@ it.
 Home › Reading Stats shows today's minutes and pages, the current and best
 streak, this week's minutes, the last twelve weeks and the year so far; the
 book in the Reader appears as the current book. Time counts only while a
-page is open: each key press adds the time since the previous one, at most
+page is open, in a book or in the Bible's reading view (the Bible adds to
+the day and the week, not to a book): each key press adds the time since the previous one, at most
 two minutes, and each page turn adds a page. The day comes from the device
 clock; with no clock set, nothing is recorded. History is kept in
 `/RUSTMIX/READER/STATS.TXT`, saved at most every five minutes, when the
@@ -322,7 +323,8 @@ says when the forecast was updated and when the next update is due.
 
 Clear and partly cloudy nights show a moon. A failed update keeps the last
 good forecast and the bottom line says so. No weather updates run in
-sleep-image mode, and the forecast is kept in memory only, not on the SD card.
+sleep-image mode. The last good forecast is saved to `/RUSTMIX/FORECAST.TXT`
+and shows again after a restart, marked `stale` until an update succeeds.
 Without `/RUSTMIX/WEATHER.TXT` the screen explains how to add it; see
 [SD-card setup](SD_CARD_SETUP.md#weather).
 

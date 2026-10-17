@@ -21,7 +21,7 @@ before tests; never remove the card while writes are active.
 - [ ] If normal serial discovery fails, hold BOOT during a power cycle,
 	release it, flash and power-cycle again. Record which path was needed.
 - [ ] Boot reaches Home without reset/panic loops; Device Info shows the
-	expected release version (currently v0.12.4), not an upstream v1.0.0 marker.
+	expected release version (currently v0.12.5), not an upstream v1.0.0 marker.
 - [ ] Up/Down/Select and hold BOOT work through Home/category navigation;
 	Reading Stats opens its screen.
 - [ ] Bible: with a translation in `/RUSTMIX/BIBLE`, Home › Bible opens the
@@ -285,6 +285,19 @@ light sleep. Restore the owner's original preferences afterward.
    footer with the battery and the wake hint. The serial log shows the
    next redraw at local midnight, and the next day shows the next verse.
    A card without the list draws the clock instead.
+
+## Forecast, verse mark and Bible stats (v0.12.5)
+
+- [ ] With a forecast on Home, restart the device with Wi-Fi off: Home and
+   Weather show the last forecast, and the Weather footer says `stale`.
+   The next update makes it normal again.
+- [ ] Settings › Weather: change the place in `WEATHER.TXT`, restart: the
+   old forecast is not shown.
+- [ ] Bible › menu › `Versículo del día`: a bar stands in the left margin
+   beside the verse (both verses of a range, also on the next page); ▲▼
+   keep it; `Ir a capítulo` clears it.
+- [ ] Read the Bible for a few pages, sleep and wake: Reading Stats has the
+   minutes and pages, and the current book is unchanged.
 
 ## Games after Photos (v0.12.3) and a new Sudoku (v0.12.4)
 

@@ -99,6 +99,10 @@ show_on_home=yes|no
 - `units=imperial` shows °F and mph; `metric` (default) shows °C and km/h.
 - `show_on_home=no` keeps the forecast in the Weather app only.
 
+The firmware keeps the last good forecast in `/RUSTMIX/FORECAST.TXT` and
+shows it after a restart. It is written by the device; delete it to forget
+the forecast.
+
 ## AI
 
 Optional `/RUSTMIX/AI.TXT`, read by Settings › AI. The example uses Groq for

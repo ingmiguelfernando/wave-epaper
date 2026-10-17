@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.12.4. This is not a list of promised mockup features. See
+Firmware v0.12.5. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -33,13 +33,14 @@ after Photos has prepared it once.
 ## Weather provider reliability
 
 Open-Meteo can fail with transport, TLS, timeout or HTTP errors. Bounded
-retries/backoff retain the last good result in memory; a cold boot without a
-successful request shows "No forecast yet" with the error under it. Once a
+retries/backoff retain the last good result, and since v0.12.5 it is saved
+to `/RUSTMIX/FORECAST.TXT`, so a restart shows it as `stale` until the next
+update succeeds. A first boot without a successful request shows "No
+forecast yet" with the error under it. Once a
 forecast exists, the second Weather page (Down) shows the last error. Wi-Fi
 is normally off between bursts and weather is paused during sleep, except in
 the Weather and Clock + weather sleep modes; neither is a continuous-connection
-guarantee. The forecast is not saved to the SD card, so a reboot starts
-without one.
+guarantee. A forecast saved for another place is ignored.
 
 ## MCU deep sleep
 
@@ -54,7 +55,8 @@ estimates until the battery log confirms them on the device.
 ## Voice Notes AI
 
 - Notes go as WAV (about 1.9 MB a minute), so a long note takes a while to
-  upload and uses battery; the mockup's Opus recording is not done yet.
+  upload and uses battery; the mockup's Opus recording is not done yet
+  (the Ogg Opus file format is, in v0.12.5, but nothing records or sends it).
 - Keys typed in the portal cross the LAN as plain HTTP, like the files the
   portal moves. Type them on a home network you trust.
 - Recording, playback, the transfer portal or sleep stops the note being
