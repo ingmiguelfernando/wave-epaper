@@ -524,7 +524,8 @@ pub fn render_bible_reading(
         .marked_verses()
         .filter(|mark| mark.book == position.book && mark.chapter == position.chapter);
     let mut top = READING_TOP;
-    let mut current_span: Option<(u16, u16)> = None;
+    // A page can open on the wrapped lines of a verse that began on the last one.
+    let mut current_span = verse_span_before(&lines, page * per_page);
     for line in lines.iter().skip(page * per_page).take(per_page) {
         match line {
             bible_reader::Line::Heading(_) => current_span = None,
@@ -554,6 +555,22 @@ pub fn render_bible_reading(
     let left = RIGHT - detail.text_width(&shown);
     Text::new(&shown, Point::new(left, READING_INDICATOR_TOP), detail).draw(display)?;
     draw_bottom_bar(display, preferences, &READING_HINTS)
+}
+
+/// The verse span a line index continues from: that of the last numbered
+/// line before `index`, unless a heading came after it.
+fn verse_span_before(lines: &[bible_reader::Line], index: usize) -> Option<(u16, u16)> {
+    for line in lines[..index.min(lines.len())].iter().rev() {
+        match line {
+            bible_reader::Line::Heading(_) => return None,
+            bible_reader::Line::Verse {
+                number: Some(label),
+                ..
+            } => return bible::verse_span(label),
+            bible_reader::Line::Verse { number: None, .. } => {}
+        }
+    }
+    None
 }
 
 /// Width left for a verse's first line: the full width less the widest
@@ -864,6 +881,32 @@ mod mark_tests {
         let pitch = i32::from(body_style.line_height()) + 8;
         // Two one-line verses: two adjacent pitch slots.
         assert!(rows.last().unwrap() - rows.first().unwrap() + 1 <= 2 * pitch);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_wrapped_verse_split_by_a_page_break_keeps_its_bar_on_the_next_page() {
+        let long = "palabra ".repeat(60);
+        let mut body = String::from("C\t1\n");
+        for verse in 1..=12 {
+            body.push_str(&format!("V\t{verse}\t1\t{long}\n"));
+        }
+        let root = card("split-verse", &body);
+        let first = state_on(&root, Some((1, 12)));
+        let pages = super::chapter_pages(&first, first.bible.position().unwrap());
+        assert!(pages >= 2);
+        let mut state = state_on(&root, Some((1, 12)));
+        state.bible.turn_page(true, pages);
+        let frame = render(&state);
+        assert_eq!(
+            bar_rows(&frame).first().copied(),
+            Some(READING_TOP),
+            "the page opens on wrapped lines of a marked verse"
+        );
+        // Marking only verse 1 leaves a page that opens inside verse 2 bare.
+        let mut other = state_on(&root, Some((1, 1)));
+        other.bible.turn_page(true, pages);
+        assert!(bar_rows(&render(&other)).is_empty());
         let _ = fs::remove_dir_all(&root);
     }
 

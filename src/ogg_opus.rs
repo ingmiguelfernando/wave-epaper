@@ -20,6 +20,8 @@ pub const DEFAULT_PRE_SKIP: u16 = 312;
 pub const INPUT_SAMPLE_RATE: u32 = 16_000;
 /// Granule samples per 20 ms packet at 48 kHz.
 pub const SAMPLES_PER_PACKET: u64 = 960;
+/// Segments one page can hold.
+const MAX_SEGMENTS: usize = 255;
 /// Packets per second of audio; one page holds a second when they fit.
 pub const PACKETS_PER_SECOND: usize = 50;
 
@@ -121,8 +123,7 @@ pub fn lacing_values(packet_len: usize) -> Vec<u8> {
     values
 }
 
-/// Build one page. `packets` are complete packet payloads to place in this
-/// page; `continued` is the first packet's leftover from the previous page.
+/// Build one page around `body`, with its CRC filled in.
 fn build_page(
     header_type: u8,
     granule: u64,
@@ -196,6 +197,12 @@ impl<W: Write> OggOpusWriter<W> {
     /// Queue one 20 ms Opus packet. Pages flush every second of audio.
     pub fn write_packet(&mut self, packet: &[u8]) -> io::Result<()> {
         assert!(!self.finished, "stream already finished");
+        if lacing_values(packet.len()).len() > MAX_SEGMENTS {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "packet does not fit in one Ogg page",
+            ));
+        }
         self.packets.push(packet.to_vec());
         if self.packets.len() >= PACKETS_PER_SECOND {
             self.flush_page(false)?;
@@ -222,7 +229,7 @@ impl<W: Write> OggOpusWriter<W> {
         let mut kept = 0;
         for packet in &self.packets {
             let values = lacing_values(packet.len());
-            if segment_table.len() + values.len() > 255 {
+            if segment_table.len() + values.len() > MAX_SEGMENTS {
                 break;
             }
             segment_table.extend_from_slice(&values);
@@ -285,18 +292,13 @@ fn read_page(reader: &mut impl Read) -> io::Result<Option<PageHeader>> {
         return Ok(None);
     }
     let stored_crc = u32::from_le_bytes([prefix[22], prefix[23], prefix[24], prefix[25]]);
-    let mut check = [0_u8; 27 + 255];
-    check[..27].copy_from_slice(&prefix);
-    let check_len = 27 + segment_count;
-    check[27..check_len].copy_from_slice(&segment_table);
     // CRC covers the header (with checksum zeroed) and the body.
     let mut zeroed = prefix;
     zeroed[22..26].copy_from_slice(&0_u32.to_le_bytes());
-    let mut crc_input = Vec::with_capacity(check_len + body.len());
+    let mut crc_input = Vec::with_capacity(27 + segment_count + body.len());
     crc_input.extend_from_slice(&zeroed);
     crc_input.extend_from_slice(&segment_table);
     crc_input.extend_from_slice(&body);
-    let _ = check_len;
     if ogg_crc(&crc_input) != stored_crc {
         return Ok(None);
     }
@@ -567,6 +569,21 @@ mod tests {
         for (index, packet) in stream.packets.iter().enumerate() {
             assert_eq!(packet, &sample_packet(index));
         }
+    }
+
+    #[test]
+    fn a_packet_too_big_for_a_page_is_refused_and_big_packets_still_round_trip() {
+        let mut writer = OggOpusWriter::new(Vec::new(), OpusHead::default(), 7).unwrap();
+        assert!(writer.write_packet(&vec![1_u8; 255 * 255]).is_err());
+        // 50 packets of 2000 bytes need 400 segments: more than one page.
+        let packets: Vec<Vec<u8>> = (0..50).map(|n| vec![n as u8; 2000]).collect();
+        for packet in &packets {
+            writer.write_packet(packet).unwrap();
+        }
+        writer.finish().unwrap();
+        let bytes = writer.inner.clone();
+        let stream = read_stream(&mut Cursor::new(bytes)).unwrap();
+        assert_eq!(stream.packets, packets);
     }
 
     #[test]

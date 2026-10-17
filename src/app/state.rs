@@ -1120,6 +1120,11 @@ impl AppState {
     fn note_reading_key(&mut self) {
         let bible = self.router.current() == ScreenRoute::BibleReading;
         if self.reader.session.is_some() || bible {
+            if self.reading_on_bible != bible {
+                // Settle the time of the other kind first, so a book never gets
+                // the Bible's minutes or the Bible a book's.
+                self.collect_reading_stats(self.local_day());
+            }
             self.reading_on_bible = bible;
             self.reading_clock.on_key(self.event_clock_ms);
         }
@@ -2255,6 +2260,31 @@ mod tests {
         state.reader.session = Some(sample_session());
         state.router.navigate_to(ScreenRoute::ReaderPage);
         state
+    }
+
+    #[test]
+    fn switching_between_a_book_and_the_bible_settles_each_kind_apart() {
+        let mut state = reading_state();
+        state.board.rtc = Some(crate::rtc::RtcDateTime {
+            year: 2026,
+            month: 10,
+            day: 8,
+            weekday: 4,
+            hour: 12,
+            minute: 0,
+            second: 0,
+        });
+        let day = state.local_day().unwrap();
+        let book = "/sdcard/RUSTMIX/BOOKS/Quijote.txt";
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        // The Bible opens before any save: the book keeps its own time only.
+        state.router.navigate_to(ScreenRoute::BibleReading);
+        state.apply_with_clock(ButtonEvent::Down, 40_000);
+        state.apply_with_clock(ButtonEvent::Down, 70_000);
+        state.collect_reading_stats(Some(day));
+        assert_eq!(state.reading_stats.day(day).seconds, 70);
+        assert_eq!(state.reading_stats.book(book).unwrap().seconds, 40);
     }
 
     /// A TXT session with four indexed pages; fields are public for tests.
