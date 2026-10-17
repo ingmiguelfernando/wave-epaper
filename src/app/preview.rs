@@ -839,6 +839,7 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         bible_preview_state(ScreenRoute::BibleReading, 1),
     ));
     states.push(("bible-reading-large", bible_preview_state_large()));
+    states.push(("bible-verse-of-day", bible_verse_of_day_preview_state()));
     states.push(("bible-menu", bible_preview_state(ScreenRoute::BibleMenu, 1)));
     states.push(("bible-missing", AppState::default()));
 
@@ -950,6 +951,33 @@ fn bible_preview_state(route: ScreenRoute, chapter: u16) -> AppState {
 fn bible_preview_state_large() -> AppState {
     let mut state = bible_preview_state(ScreenRoute::BibleReading, 1);
     state.reader.preferences.font_size = crate::reader::BookFontSize::Large;
+    state
+}
+
+/// The reading view with a two-verse range marked, the second verse wrapping:
+/// `Versículo del día` as it looks after the menu opens it.
+fn bible_verse_of_day_preview_state() -> AppState {
+    let root =
+        std::env::temp_dir().join(format!("wave-preview-bible-verse-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let folder = root.join("RVR1960");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("index.tsv"), "GEN\tGénesis\t1\tGEN.txt\n").unwrap();
+    let long = "En el principio creó Dios los cielos y la tierra, y la tierra estaba desordenada y vacía, y las tinieblas estaban sobre la faz del abismo, y el Espíritu de Dios se movía sobre la faz de las aguas.";
+    let mut text = String::from("C\t1\nH\tLa creación\n");
+    text.push_str("V\t1\t1\tEn el principio creó Dios los cielos y la tierra.\n");
+    text.push_str(&format!("V\t2\t1\t{long}\n"));
+    text.push_str("V\t3\t1\tY dijo Dios: Sea la luz; y fue la luz.\n");
+    std::fs::write(folder.join("GEN.txt"), text).unwrap();
+    let mut state = sample_state();
+    state.bible = crate::bible_state::BibleUiState::with_root(&root);
+    let position = crate::bible_reader::Position {
+        book: 0,
+        chapter: 1,
+        page: 0,
+    };
+    state.bible.open_at_marked(position, 1, 2);
+    state.router.navigate_to(ScreenRoute::BibleReading);
     state
 }
 

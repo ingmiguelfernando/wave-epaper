@@ -1475,9 +1475,9 @@ impl AppState {
                 if let Some((position, verse)) = today {
                     // The page is found in the chapter, so read it first.
                     self.bible.open_at(position);
-                    let page = crate::app::screens::bible::verse_page(self, position, verse);
+                    let page = crate::app::screens::bible::verse_page(self, position, verse.first);
                     let position = crate::bible_reader::Position { page, ..position };
-                    self.bible.open_at(position);
+                    self.bible.open_at_marked(position, verse.first, verse.last);
                     self.router.navigate_to(ScreenRoute::BibleReading);
                 }
             }
@@ -3987,6 +3987,40 @@ mod bible_routing_tests {
         let expected = crate::app::screens::bible::verse_page(&state, first_page, 70);
         assert!(expected > 0, "verse 70 is past the first page");
         assert_eq!(position.page, expected);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_verse_of_the_day_marks_its_range_and_other_opens_clear_it() {
+        let root = temp_card("menu-verse-mark");
+        fs::write(root.join("VERSES.TXT"), "GEN 1:1-2\n").unwrap();
+        let mut state = with_clock(menu_state(&root));
+        // Versículo del día is the third row with no second translation.
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        let mark = state
+            .bible
+            .marked_verses()
+            .expect("the verse marks its range");
+        assert_eq!((mark.first, mark.last), (1, 2));
+        // Paging keeps the mark.
+        state.apply(ButtonEvent::Down);
+        assert!(
+            state.bible.marked_verses().is_some(),
+            "a turn keeps the mark"
+        );
+        // Opening a chapter from the grid clears it.
+        state.apply(ButtonEvent::Select); // reading menu
+        state.apply(ButtonEvent::Down); // Ir a capítulo
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleChapters);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        assert!(
+            state.bible.marked_verses().is_none(),
+            "the grid clears the mark"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 

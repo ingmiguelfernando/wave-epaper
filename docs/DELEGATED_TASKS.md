@@ -656,7 +656,20 @@ wrapped verse, a range across a page break, a range label such as `1-2`
 on the card); turning the page keeps the mark and opening a chapter from
 the grid clears it; no bar without a mark or in another chapter.
 
-**Status:** to do.
+**Status:** done on `side-tasks-13`. Built: `BibleUiState` keeps
+`MarkedVerses` (book, chapter, `first..=last`). `Versículo del día` in
+`open_bible_menu_item` sets it through `open_at_marked` after the page is
+found; every other `open_at` (`Ir a libro`, `Ir a capítulo`, a translation
+switch, Home) clears it; paging keeps it. `render_bible_reading` draws a
+3 px bar at x 6 to 8 beside every line of the marked verses on the page
+(the numbered line and its wraps, every verse in a range, across a page
+break). Preview `bible-verse-of-day`: a two-verse range whose second verse
+wraps, next to `bible-reading`. Tests: the bar covers the wrapped verse's
+lines only; a range including a `1-2` label marks every verse in it; a
+range across a page break marks both pages while verse 1 alone does not;
+a turn keeps the mark and a grid open clears it; no bar without a mark or
+in another chapter. Open: nothing known. Device check: `bible-verse-of-day`
+and a real `Versículo del día` on the panel.
 
 ### D60: Bible reading counts in Reading Stats
 

@@ -30,6 +30,9 @@ use crate::{
 
 const LEFT: i32 = 16;
 const RIGHT: i32 = 464;
+/// Left-margin bar beside a marked verse line: 3 px at x 6 to 8.
+const MARK_BAR_LEFT: i32 = 6;
+const MARK_BAR_WIDTH: u32 = 3;
 
 /// Paper-colored text for the inverted tab, row and chapter cell.
 fn inverse_text(preferences: DisplayPreferences, role: UiTextRole) -> UiTextStyle {
@@ -516,8 +519,31 @@ pub fn render_bible_reading(
         ..preferences
     }
     .heading_style();
+    let mark = state
+        .bible
+        .marked_verses()
+        .filter(|mark| mark.book == position.book && mark.chapter == position.chapter);
     let mut top = READING_TOP;
+    let mut current_span: Option<(u16, u16)> = None;
     for line in lines.iter().skip(page * per_page).take(per_page) {
+        match line {
+            bible_reader::Line::Heading(_) => current_span = None,
+            bible_reader::Line::Verse { number, .. } => {
+                if let Some(label) = number {
+                    current_span = bible::verse_span(label);
+                }
+            }
+        }
+        if let (Some(mark), Some((start, end))) = (mark, current_span) {
+            if start <= mark.last && end >= mark.first {
+                Rectangle::new(
+                    Point::new(MARK_BAR_LEFT, top),
+                    Size::new(MARK_BAR_WIDTH, body.line_height() as u32),
+                )
+                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                .draw(display)?;
+            }
+        }
         top = draw_reading_line(display, body, heading, small, top, line, width)?;
     }
 
@@ -720,5 +746,174 @@ mod thumb_index_tests {
     fn an_empty_section_keeps_its_code() {
         let label = thumb_label(&[], &SECTIONS[0]);
         assert_eq!(label, SECTIONS[0].tab);
+    }
+}
+
+#[cfg(test)]
+mod mark_tests {
+    use super::{render_bible_reading, MARK_BAR_LEFT, READING_TOP};
+    use crate::{
+        app::{reader_typography::reader_body_style, router::ScreenRoute, state::AppState},
+        bible_state::BibleUiState,
+        framebuffer::FrameBuffer,
+        orientation::{DisplayOrientation, OrientedFrameBuffer},
+    };
+    use embedded_graphics::prelude::Point;
+    use std::{fs, path::PathBuf};
+
+    fn card(tag: &str, body: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("wave-bible-mark-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let folder = root.join("RVR1960");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("index.tsv"), "GEN\tGénesis\t2\tGEN.txt\n").unwrap();
+        fs::write(
+            folder.join("meta.txt"),
+            "format=1\nabbreviation=RVR1960\nlanguage=es\n",
+        )
+        .unwrap();
+        fs::write(folder.join("GEN.txt"), body).unwrap();
+        root
+    }
+
+    fn state_on(root: &PathBuf, mark: Option<(u16, u16)>) -> AppState {
+        let mut state = AppState::default();
+        state.bible = BibleUiState::with_root(root);
+        let position = crate::bible_reader::Position {
+            book: 0,
+            chapter: 1,
+            page: 0,
+        };
+        match mark {
+            Some((first, last)) => state.bible.open_at_marked(position, first, last),
+            None => state.bible.open_at(position),
+        }
+        state.router.navigate_to(ScreenRoute::BibleReading);
+        state
+    }
+
+    fn render(state: &AppState) -> FrameBuffer {
+        let mut frame = FrameBuffer::new_white();
+        {
+            let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
+            render_bible_reading(&mut display, state).unwrap();
+        }
+        frame
+    }
+
+    /// Logical (x, y) is native (y, 479 - x) in portrait.
+    fn ink(frame: &FrameBuffer, x: i32, y: i32) -> bool {
+        frame.is_black(Point::new(y, 479 - x)) == Some(true)
+    }
+
+    fn bar_rows(frame: &FrameBuffer) -> Vec<i32> {
+        (READING_TOP..READING_TOP + 600)
+            .filter(|&y| ink(frame, MARK_BAR_LEFT + 1, y))
+            .collect()
+    }
+
+    #[test]
+    fn a_wrapped_verse_marks_every_one_of_its_lines() {
+        let long = "Uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciséis diecisiete dieciocho diecinueve veinte veintiuno veintidós veintitrés veinticuatro veinticinco veintiséis veintisiete veintiocho veintinueve treinta.";
+        let body =
+            format!("C\t1\nH\tEncabezado\nV\t1\t1\tCorto.\nV\t2\t1\t{long}\nV\t3\t1\tTres.\n");
+        let root = card("wrap", &body);
+        let state = state_on(&root, Some((2, 2)));
+        let body_style = reader_body_style(
+            state.reader.preferences.book_font,
+            state.reader.preferences.font_size,
+            state.reader.preferences.theme,
+        );
+        let line = i32::from(body_style.line_height());
+        let frame = render(&state);
+        let rows = bar_rows(&frame);
+        assert!(!rows.is_empty(), "the marked verse draws a bar");
+        // The verse wraps, so the bar covers more than one line's height.
+        let height = rows.last().unwrap() - rows.first().unwrap() + 1;
+        assert!(
+            height >= 2 * line,
+            "bar height {height} covers the wrapped lines"
+        );
+        // The bar is exactly 3 px at x 6 to 8.
+        assert!(ink(&frame, MARK_BAR_LEFT, rows[0]));
+        assert!(ink(&frame, MARK_BAR_LEFT + 1, rows[0]));
+        assert!(ink(&frame, MARK_BAR_LEFT + 2, rows[0]));
+        assert!(!ink(&frame, MARK_BAR_LEFT + 3, rows[0]));
+        // No mark: no bar.
+        let unmarked = state_on(&root, None);
+        assert!(bar_rows(&render(&unmarked)).is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_range_marks_every_verse_in_it_including_a_1_2_label() {
+        // Labels 1 and 2, and a third verse left unmarked.
+        let body = "C\t1\nV\t1\t1\tUno.\nV\t2\t1\tDos.\nV\t3\t1\tTres.\n";
+        let root = card("range", body);
+        let state = state_on(&root, Some((1, 2)));
+        let frame = render(&state);
+        let rows = bar_rows(&frame);
+        assert!(rows.len() >= 2, "both verses of the range draw a bar");
+        // The mark is only beside verses 1 and 2, not verse 3.
+        let body_style = reader_body_style(
+            state.reader.preferences.book_font,
+            state.reader.preferences.font_size,
+            state.reader.preferences.theme,
+        );
+        let pitch = i32::from(body_style.line_height()) + 8;
+        // Two one-line verses: two adjacent pitch slots.
+        assert!(rows.last().unwrap() - rows.first().unwrap() + 1 <= 2 * pitch);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_range_across_a_page_break_marks_both_pages() {
+        // Many short verses so the range 1-2 lands on page 1 and continues
+        // when the range itself spans the break (1 on page 1, 2 on page 2).
+        let mut body = String::from("C\t1\n");
+        for verse in 1..=40 {
+            body.push_str(&format!("V\t{verse}\t1\tVersículo {verse} de la página.\n"));
+        }
+        let root = card("page-break", &body);
+        let mut state = state_on(&root, Some((1, 40)));
+        let pages = super::chapter_pages(&state, state.bible.position().unwrap());
+        assert!(
+            pages >= 2,
+            "forty verses span more than one page, got {pages}"
+        );
+        let first = render(&state);
+        assert!(!bar_rows(&first).is_empty(), "page 1 marks the range");
+        state.bible.turn_page(true, pages);
+        assert!(state.bible.position().unwrap().page >= 1);
+        let second = render(&state);
+        assert!(
+            !bar_rows(&second).is_empty(),
+            "page 2 still marks the range across the break"
+        );
+        // A mark of only verse 1 leaves page 2 unmarked.
+        let mut only_first = state_on(&root, Some((1, 1)));
+        only_first.bible.turn_page(true, pages);
+        assert!(bar_rows(&render(&only_first)).is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn another_chapter_draws_no_bar() {
+        let body = "C\t1\nV\t1\t1\tUno.\nC\t2\nV\t1\t1\tDos.\n";
+        let root = card("other-chapter", body);
+        let mut state = state_on(&root, Some((1, 1)));
+        // Page forward into chapter 2; the mark stays on chapter 1.
+        state.bible.turn_page(true, 1);
+        assert_eq!(state.bible.position().unwrap().chapter, 2);
+        assert!(
+            state.bible.marked_verses().is_some(),
+            "a turn keeps the mark"
+        );
+        assert!(
+            bar_rows(&render(&state)).is_empty(),
+            "the mark is for another chapter"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 }

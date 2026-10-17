@@ -46,6 +46,16 @@ pub enum SwitchOutcome {
     Picker,
 }
 
+/// Verses marked on the open page: the book index, the chapter and the
+/// `VerseRef`'s range. The reading view draws a bar beside their lines.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MarkedVerses {
+    pub book: usize,
+    pub chapter: u16,
+    pub first: u16,
+    pub last: u16,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BibleUiState {
     root: PathBuf,
@@ -66,6 +76,8 @@ pub struct BibleUiState {
     /// Card reads outside chapter loads, so a test can see that drawing and
     /// the menu keys add none.
     reads: usize,
+    /// Verses marked on the open page; `None` outside the verse of the day.
+    marked_verses: Option<MarkedVerses>,
 }
 
 impl BibleUiState {
@@ -151,6 +163,7 @@ impl BibleUiState {
             translation_selected: 0,
             verses,
             reads,
+            marked_verses: None,
         }
     }
 
@@ -189,12 +202,34 @@ impl BibleUiState {
         }
     }
 
-    /// Open the reading view at `position`. The place is marked changed so
-    /// the first close saves it, even when nothing was turned.
+    /// Open the reading view at `position`, clearing any verse mark. The
+    /// place is marked changed so the first close saves it, even when nothing
+    /// was turned.
     pub fn open_at(&mut self, position: Position) {
+        self.marked_verses = None;
         self.position = Some(position);
         self.place_changed = true;
         self.refresh_chapter();
+    }
+
+    /// Open the reading view at `position` with `first..=last` marked, as
+    /// `Versículo del día` does.
+    pub fn open_at_marked(&mut self, position: Position, first: u16, last: u16) {
+        self.marked_verses = Some(MarkedVerses {
+            book: position.book,
+            chapter: position.chapter,
+            first,
+            last,
+        });
+        self.position = Some(position);
+        self.place_changed = true;
+        self.refresh_chapter();
+    }
+
+    /// The verses marked on the open page, if any.
+    #[must_use]
+    pub fn marked_verses(&self) -> Option<MarkedVerses> {
+        self.marked_verses
     }
 
     pub fn position(&self) -> Option<Position> {
@@ -294,10 +329,10 @@ impl BibleUiState {
         !self.verses.is_empty()
     }
 
-    /// The reading position of `verse` and its first verse number, when its
-    /// book and chapter are on this card.
+    /// The reading position of `verse`, when its book and chapter are on this
+    /// card.
     #[must_use]
-    pub fn verse_position(&self, verse: &bible::VerseRef) -> Option<(Position, u16)> {
+    pub fn verse_position(&self, verse: &bible::VerseRef) -> Option<Position> {
         let book = self
             .books
             .iter()
@@ -305,20 +340,20 @@ impl BibleUiState {
         if verse.chapter > self.books[book].chapters {
             return None;
         }
-        let position = Position {
+        Some(Position {
             book,
             chapter: verse.chapter,
             page: 0,
-        };
-        Some((position, verse.first))
+        })
     }
 
     /// Today's verse of the day from `VERSES.TXT`, as a reading position and
-    /// its first verse number.
+    /// the full reference (its `first..=last` range).
     #[must_use]
-    pub fn verse_of_day(&self, epoch_day: u32) -> Option<(Position, u16)> {
+    pub fn verse_of_day(&self, epoch_day: u32) -> Option<(Position, bible::VerseRef)> {
         let verse = bible::verse_of_the_day(self.verse_list(), epoch_day)?;
-        self.verse_position(verse)
+        let position = self.verse_position(verse)?;
+        Some((position, *verse))
     }
 
     /// Today's verse for the sleep screen: its text, its reference (`Sal
@@ -462,6 +497,7 @@ impl BibleUiState {
         self.card = BibleCard::Ready {
             translation: folder,
         };
+        self.marked_verses = None;
         self.language = language;
         self.nav = BibleNav::new(books.clone());
         self.books = books;
