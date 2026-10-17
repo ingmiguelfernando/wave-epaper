@@ -746,7 +746,23 @@ round trip of a few hundred packets; a file cut inside a page gives the
 packets of the pages before it; a changed byte fails that page's CRC; the
 duration of a 3:27 file read from its end.
 
-**Status:** to do.
+**Status:** done on `side-tasks-13`. Built: `src/ogg_opus.rs` (host-only,
+in `lib.rs`). `OggOpusWriter` over any `Write` writes the `OpusHead` page
+(BOS, 1 channel, pre-skip 312, input 16 000, gain 0, mapping 0), then
+`OpusTags` (vendor `wave`, no comments), then one audio page per 50
+20 ms packets (960 samples each at 48 kHz); `finish` marks the last page
+EOS. Lacing handles 0, 254, 255, 256 and 510. `read_stream` over any
+`Read` checks each page's capture pattern and CRC, joins packets across
+pages and returns the head and the packets; a cut or damaged page ends
+the stream with the earlier pages kept. `duration_ms` reads the last
+page's granule from the file's end less the pre-skip. CRC is Ogg's
+(`0x04C11DB7`, init 0, no reflection, no final XOR; `123456789` →
+`0x89A1897F`). Nothing uses it yet. Tests: the CRC check value; OpusHead
+19 bytes and OpusTags 20 bytes per RFC 7845; the five lacing cases; a
+300-packet round trip; one-second pages with the right granule; a cut
+file keeps earlier packets; a changed byte drops that page; a 3:27
+duration from the end. Open: nothing known. Device check: none yet (the
+encoder is wired later).
 
 ## Round 12 tasks (done in v0.12.2)
 

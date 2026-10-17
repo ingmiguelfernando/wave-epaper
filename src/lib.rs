@@ -40,6 +40,7 @@ pub mod lua_runtime;
 pub mod network;
 pub mod network_config;
 pub mod ntp;
+pub mod ogg_opus;
 pub mod orientation;
 pub mod panel_refresh;
 pub mod photos;
