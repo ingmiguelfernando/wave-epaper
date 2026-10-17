@@ -3,6 +3,15 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.4 — A new Sudoku without a restart
+
+- **Starting a new Sudoku restarted the device** (`A stack overflow in
+  task main` on the serial log). The puzzle generator filled the grid by
+  recursion, up to 81 calls deep, on the main task's 16 KB stack, and the
+  main loop has used more of that stack since v0.12.0. The generator and
+  its solution counter are loops now and give the same puzzle for the same
+  seed, and the main task has 24 KB.
+
 ## v0.12.3 — Games start again
 
 - **Games said "not enough free memory right now; try again".** A game
