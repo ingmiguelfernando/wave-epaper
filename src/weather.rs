@@ -258,7 +258,17 @@ impl WeatherSnapshot {
     }
 
     pub fn record_success(&mut self, data: WeatherData) {
-        self.state = WeatherFetchState::Ready;
+        self.absorb(data, WeatherFetchState::Ready);
+    }
+
+    /// Adopt a cache loaded from the card: keep `observed_at`, stay `Stale`
+    /// until a fetch succeeds.
+    pub fn adopt_cache(&mut self, data: WeatherData) {
+        self.absorb(data, WeatherFetchState::Stale);
+    }
+
+    fn absorb(&mut self, data: WeatherData, state: WeatherFetchState) {
+        self.state = state;
         self.last_success = Some(data.current.observed_at.clone());
         self.provider_timezone = data.provider_timezone;
         self.current = Some(data.current);
@@ -992,6 +1002,19 @@ mod tests {
         assert_eq!(snapshot.current_summary(), "Partly cloudy  64.4 F");
         assert_eq!(snapshot.forecast.len(), 5);
         assert_eq!(snapshot.hourly.len(), 12);
+    }
+
+    #[test]
+    fn cache_adopts_as_stale_until_a_fetch_succeeds() {
+        let data = parse_open_meteo_response(SAMPLE).unwrap();
+        let observed = data.current.observed_at.clone();
+        let mut snapshot = WeatherSnapshot::provisioned(&config());
+        snapshot.adopt_cache(data);
+        assert_eq!(snapshot.state, WeatherFetchState::Stale);
+        assert_eq!(snapshot.last_success.as_deref(), Some(observed.as_str()));
+        assert_eq!(snapshot.forecast.len(), 5);
+        snapshot.record_success(parse_open_meteo_response(SAMPLE).unwrap());
+        assert_eq!(snapshot.state, WeatherFetchState::Ready);
     }
 
     #[test]

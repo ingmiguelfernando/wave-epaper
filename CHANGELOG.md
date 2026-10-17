@@ -3,6 +3,23 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.5 — The forecast survives a restart
+
+- **The last forecast is kept.** After each successful update the forecast
+  is saved to `/RUSTMIX/FORECAST.TXT`. After a restart (an update, a flat
+  battery) Home, Weather and the weather sleep screens show it at once,
+  marked `stale` until the next update succeeds. Hours and days that have
+  passed are dropped; a forecast for another place is ignored.
+- **The verse of the day is marked on its page.** `Versículo del día` in
+  the Bible menu opens the chapter with a bar in the left margin beside
+  every line of the verse, or of each verse in a range. Any other way into
+  the Bible clears it.
+- **Reading the Bible counts in Reading Stats.** ▲▼ in the Bible's reading
+  view add minutes and pages to today and the week, with the same
+  two-minute cap as a book. No book is credited.
+- **Ogg Opus files** (library only, not used yet): a writer and reader for
+  the file the Opus voice notes will use.
+
 ## v0.12.4 — A new Sudoku without a restart
 
 - **Starting a new Sudoku restarted the device** (`A stack overflow in

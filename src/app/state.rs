@@ -268,6 +268,8 @@ pub struct AppState {
     pub reading_stats: ReadingStats,
     /// Key-driven reading time while a Reader page is open.
     reading_clock: ReadingClock,
+    /// The accrued session is Bible reading (day totals only, no book).
+    reading_on_bible: bool,
     /// Pages turned since the last accrual into `reading_stats`.
     reading_pages: u32,
     /// The day the pending reading time is recorded on, `None` without a
@@ -344,6 +346,7 @@ impl Default for AppState {
             bible_menu_selected: 0,
             reading_stats: ReadingStats::default(),
             reading_clock: ReadingClock::default(),
+            reading_on_bible: false,
             reading_pages: 0,
             reading_day: None,
             event_clock_ms: 0,
@@ -1111,10 +1114,18 @@ impl AppState {
         outcome
     }
 
-    /// A key press while a Reader page is open: time accrues from the
-    /// previous press, capped at two minutes by `ReadingClock`.
+    /// A key press while a Reader page or the Bible reading view is open:
+    /// time accrues from the previous press, capped at two minutes by
+    /// `ReadingClock`. Other Bible screens do not count.
     fn note_reading_key(&mut self) {
-        if self.reader.session.is_some() {
+        let bible = self.router.current() == ScreenRoute::BibleReading;
+        if self.reader.session.is_some() || bible {
+            if self.reading_on_bible != bible {
+                // Settle the time of the other kind first, so a book never gets
+                // the Bible's minutes or the Bible a book's.
+                self.collect_reading_stats(self.local_day());
+            }
+            self.reading_on_bible = bible;
             self.reading_clock.on_key(self.event_clock_ms);
         }
     }
@@ -1170,10 +1181,13 @@ impl AppState {
             // No clock at all: reading is not recorded.
             return;
         };
+        // Bible time and pages land on the day only: the per-book totals and
+        // Books finished stay the books'.
         let book = self
             .reader
             .session
             .as_ref()
+            .filter(|_| !self.reading_on_bible)
             .map(|session| session.book.path.as_str());
         self.reading_stats.record(
             today,
@@ -1475,9 +1489,9 @@ impl AppState {
                 if let Some((position, verse)) = today {
                     // The page is found in the chapter, so read it first.
                     self.bible.open_at(position);
-                    let page = crate::app::screens::bible::verse_page(self, position, verse);
+                    let page = crate::app::screens::bible::verse_page(self, position, verse.first);
                     let position = crate::bible_reader::Position { page, ..position };
-                    self.bible.open_at(position);
+                    self.bible.open_at_marked(position, verse.first, verse.last);
                     self.router.navigate_to(ScreenRoute::BibleReading);
                 }
             }
@@ -1529,8 +1543,12 @@ impl AppState {
     }
 
     /// ▲▼ in the reading view: turn one page, crossing chapters when needed.
+    /// A turn that moves counts as a reading page; the last page of the last
+    /// book does not.
     fn turn_bible_page(&mut self, forward: bool) {
-        let Some(position) = self.bible.position() else {
+        self.note_reading_key();
+        let before = self.bible.position();
+        let Some(position) = before else {
             return;
         };
         let pages = crate::app::screens::bible::chapter_pages(self, position);
@@ -1540,6 +1558,9 @@ impl AppState {
         };
         let pages = crate::app::screens::bible::chapter_pages(self, position);
         self.bible.resolve_last_page(|_| pages);
+        if before.is_some() && self.bible.position() != before {
+            self.reading_pages = self.reading_pages.saturating_add(1);
+        }
     }
 
     /// Short BOOT: the next section in the book picker, ten chapters on in the
@@ -2239,6 +2260,31 @@ mod tests {
         state.reader.session = Some(sample_session());
         state.router.navigate_to(ScreenRoute::ReaderPage);
         state
+    }
+
+    #[test]
+    fn switching_between_a_book_and_the_bible_settles_each_kind_apart() {
+        let mut state = reading_state();
+        state.board.rtc = Some(crate::rtc::RtcDateTime {
+            year: 2026,
+            month: 10,
+            day: 8,
+            weekday: 4,
+            hour: 12,
+            minute: 0,
+            second: 0,
+        });
+        let day = state.local_day().unwrap();
+        let book = "/sdcard/RUSTMIX/BOOKS/Quijote.txt";
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        // The Bible opens before any save: the book keeps its own time only.
+        state.router.navigate_to(ScreenRoute::BibleReading);
+        state.apply_with_clock(ButtonEvent::Down, 40_000);
+        state.apply_with_clock(ButtonEvent::Down, 70_000);
+        state.collect_reading_stats(Some(day));
+        assert_eq!(state.reading_stats.day(day).seconds, 70);
+        assert_eq!(state.reading_stats.book(book).unwrap().seconds, 40);
     }
 
     /// A TXT session with four indexed pages; fields are public for tests.
@@ -3987,6 +4033,120 @@ mod bible_routing_tests {
         let expected = crate::app::screens::bible::verse_page(&state, first_page, 70);
         assert!(expected > 0, "verse 70 is past the first page");
         assert_eq!(position.page, expected);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_verse_of_the_day_marks_its_range_and_other_opens_clear_it() {
+        let root = temp_card("menu-verse-mark");
+        fs::write(root.join("VERSES.TXT"), "GEN 1:1-2\n").unwrap();
+        let mut state = with_clock(menu_state(&root));
+        // Versículo del día is the third row with no second translation.
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        let mark = state
+            .bible
+            .marked_verses()
+            .expect("the verse marks its range");
+        assert_eq!((mark.first, mark.last), (1, 2));
+        // Paging keeps the mark.
+        state.apply(ButtonEvent::Down);
+        assert!(
+            state.bible.marked_verses().is_some(),
+            "a turn keeps the mark"
+        );
+        // Opening a chapter from the grid clears it.
+        state.apply(ButtonEvent::Select); // reading menu
+        state.apply(ButtonEvent::Down); // Ir a capítulo
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleChapters);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        assert!(
+            state.bible.marked_verses().is_none(),
+            "the grid clears the mark"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Open Genesis 1 in the reading view on `root`.
+    fn bible_reading(root: &PathBuf) -> AppState {
+        let mut state = home_with_card(root);
+        state.apply(ButtonEvent::Select); // picker
+        state.apply(ButtonEvent::Select); // chapter grid
+        state.apply(ButtonEvent::Select); // read Genesis 1
+        assert_eq!(state.active_route(), ScreenRoute::BibleReading);
+        state
+    }
+
+    #[test]
+    fn bible_reading_time_and_pages_land_on_the_day_with_the_same_cap() {
+        let root = temp_card("stats-bible");
+        let mut state = bible_reading(&root);
+        // Presses 30 s apart, then a 140 s gap capped at 120 s.
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        state.apply_with_clock(ButtonEvent::Down, 170_000);
+        let day = 20_000;
+        state.collect_reading_stats(Some(day));
+        let stats = state.reading_stats.day(day);
+        assert_eq!(stats.seconds, 150, "30 + capped 120");
+        assert_eq!(stats.pages, 3, "each moving turn is a page");
+        assert!(
+            state
+                .reading_stats
+                .book("/sdcard/RUSTMIX/BOOKS/Quijote.txt")
+                .is_none(),
+            "the Bible adds nothing to the per-book totals"
+        );
+        assert_eq!(state.reading_stats.books_finished(), 0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_bible_turn_at_the_last_page_of_the_last_book_counts_no_page() {
+        let root = temp_card("stats-edge");
+        let mut state = bible_reading(&root);
+        // Genesis has two chapters; chapter 2 is the last of book 0. Move to
+        // the last chapter of the last book (Psalms).
+        let last = crate::bible_reader::Position {
+            book: 1,
+            chapter: 2,
+            page: 0,
+        };
+        state.bible.open_at(last);
+        state.router.navigate_to(ScreenRoute::BibleReading);
+        let before = state.bible.position();
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        assert_eq!(state.bible.position(), before, "nowhere to go");
+        state.collect_reading_stats(Some(20_000));
+        assert_eq!(state.reading_stats.day(20_000).pages, 0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn bible_stats_off_records_nothing() {
+        let root = temp_card("stats-off");
+        let mut state = bible_reading(&root);
+        state.reader.preferences.record_stats = false;
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        state.collect_reading_stats(Some(20_000));
+        assert_eq!(state.reading_stats.day(20_000).seconds, 0);
+        assert_eq!(state.reading_stats.day(20_000).pages, 0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn other_bible_screens_do_not_count_reading() {
+        let root = temp_card("stats-menu");
+        let mut state = menu_state(&root);
+        state.apply_with_clock(ButtonEvent::Down, 0);
+        state.apply_with_clock(ButtonEvent::Down, 30_000);
+        state.collect_reading_stats(Some(20_000));
+        assert_eq!(state.reading_stats.day(20_000).seconds, 0);
+        assert_eq!(state.reading_stats.day(20_000).pages, 0);
         let _ = fs::remove_dir_all(&root);
     }
 

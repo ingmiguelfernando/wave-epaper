@@ -4,6 +4,51 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 13 result (2026-10-17)
+
+Branch `side-tasks-13` (D58 to D61) came as pull request #12 from v0.12.3,
+with `main` merged in, CI and the firmware build green. It was reviewed
+on `side-tasks-13` itself, merged and released as v0.12.5 (milestone
+`forecast-kept`). The cache file, the Opus pages and the stats wiring are
+what the tasks asked for: the formats follow the spec byte for byte, the
+`main.rs` edits stay on the named lines, and the Status lines are honest
+about what only the device can show.
+
+What the main developer changed at review time:
+
+- **The verse bar across a page break:** `current_span` started empty on
+  every page, so a page that opened on the wrapped lines of a verse begun
+  on the page before drew no bar there. It starts from the last numbered
+  line before the page now. The page-break test used one-line verses, so
+  no verse ever wrapped over the break; the new test wraps them.
+- **Book and Bible time:** `reading_on_bible` was set by the next key, so
+  minutes accrued in a book but not yet saved (up to five minutes) went to
+  the Bible, or the other way round, when the reader switched. Switching
+  settles the pending time first.
+- **A cached forecast said `update failed`:** the Weather screen's footer
+  read `Stale` as a failed update; a forecast adopted at boot has no error,
+  so it says `stale` now, as the sleep screens do.
+- **The Ogg writer** looped forever on a packet that needs more than 255
+  segments (`flush_page` kept none and recursed); `write_packet` refuses it
+  now. Dead code in `read_page` and a doc comment for a parameter that does
+  not exist are gone.
+
+Verdict: D58 to D61 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- Test an item that begins before the page, window or frame you draw: a
+  verse, a row or a word that wraps over the edge. Short items hide it.
+- Walk a new state through every screen that matches on it. `Stale` meant
+  "the update failed" on one screen and "old" on another; a new way into a
+  state (the cache) needs a grep for each `match` on it.
+- State shared by two modes (a book and the Bible, two games) needs a
+  rule for the switch: settle what is pending before the mode changes.
+- A loop that ends only when it makes progress needs a test with input
+  that cannot: the biggest packet, the empty list, the full page.
+- Read your own diff for leftovers (`let _ = x;`, a buffer built and never
+  read, a comment that names a removed parameter) before you hand over.
+
 ## Round 12 result (2026-10-16)
 
 Branch `side-tasks-12` (D54 to D57) came as pull request #11 from v0.12.1,
@@ -445,6 +490,11 @@ Do differently next time:
   SD_CARD_SETUP.
 - Labels: singular and plural ("1 book"), no half labels without a number.
 - Power safety: walk through two interruptions in a row, not only one.
+- An item that wraps over the edge of a page or window needs its own test;
+  one-line items pass without exercising it.
+- A new state needs a look at every `match` on it, in screens and in
+  `main.rs`.
+- Pending time or counts are settled when the mode that owns them changes.
 
 ## How to work
 
@@ -543,7 +593,124 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 13 tasks (branch `side-tasks-13`)
+## Round 14 tasks (branch `side-tasks-14`)
+
+Start from `main` at v0.12.5, where Round 13 is merged; read its result at
+the top of this file first, and its "Do differently next time" list before
+you start. The Ogg Opus file exists but nothing sends it: this round
+prepares the upload so that wiring the encoder later is one small step, and
+looks at what Round 13 drew on a device with a different setup than the
+previews. Three tasks, in this order. When they are done, merge `main`
+into the branch and open a pull request.
+
+**Main line during this round.** The main developer keeps working on OTA
+updates (Phase 8) and, after it, wires the Opus encoder into recording.
+Leave these files alone:
+
+- `src/main.rs`; none of these tasks needs it;
+- updates and network: `partitions.csv`, `sdkconfig.defaults`,
+  `Cargo.toml`, `.github/`, `src/ota*.rs`, `src/network*.rs`,
+  `src/radio_burst.rs`, `src/wifi_transfer.rs`, `src/build_info.rs`,
+  `src/app/screens/settings.rs`, `src/app/screens/device_info.rs`,
+  `src/app/screens/network.rs`;
+- XiaoZhi and audio: `src/xiaozhi/`, `src/app/screens/xiaozhi.rs`,
+  `src/audio/`, the voice note recorder in `src/voice_notes.rs`, and
+  `src/ai_jobs.rs`, `src/ai_worker.rs` (the upload loop);
+- drawing: the files already in `src/app/widgets/`, `src/app/typography/`,
+  `src/app/display_assets.rs`, `scripts/fonts/`.
+
+Put new previews in `src/app/preview.rs` next to the screen's other
+previews. Run the doc-comment check of Round 9 before you hand over. Test
+the edges, as Round 13's list says: an item that wraps over a boundary, the
+largest input, every state a screen can be in.
+
+### D62: The transcription form can carry an Ogg file
+
+**Why.** `ai_client::transcription_form` always says `filename="note.wav"`
+and `Content-Type: audio/wav`. The providers decide the format from the
+file name and type, so an Ogg Opus body under those headers is refused.
+`voice_note_record::record_file_name` accepts only `VOICE###.WAV`, so a
+note recorded as Ogg would have no AI record.
+
+**Change.**
+
+- `src/ai_client.rs`: an `AudioKind` enum (`Wav`, `Ogg`) with the file
+  name (`note.wav`, `note.ogg`) and the content type (`audio/wav`,
+  `audio/ogg`) as methods. A new `transcription_form_for(kind, model,
+  language, boundary)` builds the form; `transcription_form` stays and
+  calls it with `Wav`, so `ai_jobs.rs` does not change. Use the enum in
+  `transcription_request` too (a `kind` argument; update its callers in
+  this file's tests).
+- `src/voice_note_record.rs`: `record_file_name` accepts `VOICE###.OGG`
+  as well and gives the same `VOICE###.AI`. Anything else is `None`.
+  `VOICE001.WAV` and `VOICE001.OGG` share one record on purpose: a note
+  is one or the other.
+
+**Tests:** the form for each kind against the exact bytes, as the existing
+test does for WAV; `transcription_form` still gives the WAV bytes; both
+names map to one record, in upper and lower case; `VOICE001.OPUS`,
+`VOICE1.OGG` and `NOTE001.OGG` give `None`.
+
+**Status:** to do.
+
+### D63: Split an Ogg stream into parts
+
+**Why.** A provider takes at most 25 MB, and `MAX_PART_SECONDS` keeps a
+WAV part to ten minutes. An Ogg Opus note of the same length is about 2 MB,
+so the limit is rarely reached, but a part that is an Ogg file of its own
+is what the providers accept, and the main developer needs it for the
+longest notes. Cutting the bytes of an Ogg file in the middle gives a part
+the provider cannot read.
+
+**Change.** `src/ogg_opus.rs`:
+
+- `split_parts(stream: &OggOpusStream, max_seconds: u32) -> Vec<Vec<u8>>`:
+  each part is a complete Ogg Opus file (head, tags, pages, end of stream)
+  holding at most `max_seconds` of packets (50 a second), written with
+  `OggOpusWriter` and the stream's own head. The parts are equal, the way
+  `ai_client::wav_parts` makes them, so none is a short tail. An empty
+  stream gives no parts.
+- `ai_client::MAX_PART_SECONDS` is the limit a caller passes; do not
+  copy the number.
+
+**Tests:** a stream of 30 001 packets with a 600 s limit gives two parts
+of equal size that read back to the same packets in order; exactly 30 000
+gives one; an empty stream gives none; every part ends with the
+end-of-stream flag and its first page is the head; each part's
+`duration_ms` is under the limit.
+
+**Status:** to do.
+
+### D64: Look at the cached forecast and the verse bar the way a user sees them
+
+**Why.** Round 13's previews show one setup each. A forecast adopted from
+the card is `Stale` without an error, and the verse bar has only been seen
+at the default font. Both went wrong on a case the preview did not show.
+
+**Change.** `src/app/preview.rs` only, and fixes in the screens if a
+preview shows a problem:
+
+- `weather-cached`: Weather page one for a state made the way boot makes
+  it (`adopt_cache` on parsed `FORECAST.TXT` text, a clock after the
+  forecast's hours so some are dropped). Its footer reads `Updated … ·
+  stale · Open-Meteo`.
+- `home-weather-cached`: Home with the same state.
+- `bible-verse-of-day-large`: the verse of the day preview at the Large
+  UI and Large book size, so a verse wraps to more lines and a range
+  crosses the page.
+- `bible-verse-of-day-page-2`: the same Bible state one page on, opening
+  on the wrapped lines of a marked verse (the case fixed in review).
+
+Check each PNG: the bar's top and bottom against the text lines, nothing
+past the bottom bar, `stale` readable at Large. Say in the Status line what
+you looked at and what you changed.
+
+**Tests:** none beyond the previews rendering, unless you change a screen;
+then a test for that change.
+
+**Status:** to do.
+
+## Round 13 tasks (done in v0.12.5)
 
 Start from `main` at v0.12.2, where Round 12 is merged; read its result at
 the top of this file first. The screens match the mockup now, so this
@@ -611,7 +778,24 @@ the clock and kept without one; another location, another version, a
 broken line and an empty file give no cache; a snapshot from a cache is
 `Stale` with its `observed_at`, and a fetch afterwards makes it `Ready`.
 
-**Status:** to do.
+**Status:** done in v0.12.5. Built: `src/weather_cache.rs` writes
+`WeatherData` to `/sdcard/RUSTMIX/FORECAST.TXT` (`# Wave forecast v1`, then
+`location`, `timezone`, one `current` and one `day`/`hour` per entry as
+`key=value` with `|`-separated integers) and reads it back through
+`sd_file`. Reading drops hours before the current local hour and days
+before today when the clock is set. `WeatherSnapshot::adopt_cache` keeps
+`observed_at` and the state `Stale` until `record_success` makes it
+`Ready`; `sleep-live-weather-stale` covers that display. `main.rs` loads
+the cache after the first `update_board_snapshot` when the weather is set
+up and on and the location matches, and saves it on each successful fetch
+(logs a save failure, does not retry). Another location, a broken line,
+another version and an empty file give no cache. Tests: a full round trip
+(negative tenths, a day and an hour without rain), past hours and days
+dropped with a clock and kept without one, the ignore cases, a snapshot
+from a cache is `Stale` with its `observed_at` and a fetch makes it
+`Ready`. Open: nothing known. Device check: restart with Wi-Fi off and
+Home, Weather and the weather sleep screen still show the last forecast
+as `Updated … · stale` once it is old.
 
 ### D59: Mark the verse of the day on its page
 
@@ -639,7 +823,20 @@ wrapped verse, a range across a page break, a range label such as `1-2`
 on the card); turning the page keeps the mark and opening a chapter from
 the grid clears it; no bar without a mark or in another chapter.
 
-**Status:** to do.
+**Status:** done in v0.12.5. Built: `BibleUiState` keeps
+`MarkedVerses` (book, chapter, `first..=last`). `Versículo del día` in
+`open_bible_menu_item` sets it through `open_at_marked` after the page is
+found; every other `open_at` (`Ir a libro`, `Ir a capítulo`, a translation
+switch, Home) clears it; paging keeps it. `render_bible_reading` draws a
+3 px bar at x 6 to 8 beside every line of the marked verses on the page
+(the numbered line and its wraps, every verse in a range, across a page
+break). Preview `bible-verse-of-day`: a two-verse range whose second verse
+wraps, next to `bible-reading`. Tests: the bar covers the wrapped verse's
+lines only; a range including a `1-2` label marks every verse in it; a
+range across a page break marks both pages while verse 1 alone does not;
+a turn keeps the mark and a grid open clears it; no bar without a mark or
+in another chapter. Open: nothing known. Device check: `bible-verse-of-day`
+and a real `Versículo del día` on the panel.
 
 ### D60: Bible reading counts in Reading Stats
 
@@ -663,7 +860,20 @@ the same two-minute cap as a book; a turn at the last page of the last
 book counts no page; the Bible adds nothing to the per-book totals; with
 stats off nothing is recorded.
 
-**Status:** to do.
+**Status:** done in v0.12.5. Built: ▲▼ on `BibleReading` call
+`note_reading_key` (the same `ReadingClock` two-minute cap as a book) and
+`turn_bible_page` counts a page only when the position moves, so the last
+page of the last book counts none. Other Bible screens do not call them.
+`collect_reading_stats` records the day's minutes and pages with no book
+when the session is Bible (`reading_on_bible`); `record_stats` off
+discards them as for a book. `main.rs` needs no change: the five-minute
+`save_reading_stats_if_dirty` cadence and the save before sleep both call
+`collect_reading_stats` on every screen (`main.rs` around the
+`READING_STATS_SAVE_INTERVAL` check and the sleep path). Tests: a Bible
+session's minutes (30 + capped 120) and pages land on the day with no
+per-book row; an edge turn counts no page; stats off records nothing; menu
+keys record nothing. Open: nothing known. Device check: read the Bible a
+few pages, sleep, and see today's minutes in Reading Stats.
 
 ### D61: Ogg Opus files (library only)
 
@@ -703,7 +913,23 @@ round trip of a few hundred packets; a file cut inside a page gives the
 packets of the pages before it; a changed byte fails that page's CRC; the
 duration of a 3:27 file read from its end.
 
-**Status:** to do.
+**Status:** done in v0.12.5. Built: `src/ogg_opus.rs` (host-only,
+in `lib.rs`). `OggOpusWriter` over any `Write` writes the `OpusHead` page
+(BOS, 1 channel, pre-skip 312, input 16 000, gain 0, mapping 0), then
+`OpusTags` (vendor `wave`, no comments), then one audio page per 50
+20 ms packets (960 samples each at 48 kHz); `finish` marks the last page
+EOS. Lacing handles 0, 254, 255, 256 and 510. `read_stream` over any
+`Read` checks each page's capture pattern and CRC, joins packets across
+pages and returns the head and the packets; a cut or damaged page ends
+the stream with the earlier pages kept. `duration_ms` reads the last
+page's granule from the file's end less the pre-skip. CRC is Ogg's
+(`0x04C11DB7`, init 0, no reflection, no final XOR; `123456789` →
+`0x89A1897F`). Nothing uses it yet. Tests: the CRC check value; OpusHead
+19 bytes and OpusTags 20 bytes per RFC 7845; the five lacing cases; a
+300-packet round trip; one-second pages with the right granule; a cut
+file keeps earlier packets; a changed byte drops that page; a 3:27
+duration from the end. Open: nothing known. Device check: none yet (the
+encoder is wired later).
 
 ## Round 12 tasks (done in v0.12.2)
 

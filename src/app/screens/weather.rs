@@ -393,6 +393,8 @@ fn updated_line(state: &AppState, config: &WeatherConfig) -> String {
     let next = match weather.state {
         WeatherFetchState::Fetching => "updating now".to_string(),
         WeatherFetchState::Retrying => "retrying".to_string(),
+        // A forecast adopted from the card has no error: it is only old.
+        WeatherFetchState::Stale if weather.error.is_none() => "stale".to_string(),
         WeatherFetchState::Stale | WeatherFetchState::Failed => "update failed".to_string(),
         _ => next_update(observed, config.refresh_minutes),
     };
@@ -532,7 +534,14 @@ mod tests {
             "Updated 13:30 \u{b7} next 15:30 \u{b7} Open-Meteo"
         );
         state.weather.state = WeatherFetchState::Stale;
+        state.weather.error = Some("timeout".into());
         assert!(updated_line(&state, &config).contains("update failed"));
+        // The same state from a cache loaded at boot has no error.
+        state.weather.error = None;
+        assert_eq!(
+            updated_line(&state, &config),
+            "Updated 13:30 \u{b7} stale \u{b7} Open-Meteo"
+        );
         assert_eq!(next_update("23:30", 60), "next 00:30");
         assert_eq!(next_update("13:30", 0), "manual updates");
         assert_eq!(next_update("--:--", 30), "every 30 minutes");
