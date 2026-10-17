@@ -1944,6 +1944,9 @@ impl AppState {
             }
             self.photos.close_viewer();
         }
+        if self.router.current() == ScreenRoute::Photos {
+            self.photos.release_thumbnails();
+        }
         if matches!(
             self.router.current(),
             ScreenRoute::LuaGame | ScreenRoute::LuaGameError
@@ -2568,6 +2571,32 @@ mod tests {
         assert_eq!(state.active_route(), ScreenRoute::Photos);
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Home);
+    }
+
+    /// Leaving Photos gives its thumbnails' internal RAM back to the worker
+    /// stacks; opening it again reads them.
+    #[test]
+    fn leaving_photos_releases_the_thumbnails() {
+        use crate::photos::{test_photos::grey_jpeg, ui::PhotosUiState, worker::prepare};
+        let root = std::env::temp_dir().join(format!("wave-photos-release-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (photos, cache) = (root.join("PHOTOS"), root.join("CACHE"));
+        std::fs::create_dir_all(&photos).unwrap();
+        std::fs::write(photos.join("IMG_0001.jpg"), grey_jpeg(96, 64, None)).unwrap();
+        let mut state = AppState::default();
+        state.photos = PhotosUiState::with_roots(&photos, &cache);
+        state.photos.refresh();
+        let job = state.photos.cache_jobs().remove(0);
+        prepare(&photos, &cache, &job);
+
+        state.open_route(ScreenRoute::Photos);
+        assert!(state.photos.thumbnail(job.key).is_some());
+        state.back();
+        assert_eq!(state.active_route(), ScreenRoute::Home);
+        assert!(state.photos.thumbnail(job.key).is_none());
+        state.open_route(ScreenRoute::Photos);
+        assert!(state.photos.thumbnail(job.key).is_some());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

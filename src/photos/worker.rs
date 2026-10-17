@@ -83,6 +83,12 @@ impl PhotoWorker {
     /// Results so far. Also restarts the thread when jobs are still waiting.
     pub fn poll(&mut self) -> Vec<PhotoJobResult> {
         let results = self.results.try_iter().collect();
+        // An ended thread keeps its 48 KB stack until it is joined.
+        if self.thread.as_ref().is_some_and(JoinHandle::is_finished) {
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
+        }
         self.start_if_needed();
         results
     }
@@ -273,6 +279,15 @@ mod tests {
         assert_eq!(reason, "is not a readable JPEG");
         let (size, _) = read_thumbnail(&cache_file(&cache, 1)).unwrap();
         assert_eq!(size, (96, 64));
+        // The ended thread is joined, so its stack goes back to the heap.
+        for _ in 0..100 {
+            worker.poll();
+            if worker.thread.is_none() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(worker.thread.is_none(), "the ended thread is joined");
         let _ = fs::remove_dir_all(root);
     }
 }

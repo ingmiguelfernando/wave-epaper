@@ -474,7 +474,7 @@ mod firmware {
         state.refresh_voice_notes_catalog();
         requeue_interrupted_notes(&mut state);
         state.refresh_lua_app_catalog(_mounted_sd.is_some());
-        state.photos.refresh();
+        state.photos.refresh_list();
         log_lua_runtime_events(&mut state);
         info!(
             "rustmix-wave=reader-persistence-load state-loaded={} preferences-loaded={} positions={} recent={} bookmarks={} warning={}",

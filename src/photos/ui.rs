@@ -128,6 +128,29 @@ impl PhotosUiState {
 
     /// List the photos again and match them with their cache files.
     pub fn refresh(&mut self) {
+        let cached = self.scan();
+        if self.note.is_none() {
+            self.remove_stale(&cached);
+        }
+        self.thumbnails.clear();
+        self.load_visible();
+        self.jobs_changed = true;
+    }
+
+    /// The list without thumbnails: Home's photo count.
+    pub fn refresh_list(&mut self) {
+        self.scan();
+        self.release_thumbnails();
+    }
+
+    /// Thumbnails are small allocations, so they sit in the internal RAM
+    /// that worker stacks need; `refresh` reads them again.
+    pub fn release_thumbnails(&mut self) {
+        self.thumbnails.clear();
+    }
+
+    /// The photo list and each photo's cache status; returns the cached keys.
+    fn scan(&mut self) -> BTreeSet<u32> {
         let folder = self.folder_label();
         match scan_photos(&self.photos_directory) {
             Ok(photos) => {
@@ -157,13 +180,8 @@ impl PhotosUiState {
                 }
             })
             .collect();
-        if self.note.is_none() {
-            self.remove_stale(&cached);
-        }
         self.selected = self.selected.min(self.photos.len().saturating_sub(1));
-        self.thumbnails.clear();
-        self.load_visible();
-        self.jobs_changed = true;
+        cached
     }
 
     /// The folder as it appears on the card, e.g. `/RUSTMIX/PHOTOS`.
@@ -550,6 +568,31 @@ mod tests {
         state.toggle_star();
         assert_eq!(state.starred_count(), 1);
         assert!(state.take_starred_changed());
+    }
+
+    /// Home's count reads no thumbnail; the gallery reads them again and
+    /// leaving it drops them.
+    #[test]
+    fn the_list_alone_reads_no_thumbnails() {
+        let mut state = gallery("list", 2);
+        let job = state.cache_jobs().remove(0);
+        let result = prepare(state.photos_directory(), state.cache_directory(), &job);
+        assert!(state.on_job_result(&result));
+        assert!(state.thumbnail(job.key).is_some());
+
+        state.refresh_list();
+        assert_eq!(state.photos.len(), 2);
+        let ready = state
+            .status
+            .iter()
+            .filter(|status| **status == PhotoStatus::Ready)
+            .count();
+        assert_eq!(ready, 1, "the status still follows the cache");
+        assert!(state.thumbnail(job.key).is_none());
+        state.refresh();
+        assert!(state.thumbnail(job.key).is_some());
+        state.release_thumbnails();
+        assert!(state.thumbnail(job.key).is_none());
     }
 
     #[test]
