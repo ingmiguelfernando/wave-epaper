@@ -121,6 +121,10 @@ mod firmware {
             espidf::fetch_open_meteo_on_worker, WeatherFetchError, WeatherSnapshot,
             WEATHER_RETRY_DELAYS_SECONDS, WEATHER_RETRY_LIMIT,
         },
+        weather_cache::{
+            load_from_path as load_forecast_cache, save_to_path as save_forecast_cache,
+            FORECAST_CACHE_PATH,
+        },
         weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
         wifi_transfer::{
             espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
@@ -558,6 +562,24 @@ mod firmware {
             }
         }
         state.update_board_snapshot(board_services.read_snapshot(&mut service_delay));
+        if let Some(config) = state
+            .weather_config
+            .as_ref()
+            .filter(|config| config.enabled)
+        {
+            if let Some(data) = load_forecast_cache(
+                FORECAST_CACHE_PATH,
+                &config.location,
+                state.board.rtc.map(|rtc| state.regional.localize_rtc(rtc)),
+            ) {
+                state.weather.adopt_cache(data);
+                info!(
+                    "rustmix-wave=weather-cache status=loaded path={FORECAST_CACHE_PATH} location={} forecast-days={}",
+                    config.location,
+                    state.weather.forecast.len()
+                );
+            }
+        }
         log_board_snapshot(state.board, state.regional);
         state.update_memory_snapshot(RuntimeMemorySnapshot::capture());
         if let Some(rtc) = state.board.rtc {
@@ -3190,6 +3212,15 @@ mod firmware {
         match fetch_open_meteo_on_worker(config) {
             Ok(data) => {
                 retry.clear();
+                if let Some(config) = state.weather_config.as_ref() {
+                    if let Err(error) =
+                        save_forecast_cache(FORECAST_CACHE_PATH, &config.location, &data)
+                    {
+                        warn!(
+                            "rustmix-wave=weather-cache status=save-failed path={FORECAST_CACHE_PATH} error={error:#}"
+                        );
+                    }
+                }
                 state.weather.record_success(data);
                 log_weather_snapshot(&state.weather);
                 info!(

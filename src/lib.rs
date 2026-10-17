@@ -68,6 +68,7 @@ pub mod voice_note_result;
 pub mod voice_notes;
 pub mod watchdog;
 pub mod weather;
+pub mod weather_cache;
 pub mod weather_config;
 pub mod wifi_transfer;
 pub mod xiaozhi;

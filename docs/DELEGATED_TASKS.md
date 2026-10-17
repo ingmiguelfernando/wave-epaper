@@ -611,7 +611,24 @@ the clock and kept without one; another location, another version, a
 broken line and an empty file give no cache; a snapshot from a cache is
 `Stale` with its `observed_at`, and a fetch afterwards makes it `Ready`.
 
-**Status:** to do.
+**Status:** done on `side-tasks-13`. Built: `src/weather_cache.rs` writes
+`WeatherData` to `/sdcard/RUSTMIX/FORECAST.TXT` (`# Wave forecast v1`, then
+`location`, `timezone`, one `current` and one `day`/`hour` per entry as
+`key=value` with `|`-separated integers) and reads it back through
+`sd_file`. Reading drops hours before the current local hour and days
+before today when the clock is set. `WeatherSnapshot::adopt_cache` keeps
+`observed_at` and the state `Stale` until `record_success` makes it
+`Ready`; `sleep-live-weather-stale` covers that display. `main.rs` loads
+the cache after the first `update_board_snapshot` when the weather is set
+up and on and the location matches, and saves it on each successful fetch
+(logs a save failure, does not retry). Another location, a broken line,
+another version and an empty file give no cache. Tests: a full round trip
+(negative tenths, a day and an hour without rain), past hours and days
+dropped with a clock and kept without one, the ignore cases, a snapshot
+from a cache is `Stale` with its `observed_at` and a fetch makes it
+`Ready`. Open: nothing known. Device check: restart with Wi-Fi off and
+Home, Weather and the weather sleep screen still show the last forecast
+as `Updated … · stale` once it is old.
 
 ### D59: Mark the verse of the day on its page
 
