@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.15.0. This is not a list of promised mockup features. See
+Firmware v0.16.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)
@@ -57,10 +57,14 @@ estimates until the battery log confirms them on the device.
 
 ## Voice Notes AI
 
-- Notes go as WAV (about 1.9 MB a minute), so a long note takes a while to
-  upload and uses battery; the mockup's Opus recording is not done yet
-  (the Ogg Opus file, its upload form and its split into parts are, since
-  v0.12.5 and v0.12.6, but nothing records or sends it).
+- Notes are recorded and kept as WAV (about 1.9 MB a minute, portable and
+  recovered after a power cut) but go to the providers as Ogg Opus at 24 kbps
+  (about 0.18 MB a minute) since v0.16.0: the encoder runs on the AI worker
+  before each ten-minute part, so a long note waits for it (the log has
+  `rustmix-wave=opus-encode … audio-ms … took-ms` for its speed). A provider
+  that does not take Ogg (a bad request, 415 or 422) gets the WAV instead.
+  The mockup's recording in Opus, and playing Opus notes, are not done: the
+  card still holds WAV.
 - Keys typed in the portal cross the LAN as plain HTTP, like the files the
   portal moves. Type them on a home network you trust.
 - Recording, playback, the transfer portal or sleep stops the note being

@@ -42,6 +42,7 @@ pub mod network;
 pub mod network_config;
 pub mod ntp;
 pub mod ogg_opus;
+pub mod opus_encode;
 pub mod orientation;
 pub mod ota;
 pub mod panel_refresh;

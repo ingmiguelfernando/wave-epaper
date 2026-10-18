@@ -212,6 +212,12 @@ impl<W: Write> OggOpusWriter<W> {
         Ok(())
     }
 
+    /// The sink the file was written to, after `finish`.
+    #[must_use]
+    pub fn into_inner(self) -> W {
+        self.inner
+    }
+
     /// Write the remaining packets as the end-of-stream page.
     pub fn finish(&mut self) -> io::Result<()> {
         if self.finished {

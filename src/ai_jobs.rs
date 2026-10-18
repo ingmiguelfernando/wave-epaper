@@ -1,5 +1,7 @@
-//! One voice note through the AI providers. The WAV goes to
-//! `/audio/transcriptions` in parts of at most ten minutes, the joined
+//! One voice note through the AI providers. The recording goes to
+//! `/audio/transcriptions` in parts of at most ten minutes, each as Ogg Opus
+//! (about ten times smaller; `opus_encode.rs`) when an encoder is given and
+//! as the WAV itself when not or when the provider refuses Opus, the joined
 //! transcript to `/chat/completions`, and each step is saved in the note's
 //! `.AI` record. Network access goes through `AiTransport`, so host tests
 //! run whole jobs against canned replies.
@@ -12,8 +14,9 @@ use std::{
 };
 
 use crate::{
-    ai_client,
+    ai_client::{self, AudioKind},
     ai_config::{provider_name, AiConfig, AiLanguage},
+    opus_encode::{EncodeError, PartEncoder},
     voice_note_record::{self, NoteRecord, NoteState},
     voice_notes::{build_pcm_wav_header, parse_pcm_wav_header},
     watchdog::Pacer,
@@ -183,14 +186,28 @@ fn card_error(error: anyhow::Error) -> Stop {
     Stop::Failed(format!("SD card: {error:#}"))
 }
 
-/// Run one queued note to the end. `progress` hears each working step.
+/// Run one queued note to the end, sending the WAV as it is.
 pub fn run(
     job: &AiJob,
     transport: &mut dyn AiTransport,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(NoteState),
 ) -> JobOutcome {
-    match steps(job, transport, cancel, progress) {
+    run_with_encoder(job, transport, None, cancel, progress)
+}
+
+/// Run one queued note to the end. `progress` hears each working step. With
+/// an `encoder` each part goes as Ogg Opus; a part the encoder cannot make,
+/// or one the provider refuses as a bad request, goes as WAV and so do the
+/// parts after it.
+pub fn run_with_encoder(
+    job: &AiJob,
+    transport: &mut dyn AiTransport,
+    encoder: Option<&mut dyn PartEncoder>,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(NoteState),
+) -> JobOutcome {
+    match steps(job, transport, encoder, cancel, progress) {
         Ok(record) => JobOutcome::Done(record),
         Err(Stop::Cancelled) => {
             let _ = voice_note_record::queue(&job.root, &job.wav_name);
@@ -210,6 +227,7 @@ pub fn run(
 fn steps(
     job: &AiJob,
     transport: &mut dyn AiTransport,
+    encoder: Option<&mut dyn PartEncoder>,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(NoteState),
 ) -> Result<NoteRecord, Stop> {
@@ -219,7 +237,7 @@ fn steps(
     progress(NoteState::Transcribing);
     // A note queued again after its transcript was saved only needs a summary.
     let transcript = if record.transcript.trim().is_empty() {
-        transcribe(job, transport, cancel)?
+        transcribe(job, transport, encoder, cancel)?
     } else {
         record.transcript
     };
@@ -276,35 +294,40 @@ fn pcm_bytes(path: &Path) -> Result<u32, Stop> {
     parse_pcm_wav_header(&header).map_err(|error| unreadable(error.to_string()))
 }
 
+/// A reply that says the audio format was not understood: worth sending the
+/// part again as WAV. Other client errors (a wrong key, a rate limit) are not.
+const fn refuses_the_format(status: u16) -> bool {
+    matches!(status, 400 | 415 | 422)
+}
+
 fn transcribe(
     job: &AiJob,
     transport: &mut dyn AiTransport,
+    mut encoder: Option<&mut dyn PartEncoder>,
     cancel: &AtomicBool,
 ) -> Result<String, Stop> {
     let path = job.root.join(&job.wav_name);
     let pcm_bytes = pcm_bytes(&path)?;
     let config = &job.config;
-    let (head, tail) = ai_client::transcription_form(
-        &config.transcription_model,
-        ai_client::language_code(config.language),
-        ai_client::MULTIPART_BOUNDARY,
-    );
+    let form = |kind| {
+        ai_client::transcription_form_for(
+            kind,
+            &config.transcription_model,
+            ai_client::language_code(config.language),
+            ai_client::MULTIPART_BOUNDARY,
+        )
+    };
+    let (head, tail) = form(AudioKind::Wav);
+    let (ogg_head, ogg_tail) = form(AudioKind::Ogg);
     let url = ai_client::endpoint(&config.transcription_url, "/audio/transcriptions");
     let authorization = format!("Bearer {}", job.transcription_key);
     let content_type = format!(
         "multipart/form-data; boundary={}",
         ai_client::MULTIPART_BOUNDARY
     );
-    let mut texts = Vec::new();
-    for (offset, len) in ai_client::wav_parts(pcm_bytes) {
-        let body = RequestBody::WavPart {
-            head: &head,
-            header: build_pcm_wav_header(len),
-            path: &path,
-            offset: WAV_HEADER_BYTES + u64::from(offset),
-            len: u64::from(len),
-            tail: &tail,
-        };
+    let post = |transport: &mut dyn AiTransport,
+                body: &RequestBody<'_>|
+     -> Result<(u16, String), TransportError> {
         let length = body.content_length().to_string();
         let headers = [
             ("Authorization", authorization.as_str()),
@@ -312,8 +335,48 @@ fn transcribe(
             ("Content-Length", length.as_str()),
             ("Accept", "application/json"),
         ];
-        let (status, reply) =
-            transport.post(&url, &headers, &body, TRANSCRIPTION_REPLY_LIMIT, cancel)?;
+        transport.post(&url, &headers, body, TRANSCRIPTION_REPLY_LIMIT, cancel)
+    };
+    let mut texts = Vec::new();
+    for (offset, len) in ai_client::wav_parts(pcm_bytes) {
+        let wav_offset = WAV_HEADER_BYTES + u64::from(offset);
+        let mut reply = None;
+        if let Some(parts) = encoder.as_deref_mut() {
+            match encode_part(parts, &path, wav_offset, u64::from(len), cancel)? {
+                Some(ogg) => {
+                    let mut bytes = Vec::with_capacity(ogg_head.len() + ogg.len() + ogg_tail.len());
+                    bytes.extend_from_slice(&ogg_head);
+                    bytes.extend_from_slice(&ogg);
+                    bytes.extend_from_slice(&ogg_tail);
+                    drop(ogg);
+                    let (status, text) = post(transport, &RequestBody::Bytes(&bytes))?;
+                    if refuses_the_format(status) {
+                        log::warn!(
+                            "rustmix-wave=voice-ai status=opus-refused http={status}; sending WAV"
+                        );
+                        encoder = None;
+                    } else {
+                        reply = Some((status, text));
+                    }
+                }
+                // The encoder could not make this part: WAV from here on.
+                None => encoder = None,
+            }
+        }
+        let (status, reply) = match reply {
+            Some(reply) => reply,
+            None => post(
+                transport,
+                &RequestBody::WavPart {
+                    head: &head,
+                    header: build_pcm_wav_header(len),
+                    path: &path,
+                    offset: wav_offset,
+                    len: u64::from(len),
+                    tail: &tail,
+                },
+            )?,
+        };
         check_status(status, &reply)?;
         let text = ai_client::parse_transcription(&reply)
             .map_err(|error| Stop::Failed(format!("Unexpected transcription reply: {error}")))?;
@@ -321,6 +384,38 @@ fn transcribe(
     }
     texts.retain(|text| !text.is_empty());
     Ok(texts.join("\n\n"))
+}
+
+/// One part of the recording as an Ogg Opus file. `None` when the encoder
+/// failed (the caller sends WAV); a stop is an error.
+fn encode_part(
+    encoder: &mut dyn PartEncoder,
+    path: &Path,
+    offset: u64,
+    len: u64,
+    cancel: &AtomicBool,
+) -> Result<Option<Vec<u8>>, Stop> {
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) => {
+            return Err(Stop::Failed(format!(
+                "The recording could not be read: {error}"
+            )))
+        }
+    };
+    if let Err(error) = file.seek(SeekFrom::Start(offset)) {
+        return Err(Stop::Failed(format!(
+            "The recording could not be read: {error}"
+        )));
+    }
+    match encoder.encode_part(&mut file.take(len), len, cancel) {
+        Ok(ogg) => Ok(Some(ogg)),
+        Err(EncodeError::Cancelled) => Err(Stop::Cancelled),
+        Err(EncodeError::Failed(reason)) => {
+            log::warn!("rustmix-wave=voice-ai status=opus-failed reason={reason}; sending WAV");
+            Ok(None)
+        }
+    }
 }
 
 fn summarize(
@@ -354,9 +449,12 @@ mod tests {
         sync::atomic::{AtomicBool, Ordering},
     };
 
-    use super::{run, AiJob, AiTransport, JobOutcome, RequestBody, TransportError};
+    use super::{
+        run, run_with_encoder, AiJob, AiTransport, JobOutcome, RequestBody, TransportError,
+    };
     use crate::{
         ai_config::{AiConfig, AiLanguage, AiProcess, SummaryStyle},
+        opus_encode::{EncodeError, PartEncoder},
         voice_note_record::{load_record, save_record, NoteRecord, NoteState},
         voice_notes::{build_pcm_wav_header, bytes_per_second},
     };
@@ -550,6 +648,171 @@ mod tests {
         }
         assert_eq!(record(&root).transcript, "Primera parte.\n\nSegunda parte.");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A stand-in encoder: the "file" is `OGG` and the part's PCM length.
+    #[derive(Default)]
+    struct FakeOpus {
+        parts: Vec<(u64, u8)>,
+        fail: bool,
+        stop: bool,
+    }
+
+    impl PartEncoder for FakeOpus {
+        fn encode_part(
+            &mut self,
+            pcm: &mut dyn std::io::Read,
+            pcm_bytes: u64,
+            _cancel: &AtomicBool,
+        ) -> Result<Vec<u8>, EncodeError> {
+            if self.stop {
+                return Err(EncodeError::Cancelled);
+            }
+            if self.fail {
+                return Err(EncodeError::Failed("no memory".into()));
+            }
+            // The encoder gets the part's own PCM: its first byte is the
+            // ramp value at the part's offset.
+            let mut first = [0_u8; 1];
+            pcm.read_exact(&mut first).unwrap();
+            self.parts.push((pcm_bytes, first[0]));
+            let mut file = b"OggS-fake".to_vec();
+            file.extend_from_slice(&pcm_bytes.to_le_bytes());
+            Ok(file)
+        }
+    }
+
+    fn run_with_opus(
+        job: &AiJob,
+        transport: &mut FakeTransport,
+        opus: &mut FakeOpus,
+    ) -> JobOutcome {
+        let cancel = AtomicBool::new(false);
+        run_with_encoder(job, transport, Some(opus), &cancel, &mut |_| {})
+    }
+
+    #[test]
+    fn with_an_encoder_the_part_goes_up_as_ogg_and_not_as_wav() {
+        let (root, job) = queued_note("opus", 3);
+        let mut transport =
+            FakeTransport::new(vec![transcription("Hola."), completion("Saludo\n- Hola")]);
+        let mut opus = FakeOpus::default();
+        let outcome = run_with_opus(&job, &mut transport, &mut opus);
+        assert!(matches!(outcome, JobOutcome::Done(_)), "{outcome:?}");
+        assert_eq!(opus.parts, vec![(3 * u64::from(bytes_per_second()), 0)]);
+        let upload = &transport.seen[0];
+        let text = String::from_utf8_lossy(&upload.body);
+        assert!(
+            text.contains("filename=\"note.ogg\"\r\nContent-Type: audio/ogg\r\n\r\nOggS-fake"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("RIFF") && !text.contains("note.wav"),
+            "no WAV in it"
+        );
+        assert_eq!(
+            header(upload, "Content-Length"),
+            Some(upload.body.len().to_string().as_str())
+        );
+        // Far smaller than the WAV would have been.
+        assert!(upload.body.len() < 1_000, "{} bytes", upload.body.len());
+        assert_eq!(record(&root).transcript, "Hola.");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn each_part_of_a_long_note_is_encoded_from_its_own_stretch() {
+        let (root, job) = queued_note("opus-parts", 0);
+        let pcm_bytes = 12 * 60 * bytes_per_second();
+        let mut wav = build_pcm_wav_header(pcm_bytes).to_vec();
+        wav.extend((0..pcm_bytes).map(|index| (index / 4096 % 251) as u8));
+        std::fs::write(root.join("VOICE001.WAV"), wav).unwrap();
+        let mut transport = FakeTransport::new(vec![
+            transcription("Primera."),
+            transcription("Segunda."),
+            completion("Dos\n- Partes"),
+        ]);
+        let mut opus = FakeOpus::default();
+        run_with_opus(&job, &mut transport, &mut opus);
+        let half = 6 * 60 * u64::from(bytes_per_second());
+        assert_eq!(opus.parts.len(), 2);
+        assert_eq!(opus.parts[0], (half, 0));
+        assert_eq!(opus.parts[1].0, half);
+        // The second part starts half way in: its first byte is the ramp's.
+        assert_eq!(opus.parts[1].1, (half / 4096 % 251) as u8);
+        assert_eq!(record(&root).transcript, "Primera.\n\nSegunda.");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_encoder_that_fails_sends_the_wav_as_before() {
+        let (root, job) = queued_note("opus-fails", 2);
+        let mut transport = FakeTransport::new(vec![transcription("Hola."), completion("A\n- B")]);
+        let mut opus = FakeOpus {
+            fail: true,
+            ..FakeOpus::default()
+        };
+        let outcome = run_with_opus(&job, &mut transport, &mut opus);
+        assert!(matches!(outcome, JobOutcome::Done(_)));
+        let text = String::from_utf8_lossy(&transport.seen[0].body).into_owned();
+        assert!(
+            text.contains("RIFF") && text.contains("note.wav"),
+            "WAV went up"
+        );
+        assert!(!text.contains("note.ogg"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_provider_that_refuses_opus_gets_the_wav_for_that_and_every_later_part() {
+        let (root, job) = queued_note("opus-refused", 0);
+        let pcm_bytes = 12 * 60 * bytes_per_second();
+        let mut wav = build_pcm_wav_header(pcm_bytes).to_vec();
+        wav.resize(44 + pcm_bytes as usize, 7);
+        std::fs::write(root.join("VOICE001.WAV"), wav).unwrap();
+        let mut transport = FakeTransport::new(vec![
+            Ok((
+                415,
+                r#"{"error":{"message":"unsupported media type"}}"#.into(),
+            )),
+            transcription("Primera."),
+            transcription("Segunda."),
+            completion("Dos\n- Partes"),
+        ]);
+        let mut opus = FakeOpus::default();
+        let outcome = run_with_opus(&job, &mut transport, &mut opus);
+        assert!(matches!(outcome, JobOutcome::Done(_)), "{outcome:?}");
+        assert_eq!(opus.parts.len(), 1, "Opus was tried once");
+        let kinds: Vec<bool> = transport.seen[..3]
+            .iter()
+            .map(|seen| String::from_utf8_lossy(&seen.body).contains("note.ogg"))
+            .collect();
+        assert_eq!(kinds, [true, false, false], "Ogg refused, then WAV twice");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_wrong_key_is_not_retried_as_wav_and_a_stop_stops() {
+        let (root, job) = queued_note("opus-401", 1);
+        let refusal = r#"{"error":{"message":"Invalid API Key"}}"#;
+        let mut transport = FakeTransport::new(vec![Ok((401, refusal.into()))]);
+        let mut opus = FakeOpus::default();
+        let outcome = run_with_opus(&job, &mut transport, &mut opus);
+        assert!(matches!(outcome, JobOutcome::Failed(_)), "{outcome:?}");
+        assert_eq!(transport.seen.len(), 1, "one try");
+
+        let (root2, job2) = queued_note("opus-stop", 1);
+        let mut transport = FakeTransport::new(vec![]);
+        let mut opus = FakeOpus {
+            stop: true,
+            ..FakeOpus::default()
+        };
+        let outcome = run_with_opus(&job2, &mut transport, &mut opus);
+        assert_eq!(outcome, JobOutcome::Cancelled);
+        assert!(transport.seen.is_empty());
+        assert_eq!(record(&root2).state, NoteState::Queued, "queued again");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&root2);
     }
 
     #[test]

@@ -14,11 +14,14 @@ use std::{
 
 use crate::{
     ai_jobs::{self, AiJob, AiTransport, JobOutcome},
+    opus_encode::PartEncoder,
     voice_note_record::NoteState,
 };
 
-/// TLS needs some stack; the request buffers live on the heap.
-pub const AI_WORKER_STACK_BYTES: usize = 32 * 1024;
+/// TLS needs some stack, and so does the Opus encoder that runs before each
+/// upload (the XiaoZhi call, which does both, takes 40 KB); the request
+/// buffers live on the heap.
+pub const AI_WORKER_STACK_BYTES: usize = 40 * 1024;
 /// Wait after the first failed try, doubled after each further one.
 pub const RETRY_FIRST: Duration = Duration::from_secs(2 * 60);
 pub const RETRY_MAX: Duration = Duration::from_secs(60 * 60);
@@ -61,6 +64,7 @@ impl AiWorker {
         &mut self,
         job: AiJob,
         mut transport: Box<dyn AiTransport + Send>,
+        mut encoder: Option<Box<dyn PartEncoder + Send>>,
     ) -> std::io::Result<()> {
         if self.is_busy() {
             return Ok(());
@@ -85,7 +89,15 @@ impl AiWorker {
                     state,
                 });
             };
-            let outcome = ai_jobs::run(&job, transport.as_mut(), &thread_cancel, &mut progress);
+            let outcome = ai_jobs::run_with_encoder(
+                &job,
+                transport.as_mut(),
+                encoder
+                    .as_mut()
+                    .map(|encoder| encoder.as_mut() as &mut dyn PartEncoder),
+                &thread_cancel,
+                &mut progress,
+            );
             let _ = sender.send(AiEvent::Finished {
                 wav_name: job.wav_name.clone(),
                 outcome,
@@ -304,7 +316,7 @@ mod tests {
             summary_key: "key".into(),
         };
         let mut worker = AiWorker::default();
-        worker.start(job, Box::new(Refusing)).unwrap();
+        worker.start(job, Box::new(Refusing), None).unwrap();
         assert_eq!(worker.current(), Some("VOICE001.WAV"));
         let events = wait_for_finish(&mut worker);
         assert_eq!(

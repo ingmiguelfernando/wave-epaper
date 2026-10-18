@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.15.0: what is implemented, not the future
+This guide describes firmware v0.16.0: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -434,7 +434,9 @@ XiaoZhi server and opens the conversation. The call needs Wi-Fi set up in
 
 ### Voice Notes
 
-Voice Notes records local PCM16 mono 16 kHz WAV. With both providers set in
+Voice Notes records local PCM16 mono 16 kHz WAV and sends it to the
+transcription provider as Ogg Opus at 24 kbps, about ten times smaller (the
+WAV if the provider refuses Ogg). With both providers set in
 `/RUSTMIX/AI.TXT` (see [SD-card setup](SD_CARD_SETUP.md)) and their API keys
 saved in the Wi-Fi portal, a note goes to the transcription provider and its
 transcript to the summary provider. Each note's AI record (`VOICE###.AI`,

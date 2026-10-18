@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-18, firmware v0.15.0.
+Last updated: 2026-10-19, firmware v0.16.0.
 
 ## Status
 
@@ -55,6 +55,7 @@ Last updated: 2026-10-18, firmware v0.15.0.
 | Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, tested on the device |
 | Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | PR #18 | Done, merged without a release; wiring is the main line's |
 | Dice wired to the device: keys, shake, rattle, saved options | 0.15.0 | PR #20 | Done, tested on the device |
+| Opus uploads: voice notes go to the providers as Ogg Opus 24 kbps (WAV fallback) | 0.16.0 | | Done, waiting for device test |
 | Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | PR #21 | Done, merged without a release |
 | Delegated tasks D81 to D83: Sudoku's bold digits, XiaoZhi's call screen and the AI hub's Wi-Fi mark, the Settings figures | | side-tasks-20 | Published (Round 20) |
 
@@ -350,11 +351,13 @@ Done in v0.9.7 (D27); kept as the reference.
   thread on core 1; Wi-Fi stays on for it; recording, playback, the portal
   and sleep stop it and queue it again; network errors back off from 2
   minutes to an hour.
-  - Left: Opus at 24 kbps would make uploads about ten times smaller. The
-    Ogg Opus file (`src/ogg_opus.rs`, D61) is done in 0.12.5; the encoder
-    XiaoZhi brought in 0.12.0 (`esp_audio_codec`) is not wired to
-    recording, the upload or playback yet. The upload form for Ogg and
-    the split into parts are ready (D62, D63).
+  - Opus uploads: done in 0.16.0. Each ten-minute part is encoded to Ogg
+    Opus at 24 kbps on the AI worker (`src/opus_encode.rs`, the encoder
+    XiaoZhi brought in 0.12.0) just before it is sent, about ten times
+    smaller than the WAV, with the WAV as the fallback when the encoder
+    fails or the provider refuses Ogg. Left: recording straight to Opus
+    (live encoding competes with the screen refresh for the main loop) and
+    playing Opus notes; the card keeps WAV, which also survives a power cut.
 - **Settings › AI.** Two providers, each with a base URL, model and key, plus
   language, summary style and "process when online". Done in 0.10.1; the
   keys row in 0.11.0.
