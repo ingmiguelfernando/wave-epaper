@@ -4,6 +4,42 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 14 result (2026-10-18)
+
+Branch `side-tasks-14` (D62 to D64) came as pull request #13 from v0.12.5,
+with CI and the firmware build green. It was reviewed on `side-tasks-14`
+itself and merged without a release: nothing the device does changes
+until the encoder is wired. The form, the record name and the split are
+what the tasks asked for, the split balances its parts as `wav_parts`
+does, and the four previews show what their names say.
+
+What the main developer changed at review time:
+
+- **The cached-forecast previews' clock:** `weather_cached_preview_state`
+  set the RTC to the local 18:20. The RTC keeps its own basis (UTC+8), so
+  Home's status bar said 23:20 while the cache had dropped the hours by
+  18:20; on a device the two always agree, because `main.rs` localizes
+  first. The preview stores `regional.local_to_rtc(now)` now.
+- **`split_parts` panicked** through `expect` on a packet too big for one
+  Ogg page. `read_stream` joins pages, so a damaged file can hold one; on
+  the device that is a reboot. It returns `io::Result` now, with a test.
+- **The Ogg form's test** compared `transcription_request` with
+  `transcription_form_for`, one function with itself. It checks the
+  exact bytes now, as the WAV test does.
+
+Verdict: D62 to D64 done after the fixes. Open: nothing for these tasks.
+
+Do differently next time:
+
+- Build test and preview state through the same conversions the device
+  uses: a clock goes in as the RTC stores it, not as the screen shows it.
+  Look at every number on a preview, the status bar's time included.
+- No `expect` or `unwrap` on a path the device runs with data from a file
+  or the network. "Cannot fail" is true for the writer, not for the
+  packet; return the error.
+- "Against the exact bytes" means the expected bytes written out in the
+  test, not one function compared with another that shares its code.
+
 ## Round 13 result (2026-10-17)
 
 Branch `side-tasks-13` (D58 to D61) came as pull request #12 from v0.12.3,
@@ -593,7 +629,129 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 14 tasks (branch `side-tasks-14`)
+## Round 15 tasks (branch `side-tasks-15`)
+
+Start from `main` after pull request #13, where Round 14 is merged; read
+its result at the top of this file first, and the "Do differently next
+time" lists of Rounds 13 and 14 before you start. Create `side-tasks-15`
+from `main`. Three tasks, in this order. When they are done, merge `main`
+into the branch and open a pull request.
+
+**Main line during this round.** The main developer keeps working on OTA
+updates (Phase 8) and then wires the Opus encoder into recording and the
+upload. The same files as in Round 14 stay alone: `src/main.rs`; updates
+and network (`partitions.csv`, `sdkconfig.defaults`, `Cargo.toml`,
+`.github/`, `src/ota*.rs`, `src/network*.rs`, `src/radio_burst.rs`,
+`src/wifi_transfer.rs`, `src/build_info.rs`, `src/app/screens/settings.rs`,
+`src/app/screens/device_info.rs`, `src/app/screens/network.rs`); XiaoZhi
+and audio (`src/xiaozhi/`, `src/app/screens/xiaozhi.rs`, `src/audio/`,
+`src/voice_notes.rs`, `src/ai_jobs.rs`, `src/ai_worker.rs`); drawing (the
+files already in `src/app/widgets/`, `src/app/typography/`,
+`src/app/display_assets.rs`, `scripts/fonts/`). `src/app/state.rs` is
+shared: change only the line D65 names.
+
+Run the doc-comment check of Round 9 before you hand over. No `expect` or
+`unwrap` outside tests on data read from the card.
+
+### D65: Books finished this year
+
+**Why.** Reading Stats shows `books finished` beside this year's pages and
+hours, but counts every finished book it keeps, from any year, because
+`STATS.TXT` stores no finish date (see the roadmap, Reading Stats).
+
+**Change.**
+
+- `src/reading_stats.rs`: `BookStats` keeps the finish day (`Option<u32>`,
+  an epoch day) instead of `finished: bool`. `mark_finished(book, day)`
+  takes the day as `Option<u32>`; finishing a book already finished keeps
+  its first day. The book line's last field is `0` (not finished), `1`
+  (finished, day unknown: what older files hold) or the date as
+  `day_label` writes it (`2026-10-18`). Old files load unchanged; a file
+  saved again keeps `1` for a book whose day is unknown.
+  `books_finished_between(first, last)` counts the books finished in that
+  range of days; `is_finished` still says yes for every finished book,
+  dated or not. Keep `books_finished` only if something still needs it.
+- `src/app/state.rs`, `note_reading_page_turn` only: pass
+  `self.local_day()`.
+- `src/app/screens/reading_stats.rs`: the count beside this year's rows is
+  the books finished between `first_of_year(today)` and `today`.
+- `src/app/preview.rs`: the Reading Stats previews still show a count
+  (give the sample books dates in this year).
+
+**Tests:** a `1` line loads, counts as finished, is not counted in any
+year and saves back as `1`; a dated line round-trips; finishing twice
+keeps the first day; a book finished on 31 December is not counted on 1
+January of the next year, and one finished on 1 January is; a malformed
+date is an error, as other malformed fields are; without a clock
+(`None`) the book is still marked finished.
+
+**Status:** to do.
+
+### D66: Split an Ogg file into parts without holding it in memory
+
+**Why.** `ogg_opus::split_parts` (D63) needs the whole stream in memory.
+A one-hour note at 24 kbps is about 11 MB of packets, more than the
+PSRAM the upload can have. The upload reads WAV parts straight from the
+file; Ogg needs the same.
+
+**Change.**
+
+- `src/ogg_opus.rs`: `count_packets(reader) -> io::Result<(OpusHead,
+  usize)>` reads the pages once and counts the audio packets (the head
+  and tags are not counted), with the same rules as `read_stream` for a
+  cut or damaged page.
+- `split_file(reader, max_seconds, make_part)`, where `make_part(index)`
+  gives the `Write` for part `index`: it counts first, rewinds (`Read +
+  Seek`), then reads the packets again page by page and writes them to
+  balanced parts as `split_parts` does, each a complete Ogg Opus file
+  with the stream's head, finished before the next part starts. It
+  returns the number of parts. It holds at most one page and one packet
+  in memory, never the stream.
+- `split_parts` stays (the tests use it as the reference); keep one
+  balancing rule, used by both, not a copy.
+
+**Tests:** for 1, 29 999, 30 000, 30 001 and 60 001 packets at 600 s,
+`split_file` into `Vec<u8>` writers gives byte for byte what
+`split_parts` gives; a stream whose packets cross page boundaries (a
+packet over 255 bytes at the end of a page) splits the same way; a file
+cut in the middle of a page gives the parts of the complete packets
+before the cut; an empty stream calls `make_part` zero times; an error
+from `make_part` or from a writer is returned, not swallowed.
+
+**Status:** to do.
+
+### D67: Voice note text for an Ogg note
+
+**Why.** The result screen's Audio tab says `16 kHz · mono · 16-bit` and
+`KB of PCM` for every note, and `default_voice_title` gives `VOICE NOTE`
+without the number for a `VOICE###.OGG`. When the encoder is wired, both
+would be wrong for an Ogg note.
+
+**Change.**
+
+- `src/voice_note_result.rs`: `audio_text(file_name, duration_seconds,
+  bytes)` decides from the name: a `.WAV` says what it says now; a `.OGG`
+  says `{m}:{ss} · Opus · mono` and `{kilobytes} KB`. Rename the parameter
+  `pcm_bytes` to `bytes` and say in its doc what it is for each kind (the
+  PCM bytes for a WAV, the file size for an Ogg); the call in
+  `src/app/screens/voice_notes.rs` stays as it is.
+- `src/voice_note_metadata.rs`: `default_voice_title` gives `VOICE NOTE
+  001` for `VOICE001.OGG` as well. Look for every other `.WAV` test in
+  this file and in `voice_note_result.rs` and say in the Status what you
+  found.
+- `src/app/preview.rs`: `voice-note-result-audio-ogg`, the Audio tab of a
+  note whose file is `VOICE007.OGG`, built by hand next to the other
+  result previews.
+
+**Tests:** both texts against the exact strings (a WAV and an Ogg of
+3:05); `voice007.ogg` in lower case; a name that is neither (`NOTE.MP3`)
+keeps the WAV text, as today; the titles for `VOICE001.WAV`,
+`VOICE001.OGG` and `VOICE001.OPUS` (the last is `VOICE NOTE`). Check
+every character you draw in `src/charset.rs`.
+
+**Status:** to do.
+
+## Round 14 tasks (done, merged without a release)
 
 Start from `main` at v0.12.5, where Round 13 is merged; read its result at
 the top of this file first, and its "Do differently next time" list before
