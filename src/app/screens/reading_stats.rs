@@ -42,7 +42,7 @@ pub fn render_reading_stats(
     today: u32,
     current: Option<&CurrentBook<'_>>,
 ) -> Result<(), Infallible> {
-    draw_header(display, preferences, "READING STATS", "THIS WEEK")?;
+    draw_header(display, preferences, "Reading Stats", "This week")?;
     draw_tiles(display, preferences, stats, today)?;
     draw_minutes_chart(display, preferences, stats, today)?;
     draw_heatmap_and_year(display, preferences, stats, today)?;
@@ -57,7 +57,7 @@ pub fn render_without_clock(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
 ) -> Result<(), Infallible> {
-    draw_header(display, preferences, "READING STATS", "NO CLOCK")?;
+    draw_header(display, preferences, "Reading Stats", "No clock")?;
     let body = preferences.body_style();
     let text = "Reading time is recorded once the clock is set: \
                 Settings › Clock & Alarms › Clock, or Wi-Fi time sync.";

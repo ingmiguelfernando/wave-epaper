@@ -791,7 +791,8 @@ fn draw_tabs(
         state.display.detail_style()
     };
     let baseline = LIBRARY_TABS_TOP + (HEIGHT + style.cap_height()) / 2;
-    let mut left = 16;
+    // The mockup's tab row is centred in the screen.
+    let mut left = (480 - chips_width(style)) / 2;
     for tab in TABS {
         let width = style.text_width(tab.label()) + 2 * PAD;
         let chip = RoundedRectangle::with_equal_corners(

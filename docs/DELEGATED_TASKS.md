@@ -914,7 +914,24 @@ layout and weight, not the words.
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-19`. Same method (headless Chrome, zoom 1,
+crops). **Font note:** as D78. The Bible and Reader show the owner's text;
+compared layout and weight only.
+
+| Figure | Element | Difference | Fixed or blocked |
+|---|---|---|---|
+| Library | Header `Library` / `N books` | Matches (crop) | — |
+| Library | Tab row | Preview left-aligned at x 16; mockup centred | Fixed: centre the chips |
+| Library | Book rows | Serif title, author, EPUB chip, bar, % / check / `new` | Matches (layout); sample has one row | — |
+| Reader | Header capitals + clock + footer label | Matches (crop) | — |
+| Reader | Chapter title band + rule, justified body | Matches (layout; Literata vs Iowan) | — |
+| Reading Stats | Header | Was `READING STATS` / `THIS WEEK` | Fixed: `Reading Stats` / `This week` |
+| Reading Stats | Tiles, bar chart, last 12 weeks, current book | Matches (crop) | — |
+| Bible reading | Header `BIBLIA · RVR1960`, verse numbers, footer | Matches (layout; sample text differs) | — |
+| Bible books | List rows and selection | Matches (layout) | — |
+
+Probe: the library tab row's left edge is near 16 before the fix and near
+the centre after (pixel probe of the first chip). Open: nothing known.
 
 ### D80: Weather, AI and the sleep screens
 
