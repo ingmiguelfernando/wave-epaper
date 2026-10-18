@@ -674,8 +674,8 @@ Do differently next time:
 
 Start from `main` at v0.12.6, where Round 15 is merged; read its result at
 the top of this file first, and the "Do differently next time" lists of
-Rounds 13 to 15. Create `side-tasks-16` from `main`. Three tasks, in any
-order; D70 is a written study, no code. When they are done, merge `main`
+Rounds 13 to 15. Create `side-tasks-16` from `main`. Four tasks, in any
+order; D70 is a written study and D71 a mockup, no code. When they are done, merge `main`
 into the branch and open a pull request.
 
 **Main line during this round.** The main developer works on OTA updates
@@ -784,6 +784,63 @@ ESP-IDF 5.5 documentation:
 **Tests:** none; every claim about this repo names its file and line,
 and every claim about the chip names its documentation page. Say what
 you could not find.
+
+**Status:** to do.
+
+### D71: Dice, the mockup
+
+**Why.** The owner wants a new app in Games: a die on the screen that
+rolls when the device is shaken, with the sound of real dice. Before any
+code the screens are drawn in `mockups/index.html`, as every other app
+was, so the owner can approve the look and the keys. This task is the
+mockup only; the engine, the shake and the sound are later rounds.
+
+Two facts to design around. First, Round 1 (D3) removed the tilt games
+and kept the IMU for the Motion diagnostics only, so Dice is the first
+game to use motion again: it must also roll with a key, and the IMU runs
+only while Dice is open. Second, e-paper cannot animate: a roll is two
+or three quick partial refreshes of the die tumbling (tilted, blurred
+pips or a motion outline), then the result, while the speaker plays the
+rattle and a last knock. The detector in `src/imu_events.rs` already
+reports a `Shake` (80 ms polling, 900 ms cooldown); the tone code is in
+`src/audio/tone.rs`.
+
+**Change.** `mockups/index.html` only, in the `Juegos` section, after the
+two Race figures, following the existing pattern exactly: one `<figure>`
+with a `bezel`, an `s` screen in `lang="en"`, the status bar (`sb`), the
+key bar (`ft` with `<i class="k">` caps) and a Spanish `figcaption` with a
+bold title, as the other figures. Reuse the existing classes (`sb`, `ft`,
+`k`, `kv`, `sel`, `infobox`, `chips`, `lbl`, `rstats`, `timer`) and add
+new CSS only for the die itself; draw the die and its pips in inline SVG
+(or an `<svg><symbol>` with `<use>`, as the Race cars do), black and
+white only, no grey fills, at the mockup's 480 × 800 scale.
+
+1. **Games hub:** add a Dice card to the hub figure (an icon in the
+   60 × 60 `viewBox` like the others, title `Dice`, a line such as `Shake
+   to roll · 2 dice` and `Last roll 4 + 6 = 10`), and update the count
+   in its status bar. If the hub figure still lacks Race, add it too.
+2. **Dice: ready.** One die large in the centre (two and three dice also
+   fit: show how), the total under it, a short history of the last rolls
+   (for example `Last: 10 · 7 · 3`), and the key bar: `●` roll, `▲▼`
+   number of dice, `BOOT` hold: back. A one-line hint that shaking rolls.
+3. **Dice: rolling.** The frame shown while it rolls: the dice tilted
+   and offset from their rest place, with a motion mark (dashed outline
+   or speed lines, like Race's streaks), a `Rolling…` line and a small
+   speaker mark so the sound is visible in the mockup. The caption says
+   how many frames and that the panel uses partial refresh.
+4. **Dice: options** (a `kv` list): number of dice (1 to 3), sound (On,
+   Off), shake to roll (On, Off), sides (6; say in the caption if other
+   dice are worth it later).
+
+Keep every character in text to what `src/charset.rs` has: `…` and `·`
+are there, `●▲▼` are not and appear only inside key caps (`<i class="k">`).
+Keep the English on screen and Spanish in the
+captions, as the rest of the file.
+
+**Tests:** none. Open the file in a browser and look at the new figures
+next to Race and Sudoku at the same zoom: same frame, same status and key
+bars, same type sizes. Say in the Status which choices you made that the
+owner should confirm (number of dice, frames per roll, the options).
 
 **Status:** to do.
 

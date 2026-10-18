@@ -49,7 +49,7 @@ Last updated: 2026-10-18, firmware v0.12.6.
 | Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | 0.12.5 | PR #12 | Done, waiting for device test |
 | Delegated tasks D62 to D64: the upload form and parts for Ogg Opus, previews of the cached forecast and the verse mark | | PR #13 | Done, merged without a release (library and previews only) |
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
-| Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study | | side-tasks-16 | Published (Round 16) |
+| Delegated tasks D68 to D71: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study, the Dice mockup | | side-tasks-16 | Published (Round 16) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -319,6 +319,12 @@ Done in v0.9.7 (D27); kept as the reference.
   - Refresh only the changed cells (`games/dirty_regions.rs`), with a full
     refresh every few moves.
 - **Games hub.** Done in v0.9.7 (D25): one card per SD game with its state.
+- **Dice** (planned, owner's request 2026-10-18): one to three dice that
+  roll when the device is shaken or ● is pressed, with a rattle from the
+  speaker; the roll is two or three partial refreshes, then the result.
+  The IMU runs only while Dice is open (D3 kept motion out of games until
+  now). The mockup is D71; the engine, the shake and the sound follow
+  once the owner approves it.
 - **Race** (native engine, SD app `RACE`): the mockup's two Race screens.
   Four lanes on a road that runs right to left and moves in steps; ▲▼
   change lanes, ● spends a nitro, BOOT pauses. Classic steps every second
