@@ -674,8 +674,9 @@ Do differently next time:
 
 Start from `main` at v0.12.6, where Round 15 is merged; read its result at
 the top of this file first, and the "Do differently next time" lists of
-Rounds 13 to 15. Create `side-tasks-16` from `main`. Four tasks, in any
-order; D70 is a written study and D71 a mockup, no code. When they are done, merge `main`
+Rounds 13 to 15. Create `side-tasks-16` from `main`. Three tasks, in any
+order; D70 is a written study, no code. D71 (the Dice mockup) was drawn by
+the main developer; leave `mockups/index.html` alone. When they are done, merge `main`
 into the branch and open a pull request.
 
 **Main line during this round.** The main developer works on OTA updates
@@ -842,7 +843,15 @@ next to Race and Sudoku at the same zoom: same frame, same status and key
 bars, same type sizes. Say in the Status which choices you made that the
 owner should confirm (number of dice, frames per roll, the options).
 
-**Status:** to do.
+**Status:** done by the main developer (2026-10-18), waiting for the
+owner's approval. Drawn: a Dice card (and the missing Race card) in the
+Games hub, `Dice` ready with two dice, the total and the last rolls,
+`Dice` rolling (frame 2 of 3: tilted dice, dashed rest outlines, motion
+lines, the speaker mark) and `Dice · Options` (dice 1 to 3, sound, shake
+to roll, shake strength, sides, a preview of the 1, 2 and 3 dice
+layouts). The die faces are `die-1` to `die-6` and `die-rest` in the
+file's `<defs>`. For the owner to confirm: up to three dice, three frames
+a roll, a shake strength option, six sides only.
 
 ## Round 15 tasks (done in v0.12.6)
 
