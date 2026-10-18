@@ -28,7 +28,9 @@ impl DayStats {
 struct BookStats {
     path: String,
     totals: DayStats,
-    finished: bool,
+    /// `None` is not finished. `Some(None)` is finished with the day unknown
+    /// (a `1` in an older file). `Some(Some(day))` is the finish day.
+    finished: Option<Option<u32>>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -63,7 +65,7 @@ impl ReadingStats {
             let mut entry = self.remove_book(path).unwrap_or_else(|| BookStats {
                 path: path.into(),
                 totals: DayStats::default(),
-                finished: false,
+                finished: None,
             });
             entry.totals.add(seconds, pages);
             self.push_book(entry);
@@ -71,22 +73,24 @@ impl ReadingStats {
         }
     }
 
-    /// Finishing an already-finished retained path does not alter its recency.
-    pub fn mark_finished(&mut self, book: &str) {
+    /// Mark `book` finished on `day` (`None` when the clock is not set).
+    /// Finishing an already-finished retained path keeps its first day and
+    /// does not alter its recency.
+    pub fn mark_finished(&mut self, book: &str, day: Option<u32>) {
         if !valid_book(book)
             || self
                 .books
                 .iter()
-                .any(|entry| entry.path == book && entry.finished)
+                .any(|entry| entry.path == book && entry.finished.is_some())
         {
             return;
         }
         let mut entry = self.remove_book(book).unwrap_or_else(|| BookStats {
             path: book.into(),
             totals: DayStats::default(),
-            finished: false,
+            finished: None,
         });
-        entry.finished = true;
+        entry.finished = Some(day);
         self.push_book(entry);
         self.unsaved = true;
     }
@@ -168,18 +172,38 @@ impl ReadingStats {
             .map(|entry| entry.totals)
     }
 
-    /// Finished count covers retained books, not a lifetime counter.
+    /// Finished count covers retained books, dated or not. The screen's
+    /// year row uses `books_finished_between`.
     #[must_use]
     pub fn books_finished(&self) -> usize {
-        self.books.iter().filter(|entry| entry.finished).count()
+        self.books
+            .iter()
+            .filter(|entry| entry.finished.is_some())
+            .count()
     }
 
-    /// Whether `path` is marked finished.
+    /// Books finished on a day in `[first, last]`, both included. A book
+    /// finished with an unknown day is finished but counts in no range.
+    #[must_use]
+    pub fn books_finished_between(&self, first: u32, last: u32) -> usize {
+        if first > last {
+            return 0;
+        }
+        self.books
+            .iter()
+            .filter(|entry| match entry.finished {
+                Some(Some(day)) => (first..=last).contains(&day),
+                _ => false,
+            })
+            .count()
+    }
+
+    /// Whether `path` is marked finished, dated or not.
     #[must_use]
     pub fn is_finished(&self, path: &str) -> bool {
         self.books
             .iter()
-            .any(|entry| entry.path == path && entry.finished)
+            .any(|entry| entry.path == path && entry.finished.is_some())
     }
 
     #[must_use]
@@ -197,7 +221,7 @@ impl ReadingStats {
         for (index, line) in text.trim_start_matches('\u{feff}').lines().enumerate() {
             let line = line.trim_matches(' ');
             let kind = line.split('|').next().unwrap_or_default();
-            if kind != "day" && kind != "book" {
+            if kind != "day" && kind != "book" && kind != "done" {
                 continue;
             }
             let parsed = (|| -> Result<()> {
@@ -224,9 +248,11 @@ impl ReadingStats {
                         if fields.len() != 5 || !valid_book(fields[1]) {
                             bail!("book requires a valid path, seconds, pages and finished flag");
                         }
+                        // `0` not finished, `1` finished; a `done` line
+                        // after it may give the day.
                         let finished = match fields[4] {
-                            "0" => false,
-                            "1" => true,
+                            "0" => None,
+                            "1" => Some(None),
                             _ => bail!("finished must be 0 or 1"),
                         };
                         let entry = BookStats {
@@ -239,6 +265,21 @@ impl ReadingStats {
                         };
                         stats.remove_book(&entry.path);
                         stats.push_book(entry);
+                    }
+                    "done" => {
+                        if fields.len() != 3 || !valid_book(fields[1]) {
+                            bail!("done requires a valid path and a date");
+                        }
+                        let day = parse_day(fields[2])?;
+                        // The day of a finished book listed above; a book
+                        // evicted since, or not finished, is ignored.
+                        if let Some(entry) = stats
+                            .books
+                            .iter_mut()
+                            .find(|entry| entry.path == fields[1] && entry.finished.is_some())
+                        {
+                            entry.finished = Some(Some(day));
+                        }
                     }
                     _ => unreachable!(),
                 }
@@ -266,8 +307,16 @@ impl ReadingStats {
                 entry.path,
                 entry.totals.seconds,
                 entry.totals.pages,
-                u8::from(entry.finished)
+                u8::from(entry.finished.is_some())
             ));
+        }
+        // Finish days on their own lines, after the books: firmware before
+        // v0.12.6 skips a kind it does not know, so a downgrade keeps the
+        // file and loses only the days.
+        for entry in &self.books {
+            if let Some(Some(day)) = entry.finished {
+                text.push_str(&format!("done|{}|{}\n", entry.path, day_label(day)));
+            }
         }
         text
     }
@@ -707,18 +756,111 @@ mod tests {
     fn finishing_is_idempotent_by_exact_path_and_preserves_totals() {
         let mut stats = ReadingStats::default();
         stats.record(0, 80, 2, Some("/a/Café.txt"));
-        stats.mark_finished("/a/Café.txt");
-        stats.mark_finished("/b/Café.txt");
+        stats.mark_finished("/a/Café.txt", None);
+        stats.mark_finished("/b/Café.txt", None);
         assert_eq!(stats.books_finished(), 2);
         assert_eq!(stats.books[0].totals.seconds, 80);
         stats.mark_saved();
         let text = stats.serialized();
-        stats.mark_finished("/a/Café.txt");
-        assert_eq!(stats.serialized(), text);
+        stats.mark_finished("/a/Café.txt", Some(9));
+        assert_eq!(
+            stats.serialized(),
+            text,
+            "finishing again keeps the first day"
+        );
         assert!(!stats.has_unsaved());
         stats.record(0, 20, 1, Some("/a/Café.txt"));
         assert_eq!(stats.books_finished(), 2);
         assert_eq!(stats.books.last().unwrap().totals.seconds, 100);
+    }
+
+    #[test]
+    fn a_one_line_is_finished_but_counts_in_no_year_and_saves_as_one() {
+        let stats = ReadingStats::parse("book|/a/Other.txt|0|0|1\n").unwrap();
+        assert!(stats.is_finished("/a/Other.txt"));
+        assert_eq!(stats.books_finished(), 1);
+        assert_eq!(stats.books_finished_between(0, u32::MAX), 0);
+        let text = stats.serialized();
+        assert!(
+            text.contains("book|/a/Other.txt|0|0|1\n"),
+            "saves back as 1: {text}"
+        );
+        assert_eq!(ReadingStats::parse(&text).unwrap(), stats);
+    }
+
+    #[test]
+    fn a_dated_finish_line_round_trips_and_counts_in_its_year() {
+        let day = day_label(20_729); // 2026-10-03
+        let text =
+            format!("# Wave reading stats v1\nbook|/a/One.txt|0|0|1\ndone|/a/One.txt|{day}\n");
+        let stats = ReadingStats::parse(&text).unwrap();
+        assert!(stats.is_finished("/a/One.txt"));
+        assert_eq!(stats.books_finished_between(20_454, 20_729), 1);
+        assert_eq!(stats.books_finished_between(20_454, 20_728), 0);
+        assert_eq!(stats.serialized(), text);
+    }
+
+    #[test]
+    fn finish_days_stay_out_of_the_lines_older_firmware_reads() {
+        // Firmware before v0.12.6 accepts only `0` or `1` at the end of a
+        // book line and skips other kinds; a downgrade must not lose the
+        // file.
+        let mut stats = ReadingStats::default();
+        stats.record(20_729, 60, 1, Some("/a/One.txt"));
+        stats.mark_finished("/a/One.txt", Some(20_729));
+        stats.mark_finished("/a/Two.txt", None);
+        stats.mark_saved();
+        let text = stats.serialized();
+        for line in text.lines().filter(|line| line.starts_with("book|")) {
+            assert!(line.ends_with("|0") || line.ends_with("|1"), "{line}");
+        }
+        assert!(text.contains("done|/a/One.txt|2026-10-03\n"), "{text}");
+        assert!(!text.contains("done|/a/Two.txt"));
+        assert_eq!(ReadingStats::parse(&text).unwrap(), stats);
+        // A day for a book not listed, or not finished, is ignored.
+        let extra = format!("{text}done|/a/Gone.txt|2026-10-01\nbook|/a/Open.txt|0|0|0\ndone|/a/Open.txt|2026-10-01\n");
+        let parsed = ReadingStats::parse(&extra).unwrap();
+        assert!(!parsed.is_finished("/a/Open.txt"));
+        assert_eq!(parsed.books_finished_between(0, u32::MAX), 1);
+    }
+
+    #[test]
+    fn finishing_twice_keeps_the_first_day() {
+        let mut stats = ReadingStats::default();
+        stats.mark_finished("/a/One.txt", Some(20_700));
+        stats.mark_finished("/a/One.txt", Some(20_729));
+        assert_eq!(stats.books_finished_between(20_700, 20_700), 1);
+        assert_eq!(stats.books_finished_between(20_729, 20_729), 0);
+        // Without a clock the book is still finished, with no day.
+        stats.mark_finished("/a/Two.txt", None);
+        assert!(stats.is_finished("/a/Two.txt"));
+        assert_eq!(stats.books_finished_between(0, u32::MAX), 1);
+    }
+
+    #[test]
+    fn a_december_finish_is_not_counted_on_the_next_new_year() {
+        // 2026-12-31 and 2027-01-01.
+        let dec31 = parse_day("2026-12-31").unwrap();
+        let jan1 = parse_day("2027-01-01").unwrap();
+        let mut stats = ReadingStats::default();
+        stats.mark_finished("/a/Year.txt", Some(dec31));
+        stats.mark_finished("/a/Next.txt", Some(jan1));
+        let first_of_2027 = parse_day("2027-01-01").unwrap();
+        assert_eq!(stats.books_finished_between(first_of_2027, jan1), 1);
+        let first_of_2026 = parse_day("2026-01-01").unwrap();
+        assert_eq!(stats.books_finished_between(first_of_2026, dec31), 1);
+    }
+
+    #[test]
+    fn a_malformed_finish_date_is_an_error() {
+        for field in ["2", "01", "2026-13-01", "2026-02-30", "yesterday"] {
+            let text = format!("book|/a/One.txt|0|0|1\ndone|/a/One.txt|{field}");
+            let error = ReadingStats::parse(&text).unwrap_err();
+            assert!(
+                format!("{error:#}").contains("line 2"),
+                "{field:?}: {error:#}"
+            );
+        }
     }
 
     #[test]
@@ -741,7 +883,7 @@ mod tests {
             "book\"",
         ] {
             let mut stats = ReadingStats::default();
-            stats.mark_finished(path);
+            stats.mark_finished(path, None);
             assert!(!stats.has_unsaved());
             stats.record(0, 60, 1, Some(path));
             assert!(stats.books.is_empty(), "{path:?}");
@@ -754,7 +896,7 @@ mod tests {
     fn serialization_roundtrip_is_stable_utf8_and_clean() {
         let mut stats = ReadingStats::default();
         stats.record(20_729, 1_520, 34, Some("/sdcard/BOOKS/El corazón.txt"));
-        stats.mark_finished("/sdcard/BOOKS/El corazón.txt");
+        stats.mark_finished("/sdcard/BOOKS/El corazón.txt", None);
         stats.record(0, 1, 2, Some(" leading and trailing spaces "));
         let text = stats.serialized();
         assert!(text.contains("day|2026-10-03|1520|34\n"));
@@ -869,10 +1011,10 @@ mod tests {
             stats.record(100, 1, 1, Some(&format!("book-{index}")));
         }
         stats.record(0, 1, 1, Some("book-0"));
-        stats.mark_finished("book-1");
+        stats.mark_finished("book-1", None);
         let mut restored = ReadingStats::parse(&stats.serialized()).unwrap();
         for state in [&mut stats, &mut restored] {
-            state.mark_finished("new");
+            state.mark_finished("new", None);
             assert!(!state.books.iter().any(|book| book.path == "book-2"));
             assert!(state.books.iter().any(|book| book.path == "book-0"));
             assert_eq!(state.books_finished(), 2);
@@ -885,10 +1027,10 @@ mod tests {
     fn finished_count_is_bounded_and_idempotent_does_not_refresh_recency() {
         let mut stats = ReadingStats::default();
         for index in 0..200 {
-            stats.mark_finished(&format!("book-{index}"));
+            stats.mark_finished(&format!("book-{index}"), None);
         }
-        stats.mark_finished("book-0");
-        stats.mark_finished("new");
+        stats.mark_finished("book-0", None);
+        stats.mark_finished("new", None);
         assert_eq!(stats.books_finished(), 200);
         assert!(!stats.books.iter().any(|book| book.path == "book-0"));
     }
@@ -904,7 +1046,7 @@ mod tests {
         assert!(!path.with_extension("TMP").exists());
         assert!(!path.with_extension("BAK").exists());
         assert_eq!(ReadingStats::load_from_path(&path).unwrap(), stats);
-        stats.mark_finished("Café.txt");
+        stats.mark_finished("Café.txt", None);
         stats.save_to_path(&path).unwrap();
         assert!(!stats.has_unsaved());
         assert!(!path.with_extension("TMP").exists());
@@ -1006,7 +1148,7 @@ mod tests {
         fs::create_dir(&path).unwrap();
         fs::write(path.join("keep"), "original").unwrap();
         let mut stats = ReadingStats::default();
-        stats.mark_finished("book");
+        stats.mark_finished("book", None);
         assert!(stats.save_to_path(&path).is_err());
         assert!(stats.has_unsaved());
         assert_eq!(fs::read_to_string(path.join("keep")).unwrap(), "original");
@@ -1019,7 +1161,7 @@ mod tests {
         let path = root.0.join("STATS.TMP");
         fs::write(&path, "original").unwrap();
         let mut stats = ReadingStats::default();
-        stats.mark_finished("book");
+        stats.mark_finished("book", None);
         assert!(stats.save_to_path(&path).is_err());
         assert_eq!(fs::read_to_string(path).unwrap(), "original");
         assert!(stats.has_unsaved());
@@ -1034,7 +1176,7 @@ mod tests {
         fs::write(&path, "original").unwrap();
         symlink(&path, path.with_extension("TMP")).unwrap();
         let mut stats = ReadingStats::default();
-        stats.mark_finished("book");
+        stats.mark_finished("book", None);
         stats.save_to_path(&path).unwrap();
         // The stale link is removed before any write, so it cannot redirect it.
         assert!(!stats.has_unsaved());

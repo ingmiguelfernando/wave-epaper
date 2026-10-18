@@ -152,12 +152,17 @@ pub fn metadata_for_file(metadata: &[VoiceNoteMetadata], file_name: &str) -> Voi
         })
 }
 
+/// `VOICE NOTE 001` for `VOICE001.WAV` or `VOICE001.OGG`; `VOICE NOTE` for
+/// any other name.
 #[must_use]
 pub fn default_voice_title(file_name: &str) -> String {
     let upper = file_name.to_ascii_uppercase();
     upper
         .strip_prefix("VOICE")
-        .and_then(|rest| rest.strip_suffix(".WAV"))
+        .and_then(|rest| {
+            rest.strip_suffix(".WAV")
+                .or_else(|| rest.strip_suffix(".OGG"))
+        })
         .map_or_else(
             || "VOICE NOTE".into(),
             |number| format!("VOICE NOTE {number}"),
@@ -346,6 +351,15 @@ mod tests {
         );
         assert!(root.join("SETTINGS.TXT").exists());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn default_titles_name_the_number_for_a_wav_or_ogg_note() {
+        assert_eq!(default_voice_title("VOICE001.WAV"), "VOICE NOTE 001");
+        assert_eq!(default_voice_title("VOICE001.OGG"), "VOICE NOTE 001");
+        assert_eq!(default_voice_title("voice001.ogg"), "VOICE NOTE 001");
+        assert_eq!(default_voice_title("VOICE001.OPUS"), "VOICE NOTE");
+        assert_eq!(default_voice_title("NOTE001.OGG"), "VOICE NOTE");
     }
 
     #[test]

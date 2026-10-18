@@ -298,6 +298,9 @@ light sleep. Restore the owner's original preferences afterward.
    keep it; `Ir a capítulo` clears it.
 - [ ] Read the Bible for a few pages, sleep and wake: Reading Stats has the
    minutes and pages, and the current book is unchanged.
+- [ ] (v0.12.6) Turn to the last page of a book: Reading Stats' `books
+   finished` beside this year goes up by one. `STATS.TXT` has a
+   `done|<path>|<date>` line for it, and its `book|` line still ends in `1`.
 
 ## Games after Photos (v0.12.3) and a new Sudoku (v0.12.4)
 

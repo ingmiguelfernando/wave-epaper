@@ -354,7 +354,7 @@ fn render_sample_reading_stats(preferences: DisplayPreferences, with_data: bool)
                 Some("/sdcard/RUSTMIX/BOOKS/Don Quijote.txt"),
             );
         }
-        stats.mark_finished("/sdcard/RUSTMIX/BOOKS/Other.txt");
+        stats.mark_finished("/sdcard/RUSTMIX/BOOKS/Other.txt", Some(TODAY - 21));
     }
     let current = with_data.then(|| CurrentBook {
         title: "Don Quijote de la Mancha",
@@ -493,7 +493,16 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     result.voice_notes_result.cycle_tab();
     states.push(("voice-note-transcript", result.clone()));
     result.voice_notes_result.cycle_tab();
-    states.push(("voice-note-audio", result));
+    states.push(("voice-note-audio", result.clone()));
+    // The same Audio tab for an Ogg note (D67): Opus and the file size.
+    // `selected_note` skips the two action rows, so the note is at selected-2.
+    let mut result_ogg = result;
+    if let Some(index) = result_ogg.voice_notes.selected.checked_sub(2) {
+        let note = &mut result_ogg.voice_notes.notes[index];
+        note.file_name = "VOICE007.OGG".into();
+        note.pcm_bytes = 228_000;
+    }
+    states.push(("voice-note-result-audio-ogg", result_ogg));
 
     // A note on its way, and one the provider refused.
     let mut queued = sample_state();
@@ -1160,7 +1169,7 @@ fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
         .find(|book| book.title == "Quijote")
         .map(|book| book.path.clone())
         .expect("the sample book is listed");
-    state.reading_stats.mark_finished(&quijote);
+    state.reading_stats.mark_finished(&quijote, Some(20_700));
     state.router.navigate_to(ScreenRoute::Library);
     state
 }

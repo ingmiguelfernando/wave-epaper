@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.12.5: what is implemented, not the future
+This guide describes firmware v0.12.6: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -98,7 +98,9 @@ Long file names are supported; hidden macOS `._` files are ignored.
 	 EPUB also shows the minutes left in the chapter at your pace, once twenty
 	 pages are recorded this week. A chapter's first page opens with its
 	 title. A ribbon at the top right marks a bookmarked page. Reaching the
-	 last page marks the book finished.
+	 last page marks the book finished; Reading Stats counts it in the year
+	 it was finished (a book finished before v0.12.6, or with no clock set,
+	 stays finished but is not counted in a year).
 
 A RECENT row opens its book at the saved place (the Home card shows the
 book to resume); BOOKMARKS lists the saved anchors. Positions, recent

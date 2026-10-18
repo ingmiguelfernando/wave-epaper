@@ -4,6 +4,47 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 15 result (2026-10-18)
+
+Branch `side-tasks-15` (D65 to D67) came as pull request #14 from `main`
+after Round 14, with CI and the firmware build green. It was reviewed on
+`side-tasks-15` itself, merged and released as v0.12.6 (milestone
+`books-this-year`). The year count, the streamed split and the Ogg text are
+what the tasks asked for: the split is checked byte for byte against
+`split_parts` at every edge count the task named, the errors of
+`make_part` and of a writer come back, and the Status lines say what was
+looked at, including the one thing left open (the result header).
+
+What the main developer changed at review time:
+
+- **A downgrade lost the whole of `STATS.TXT`.** The finish date went in
+  the `book` line's last field, where firmware up to v0.12.5 accepts only
+  `0` or `1`. An older image (a USB flash back, or the OTA rollback Phase
+  8 adds) failed the parse, started with empty stats and overwrote the
+  file on its next save: every day of reading history gone. Older
+  firmware skips a line kind it does not know, so the day now goes on its
+  own `done|<path>|<date>` line after the books, and `book` lines keep
+  `0` or `1`. A downgrade keeps everything but the days. The task's text
+  asked for the date in the `book` line; the task was wrong, not the
+  work.
+- **The packet walk had no bound.** `walk_packets` joined continued pages
+  into one packet for as long as the file said so; a damaged file could
+  fill the memory before the writer refused the packet. A packet longer
+  than one page holds is now an error while reading.
+- `balanced_shape` returned a part count nobody read; it returns the size.
+
+Verdict: D65 to D67 done after the fixes. Open: the result screen's
+header `SAVED WAV DETAILS` (D69).
+
+Do differently next time:
+
+- A file format change has two readers: this firmware and the one before
+  it. Read the old parser (`git show <tag>:path`) and check what it does
+  with the new file before you change a line it reads. Add a field where
+  the old code ignores it, not where it refuses it.
+- A loop that grows a buffer from file data needs a limit taken from what
+  the format allows, not only from what a good file holds.
+
 ## Round 14 result (2026-10-18)
 
 Branch `side-tasks-14` (D62 to D64) came as pull request #13 from v0.12.5,
@@ -629,7 +670,124 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 15 tasks (branch `side-tasks-15`)
+## Round 16 tasks (branch `side-tasks-16`)
+
+Start from `main` at v0.12.6, where Round 15 is merged; read its result at
+the top of this file first, and the "Do differently next time" lists of
+Rounds 13 to 15. Create `side-tasks-16` from `main`. Three tasks, in any
+order; D70 is a written study, no code. When they are done, merge `main`
+into the branch and open a pull request.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8) and then wires the Opus encoder into recording and the upload.
+Leave alone: `src/main.rs`; updates and network (`partitions.csv`,
+`sdkconfig.defaults`, `Cargo.toml`, `.github/`, `src/ota*.rs`,
+`src/network*.rs`, `src/radio_burst.rs`, `src/wifi_transfer.rs`,
+`src/build_info.rs`, `src/app/screens/settings.rs`,
+`src/app/screens/device_info.rs`, `src/app/screens/network.rs`); XiaoZhi
+and audio (`src/xiaozhi/`, `src/app/screens/xiaozhi.rs`, `src/audio/`,
+`src/voice_notes.rs`, `src/ai_jobs.rs`, `src/ai_worker.rs`); the widgets
+in `src/app/widgets/` and `src/app/display_assets.rs`. This round D68 may
+change `scripts/fonts/` and the atlases it generates in
+`src/app/typography/`, and nothing else in that folder.
+
+Run the doc-comment check of Round 9 before you hand over. No `expect` or
+`unwrap` outside tests on data from the card or the network.
+
+### D68: `%` at the Detail size
+
+**Why.** Inter's Detail strike at the Standard size (12 px) draws `%`
+without its slash (Known Issues › Percent glyph). D6 found no
+`fonts.toml` setting that fixes it alone, so the screens show
+percentages in Body size, one size larger than the mockup.
+
+**Change.**
+
+- `scripts/fonts/generate.py` and `fonts.toml`: a per-glyph override, a
+  small bitmap written in the TOML (rows of `#` and `.`) for one
+  character in one face at one pixel size, with its advance. The
+  generator uses it instead of the rasterized glyph and fails, with the
+  face and size in the message, if the bitmap's height does not fit the
+  strike's line height or a row has the wrong width. Document the key in
+  the comment at the top of `fonts.toml`.
+- Draw `%` for Inter at 12 px by hand: two rings and a slash, as wide as
+  the rasterized `%` of the strike, on its baseline. Regenerate the
+  atlases.
+- Then move the percentages that went to Body size because of this back
+  to Detail where the mockup has them (the sleep card's battery, the
+  weather rain chances; grep for the comments that name the glyph). Not
+  in the files this round leaves alone; list those in the Status.
+
+**Tests:** the atlas diff changes only `%` in the Inter 12 px strike (say
+how you checked it); a test in the generator's own check, or a host test,
+that the `%` bitmap of `INTER_STANDARD_DETAIL` has ink on the diagonal
+between its rings; the previews `sleep-card` and `sleep-weather` at Inter
+Standard, looked at enlarged. Update Known Issues and the roadmap's
+Backlog line.
+
+**Status:** to do.
+
+### D69: Voice Notes screens say audio, not WAV
+
+**Why.** The result screen's header says `SAVED WAV DETAILS` (Round 15's
+open item); once the encoder is wired a note can be Ogg. Other WAV words
+may be left in the Voice Notes and AI screens.
+
+**Change.**
+
+- `src/app/screens/voice_notes.rs`: the header says `SAVED AUDIO`. Grep
+  this file and `src/app/screens/ai.rs` for `WAV`, `wav` and `PCM` in
+  text the user sees (not file names in tests) and change each to words
+  that are true for both kinds, or that read the note's own kind as
+  `voice_note_result::audio_text` does. List every hit and what you did
+  with it in the Status.
+- Do not change the free-space estimate (`~132 h`): it depends on the
+  format the recorder writes, which the main line decides.
+
+**Tests:** the header text; one test for each other string you change;
+the `voice-note-audio` and `voice-note-result-audio-ogg` previews looked
+at.
+
+**Status:** to do.
+
+### D70: Deep sleep, a study
+
+**Why.** Sleep mode now uses light sleep; the mockup's 8 µA needs deep
+sleep (Backlog › Deeper sleep). Deep sleep restarts the chip on wake, so
+it touches the wake keys, the alarms, the sleep screen and how fast the
+device is back. Before any code the main developer needs the facts and a
+plan.
+
+**Change.** A new `docs/DEEP_SLEEP.md`, no code. From this repo,
+`docs/architecture.md`, the board's schematic notes in the repo and the
+ESP-IDF 5.5 documentation:
+
+- Which wake sources deep sleep has on the ESP32-S3 (`ext0`, `ext1`,
+  timer, ULP) and which of the device's inputs reach an RTC GPIO: BOOT,
+  the wheel, the Power key through GPIO1 (`PWR_OUT`), the RTC alarm. Say
+  for each where in this repo the pin is named.
+- What a wake from deep sleep loses (RAM, PSRAM, Wi-Fi, the panel's
+  driver state) and what survives (RTC memory, the panel's image, the
+  SD card's files, NVS), and what the firmware keeps today only in RAM
+  that would have to be saved first: list the fields of `AppState` that
+  are not on the card, with the file that would hold each.
+- What boot does today before the first screen, from the boot log
+  markers (`rustmix-wave=…`) and `main.rs`: which steps a wake to the
+  sleep screen could skip, and a time estimate for each with how you got
+  it.
+- How alarms, the weather sleep screens' updates and the clock sleep
+  screen's minute would wake the chip.
+- A plan in small steps, each one testable on the device, with the risks
+  (a wake key that does not reach an RTC GPIO, a panel that needs a full
+  refresh after a reset) and what the owner should measure.
+
+**Tests:** none; every claim about this repo names its file and line,
+and every claim about the chip names its documentation page. Say what
+you could not find.
+
+**Status:** to do.
+
+## Round 15 tasks (done in v0.12.6)
 
 Start from `main` after pull request #13, where Round 14 is merged; read
 its result at the top of this file first, and the "Do differently next
@@ -685,7 +843,24 @@ January of the next year, and one finished on 1 January is; a malformed
 date is an error, as other malformed fields are; without a clock
 (`None`) the book is still marked finished.
 
-**Status:** to do.
+**Status:** done. Built: `BookStats` keeps the finish day as
+`Option<Option<u32>>` (`None` not finished, `Some(None)` finished with
+the day unknown, `Some(Some(day))` the finish day). The book line's last
+field is `0`, `1` or `day_label`; old `1` lines load and save unchanged;
+a malformed date is an error. `mark_finished(book, day)` takes
+`Option<u32>` and a second finish keeps the first day.
+`books_finished_between(first, last)` counts only dated finishes in the
+range; `is_finished` still covers every finished book.
+`note_reading_page_turn` passes `self.local_day()`. The Reading Stats
+year row uses `books_finished_between(first_of_year(today), today)`.
+The Reading Stats and Library previews give their sample books dates in
+this year so the count still shows. Tests: a `1` line loads, counts as
+finished, is in no year and saves as `1`; a dated line round-trips and
+counts in its year; finishing twice keeps the first day; 31 December
+counts in its year and not the next, 1 January counts in the new year;
+a malformed date is an error; without a clock the book is finished with
+no day. Open: nothing known. Device check: finish a book and see this
+year's `books finished` go up in Reading Stats.
 
 ### D66: Split an Ogg file into parts without holding it in memory
 
@@ -718,7 +893,22 @@ cut in the middle of a page gives the parts of the complete packets
 before the cut; an empty stream calls `make_part` zero times; an error
 from `make_part` or from a writer is returned, not swallowed.
 
-**Status:** to do.
+**Status:** done. Built: `count_packets(reader)` walks the pages once and
+counts audio packets (head and tags excluded), stopping at a cut or
+damaged page as `read_stream` does. `split_file(reader, max_seconds,
+make_part)` counts, rewinds, then writes each packet to a complete Ogg
+Opus file through `make_part(index)`; each part is finished before the
+next starts, at most one page and one packet are held, and it returns
+the number of parts. An empty stream calls `make_part` zero times.
+Errors from `make_part` or a writer are returned (no `expect`).
+`split_parts` stays as the reference; both use one `balanced_shape`.
+`read_stream` and the new walk share one packet path. Tests: `split_file`
+into `Vec<u8>` writers is byte for byte `split_parts` for 1, 29 999,
+30 000, 30 001 and 60 001 packets at 600 s; packets that cross a page
+split the same way; a cut file gives the complete packets before the
+cut; empty calls `make_part` zero times; `make_part` and writer errors
+are returned. Open: nothing known. Device check: none yet (the encoder
+is wired later).
 
 ### D67: Voice note text for an Ogg note
 
@@ -749,7 +939,26 @@ keeps the WAV text, as today; the titles for `VOICE001.WAV`,
 `VOICE001.OGG` and `VOICE001.OPUS` (the last is `VOICE NOTE`). Check
 every character you draw in `src/charset.rs`.
 
-**Status:** to do.
+**Status:** done. Built: `audio_text(file_name, duration_seconds, bytes)`
+decides from the suffix: `.WAV` keeps `16 kHz · mono · 16-bit` and
+`KB of PCM`; `.OGG` (any case) says `{m}:{ss} · Opus · mono` and
+`{kilobytes} KB`; any other name keeps the WAV text. `bytes` is the PCM
+bytes for a WAV and the file size for an Ogg. `default_voice_title`
+gives `VOICE NOTE 001` for `VOICE001.WAV` or `VOICE001.OGG` and
+`VOICE NOTE` for `VOICE001.OPUS`. Preview `voice-note-result-audio-ogg`
+is the Audio tab of `VOICE007.OGG`. Other `.WAV` checks in these two
+files: `metadata_sidecar_keeps_fat83_wav_filename_and_friendly_title`
+only names `VOICE001.WAV` as a sidecar file (not a title or format
+text); no other test in `voice_note_result.rs` or
+`voice_note_metadata.rs` hard-codes the WAV audio wording. The result
+screen's header still says `SAVED WAV DETAILS`
+(`src/app/screens/voice_notes.rs`, off-limits this round). Tests: both
+texts against the exact strings for a 3:05 WAV and Ogg; lower-case
+`voice007.ogg`; `NOTE.MP3` keeps the WAV text; the titles for
+`VOICE001.WAV`, `VOICE001.OGG`, `voice001.ogg`, `VOICE001.OPUS` and
+`NOTE001.OGG`. Every character is in `charset.rs` (Latin-1 `·`). Open:
+the result header wording. Device check: open an Ogg note's Audio tab
+once the encoder is wired.
 
 ## Round 14 tasks (done, merged without a release)
 

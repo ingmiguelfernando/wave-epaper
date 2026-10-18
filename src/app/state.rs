@@ -1148,7 +1148,7 @@ impl AppState {
             if let Some(session) = self.reader.session.as_ref() {
                 if session.is_at_book_end() {
                     let path = session.book.path.clone();
-                    self.reading_stats.mark_finished(&path);
+                    self.reading_stats.mark_finished(&path, self.local_day());
                 }
             }
         }

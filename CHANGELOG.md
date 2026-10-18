@@ -3,6 +3,19 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.6 — Books finished this year
+
+- **Reading Stats counts the books finished this year**, beside this
+  year's pages and hours. It used to count every finished book it keeps,
+  from any year. A finished book now keeps its finish day in
+  `/RUSTMIX/READER/STATS.TXT`, on its own `done|<path>|<date>` line, so an
+  older firmware still reads the file. Books finished before this version
+  stay finished but have no day, so they are not counted in a year.
+- **Ogg Opus voice notes** (library only, not used yet): the upload form
+  names an Ogg file, a long note splits into parts of at most ten minutes
+  straight from the file, and the Audio tab and default title know an
+  `.OGG` note.
+
 ## v0.12.5 — The forecast survives a restart
 
 - **The last forecast is kept.** After each successful update the forecast

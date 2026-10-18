@@ -256,8 +256,9 @@ fn draw_heatmap_and_year(
     } else {
         u64::from(year_total.pages) * 3600 / u64::from(year_total.seconds)
     };
-    // Mockup order: books first, then pages, reading and pace.
-    let finished = stats.books_finished();
+    // Mockup order: books first, then pages, reading and pace. The finished
+    // count is this year's, beside this year's pages and hours.
+    let finished = stats.books_finished_between(first_of_year(today), today);
     let books_label = if finished == 1 {
         "book finished"
     } else {
@@ -464,7 +465,7 @@ mod tests {
             );
         }
         stats.record(TODAY - 4, 1500, 18, Some("/a/Don.txt"));
-        stats.mark_finished("/a/Other.txt");
+        stats.mark_finished("/a/Other.txt", Some(TODAY - 4));
         stats
     }
 
