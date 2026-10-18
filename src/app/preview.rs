@@ -839,6 +839,36 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     race_crash.display.font_size = UiFontSize::Large;
     states.push(("race-crash-large", race_crash));
 
+    // Dice: ready with one, two and three dice, each rolling frame, options.
+    for (name, dice) in [("dice-ready", 2), ("dice-ready-1", 1), ("dice-ready-3", 3)] {
+        let mut ready = sample_state();
+        ready.lua_runtime.session = Some(dice_ready_session(dice, 1803));
+        ready.router.navigate_to(ScreenRoute::LuaGame);
+        states.push((name, ready));
+    }
+    let mut dice_ready_large = sample_state();
+    dice_ready_large.lua_runtime.session = Some(dice_ready_session(2, 1803));
+    dice_ready_large.router.navigate_to(ScreenRoute::LuaGame);
+    dice_ready_large.display.font_size = UiFontSize::Large;
+    states.push(("dice-ready-large", dice_ready_large));
+
+    for frame in 1..=3 {
+        let name: &'static str = match frame {
+            1 => "dice-rolling-1",
+            2 => "dice-rolling-2",
+            _ => "dice-rolling-3",
+        };
+        let mut rolling = sample_state();
+        rolling.lua_runtime.session = Some(dice_rolling_session(2, 1803, frame));
+        rolling.router.navigate_to(ScreenRoute::LuaGame);
+        states.push((name, rolling));
+    }
+
+    let mut dice_options = sample_state();
+    dice_options.lua_runtime.session = Some(dice_options_session(2));
+    dice_options.router.navigate_to(ScreenRoute::LuaGame);
+    states.push(("dice-options", dice_options));
+
     let mut sudoku_start = sample_state();
     sudoku_start.lua_runtime.session = Some(sudoku_start_session());
     sudoku_start.router.navigate_to(ScreenRoute::LuaGame);
@@ -1620,6 +1650,71 @@ fn sudoku_session(canvas: NativeGameCanvas, event_bridge: LuaEventBridge) -> Lua
         refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
         event_bridge,
     }
+}
+
+/// A static Dice session: the engine's state drawn on the game canvas. The
+/// bridge is `Static` until the main line wires Dice into `lua_runtime`.
+fn dice_session(id: &str, name: &str, mut canvas: NativeGameCanvas) -> LuaAppSession {
+    let event_bridge = LuaEventBridge::Static;
+    // `render_*` already filled `canvas`; wrap it for the game screen.
+    LuaAppSession {
+        entry: LuaAppEntry {
+            directory_name: "DICE".into(),
+            directory: std::path::PathBuf::from("/sdcard/RUSTMIX/APPS/DICE"),
+            manifest: LuaAppManifest {
+                id: id.into(),
+                name: name.into(),
+                kind: LuaAppKind::Game,
+                entry: "MAIN.LUA".into(),
+                version: "1.0".into(),
+                input: vec![],
+            },
+        },
+        source_bytes: 0,
+        canvas: std::mem::take(&mut canvas),
+        refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
+        event_bridge,
+    }
+}
+
+fn dice_ready_session(dice: usize, seed: u32) -> LuaAppSession {
+    use crate::games::{dice::DiceGame, dice_view};
+    let mut game = DiceGame::new(seed);
+    game.set_dice(dice);
+    // A few rolls so the history row has the mockup's chips.
+    for _ in 0..6 {
+        assert!(game.request_roll());
+        for _ in 0..crate::games::dice::FRAMES {
+            assert!(game.advance());
+        }
+    }
+    let mut canvas = NativeGameCanvas::default();
+    dice_view::render_ready(&game, &mut canvas, &dice_view::DiceOptions::default()).unwrap();
+    dice_session("dice", "Dice", canvas)
+}
+
+fn dice_rolling_session(dice: usize, seed: u32, frame: u8) -> LuaAppSession {
+    use crate::games::{dice::DiceGame, dice_view};
+    let mut game = DiceGame::new(seed);
+    game.set_dice(dice);
+    assert!(game.request_roll());
+    for _ in 1..frame {
+        assert!(game.advance());
+    }
+    let mut canvas = NativeGameCanvas::default();
+    dice_view::render_rolling(&game, &mut canvas, frame).unwrap();
+    dice_session("dice-rolling", "Dice", canvas)
+}
+
+fn dice_options_session(dice: usize) -> LuaAppSession {
+    use crate::games::{dice::DiceGame, dice_view};
+    let mut game = DiceGame::new(1803);
+    game.set_dice(dice);
+    let mut options = dice_view::DiceOptions::default();
+    options.selected = 0;
+    let mut canvas = NativeGameCanvas::default();
+    dice_view::render_options(&game, &mut canvas, &options).unwrap();
+    dice_session("dice-options", "Dice · Options", canvas)
 }
 
 /// Seven photos: four prepared (two starred), one waiting, one unreadable.

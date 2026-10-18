@@ -5,7 +5,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Line, PrimitiveStyle, Rectangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle, RoundedRectangle},
 };
 
 use crate::{
@@ -84,6 +84,20 @@ const RACE_ZEN_HINTS: [(KeyCap, &str); 3] = [
 const RACE_CRASH_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "choose"),
     (KeyCap::Select, "select"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const DICE_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::Select, "roll"),
+    (KeyCap::UpDown, "dice"),
+    (KeyCap::Boot, "options · hold: back"),
+];
+
+const DICE_ROLLING_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "rolling, keys wait")];
+
+const DICE_OPTIONS_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "choose"),
+    (KeyCap::Select, "change"),
     (KeyCap::Boot, "hold: back"),
 ];
 
@@ -182,12 +196,19 @@ pub fn render_lua_game(
     for command in session.canvas.commands() {
         draw_command(display, state, command)?;
     }
-    draw_bottom_bar(display, state.display, game_hints(&session.event_bridge))
+    draw_bottom_bar(display, state.display, game_hints(session))
 }
 
 /// Hints for the game's current mode; game canvases leave the bar band free.
-fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
-    match bridge {
+/// Dice is named by its session id until the main line wires the engine.
+fn game_hints(session: &crate::lua_runtime::LuaAppSession) -> &'static [(KeyCap, &'static str)] {
+    match session.entry.manifest.id.as_str() {
+        "dice-options" => return &DICE_OPTIONS_HINTS,
+        "dice-rolling" => return &DICE_ROLLING_HINTS,
+        "dice" => return &DICE_HINTS,
+        _ => {}
+    }
+    match &session.event_bridge {
         LuaEventBridge::Static => &BACK_HINTS,
         LuaEventBridge::Sudoku(game) => match game.step() {
             SudokuStep::Start => &CHOOSE_HINTS,
@@ -344,6 +365,16 @@ fn draw_command(
         DrawCommand::Sprite { x, y, sprite } => {
             game_sprites::draw_sprite(display, Point::new(*x, *y), *sprite, BinaryColor::On)?;
         }
+        DrawCommand::Die {
+            x,
+            y,
+            size,
+            face,
+            dashed,
+            shear,
+        } => {
+            draw_die(display, *x, *y, *size, *face, *dashed, *shear)?;
+        }
         DrawCommand::Numerals {
             text,
             left,
@@ -407,6 +438,102 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
     }
 }
 
+/// Pip centres on a unit die, as in the mockup's `die-1` to `die-6`.
+const DIE_PIPS: [&[(i32, i32)]; 7] = [
+    &[],
+    &[(50, 50)],
+    &[(28, 28), (72, 72)],
+    &[(28, 28), (50, 50), (72, 72)],
+    &[(28, 28), (72, 28), (28, 72), (72, 72)],
+    &[(28, 28), (72, 28), (50, 50), (28, 72), (72, 72)],
+    &[(28, 26), (72, 26), (28, 50), (72, 50), (28, 74), (72, 74)],
+];
+
+/// One die: rounded square, round pips, optional dashed rest outline and a
+/// shear that tilts it (top edge shifted by `shear`).
+fn draw_die(
+    display: &mut OrientedFrameBuffer<'_>,
+    x: i32,
+    y: i32,
+    size: i32,
+    face: u8,
+    dashed: bool,
+    shear: i32,
+) -> Result<(), Infallible> {
+    let radius = (size / 6).max(2) as u32;
+    let shear_at = |row: i32| {
+        if size <= 0 {
+            return 0;
+        }
+        shear * (size / 2 - row) / size
+    };
+    if dashed {
+        // Rest outline of a die that is tumbling elsewhere on the table.
+        let mut dash = 0;
+        let perimeter = size * 4;
+        while dash < perimeter {
+            let (x1, y1, _, _) = die_perimeter(x, y, size, dash);
+            let (x2, y2, _, _) = die_perimeter(x, y, size, (dash + 8).min(perimeter));
+            Line::new(
+                Point::new(x1 + shear_at(y1 - y), y1),
+                Point::new(x2 + shear_at(y2 - y), y2),
+            )
+            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
+            .draw(display)?;
+            dash += 16;
+        }
+    } else if shear == 0 {
+        RoundedRectangle::with_equal_corners(
+            Rectangle::new(
+                Point::new(x, y),
+                Size::new(size.max(1) as u32, size.max(1) as u32),
+            ),
+            Size::new(radius, radius),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
+        .draw(display)?;
+    } else {
+        // Sheared die: four sides as lines so the top edge shifts.
+        let half = shear_at(0);
+        let half_bottom = shear_at(size);
+        for (x1, y1, x2, y2) in [
+            (x + half, y, x + size + half, y),
+            (x + size + half, y, x + size + half_bottom, y + size),
+            (x + size + half_bottom, y + size, x + half_bottom, y + size),
+            (x + half_bottom, y + size, x + half, y),
+        ] {
+            Line::new(Point::new(x1, y1), Point::new(x2, y2))
+                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
+                .draw(display)?;
+        }
+    }
+    if (1..=6).contains(&face) && !dashed {
+        let pip = (size / 12).max(3) as u32;
+        for (px, py) in DIE_PIPS[usize::from(face)] {
+            let cx = x + size * *px / 100 + shear_at(size * *py / 100);
+            let cy = y + size * *py / 100;
+            Circle::new(Point::new(cx - pip as i32 / 2, cy - pip as i32 / 2), pip)
+                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                .draw(display)?;
+        }
+    }
+    Ok(())
+}
+
+/// One point on the die's perimeter, walking clockwise from the top-left.
+fn die_perimeter(x: i32, y: i32, size: i32, along: i32) -> (i32, i32, i32, i32) {
+    let along = along.clamp(0, size * 4);
+    if along <= size {
+        (x + along, y, size, 0)
+    } else if along <= size * 2 {
+        (x + size, y + (along - size), 0, size)
+    } else if along <= size * 3 {
+        (x + size - (along - size * 2), y + size, size, 0)
+    } else {
+        (x, y + size - (along - size * 3), 0, size)
+    }
+}
+
 /// Literata at the size whose capitals come closest to the givens', so the
 /// player's digits match them in size but not in weight.
 fn player_digit_style(givens: UiTextStyle) -> UiTextStyle {
@@ -467,8 +594,44 @@ mod tests {
     fn zen_race_shows_its_own_key_hints() {
         let mut canvas = NativeGameCanvas::default();
         let bridge = LuaEventBridge::load("race.init('zen', 3)", &mut canvas).unwrap();
-        let hints = super::game_hints(&bridge);
+        let session = crate::lua_runtime::LuaAppSession {
+            entry: LuaAppEntry {
+                directory_name: "RACE".into(),
+                directory: std::path::PathBuf::from("/tmp/RACE"),
+                manifest: LuaAppManifest {
+                    id: "race".into(),
+                    name: "Race".into(),
+                    kind: LuaAppKind::Game,
+                    entry: "MAIN.LUA".into(),
+                    version: "1.0".into(),
+                    input: vec![],
+                },
+            },
+            source_bytes: 0,
+            canvas,
+            refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
+            event_bridge: bridge,
+        };
+        let hints = super::game_hints(&session);
         let labels: Vec<&str> = hints.iter().map(|(_, label)| *label).collect();
         assert_eq!(labels, ["lane", "step", "hold: back"]);
+    }
+
+    /// Pip centres match the mockup's `die-1` to `die-6` on a unit die.
+    #[test]
+    fn die_pips_match_the_mockup() {
+        use super::DIE_PIPS;
+        assert_eq!(DIE_PIPS[1], &[(50, 50)]);
+        assert_eq!(DIE_PIPS[2], &[(28, 28), (72, 72)]);
+        assert_eq!(DIE_PIPS[3], &[(28, 28), (50, 50), (72, 72)]);
+        assert_eq!(DIE_PIPS[4], &[(28, 28), (72, 28), (28, 72), (72, 72)]);
+        assert_eq!(
+            DIE_PIPS[5],
+            &[(28, 28), (72, 28), (50, 50), (28, 72), (72, 72)]
+        );
+        assert_eq!(
+            DIE_PIPS[6],
+            &[(28, 26), (72, 26), (28, 50), (72, 50), (28, 74), (72, 74)]
+        );
     }
 }
