@@ -806,7 +806,21 @@ and Dice (Dice selected). The hub scrolls one card at a time since Round
 and malformed `dice_last`; the card text for one die and for three; the
 manifest parses with the loader's own parser.
 
-**Status:** to do.
+**Status:** done on `side-tasks-18`. Built: a Dice card in
+`src/app/screens/games.rs` (icon: `die_shape` pair, `Shake to roll · 2
+dice`, `Last roll 4 + 6 = 10` from `dice_last`); `games/records.rs` gains
+`dice_last` (`4+6`, one to three faces of 1..=6; missing/empty/malformed
+leave the card without the line and do not fail the rest of the file);
+`examples/sd-card/RUSTMIX/APPS/DICE/` with `APP.TOM`, `MAIN.LUA`
+(`dice.init()`), `README.TXT` (says the wiring is not released); SD
+guide tree and User Guide Games table (Dice not playable yet). Hub count
+follows the card count. Previews `games` (four cards, Dice selected) and
+`games-race` compared side by side with headless Chrome. Fixed to match:
+Tetris `Zen (no gravity) · best …`, Race `Zen: the road moves on a key`
+when no best, Sudoku icon digits, info-box text, key bar `● options`.
+Tests: four cards in mockup order, dice card one/two/three faces, missing
+empty and malformed `dice_last`, `DICE/APP.TOM` through the loader's
+parser, fourth card selected in the fourth slot. Open: nothing known.
 
 ### D76: Games screens against the mockup
 

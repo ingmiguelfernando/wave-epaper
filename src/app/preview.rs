@@ -439,10 +439,18 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         state.router.navigate_to(route);
         if route == ScreenRoute::Games {
             sample_games_catalog(&mut state);
-            // The hub's Sudoku card shows a running game and its best time.
+            // The mockup's cards: Sudoku in progress, Tetris and Race bests,
+            // Dice selected with its last roll.
             state.lua_runtime.sudoku_save = Some(sample_sudoku_save());
             state.lua_runtime.records.tetris_zen = 18_950;
             state.lua_runtime.records.sudoku_medium = 761;
+            state.lua_runtime.records.race_classic = 5_100;
+            state.lua_runtime.records.race_zen = 2_400;
+            state.lua_runtime.records.dice_last = Some("4+6".into());
+            // Dice is the last card and the mockup selects it.
+            for _ in 0..3 {
+                state.apply(ButtonEvent::Down);
+            }
         }
         if route == ScreenRoute::Ai {
             state.voice_notes.notes = sample_voice_notes();
@@ -450,18 +458,19 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         states.push((name, state));
     }
 
-    // The hub scrolled to the fifth of five games: the window holds the last
-    // four cards and the selected one is drawn (D51).
-    let mut scrolled = sample_state();
-    sample_games_catalog(&mut scrolled);
-    scrolled.lua_runtime.sudoku_save = Some(sample_sudoku_save());
-    scrolled.lua_runtime.records.tetris_zen = 18_950;
-    scrolled.lua_runtime.records.sudoku_medium = 761;
-    scrolled.router.navigate_to(ScreenRoute::Games);
-    for _ in 0..4 {
-        scrolled.apply(ButtonEvent::Down);
-    }
-    states.push(("games-scrolled", scrolled));
+    // The hub scrolled so Race and Dice are visible, Race selected.
+    let mut race_selected = sample_state();
+    sample_games_catalog(&mut race_selected);
+    race_selected.lua_runtime.sudoku_save = Some(sample_sudoku_save());
+    race_selected.lua_runtime.records.tetris_zen = 18_950;
+    race_selected.lua_runtime.records.sudoku_medium = 761;
+    race_selected.lua_runtime.records.race_classic = 5_100;
+    race_selected.lua_runtime.records.race_zen = 2_400;
+    race_selected.lua_runtime.records.dice_last = Some("4+6".into());
+    race_selected.router.navigate_to(ScreenRoute::Games);
+    race_selected.apply(ButtonEvent::Down);
+    race_selected.apply(ButtonEvent::Down);
+    states.push(("games-race", race_selected));
 
     // The AI state labels, one note per state, online and offline.
     let mut ai_states = sample_state();
@@ -1330,7 +1339,7 @@ fn sample_home_details(state: &mut AppState) {
     state.bible = crate::bible_state::BibleUiState::with_root(&root);
 }
 
-/// Four SD games so the hub preview looks like a card in use.
+/// Four SD games so the hub preview looks like the mockup's figure.
 fn sample_games_catalog(state: &mut AppState) {
     let manifest = |id: &str, name: &str| crate::lua_runtime::manifest::LuaAppManifest {
         id: id.into(),
@@ -1341,11 +1350,10 @@ fn sample_games_catalog(state: &mut AppState) {
         input: vec![],
     };
     for (id, name) in [
-        ("hgrid", "Hello Grid"),
-        ("mines", "Minesweeper"),
-        ("race", "Race"),
         ("sudoku", "Sudoku"),
         ("tetris", "Tetris"),
+        ("race", "Race"),
+        ("dice", "Dice"),
     ] {
         state
             .lua_runtime

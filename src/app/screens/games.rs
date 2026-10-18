@@ -6,7 +6,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
@@ -35,13 +35,13 @@ const CARDS_TOP: i32 = STATUS_BAR_HEIGHT + 14;
 const CARDS_SHOWN: usize = 4;
 /// What is true today: the panel refreshes the whole screen, not cells.
 const INFO_TEXT: &str =
-    "Moves use the fast partial refresh; a full refresh now and then cleans ghosting.";
+    "Only the cells that change are refreshed (partial refresh); a full refresh every few moves cleans ghosting.";
 
 /// Shared hint set for this screen.
 pub const GAMES_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "game"),
     (KeyCap::Select, "play"),
-    (KeyCap::Boot, "hold: back"),
+    (KeyCap::Boot, "options"),
 ];
 
 /// First card of the scrolling window that keeps `selected` in view: the
@@ -146,9 +146,51 @@ pub(crate) fn card_text(
     )
 }
 
+/// The mockup's Dice icon: one die resting, one tilted above it
+/// (`die-5` at (2, 14) 34 px, `die-3` at (26, 2) 32 px turned 14°).
+fn draw_die_pair(
+    display: &mut OrientedFrameBuffer<'_>,
+    top_left: Point,
+    color: BinaryColor,
+) -> Result<(), Infallible> {
+    use crate::games::die_shape::{outline, pip_centres, PIP_PERCENT, STROKE_PERCENT};
+    let style = PrimitiveStyle::with_stroke(color, 3);
+    let pip_style = PrimitiveStyle::with_fill(color);
+    let mut one_die = |cx: i32, cy: i32, size: i32, face: u8, degrees: i32| {
+        let points = outline(cx, cy, size, degrees);
+        for pair in points.windows(2) {
+            let _ = Line::new(
+                Point::new(pair[0].0, pair[0].1),
+                Point::new(pair[1].0, pair[1].1),
+            )
+            .into_styled(style)
+            .draw(display);
+        }
+        if let Some(first) = points.first() {
+            if let Some(last) = points.last() {
+                let _ = Line::new(Point::new(last.0, last.1), Point::new(first.0, first.1))
+                    .into_styled(style)
+                    .draw(display);
+            }
+        }
+        let pip = (size * PIP_PERCENT / 100).max(3) as u32;
+        for (px, py) in pip_centres(face, cx, cy, size, degrees) {
+            let _ = Circle::new(Point::new(px - pip as i32 / 2, py - pip as i32 / 2), pip)
+                .into_styled(pip_style)
+                .draw(display);
+        }
+        let _ = STROKE_PERCENT;
+    };
+    // Resting die face 5 in the lower left of the 60 × 60 icon.
+    one_die(top_left.x + 19, top_left.y + 31, 34, 5, 0);
+    // Tilted die face 3 above and to the right.
+    one_die(top_left.x + 42, top_left.y + 18, 32, 3, 14);
+    Ok(())
+}
+
 /// The mockup's two detail lines per game; other games read their manifest.
 fn game_details(state: &AppState, manifest: &LuaAppManifest) -> (String, String) {
-    let records = state.lua_runtime.records;
+    let records = &state.lua_runtime.records;
     match manifest.id.as_str() {
         "sudoku" => {
             let Some(save) = state.lua_runtime.sudoku_save else {
@@ -172,8 +214,8 @@ fn game_details(state: &AppState, manifest: &LuaAppManifest) -> (String, String)
         "tetris" => {
             // Zen and Classic each show their own best, one per line.
             let zen = match records.tetris_zen {
-                0 => "Zen · no best yet".into(),
-                best => format!("Zen · best {}", grouped(best)),
+                0 => "Zen (no gravity)".into(),
+                best => format!("Zen (no gravity) · best {}", grouped(best)),
             };
             let classic = match records.tetris_classic {
                 0 => "Classic: slow gravity".into(),
@@ -188,16 +230,42 @@ fn game_details(state: &AppState, manifest: &LuaAppManifest) -> (String, String)
                 best => format!("Classic · best {}", distance_label(best)),
             };
             let zen = match records.race_zen {
-                0 => "Zen · no best yet".into(),
+                0 => "Zen: the road moves on a key".into(),
                 best => format!("Zen · best {}", distance_label(best)),
             };
             (classic, zen)
+        }
+        "dice" => {
+            // The mockup's card: how to roll, and the last faces.
+            let first = format!("Shake to roll · {} dice", crate::games::dice::DEFAULT_DICE);
+            let second = dice_last_line(records.dice_last.as_deref());
+            (first, second)
         }
         _ => (
             format!("Version {}", manifest.version),
             "SD card game".into(),
         ),
     }
+}
+
+/// `Last roll 4 + 6 = 10`, or `No rolls yet` when the card has no `dice_last`.
+fn dice_last_line(faces: Option<&str>) -> String {
+    let Some(faces) = faces else {
+        return "No rolls yet".into();
+    };
+    let Some(parsed) = crate::games::records::parse_dice_faces(faces) else {
+        return "No rolls yet".into();
+    };
+    if parsed.len() == 1 {
+        return format!("Last roll {}", parsed[0]);
+    }
+    let joined = parsed
+        .iter()
+        .map(u8::to_string)
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let total: u16 = parsed.iter().map(|face| u16::from(*face)).sum();
+    format!("Last roll {joined} = {total}")
 }
 
 /// The 60 × 60 icon: Sudoku's 3 × 3 grid, Tetris' stacked blocks, or a
@@ -231,13 +299,14 @@ fn draw_icon(
                     .into_styled(ink)
                     .draw(display)?;
             }
-            // One filled cell reads as a puzzle in progress.
-            Rectangle::new(
-                Point::new(top_left.x + 2 * cell + 2, top_left.y + cell + 2),
-                Size::new((cell - 4) as u32, (cell - 4) as u32),
-            )
-            .into_styled(ink)
-            .draw(display)?;
+            // The mockup's sample digits in four cells.
+            for (column, row, digit) in [(0, 0, "5"), (2, 0, "7"), (1, 1, "3"), (2, 2, "9")] {
+                let x = top_left.x + column * cell + cell / 2 - 3;
+                let y = top_left.y + row * cell + cell * 2 / 3;
+                let text_style = crate::app::display::DisplayPreferences::default()
+                    .text_style(UiTextRole::Detail, color);
+                Text::new(digit, Point::new(x, y), text_style).draw(display)?;
+            }
         }
         "tetris" => {
             // A 2×2 piece over a floor row, the mockup's stack.
@@ -259,6 +328,10 @@ fn draw_icon(
                 crate::games::canvas::GameSprite::PlayerCar,
                 color,
             )?;
+        }
+        "dice" => {
+            // The mockup's icon: one die resting, one tilted above it.
+            draw_die_pair(display, top_left, color)?;
         }
         _ => {
             Rectangle::new(top_left, Size::new(ICON as u32, ICON as u32))
@@ -342,11 +415,10 @@ mod d25_tests {
             input: vec![],
         };
         for (id, name) in [
-            ("hgrid", "Hello Grid"),
-            ("mines", "Minesweeper"),
-            ("race", "Race"),
             ("sudoku", "Sudoku"),
             ("tetris", "Tetris"),
+            ("race", "Race"),
+            ("dice", "Dice"),
         ] {
             state
                 .lua_runtime
@@ -365,8 +437,8 @@ mod d25_tests {
     #[test]
     fn sudoku_card_reads_the_save_and_the_best_time() {
         let mut state = hub_state_with_games();
-        // No save, no best. Sudoku is the fourth card by name.
-        let manifest_id = state.lua_runtime.games()[3].id.clone();
+        // No save, no best. Sudoku is the first card in the mockup's order.
+        let manifest_id = state.lua_runtime.games()[0].id.clone();
         let manifest = state
             .lua_runtime
             .catalog
@@ -414,7 +486,7 @@ mod d25_tests {
     #[test]
     fn tetris_card_groups_the_best_score() {
         let mut state = hub_state_with_games();
-        let manifest_id = state.lua_runtime.games()[4].id.clone();
+        let manifest_id = state.lua_runtime.games()[1].id.clone();
         let manifest = state
             .lua_runtime
             .catalog
@@ -424,12 +496,12 @@ mod d25_tests {
             .map(|entry| &entry.manifest)
             .unwrap();
         let (first, second) = super::game_details(&state, manifest);
-        assert_eq!(first, "Zen · no best yet");
+        assert_eq!(first, "Zen (no gravity)");
         assert_eq!(second, "Classic: slow gravity", "no Classic best yet");
         state.lua_runtime.records.tetris_zen = 18_950;
         state.lua_runtime.records.tetris_classic = 4_200;
         let (first, second) = super::game_details(&state, manifest);
-        assert_eq!(first, "Zen · best 18,950");
+        assert_eq!(first, "Zen (no gravity) · best 18,950");
         assert_eq!(second, "Classic · best 4,200");
     }
 
@@ -448,7 +520,7 @@ mod d25_tests {
             .unwrap();
         let (first, second) = super::game_details(&state, manifest);
         assert_eq!(first, "Classic · no best yet");
-        assert_eq!(second, "Zen · no best yet");
+        assert_eq!(second, "Zen: the road moves on a key");
         state.lua_runtime.records.race_classic = 5_100;
         state.lua_runtime.records.race_zen = 2_400;
         let (first, second) = super::game_details(&state, manifest);
@@ -492,7 +564,9 @@ mod d25_tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS"),
             true,
         );
-        // Race is the third card by name.
+        // Race is the fourth card in the sample catalog (Dice, Hello Grid,
+        // Minesweeper, Race, Sudoku, Tetris).
+        state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
@@ -656,6 +730,7 @@ mod d25_tests {
         );
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         state.apply_with_clock(ButtonEvent::Select, 3);
         let mut clock = 1_000_u64;
@@ -682,7 +757,7 @@ mod d25_tests {
             "the best is kept"
         );
 
-        // Classic again, a crash, then Back to Games.
+        // Classic again, a crash, then Back to Games (row 2).
         state.apply_with_clock(ButtonEvent::Select, clock + 7);
         crash(&mut state, &mut clock);
         state.apply(ButtonEvent::Down);
@@ -716,6 +791,7 @@ mod d25_tests {
             sudoku_easy: 0,
             sudoku_medium: 761,
             sudoku_hard: 0,
+            dice_last: None,
         };
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
@@ -757,16 +833,16 @@ mod d25_tests {
         );
     }
 
-    /// The hub with the fifth of five games selected draws its inverted card
-    /// in the fourth slot, and the first slot holds an unselected card.
+    /// The hub with the fourth of four games (Dice) selected draws its
+    /// inverted card in the fourth slot, as the mockup's figure.
     #[test]
-    fn the_fifth_of_five_games_shows_in_the_fourth_slot() {
+    fn the_fourth_of_four_games_shows_in_the_fourth_slot() {
         use embedded_graphics::prelude::Point;
         let mut state = hub_state_with_games();
-        for _ in 0..4 {
+        for _ in 0..3 {
             state.apply(crate::buttons::ButtonEvent::Down);
         }
-        assert_eq!(state.category_selection(ScreenRoute::Games), 4);
+        assert_eq!(state.category_selection(ScreenRoute::Games), 3);
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
         // The frame stores the portrait screen rotated: (logical y, 479 - x).
@@ -782,5 +858,60 @@ mod d25_tests {
             Some(false),
             "the first slot holds an unselected card"
         );
+    }
+
+    /// The mockup's Dice card: how to roll, and the last faces with the total.
+    #[test]
+    fn dice_card_shows_the_shake_line_and_the_last_roll() {
+        let mut state = hub_state_with_games();
+        let manifest_id = state.lua_runtime.games()[3].id.clone();
+        let manifest = state
+            .lua_runtime
+            .catalog
+            .entries
+            .iter()
+            .find(|entry| entry.manifest.id == manifest_id)
+            .map(|entry| &entry.manifest)
+            .unwrap()
+            .clone();
+        let (first, second) = super::game_details(&state, &manifest);
+        assert_eq!(first, "Shake to roll · 2 dice");
+        assert_eq!(second, "No rolls yet", "no dice_last yet");
+        state.lua_runtime.records.dice_last = Some("4+6".into());
+        let (_, second) = super::game_details(&state, &manifest);
+        assert_eq!(second, "Last roll 4 + 6 = 10");
+        state.lua_runtime.records.dice_last = Some("5".into());
+        let (_, second) = super::game_details(&state, &manifest);
+        assert_eq!(second, "Last roll 5", "one die needs no sum");
+        state.lua_runtime.records.dice_last = Some("1+2+3".into());
+        let (_, second) = super::game_details(&state, &manifest);
+        assert_eq!(second, "Last roll 1 + 2 + 3 = 6");
+    }
+
+    /// The bundled `DICE/APP.TOM` parses with the loader's own parser.
+    #[test]
+    fn the_dice_app_manifest_parses() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/examples/sd-card/RUSTMIX/APPS/DICE/APP.TOM"
+        ))
+        .expect("examples/sd-card/RUSTMIX/APPS/DICE/APP.TOM");
+        let manifest = crate::lua_runtime::manifest::LuaAppManifest::parse(&source).unwrap();
+        assert_eq!(manifest.id, "dice");
+        assert_eq!(manifest.name, "Dice");
+        assert_eq!(manifest.entry, "MAIN.LUA");
+    }
+
+    /// Four cards, as the mockup's Games figure.
+    #[test]
+    fn the_hub_has_four_cards_in_the_mockups_order() {
+        let state = hub_state_with_games();
+        let names: Vec<&str> = state
+            .lua_runtime
+            .games()
+            .iter()
+            .map(|manifest| manifest.name.as_str())
+            .collect();
+        assert_eq!(names, ["Sudoku", "Tetris", "Race", "Dice"]);
     }
 }

@@ -436,7 +436,7 @@ impl SudokuGame {
                 .and_then(|source| Self::from_puzzle(source).ok()),
         };
         if let Some(mut started) = started {
-            started.records = self.records;
+            started.records = self.records.clone();
             // The clock runs from the starting press.
             started.last_event_ms = Some(now_ms);
             *self = started;
