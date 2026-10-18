@@ -688,7 +688,18 @@ gives one; an empty stream gives none; every part ends with the
 end-of-stream flag and its first page is the head; each part's
 `duration_ms` is under the limit.
 
-**Status:** to do.
+**Status:** done. Built: `split_parts(stream, max_seconds)` in
+`src/ogg_opus.rs`. Each part is a complete Ogg Opus file (head, tags,
+pages, end of stream) written with `OggOpusWriter` and the stream's own
+head, holding at most `max_seconds` × 50 packets. The parts are balanced
+the way `wav_parts` splits (15 001 and 15 000 packets for 30 001 at a
+600 s limit), so none is a short tail. An empty stream gives no parts.
+The caller passes `ai_client::MAX_PART_SECONDS`; the number is not
+copied here. Tests: 30 001 packets give two balanced parts that read
+back to the same packets in order with the stream's head, BOS on the
+first page, EOS on the last and `duration_ms` under the limit; exactly
+30 000 gives one part; an empty stream gives none. Open: nothing known.
+Device check: none yet (the encoder is wired later).
 
 ### D64: Look at the cached forecast and the verse bar the way a user sees them
 
