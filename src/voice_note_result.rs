@@ -68,16 +68,29 @@ impl ResultUiState {
     }
 }
 
-/// The audio tab's text: what the saved WAV is and where it stays. The format
-/// is the recorder's own: 16 kHz, mono, 16-bit PCM.
+/// The audio tab's text: what the saved file is and where it stays. A `.WAV`
+/// is the recorder's own 16 kHz, mono, 16-bit PCM; a `.OGG` is Opus. Any
+/// other name keeps the WAV wording, as before Ogg notes existed. `bytes` is
+/// the PCM bytes for a WAV and the file size for an Ogg.
 #[must_use]
-pub fn audio_text(file_name: &str, duration_seconds: u32, pcm_bytes: u32) -> String {
+pub fn audio_text(file_name: &str, duration_seconds: u32, bytes: u32) -> String {
+    let ogg = file_name.to_ascii_uppercase().ends_with(".OGG");
     // Whole kilobytes in integers: the device path avoids float formatting.
-    let kilobytes = pcm_bytes / 1_000;
+    let kilobytes = bytes / 1_000;
+    let format = if ogg {
+        "Opus \u{b7} mono"
+    } else {
+        "16 kHz \u{b7} mono \u{b7} 16-bit"
+    };
+    let size = if ogg {
+        format!("{kilobytes} KB")
+    } else {
+        format!("{kilobytes} KB of PCM")
+    };
     format!(
         "{file_name}\n\
-         {minutes}:{seconds:02} · 16 kHz · mono · 16-bit\n\
-         {kilobytes} KB of PCM\n\
+         {minutes}:{seconds:02} \u{b7} {format}\n\
+         {size}\n\
          Kept on the SD card. Sent only to the providers you configure.",
         minutes = duration_seconds / 60,
         seconds = duration_seconds % 60,
@@ -267,9 +280,22 @@ mod tests {
     fn audio_tab_states_the_file_length_format_and_storage() {
         assert_eq!(
             audio_text("VOICE001.WAV", 185, 5_920_000),
-            "VOICE001.WAV\n3:05 · 16 kHz · mono · 16-bit\n5920 KB of PCM\n\
+            "VOICE001.WAV\n3:05 \u{b7} 16 kHz \u{b7} mono \u{b7} 16-bit\n5920 KB of PCM\n\
              Kept on the SD card. Sent only to the providers you configure."
         );
+        assert_eq!(
+            audio_text("VOICE007.OGG", 185, 228_000),
+            "VOICE007.OGG\n3:05 \u{b7} Opus \u{b7} mono\n228 KB\n\
+             Kept on the SD card. Sent only to the providers you configure."
+        );
+        // A lower-case name is the same note (the file name line stays as
+        // written; the format and size follow the suffix).
+        let lower = audio_text("voice007.ogg", 185, 228_000);
+        assert!(lower.starts_with("voice007.ogg\n3:05 \u{b7} Opus \u{b7} mono\n228 KB\n"));
+        // A name that is neither keeps the WAV text, as before Ogg notes.
+        let mp3 = audio_text("NOTE.MP3", 185, 5_920_000);
+        assert!(mp3.contains("16 kHz \u{b7} mono \u{b7} 16-bit"));
+        assert!(mp3.contains("5920 KB of PCM"));
     }
 
     #[test]

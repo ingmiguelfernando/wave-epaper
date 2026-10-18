@@ -781,7 +781,26 @@ keeps the WAV text, as today; the titles for `VOICE001.WAV`,
 `VOICE001.OGG` and `VOICE001.OPUS` (the last is `VOICE NOTE`). Check
 every character you draw in `src/charset.rs`.
 
-**Status:** to do.
+**Status:** done. Built: `audio_text(file_name, duration_seconds, bytes)`
+decides from the suffix: `.WAV` keeps `16 kHz · mono · 16-bit` and
+`KB of PCM`; `.OGG` (any case) says `{m}:{ss} · Opus · mono` and
+`{kilobytes} KB`; any other name keeps the WAV text. `bytes` is the PCM
+bytes for a WAV and the file size for an Ogg. `default_voice_title`
+gives `VOICE NOTE 001` for `VOICE001.WAV` or `VOICE001.OGG` and
+`VOICE NOTE` for `VOICE001.OPUS`. Preview `voice-note-result-audio-ogg`
+is the Audio tab of `VOICE007.OGG`. Other `.WAV` checks in these two
+files: `metadata_sidecar_keeps_fat83_wav_filename_and_friendly_title`
+only names `VOICE001.WAV` as a sidecar file (not a title or format
+text); no other test in `voice_note_result.rs` or
+`voice_note_metadata.rs` hard-codes the WAV audio wording. The result
+screen's header still says `SAVED WAV DETAILS`
+(`src/app/screens/voice_notes.rs`, off-limits this round). Tests: both
+texts against the exact strings for a 3:05 WAV and Ogg; lower-case
+`voice007.ogg`; `NOTE.MP3` keeps the WAV text; the titles for
+`VOICE001.WAV`, `VOICE001.OGG`, `voice001.ogg`, `VOICE001.OPUS` and
+`NOTE001.OGG`. Every character is in `charset.rs` (Latin-1 `·`). Open:
+the result header wording. Device check: open an Ogg note's Audio tab
+once the encoder is wired.
 
 ## Round 14 tasks (done, merged without a release)
 
