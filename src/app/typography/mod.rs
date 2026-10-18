@@ -448,5 +448,9 @@ mod tests {
                 "row {row} has no slash ink between the rings"
             );
         }
+        // The rings are open: a paper pixel in the middle of each.
+        assert!(!ink(1, 1), "the top ring is hollow");
+        assert!(!ink(7, 7), "the bottom ring is hollow");
+        assert!(ink(0, 0) && ink(8, 8), "the rings' corners are ink");
     }
 }

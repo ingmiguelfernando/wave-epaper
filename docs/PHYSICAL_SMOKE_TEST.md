@@ -302,6 +302,16 @@ light sleep. Restore the owner's original preferences afterward.
    finished` beside this year goes up by one. `STATS.TXT` has a
    `done|<path>|<date>` line for it, and its `book|` line still ends in `1`.
 
+## `%` at the small size (v0.12.7)
+
+- [ ] Sleep card (no `SLEEP.BMP`): `Battery 78%` shows a whole `%` with its
+   slash and two open rings, in the small size.
+- [ ] Weather sleep screen: the rain chances under each day read `80%`.
+- [ ] Library rows and the Reader's page label show `12%`; Reading Stats'
+   `+15% vs last` and the current-book line too.
+- [ ] A note's result screen says `SAVED AUDIO`; the notes list says `SD
+   AUDIO RECORDINGS`.
+
 ## Games after Photos (v0.12.3) and a new Sudoku (v0.12.4)
 
 - [ ] Right after boot, Home › Games opens a game.

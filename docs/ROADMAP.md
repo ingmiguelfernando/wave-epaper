@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-18, firmware v0.12.6.
+Last updated: 2026-10-18, firmware v0.12.7.
 
 ## Status
 
@@ -49,7 +49,8 @@ Last updated: 2026-10-18, firmware v0.12.6.
 | Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | 0.12.5 | PR #12 | Done, waiting for device test |
 | Delegated tasks D62 to D64: the upload form and parts for Ogg Opus, previews of the cached forecast and the verse mark | | PR #13 | Done, merged without a release (library and previews only) |
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
-| Delegated tasks D68 to D71: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study, the Dice mockup | | side-tasks-16 | Published (Round 16) |
+| Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
+| Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (library only) | | side-tasks-17 | Published (Round 17) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -323,8 +324,9 @@ Done in v0.9.7 (D27); kept as the reference.
   roll when the device is shaken or ● is pressed, with a rattle from the
   speaker; the roll is two or three partial refreshes, then the result.
   The IMU runs only while Dice is open (D3 kept motion out of games until
-  now). The mockup is D71; the engine, the shake and the sound follow
-  once the owner approves it.
+  now). The mockup is D71 (drawn, waiting for the owner's approval); the
+  engine, screens and rattle are Round 17 (D72 to D74), libraries only;
+  wiring the shake and the sound is the main line's.
 - **Race** (native engine, SD app `RACE`): the mockup's two Race screens.
   Four lanes on a road that runs right to left and moves in steps; ▲▼
   change lanes, ● spends a nitro, BOOT pauses. Classic steps every second
@@ -387,7 +389,9 @@ Done in v0.9.7 (D27); kept as the reference.
 - **Deeper sleep.** The mockup's 8 µA needs deep sleep in sleep mode. Deep
   sleep can only wake from RTC GPIOs (0 to 21). BOOT and the wheel qualify,
   and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
-  also drives high. Needs research before any change (the study is D70).
+  also drives high. The study is `DEEP_SLEEP.md` (D70): the RTC alarm
+  (GPIO45) and the PMIC interrupt (GPIO38) are not RTC GPIOs, so the alarm
+  needs a timer or a board rewire; the owner decides (study §7).
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics. Reading is done (0.10.4).
