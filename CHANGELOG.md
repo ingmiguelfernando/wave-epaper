@@ -3,6 +3,20 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.13.0 — Two app slots for updates
+
+- **The flash has two app slots** (6 MB each) and an update record, ready
+  for over-the-air updates. **Moving to this version needs one USB flash**
+  (see the README): the partition table changes. The settings and the
+  encrypted AI keys keep their place.
+- **A new image must confirm itself.** After 30 seconds running, the image
+  marks itself valid; a reset before then makes the bootloader go back to
+  the previous image.
+- Each release also publishes `wave-epaper-<tag>-app.bin`, the app alone.
+- Nothing updates itself yet: the download and the Settings screen come
+  next. `src/ota.rs` holds the decisions (the latest release, versions, the
+  battery gate, the check of an image's header), tested on the host.
+
 ## v0.12.7 — `%` at the small size
 
 - **The `%` sign draws whole at the small (Detail) size in Inter.** It lost

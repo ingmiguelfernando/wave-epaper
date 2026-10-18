@@ -302,6 +302,18 @@ light sleep. Restore the owner's original preferences afterward.
    finished` beside this year goes up by one. `STATS.TXT` has a
    `done|<path>|<date>` line for it, and its `book|` line still ends in `1`.
 
+## Two app slots (v0.13.0), flashed once by USB
+
+- [ ] Flash the merged image at `0x0` from v0.12.x without erasing the flash.
+   The boot log shows `rustmix-wave=ota status=image-confirmed result=0`
+   about 30 s after boot (result 0 is OK).
+- [ ] Settings still there (display, Wi-Fi, weather) and the AI keys row still
+   says set (the NVS partition kept its place); the clock sleep screen and
+   alarms work as before.
+- [ ] Device Info shows the version 0.13.0.
+- [ ] Reset the board before 30 s have passed: it boots the same image again
+   (there is no older one to return to yet).
+
 ## `%` at the small size (v0.12.7)
 
 - [ ] Sleep card (no `SLEEP.BMP`): `Battery 78%` shows a whole `%` with its

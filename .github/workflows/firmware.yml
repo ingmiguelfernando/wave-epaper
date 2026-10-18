@@ -94,7 +94,29 @@ jobs:
           fi
           mkdir -p dist
           # Bootloader, partition table and app in a single image that is flashed at offset 0x0.
-          espflash save-image --chip esp32s3 --merge --skip-padding --flash-size 16mb "$APP_ELF" "dist/wave-epaper-$VERSION.bin"
+          # espflash would use its own table and bootloader: the build's bootloader has
+          # the app rollback option and partitions.csv has the two OTA slots.
+          BOOTLOADER=target/xtensa-esp32s3-espidf/release/bootloader.bin
+          test -f "$BOOTLOADER" || { echo "::error::$BOOTLOADER not found"; exit 1; }
+          espflash save-image --chip esp32s3 --merge --skip-padding --flash-size 16mb \
+            --partition-table partitions.csv --bootloader "$BOOTLOADER" \
+            "$APP_ELF" "dist/wave-epaper-$VERSION.bin"
+          # The app image alone: what an over-the-air update writes to a slot.
+          espflash save-image --chip esp32s3 --flash-size 16mb "$APP_ELF" "dist/wave-epaper-$VERSION-app.bin"
+          # The merged image must carry the OTA table: fail the build if it does not.
+          python3 - "dist/wave-epaper-$VERSION.bin" <<'PY'
+          import struct, sys
+          image = open(sys.argv[1], "rb").read()
+          names = []
+          for offset in range(0x8000, 0x8400, 32):
+              entry = image[offset:offset + 32]
+              if entry[:2] != b"\xaa\x50":
+                  break
+              names.append(entry[12:28].rstrip(b"\0").decode())
+          print("partitions:", names)
+          assert names == ["nvs", "phy_init", "otadata", "ota_0", "ota_1"], names
+          assert image[0x20000] == 0xE9, "no app image at ota_0"
+          PY
           cp "$APP_ELF" "dist/wave-epaper-$VERSION.elf"
           (cd dist && sha256sum ./* > SHA256SUMS.txt)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"

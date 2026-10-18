@@ -55,6 +55,13 @@ You need a desktop Chrome or Edge browser and a USB-C data cable.
 4. When it finishes, power-cycle the board.
 
 The image contains the bootloader, partition table and application, so it always goes to `0x0`.
+
+**Moving to v0.13.0 from an older version needs this USB flash once**: the partition table changes
+(two app slots for over-the-air updates). Do not tick "erase all flash": the settings and the
+encrypted AI keys in the NVS partition keep their place. If the board does not start after the
+first flash, erase the flash and flash again (the AI keys are then typed again in the portal).
+From v0.13.0 on, updates can arrive over the air; each release also carries
+`wave-epaper-<tag>-app.bin`, the app alone, which is what an update writes (never flash it at `0x0`).
 Flashing resets settings stored in internal flash; files on the SD card are not touched.
 
 Command-line alternative:
@@ -72,6 +79,8 @@ esptool.py --chip esp32s3 write_flash 0x0 wave-epaper-<version>.bin
 
 ```sh
 espflash save-image --chip esp32s3 --merge --skip-padding --flash-size 16mb \
+  --partition-table partitions.csv \
+  --bootloader target/xtensa-esp32s3-espidf/release/bootloader.bin \
   target/xtensa-esp32s3-espidf/release/waveshare-epd397-rust-app wave-epaper.bin
 ```
 
