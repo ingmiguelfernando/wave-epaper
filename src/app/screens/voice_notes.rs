@@ -48,6 +48,12 @@ const BAR_WIDTH: i32 = 10;
 const BAR_GAP: i32 = 5;
 const METER_LEFT: i32 = (480 - (METER_BARS as i32 * (BAR_WIDTH + BAR_GAP) - BAR_GAP)) / 2;
 const CHIPS_TOP: i32 = 412;
+/// User-visible words that must not name WAV: a note can be Ogg too.
+const LIST_SUBTITLE: &str = "SD AUDIO RECORDINGS";
+const RESULT_SUBTITLE: &str = "SAVED AUDIO";
+const TITLE_EDITOR_NOTE: &str = "Internal filename remains unchanged.";
+const DELETE_NOTE: &str = "This permanently removes the audio file.";
+const SAVED_MESSAGE: &str = "Saved as recovery-safe audio.";
 const INFO_BOX_TOP: i32 = 470;
 
 /// The result screen's layout, from the mockup's `Voice Notes: resultado`.
@@ -90,12 +96,7 @@ pub fn render_voice_notes(
     let voice = &state.voice_notes;
     let note_count = format!("{} NOTES", voice.notes.len());
     let free = format_storage_bytes(voice.available_storage_bytes);
-    draw_header(
-        display,
-        state.display,
-        "VOICE NOTES",
-        "SD PCM WAV RECORDINGS",
-    )?;
+    draw_header(display, state.display, "VOICE NOTES", LIST_SUBTITLE)?;
     draw_status_row(
         display,
         state.display,
@@ -162,7 +163,7 @@ pub fn render_voice_note_details(
     if state.voice_notes.title_editing {
         return render_voice_note_title_editor(display, state);
     }
-    draw_header(display, state.display, "VOICE NOTE", "SAVED WAV DETAILS")?;
+    draw_header(display, state.display, "VOICE NOTE", RESULT_SUBTITLE)?;
     draw_status_row(
         display,
         state.display,
@@ -261,7 +262,7 @@ fn render_voice_note_title_editor(
     let title = voice.title_edit_buffer.iter().collect::<String>();
     let file = voice
         .selected_note()
-        .map_or("VOICE---.WAV", |note| note.file_name.as_str());
+        .map_or("VOICE---", |note| note.file_name.as_str());
     draw_header(
         display,
         state.display,
@@ -287,12 +288,7 @@ fn render_voice_note_title_editor(
         title.as_str()
     };
     Text::new(title_label, Point::new(34, 218), body).draw(display)?;
-    Text::new(
-        "Internal WAV filename remains unchanged.",
-        Point::new(22, 276),
-        detail,
-    )
-    .draw(display)?;
+    Text::new(TITLE_EDITOR_NOTE, Point::new(22, 276), detail).draw(display)?;
     draw_voice_title_keyboard(display, state)?;
     draw_bottom_bar(display, state.display, &KEYBOARD_HINTS)?;
     Ok(())
@@ -343,12 +339,7 @@ fn render_voice_note_delete_confirmation(
     .draw(display)?;
     Text::new(&note.title, Point::new(22, 264), body).draw(display)?;
     Text::new(&note.file_name, Point::new(22, 310), detail).draw(display)?;
-    Text::new(
-        "This permanently removes the WAV file.",
-        Point::new(22, 370),
-        detail,
-    )
-    .draw(display)?;
+    Text::new(DELETE_NOTE, Point::new(22, 370), detail).draw(display)?;
     draw_action(
         display,
         448,
@@ -671,7 +662,7 @@ pub fn render_voice_note_recording(
     if !recording {
         // Saved, Error and Idle keep their message in the info box.
         let message = match voice.mode {
-            VoiceNotesMode::Saved => "Saved as recovery-safe WAV.".to_string(),
+            VoiceNotesMode::Saved => SAVED_MESSAGE.to_string(),
             VoiceNotesMode::Error => voice
                 .error
                 .clone()
@@ -776,7 +767,7 @@ fn draw_recording_title(
     } else {
         format!(
             "Saved as {}",
-            voice.active_file.as_deref().unwrap_or("VOICE---.WAV")
+            voice.active_file.as_deref().unwrap_or("VOICE---")
         )
     };
     let left = 240 - detail.text_width(&note) / 2;
@@ -836,12 +827,12 @@ pub fn elapsed_label(seconds: u32) -> String {
 }
 
 /// What the note costs on the card: its size so far, the free space and the
-/// WAV hours it still takes, and the radio state. Without the free space,
+/// audio hours it still takes, and the radio state. Without the free space,
 /// the first line only.
 #[must_use]
 pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Vec<String> {
     let written = u64::from(voice.pcm_bytes) + 44;
-    let first = format!("WAV · 16 kHz mono · {} so far", size_one_decimal(written));
+    let first = format!("Audio · 16 kHz mono · {} so far", size_one_decimal(written));
     let Some(free) = voice
         .available_storage_bytes
         .map(|available| available.saturating_sub(written))
@@ -916,13 +907,44 @@ mod tests {
     use embedded_graphics::prelude::Point;
 
     use super::{
-        render_voice_note_details, render_voice_note_recording, render_voice_note_result,
-        render_voice_notes,
+        recording_info_lines, render_voice_note_details, render_voice_note_recording,
+        render_voice_note_result, render_voice_notes, DELETE_NOTE, LIST_SUBTITLE, RESULT_SUBTITLE,
+        SAVED_MESSAGE, TITLE_EDITOR_NOTE,
     };
     use crate::{
-        app::AppState, framebuffer::FrameBuffer, orientation::OrientedFrameBuffer,
-        voice_notes::VoiceNoteEntry,
+        app::AppState,
+        framebuffer::FrameBuffer,
+        orientation::OrientedFrameBuffer,
+        voice_notes::{VoiceNoteEntry, VoiceNotesUiState},
     };
+
+    #[test]
+    fn screens_say_audio_not_wav() {
+        assert_eq!(RESULT_SUBTITLE, "SAVED AUDIO");
+        assert_eq!(LIST_SUBTITLE, "SD AUDIO RECORDINGS");
+        assert_eq!(TITLE_EDITOR_NOTE, "Internal filename remains unchanged.");
+        assert_eq!(DELETE_NOTE, "This permanently removes the audio file.");
+        assert_eq!(SAVED_MESSAGE, "Saved as recovery-safe audio.");
+        for text in [
+            LIST_SUBTITLE,
+            RESULT_SUBTITLE,
+            TITLE_EDITOR_NOTE,
+            DELETE_NOTE,
+            SAVED_MESSAGE,
+        ] {
+            assert!(
+                !text.contains("WAV") && !text.contains("wav"),
+                "{text} names one kind"
+            );
+        }
+        // The recording line names audio, not the container; the free-space
+        // hours stay as they are (they follow the recorder's format).
+        let mut voice = VoiceNotesUiState::default();
+        voice.pcm_bytes = 32_000;
+        let lines = recording_info_lines(&voice);
+        assert!(lines[0].starts_with("Audio · 16 kHz mono · "));
+        assert!(!lines[0].contains("WAV"));
+    }
 
     #[test]
     fn voice_note_screens_render_without_sd_card() {
@@ -960,18 +982,18 @@ mod tests {
         use super::recording_info_lines;
         use crate::voice_notes::VoiceNotesUiState;
         let mut voice = VoiceNotesUiState::default();
-        // 3:27 of WAV at 32 000 bytes a second.
+        // 3:27 of audio at 32 000 bytes a second.
         voice.pcm_bytes = 207 * 32_000;
         voice.available_storage_bytes = Some(15_247_133_901 + 6_624_044);
         let lines = recording_info_lines(&voice);
-        assert_eq!(lines[0], "WAV · 16 kHz mono · 6.3 MB so far");
+        assert_eq!(lines[0], "Audio · 16 kHz mono · 6.3 MB so far");
         assert_eq!(lines[1], "SD: 14.2 GB free (~132 h)");
         assert_eq!(lines[2], "Wi-Fi off while recording");
         voice.available_storage_bytes = None;
         let lines = recording_info_lines(&voice);
         assert_eq!(
             lines,
-            ["WAV · 16 kHz mono · 6.3 MB so far"],
+            ["Audio · 16 kHz mono · 6.3 MB so far"],
             "without the free space, the first line only"
         );
     }

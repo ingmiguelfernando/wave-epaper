@@ -749,7 +749,21 @@ may be left in the Voice Notes and AI screens.
 the `voice-note-audio` and `voice-note-result-audio-ogg` previews looked
 at.
 
-**Status:** to do.
+**Status:** done. Built: the result header is `SAVED AUDIO`. Every other
+user-visible `WAV`/`PCM` hit in `src/app/screens/voice_notes.rs` and
+`src/app/screens/ai.rs`: `SD PCM WAV RECORDINGS` → `SD AUDIO
+RECORDINGS`; `Internal WAV filename remains unchanged.` → `Internal
+filename remains unchanged.`; `This permanently removes the WAV file.` →
+`… the audio file.`; `Saved as recovery-safe WAV.` → `… recovery-safe
+audio.`; `WAV · 16 kHz mono · … so far` → `Audio · 16 kHz mono · …`;
+the placeholder `VOICE---.WAV` → `VOICE---`. `ai.rs` had no
+user-visible WAV/PCM text (only test file names and `wav_bytes` /
+`pcm_bytes` fields). The free-space line `SD: … free (~132 h)` is
+unchanged. Tests: the header text and each other string in
+`screens_say_audio_not_wav`, plus the updated info-box test. Looked at
+`voice-note-audio` and `voice-note-result-audio-ogg` (Opus text still
+reads). Open: nothing known. Device check: open a note's result and the
+delete confirm on the panel.
 
 ### D70: Deep sleep, a study
 
