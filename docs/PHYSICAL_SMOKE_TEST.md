@@ -302,6 +302,35 @@ light sleep. Restore the owner's original preferences afterward.
    finished` beside this year goes up by one. `STATS.TXT` has a
    `done|<path>|<date>` line for it, and its `book|` line still ends in `1`.
 
+## Dice (v0.15.0)
+
+Copy `examples/sd-card/RUSTMIX/APPS/DICE/` to the card (its `MAIN.LUA` says
+`dice.init()`).
+
+- [ ] Games shows a Dice card (`Shake to roll · 2 dice`, `No rolls yet`);
+   ● opens the table with two dice, the total and an empty history.
+- [ ] ● rolls: three quick screen updates (dice tilting over their dashed
+   rest outlines) and the result, with the rattle and a knock at the end.
+   The rattle does not stutter while the panel updates.
+- [ ] Shake the device on the table screen: it rolls; shaking again at once
+   does nothing; a shake about a second after the result rolls again. A
+   gentle tilt or a button press on the desk does not roll.
+- [ ] ▲▼ changes the number of dice (1 to 3) on the ready screen; the keys
+   wait while rolling.
+- [ ] BOOT opens Options: ▲▼ move, ● changes Dice, Sound, Shake to roll,
+   Shake strength; shakes do nothing there. `Back to Games` leaves; so does
+   holding BOOT.
+- [ ] Sound off: rolls are silent but take the same time. Shake to roll off:
+   shaking does nothing and the motion sensor stays off (Settings › System ›
+   Motion shows no live data while Dice is closed).
+- [ ] Shake strength Low rolls with a small flick, High needs a real shake.
+- [ ] Leave and come back: the options are kept; the Games card shows the last
+   roll (`Last roll 4 + 6 = 10`).
+- [ ] During a long voice-note playback or a recording a roll is silent and
+   does not break the recording.
+- [ ] A roll while Wi-Fi is on (an update or a transfer) still draws and
+   plays; leaving the game while the rattle plays stops it.
+
 ## Update over Wi-Fi (v0.14.0)
 
 Needs two releases: flash v0.14.0 by USB (the v0.13.0 flash notes below

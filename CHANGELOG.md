@@ -3,6 +3,21 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.15.0 — Dice
+
+- **Dice is playable.** Games › Dice rolls one to three dice with ● or by
+  shaking the device, with a rattle and a knock where the dice land, as the
+  mockup. A roll is three quick screen updates and the result. BOOT opens
+  Options (dice count, sound, shake to roll, shake strength); hold BOOT
+  leaves. The last roll shows on the Games card.
+- The motion sensor runs only while the table is open and Shake to roll is
+  on; a shake right after a roll is ignored for about a second. Shake
+  strength sets how hard a shake must be (Low, Medium, High).
+- The sound plays on a thread of its own, so a slow screen update does not
+  cut it. The options and the last roll are saved to `RECORDS.TXT` as digits
+  (`dice_options`, `dice_last`), which the previous firmware reads without
+  losing its scores.
+
 ## v0.14.0 — Update over Wi-Fi
 
 - **Settings › System › Check for updates.** It reads the latest GitHub

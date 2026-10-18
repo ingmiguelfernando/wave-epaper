@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-18, firmware v0.14.0.
+Last updated: 2026-10-18, firmware v0.15.0.
 
 ## Status
 
@@ -54,6 +54,7 @@ Last updated: 2026-10-18, firmware v0.14.0.
 | Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | PR #17 | Done, waiting for the USB flash and the device test |
 | Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, waiting for device test (needs a newer release to install) |
 | Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | PR #18 | Done, merged without a release; wiring is the main line's |
+| Dice wired to the device: keys, shake, rattle, saved options | 0.15.0 | | Done, waiting for device test |
 | Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | side-tasks-19 | Published (Round 19) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
@@ -328,9 +329,10 @@ Done in v0.9.7 (D27); kept as the reference.
   roll when the device is shaken or ● is pressed, with a rattle from the
   speaker; the roll is two or three partial refreshes, then the result.
   The IMU runs only while Dice is open (D3 kept motion out of games until
-  now). The mockup is D71 (drawn, waiting for the owner's approval); the
-  engine, screens and rattle are Round 17 (D72 to D74, merged), libraries only;
-  wiring the shake and the sound is the main line's.
+  now). The mockup is D71; the engine, screens and rattle are Round 17 (D72 to
+  D74), the hub card Round 18 (D75), the session D77; wired to the device
+  in 0.15.0: keys, shake (a detector of its own, so Motion Events' thresholds
+  stay put), the rattle on a thread of its own, saved options.
 - **Race** (native engine, SD app `RACE`): the mockup's two Race screens.
   Four lanes on a road that runs right to left and moves in steps; ▲▼
   change lanes, ● spends a nitro, BOOT pauses. Classic steps every second

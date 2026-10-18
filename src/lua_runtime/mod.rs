@@ -200,6 +200,18 @@ impl LuaRuntimeUiState {
                 start.set_bests(self.records.race_classic, self.records.race_zen);
                 start.render(&mut session.canvas)?;
             }
+            LuaEventBridge::Dice(app) => {
+                // The saved options, before the first frame.
+                if let Some(options) = self
+                    .records
+                    .dice_options
+                    .as_deref()
+                    .and_then(crate::games::dice_session::Options::from_digits)
+                {
+                    *app = crate::games::dice_app::DiceApp::new(options);
+                }
+                app.render(&mut session.canvas)?;
+            }
             LuaEventBridge::Sudoku(game) => {
                 game.prepare(self.sudoku_save, self.records.clone());
                 // Redraw, so the start list shows the Continue row.
@@ -313,6 +325,68 @@ impl LuaRuntimeUiState {
         }
     }
 
+    /// A shake of the device, for the open game. Only Dice listens.
+    pub fn apply_game_shake(&mut self, now_ms: u64) -> bool {
+        let outcome = {
+            let Some(session) = self.session.as_mut() else {
+                return false;
+            };
+            match session
+                .event_bridge
+                .apply_shake(now_ms, &mut session.canvas)
+            {
+                Ok(Some(result)) => {
+                    session.refresh_plan = GameRefreshPolicy::plan(
+                        session.canvas.dirty(),
+                        RefreshTrigger::ScriptFrame,
+                    );
+                    Ok(Some((session.entry.manifest.id.clone(), result)))
+                }
+                Ok(None) => Ok(None),
+                Err(error) => Err((session.entry.manifest.id.clone(), error)),
+            }
+        };
+        match outcome {
+            Ok(Some((id, result))) => {
+                self.push_diagnostic(format!(
+                    "rustmix-wave=lua-event-bridge id={id} bridge={} event=shake outcome={} view={} dirty-regions={}",
+                    result.bridge_marker(),
+                    result.reason(),
+                    result.mode_marker(),
+                    result.dirty_regions_len(),
+                ));
+                true
+            }
+            Ok(None) => false,
+            Err((id, error)) => {
+                self.push_diagnostic(format!(
+                    "rustmix-wave=lua-runtime-error id={id} error={}",
+                    sanitize_marker(&error)
+                ));
+                self.error = Some(error);
+                false
+            }
+        }
+    }
+
+    /// Dice needs the motion sensor now: its screen rolls and Shake to roll
+    /// is on. The shake threshold for the detector comes with it.
+    #[must_use]
+    pub fn dice_motion(&self) -> Option<i32> {
+        match &self.session.as_ref()?.event_bridge {
+            LuaEventBridge::Dice(app) if app.wants_motion() => Some(app.shake_delta_mg()),
+            _ => None,
+        }
+    }
+
+    /// The rattle Dice wants started or stopped, once.
+    pub fn take_dice_rattle(&mut self) -> Option<crate::games::dice_session::RattleAction> {
+        match &mut self.session.as_mut()?.event_bridge {
+            LuaEventBridge::Dice(app) => app.take_rattle(),
+            _ => None,
+        }
+    }
+
     pub fn apply_game_boot_short_press(&mut self, now_ms: u64) -> bool {
         let outcome = {
             let Some(session) = self.session.as_mut() else {
@@ -364,9 +438,13 @@ impl LuaRuntimeUiState {
     /// The Race crash screen's `Back to Games` row asked to leave the game.
     #[must_use]
     pub fn game_exit_requested(&self) -> bool {
-        self.session.as_ref().is_some_and(|session| {
-            matches!(&session.event_bridge, LuaEventBridge::Race(app) if app.exit_requested())
-        })
+        self.session
+            .as_ref()
+            .is_some_and(|session| match &session.event_bridge {
+                LuaEventBridge::Race(app) => app.exit_requested(),
+                LuaEventBridge::Dice(app) => app.ended(),
+                _ => false,
+            })
     }
 
     /// The next gravity tick, when the open game needs one: Classic only, one
@@ -374,6 +452,10 @@ impl LuaRuntimeUiState {
     /// `None` when nothing falls or steps.
     #[must_use]
     pub fn next_game_tick_ms(&self) -> Option<u64> {
+        // Dice names its own frame times; the others step from the last tick.
+        if let LuaEventBridge::Dice(app) = &self.session.as_ref()?.event_bridge {
+            return app.next_tick();
+        }
         let last = self.last_game_tick_ms?;
         match &self.session.as_ref()?.event_bridge {
             LuaEventBridge::Tetris(app) => {
@@ -405,7 +487,7 @@ impl LuaRuntimeUiState {
         let Some(session) = self.session.as_mut() else {
             return false;
         };
-        match session.event_bridge.tick_game(&mut session.canvas) {
+        match session.event_bridge.tick_game(now_ms, &mut session.canvas) {
             Ok(changed) => changed,
             Err(error) => {
                 self.push_diagnostic(format!("tetris tick failed: {error}"));
@@ -432,6 +514,14 @@ impl LuaRuntimeUiState {
                         RaceMode::Zen => self.records.observe_race_zen(app.best()),
                         RaceMode::Classic => self.records.observe_race_classic(app.best()),
                     };
+                }
+                LuaEventBridge::Dice(app) => {
+                    // The last faces and the options are kept for the card and
+                    // the next session.
+                    if let Some(faces) = app.last_faces() {
+                        self.records_changed |= self.records.observe_dice_faces(&faces);
+                    }
+                    self.records_changed |= self.records.observe_dice_options(app.options());
                 }
                 LuaEventBridge::Sudoku(game) => self.close_sudoku(game),
                 _ => {}
@@ -596,6 +686,105 @@ mod tests {
         assert!(runtime.apply_catalog_button(ButtonEvent::Select));
         assert!(runtime.session.is_some());
         assert!(!runtime.take_diagnostics().is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// The shipped `DICE` sample folder, opened as the Games hub opens it.
+    fn dice_runtime() -> (LuaRuntimeUiState, std::path::PathBuf) {
+        let root = temp_directory();
+        let app = root.join("DICE");
+        std::fs::create_dir_all(&app).unwrap();
+        let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples/sd-card/RUSTMIX/APPS/DICE");
+        for name in ["APP.TOM", "MAIN.LUA"] {
+            std::fs::copy(sample.join(name), app.join(name)).unwrap();
+        }
+        let mut runtime = LuaRuntimeUiState::default();
+        runtime.refresh_catalog_from_root(&root, true);
+        assert!(runtime.apply_catalog_button(ButtonEvent::Select));
+        (runtime, root)
+    }
+
+    #[test]
+    fn the_shipped_dice_app_opens_rolls_by_key_and_by_shake_and_lands() {
+        let (mut runtime, root) = dice_runtime();
+        assert!(matches!(
+            runtime.session.as_ref().unwrap().event_bridge,
+            LuaEventBridge::Dice(_)
+        ));
+        assert_eq!(runtime.next_game_tick_ms(), None, "no roll, no tick");
+        assert!(runtime.dice_motion().is_some(), "shake to roll is on");
+
+        // Select rolls: a rattle is asked for, frames are due.
+        assert!(runtime.apply_game_button(ButtonEvent::Select, 1_000));
+        assert!(matches!(
+            runtime.take_dice_rattle(),
+            Some(crate::games::dice_session::RattleAction::Start { .. })
+        ));
+        let mut now = 1_000;
+        let mut frames = 0;
+        while let Some(due) = runtime.next_game_tick_ms() {
+            now = due;
+            assert!(runtime.tick_game(now), "each frame redraws");
+            frames += 1;
+            assert!(frames <= 3);
+        }
+        assert_eq!(frames, 3);
+        // A shake right after the roll is inside the cooldown; a later one
+        // rolls again.
+        assert!(!runtime.apply_game_shake(now + 100));
+        assert!(runtime.apply_game_shake(now + 1_500));
+        assert!(runtime.take_dice_rattle().is_some());
+        while let Some(due) = runtime.next_game_tick_ms() {
+            runtime.tick_game(due);
+        }
+
+        // Leaving keeps the last faces for the hub card.
+        assert!(!runtime.game_exit_requested());
+        runtime.close_session();
+        let faces = runtime.records.dice_last.clone().expect("dice_last kept");
+        assert!(
+            crate::games::records::parse_dice_faces(&faces).is_some(),
+            "{faces}"
+        );
+        assert!(runtime.records_changed);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dice_options_are_kept_and_come_back_the_next_time() {
+        let (mut runtime, root) = dice_runtime();
+        // Options, then the Sound row off: BOOT short, ▼, ●.
+        assert!(runtime.apply_game_boot_short_press(10));
+        assert_eq!(runtime.dice_motion(), None, "Options ignores shakes");
+        assert!(runtime.apply_game_button(ButtonEvent::Down, 20));
+        assert!(runtime.apply_game_button(ButtonEvent::Select, 30));
+        runtime.close_session();
+        let kept = runtime.records.dice_options.clone().expect("options kept");
+        assert_eq!(kept, "2011", "dice 2, sound off, shake on, medium");
+
+        // A new session opens with them: a roll asks for no rattle.
+        assert!(runtime.open_selected());
+        assert!(runtime.apply_game_button(ButtonEvent::Select, 40));
+        assert_eq!(runtime.take_dice_rattle(), None, "sound is off");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn back_to_games_in_dice_options_asks_to_leave() {
+        let (mut runtime, root) = dice_runtime();
+        runtime.apply_game_boot_short_press(10);
+        runtime.apply_game_button(ButtonEvent::Up, 20);
+        runtime.apply_game_button(ButtonEvent::Select, 30);
+        assert!(runtime.game_exit_requested());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dice_in_the_hub_answers_the_main_loops_questions() {
+        let (runtime, root) = dice_runtime();
+        // Strength Medium: the detector's default threshold.
+        assert_eq!(runtime.dice_motion(), Some(420));
         std::fs::remove_dir_all(root).unwrap();
     }
 

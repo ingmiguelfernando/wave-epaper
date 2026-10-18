@@ -64,8 +64,10 @@ mod firmware {
             create_personal_event, delete_personal_event, update_personal_event, CalendarUiRequest,
             CALENDAR_ROOT,
         },
+        dice_sound::render_pcm,
         epaper::Epaper397,
         framebuffer::FrameBuffer,
+        games::dice_session::RattleAction,
         games::records::{GameRecords, RECORDS_PATH},
         games::sudoku_save::{SudokuSave, SUDOKU_SAVE_PATH},
         imu_events::IMU_EVENT_SAMPLE_INTERVAL_MS,
@@ -1060,6 +1062,52 @@ mod firmware {
             if update_keeps_radio && ai_worker.is_busy() {
                 ai_worker.cancel();
             }
+            // Dice: the rattle plays on its own thread, started and stopped
+            // here, so a slow panel refresh cannot starve the audio buffer.
+            if let Some(action) = state.take_dice_rattle() {
+                match action {
+                    RattleAction::Start { seed, dice, frames } => {
+                        let free = voice_recording.is_none()
+                            && voice_playback.is_none()
+                            && xiaozhi_call.is_none();
+                        if let (true, Some(runtime)) = (free, audio_runtime.as_mut()) {
+                            match runtime.begin_pcm_stream(render_pcm(seed, dice, frames)) {
+                                Ok(()) => {
+                                    info!("rustmix-wave=dice status=rattle-start dice={dice}");
+                                    state.update_audio_snapshot(runtime.snapshot());
+                                }
+                                Err(error) => {
+                                    warn!("rustmix-wave=dice status=rattle-failed error={error:#}");
+                                }
+                            }
+                        }
+                    }
+                    RattleAction::Stop => {
+                        if let Some(runtime) = audio_runtime.as_mut() {
+                            let _ = runtime.stop_pcm_stream();
+                            state.update_audio_snapshot(runtime.snapshot());
+                        }
+                    }
+                    RattleAction::Keep => {}
+                }
+            }
+            if let Some(runtime) = audio_runtime.as_mut() {
+                if runtime.pcm_stream_active() {
+                    // Leaving the game while it rattles stops the sound.
+                    let ended = if state.active_route() == ScreenRoute::LuaGame {
+                        runtime.poll_pcm_stream()
+                    } else {
+                        runtime.stop_pcm_stream().map(|()| true)
+                    };
+                    match ended {
+                        Ok(true) => state.update_audio_snapshot(runtime.snapshot()),
+                        Ok(false) => {}
+                        Err(error) => {
+                            warn!("rustmix-wave=dice status=rattle-stop-failed error={error:#}");
+                        }
+                    }
+                }
+            }
             let ai_battery = state.board.power.and_then(|power| power.battery_percent);
             let ai_waiting = !ai_worker.is_busy()
                 && !sleep_mode.is_sleeping()
@@ -2014,7 +2062,11 @@ mod firmware {
             let route = state.active_route();
             let imu_sampling = route == ScreenRoute::MotionEvents;
             let motion_screen = matches!(route, ScreenRoute::Motion | ScreenRoute::MotionDetails);
-            let imu_wanted = !sleep_mode.is_sleeping() && (imu_sampling || motion_screen);
+            // Dice runs the sensor only while its screen rolls on a shake.
+            let dice_threshold = state.game_motion_threshold();
+            let dice_motion = dice_threshold.is_some();
+            let imu_wanted =
+                !sleep_mode.is_sleeping() && (imu_sampling || motion_screen || dice_motion);
             if imu_wanted != imu_enabled {
                 imu_enabled = imu_wanted;
                 match board_services.set_imu_enabled(imu_wanted) {
@@ -2058,6 +2110,38 @@ mod firmware {
                     }
                 }
                 last_imu_event_sample = Instant::now();
+            }
+
+            if let Some(threshold) = dice_threshold {
+                if !sleep_mode.is_sleeping()
+                    && state.panel_awake
+                    && last_imu_event_sample.elapsed()
+                        >= Duration::from_millis(IMU_EVENT_SAMPLE_INTERVAL_MS)
+                {
+                    match board_services.read_imu_motion() {
+                        Ok(reading) => {
+                            let detector_ms = imu_event_started_at.elapsed().as_millis() as u64;
+                            if state.detect_game_shake(reading, detector_ms, threshold) {
+                                let now_ms = uptime.elapsed().as_millis() as u64;
+                                info!("rustmix-wave=dice status=shake threshold-mg={threshold}");
+                                last_activity = Instant::now();
+                                if state.apply_lua_game_shake(now_ms) {
+                                    refresh_screen(
+                                        &mut panel,
+                                        &mut frame,
+                                        &mut state,
+                                        &mut panel_refresh,
+                                        RefreshRequest::Normal,
+                                    )?;
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            warn!("rustmix-wave=dice status=imu-unavailable error={error:#}")
+                        }
+                    }
+                    last_imu_event_sample = Instant::now();
+                }
             }
 
             let live_refresh_seconds = match state.active_route() {
@@ -2476,7 +2560,7 @@ mod firmware {
                 && state.alarms.active.is_none()
                 && !state.audio.playback_state.is_streaming()
                 && !(reader_open && state.reader.has_background_work())
-                && !(state.panel_awake && imu_sampling)
+                && !(state.panel_awake && (imu_sampling || dice_motion))
                 && !photo_worker.is_busy()
                 && last_activity.elapsed() >= IDLE_LIGHT_SLEEP_DELAY;
             let usb_check_due =

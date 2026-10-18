@@ -9,6 +9,8 @@ use crate::{
     buttons::ButtonEvent,
     games::{
         canvas::NativeGameCanvas,
+        dice_app::{DiceApp, DiceEventResult},
+        dice_session::Options as DiceOptions,
         minesweeper::{MinesweeperEventResult, MinesweeperGame},
         race::{RaceApp, RaceEventResult, RaceMode, RaceStart},
         sudoku::{SudokuEventResult, SudokuGame},
@@ -22,6 +24,7 @@ pub enum LuaGameEventResult {
     Minesweeper(MinesweeperEventResult),
     Tetris(TetrisEventResult),
     Race(RaceEventResult),
+    Dice(DiceEventResult),
 }
 impl LuaGameEventResult {
     #[must_use]
@@ -31,6 +34,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(_) => "minesweeper",
             Self::Tetris(_) => "tetris",
             Self::Race(_) => "race",
+            Self::Dice(_) => "dice",
         }
     }
     #[must_use]
@@ -40,6 +44,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(r) => r.reason,
             Self::Tetris(r) => r.reason,
             Self::Race(r) => r.reason,
+            Self::Dice(r) => r.reason,
         }
     }
     #[must_use]
@@ -49,6 +54,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(r) => r.row,
             Self::Tetris(r) => r.row,
             Self::Race(r) => r.lane,
+            Self::Dice(_) => 0,
         }
     }
     #[must_use]
@@ -58,6 +64,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(r) => r.column,
             Self::Tetris(r) => r.column,
             Self::Race(r) => r.column,
+            Self::Dice(_) => 0,
         }
     }
     #[must_use]
@@ -67,6 +74,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(r) => r.mode.marker(),
             Self::Tetris(r) => r.mode.marker(),
             Self::Race(r) => r.mode.marker(),
+            Self::Dice(r) => r.view,
         }
     }
     #[must_use]
@@ -75,7 +83,7 @@ impl LuaGameEventResult {
             // Sudoku's former axis log slot now carries the entry step.
             Self::Sudoku(r) => r.step.marker(),
             Self::Minesweeper(r) => r.axis.marker(),
-            Self::Tetris(_) | Self::Race(_) => "none",
+            Self::Tetris(_) | Self::Race(_) | Self::Dice(_) => "none",
         }
     }
     #[must_use]
@@ -104,6 +112,7 @@ impl LuaGameEventResult {
                 r.cars_passed,
                 r.nitro_used
             ),
+            Self::Dice(r) => format!("view={}", r.view),
         }
     }
     #[must_use]
@@ -113,6 +122,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(r) => r.outcome.completed(),
             Self::Tetris(r) => r.completed,
             Self::Race(r) => r.completed,
+            Self::Dice(_) => false,
         }
     }
     #[must_use]
@@ -122,6 +132,7 @@ impl LuaGameEventResult {
             Self::Minesweeper(r) => r.dirty_regions.len(),
             Self::Tetris(r) => r.dirty_regions.len(),
             Self::Race(r) => r.dirty_regions.len(),
+            Self::Dice(r) => r.dirty_regions,
         }
     }
 }
@@ -137,6 +148,8 @@ pub enum LuaEventBridge {
     Race(RaceApp),
     /// The mode list; becomes `Race` once a row is chosen.
     RaceStart(RaceStart),
+    /// One to three dice, rolled by a key or a shake.
+    Dice(DiceApp),
 }
 impl LuaEventBridge {
     pub fn load(source: &str, canvas: &mut NativeGameCanvas) -> Result<Self, String> {
@@ -180,6 +193,11 @@ impl LuaEventBridge {
                     Ok(Self::RaceStart(start))
                 }
             }
+        } else if parse_dice_init(source)? {
+            // Saved options are handed over before the first frame.
+            let app = DiceApp::new(DiceOptions::default());
+            app.render(canvas)?;
+            Ok(Self::Dice(app))
         } else {
             super::bootstrap::execute_bootstrap_script(source, canvas)?;
             Ok(Self::Static)
@@ -193,6 +211,7 @@ impl LuaEventBridge {
             Self::Minesweeper(_) => "minesweeper",
             Self::Tetris(_) | Self::TetrisStart(_) => "tetris",
             Self::Race(_) | Self::RaceStart(_) => "race",
+            Self::Dice(_) => "dice",
         }
     }
     pub fn apply_button(
@@ -251,15 +270,36 @@ impl LuaEventBridge {
                     Ok(None)
                 }
             }
+            Self::Dice(app) => Ok(app
+                .apply_button(event, now_ms, canvas)?
+                .map(LuaGameEventResult::Dice)),
+        }
+    }
+    /// A shake of the device. Only Dice listens.
+    pub fn apply_shake(
+        &mut self,
+        now_ms: u64,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<Option<LuaGameEventResult>, String> {
+        match self {
+            Self::Dice(app) => Ok(app
+                .apply_shake(now_ms, canvas)?
+                .map(LuaGameEventResult::Dice)),
+            _ => Ok(None),
         }
     }
     /// A timed tick. Only Classic games step on the clock; every other game
     /// ignores it. Returns whether the screen changed, so the caller refreshes
     /// once.
-    pub fn tick_game(&mut self, canvas: &mut NativeGameCanvas) -> Result<bool, String> {
+    pub fn tick_game(
+        &mut self,
+        now_ms: u64,
+        canvas: &mut NativeGameCanvas,
+    ) -> Result<bool, String> {
         match self {
             Self::Tetris(game) => Ok(game.tick_and_render(canvas)?.is_some()),
             Self::Race(game) => Ok(game.tick_and_render(canvas)?.is_some()),
+            Self::Dice(app) => app.tick(now_ms, canvas),
             _ => Ok(false),
         }
     }
@@ -286,6 +326,9 @@ impl LuaEventBridge {
                 .apply_boot_short_press_and_render(canvas)
                 .map(LuaGameEventResult::Race)
                 .map(Some),
+            Self::Dice(app) => Ok(app
+                .apply_boot_short_press(now_ms, canvas)?
+                .map(LuaGameEventResult::Dice)),
             // BOOT does nothing on the mode lists; hold BOOT still leaves the app.
             Self::TetrisStart(_) | Self::RaceStart(_) => Ok(None),
         }
@@ -533,6 +576,32 @@ fn parse_race_init(source: &str) -> Result<Option<RaceInit>, String> {
         config = Some(RaceInit::Mode(mode, seed));
     }
     Ok(config)
+}
+
+/// `dice.init()` opens the table. Nothing else is accepted: the options are
+/// the player's, kept in `RECORDS.TXT`.
+fn parse_dice_init(source: &str) -> Result<bool, String> {
+    let mut found = false;
+    for (index, raw_line) in source.lines().enumerate() {
+        let line_number = index + 1;
+        let line = raw_line.split("--").next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line != "dice.init()" {
+            if line.starts_with("dice.") {
+                return Err(format!(
+                    "MAIN.LUA line {line_number}: dice.init takes no arguments"
+                ));
+            }
+            return Ok(false);
+        }
+        if found {
+            return Err(format!("MAIN.LUA line {line_number}: duplicate dice.init"));
+        }
+        found = true;
+    }
+    Ok(found)
 }
 
 fn unquote(value: &str) -> Option<&str> {

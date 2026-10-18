@@ -797,6 +797,7 @@ mod d25_tests {
             sudoku_medium: 761,
             sudoku_hard: 0,
             dice_last: None,
+            dice_options: None,
         };
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();

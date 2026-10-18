@@ -11,7 +11,7 @@ use crate::{
     dictionary::DictionaryUiState,
     framebuffer::FrameBuffer,
     imu::ImuReading,
-    imu_events::{ImuControlOutcome, ImuDetectedEvent, ImuEventBridge},
+    imu_events::{ImuControlOutcome, ImuDetectedEvent, ImuDetectedEventKind, ImuEventBridge},
     lua_runtime::LuaRuntimeUiState,
     network::NetworkSnapshot,
     orientation::DisplayOrientation,
@@ -184,6 +184,8 @@ pub struct AppState {
     pub lua_runtime: LuaRuntimeUiState,
     /// Rust-owned debounced QMI8658 event bridge and diagnostics controls.
     pub imu_events: ImuEventBridge,
+    /// Dice's own shake detector, so the Motion screens' thresholds stay put.
+    dice_imu: ImuEventBridge,
     pub partial_refreshes: u8,
     pub panel_awake: bool,
     pub select_presses: u32,
@@ -296,6 +298,7 @@ impl Default for AppState {
             reader: ReaderUiState::default(),
             lua_runtime: LuaRuntimeUiState::default(),
             imu_events: ImuEventBridge::default(),
+            dice_imu: ImuEventBridge::default(),
             partial_refreshes: 0,
             panel_awake: true,
             select_presses: 0,
@@ -973,6 +976,41 @@ impl AppState {
         } else {
             false
         }
+    }
+
+    /// The shake threshold, in mg, when the open game wants the motion
+    /// sensor now (Dice, with its screen rolling and Shake to roll on).
+    #[must_use]
+    pub fn game_motion_threshold(&self) -> Option<i32> {
+        if self.router.current() != ScreenRoute::LuaGame {
+            return None;
+        }
+        self.lua_runtime.dice_motion()
+    }
+
+    /// Feed one motion reading to Dice's shake detector. True when it is a
+    /// shake at `threshold_mg` (the detector keeps its own cooldown).
+    pub fn detect_game_shake(
+        &mut self,
+        reading: crate::imu::ImuReading,
+        now_ms: u64,
+        threshold_mg: i32,
+    ) -> bool {
+        self.dice_imu.thresholds.shake_delta_mg = threshold_mg;
+        self.dice_imu
+            .process(reading, now_ms)
+            .is_some_and(|event| event.kind == ImuDetectedEventKind::Shake)
+    }
+
+    /// A shake for the open game, at `now_ms` on the app clock; true when
+    /// the screen changed.
+    pub fn apply_lua_game_shake(&mut self, now_ms: u64) -> bool {
+        self.router.current() == ScreenRoute::LuaGame && self.lua_runtime.apply_game_shake(now_ms)
+    }
+
+    /// The rattle Dice wants started or stopped, once.
+    pub fn take_dice_rattle(&mut self) -> Option<crate::games::dice_session::RattleAction> {
+        self.lua_runtime.take_dice_rattle()
     }
 
     /// Gravity tick for the open Lua game. Only while a game is on screen;
@@ -3024,6 +3062,38 @@ mod tests {
         );
         assert_eq!(state.take_update_request(), Some(UpdateRequest::Cancel));
         assert!(!state.update.busy());
+    }
+
+    /// Dice's shake detector: a reading far from 1 g is a shake at the
+    /// chosen strength, a gentle one is not, and the Motion screens'
+    /// detector is left alone.
+    #[test]
+    fn the_game_shake_detector_uses_the_threshold_and_keeps_motion_events_apart() {
+        let mut state = AppState::default();
+        let reading = |magnitude: u32| crate::imu::ImuReading {
+            motion_magnitude_mg: magnitude,
+            ..Default::default()
+        };
+        // 1 600 mg is 600 over 1 g: a shake at 420 and at 550, not at 700.
+        assert!(state.detect_game_shake(reading(1_600), 10_000, 420));
+        assert!(
+            !state.detect_game_shake(reading(1_600), 10_100, 420),
+            "cooldown"
+        );
+        assert!(state.detect_game_shake(reading(1_600), 12_000, 550));
+        assert!(!state.detect_game_shake(reading(1_600), 14_000, 700));
+        assert!(
+            !state.detect_game_shake(reading(1_100), 16_000, 420),
+            "a nudge"
+        );
+        assert_eq!(
+            state.imu_events.thresholds.shake_delta_mg, 420,
+            "the Motion Events threshold is untouched"
+        );
+        assert_eq!(state.imu_events.samples, 0);
+        // Off the game screen nothing asks for motion or takes a shake.
+        assert_eq!(state.game_motion_threshold(), None);
+        assert!(!state.apply_lua_game_shake(1));
     }
 
     /// A short BOOT on the recording screen queues a pause, then a resume,

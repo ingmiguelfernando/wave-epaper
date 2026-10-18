@@ -1531,7 +1531,7 @@ fn race_crash_session() -> LuaAppSession {
         if over {
             break;
         }
-        event_bridge.tick_game(&mut canvas).unwrap();
+        event_bridge.tick_game(0, &mut canvas).unwrap();
     }
     race_app_session(source, canvas, event_bridge)
 }
@@ -1584,7 +1584,7 @@ fn drive_sample(event_bridge: &mut LuaEventBridge, canvas: &mut NativeGameCanvas
                         .unwrap();
                 }
                 _ => {
-                    event_bridge.tick_game(canvas).unwrap();
+                    event_bridge.tick_game(0, canvas).unwrap();
                 }
             },
         }
