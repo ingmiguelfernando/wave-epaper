@@ -429,11 +429,41 @@ pub fn duration_ms(reader: &mut (impl Read + Seek), pre_skip: u16) -> io::Result
     }))
 }
 
+/// Split a stream into complete Ogg Opus files of at most `max_seconds` of
+/// packets each (50 a second). The parts hold balanced packet counts, the
+/// way `ai_client::wav_parts` splits a recording, so none is a short tail.
+/// An empty stream gives no parts. The caller passes
+/// `ai_client::MAX_PART_SECONDS` as the limit; this module does not copy
+/// the number. A packet too big for one Ogg page (read from a damaged file)
+/// is an error, not a panic.
+pub fn split_parts(stream: &OggOpusStream, max_seconds: u32) -> io::Result<Vec<Vec<u8>>> {
+    let total = stream.packets.len();
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+    let limit = (max_seconds as usize)
+        .saturating_mul(PACKETS_PER_SECOND)
+        .max(1);
+    let count = total.div_ceil(limit);
+    let size = total.div_ceil(count);
+    let mut parts = Vec::with_capacity(count);
+    for chunk in stream.packets.chunks(size) {
+        let mut writer = OggOpusWriter::new(Vec::new(), stream.head, 0)?;
+        for packet in chunk {
+            writer.write_packet(packet)?;
+        }
+        writer.finish()?;
+        parts.push(writer.inner);
+    }
+    Ok(parts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        duration_ms, lacing_values, ogg_crc, opus_tags_bytes, read_stream, OggOpusWriter, OpusHead,
-        FLAG_BOS, PACKETS_PER_SECOND, SAMPLES_PER_PACKET,
+        duration_ms, lacing_values, ogg_crc, opus_tags_bytes, read_stream, split_parts,
+        OggOpusStream, OggOpusWriter, OpusHead, FLAG_BOS, FLAG_EOS, PACKETS_PER_SECOND,
+        SAMPLES_PER_PACKET,
     };
     use std::io::Cursor;
 
@@ -627,5 +657,91 @@ mod tests {
         let mut cursor = Cursor::new(bytes);
         let ms = duration_ms(&mut cursor, 0).unwrap().unwrap();
         assert_eq!(ms, 207_000);
+    }
+
+    /// Build a stream of `count` 20 ms packets.
+    fn stream_of(count: usize) -> OggOpusStream {
+        let mut writer =
+            OggOpusWriter::new(Cursor::new(Vec::new()), OpusHead::default(), 7).unwrap();
+        for index in 0..count {
+            writer.write_packet(&sample_packet(index % 16)).unwrap();
+        }
+        writer.finish().unwrap();
+        read_stream(&mut Cursor::new(writer.inner.into_inner())).unwrap()
+    }
+
+    /// The header type of the last page of an Ogg file.
+    fn last_page_flags(bytes: &[u8]) -> u8 {
+        let mut flags = 0;
+        let mut index = 0;
+        while index + 27 <= bytes.len() {
+            if &bytes[index..index + 4] == b"OggS" {
+                flags = bytes[index + 5];
+                let segments = bytes[index + 26] as usize;
+                let body: usize = bytes[index + 27..index + 27 + segments]
+                    .iter()
+                    .map(|&value| usize::from(value))
+                    .sum();
+                index += 27 + segments + body;
+            } else {
+                index += 1;
+            }
+        }
+        flags
+    }
+
+    #[test]
+    fn split_parts_makes_equal_complete_files_that_read_back_in_order() {
+        // 30 001 packets at 600 s (30 000 packets) a part: two balanced
+        // parts, not one full and a sliver.
+        let stream = stream_of(30_001);
+        let parts = split_parts(&stream, 600).unwrap();
+        assert_eq!(parts.len(), 2);
+        let mut joined = Vec::new();
+        let mut counts = Vec::new();
+        for part in &parts {
+            let mut bytes = Cursor::new(part.as_slice());
+            let head = read_stream(&mut bytes).unwrap();
+            assert_eq!(head.head, stream.head, "the part keeps the stream's head");
+            assert!(head.packets.len() <= 600 * PACKETS_PER_SECOND);
+            counts.push(head.packets.len());
+            joined.extend(head.packets);
+            // The first page is the head (BOS); the last is end of stream.
+            assert_eq!(part[5], FLAG_BOS);
+            assert_eq!(last_page_flags(part), FLAG_EOS);
+            let mut cursor = Cursor::new(part.as_slice());
+            let ms = duration_ms(&mut cursor, stream.head.pre_skip)
+                .unwrap()
+                .expect("a part has a duration");
+            assert!(ms < 600 * 1_000, "part is under the limit: {ms} ms");
+        }
+        assert_eq!(joined, stream.packets, "every packet, in order");
+        // Balanced: 15 001 and 15 000, not 30 000 and 1.
+        assert_eq!(counts, vec![15_001, 15_000]);
+    }
+
+    #[test]
+    fn exactly_the_limit_gives_one_part_and_an_empty_stream_none() {
+        let one = split_parts(&stream_of(30_000), 600).unwrap();
+        assert_eq!(one.len(), 1);
+        let mut bytes = Cursor::new(one[0].as_slice());
+        assert_eq!(read_stream(&mut bytes).unwrap().packets.len(), 30_000);
+
+        let empty = OggOpusStream {
+            head: OpusHead::default(),
+            packets: Vec::new(),
+        };
+        assert!(split_parts(&empty, 600).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_packet_too_big_for_a_page_is_an_error() {
+        // A damaged file can hold a packet over 255 segments; the device
+        // must not panic on it.
+        let stream = OggOpusStream {
+            head: OpusHead::default(),
+            packets: vec![sample_packet(0), vec![0x55; 255 * 255]],
+        };
+        assert!(split_parts(&stream, 600).is_err());
     }
 }

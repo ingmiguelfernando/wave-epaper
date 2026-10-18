@@ -770,6 +770,17 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     weather_large.router.navigate_to(ScreenRoute::Weather);
     states.push(("weather-large-font", weather_large));
 
+    // Boot adopts the cached forecast as Stale without an error, and the
+    // clock has already dropped the hours that have passed (D64).
+    states.push((
+        "weather-cached",
+        weather_cached_preview_state(ScreenRoute::Weather),
+    ));
+    states.push((
+        "home-weather-cached",
+        weather_cached_preview_state(ScreenRoute::Home),
+    ));
+
     let mut audio_details = sample_state();
     audio_details.router.navigate_to(ScreenRoute::AudioDetails);
     states.push(("audio-details", audio_details));
@@ -840,6 +851,16 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     ));
     states.push(("bible-reading-large", bible_preview_state_large()));
     states.push(("bible-verse-of-day", bible_verse_of_day_preview_state()));
+    // The same marked range at Large UI and Large book, and the page after
+    // the break that opens on a marked verse's wraps (D64).
+    states.push((
+        "bible-verse-of-day-large",
+        bible_verse_of_day_large_preview_state(),
+    ));
+    states.push((
+        "bible-verse-of-day-page-2",
+        bible_verse_of_day_page_2_preview_state(),
+    ));
     states.push(("bible-menu", bible_preview_state(ScreenRoute::BibleMenu, 1)));
     states.push(("bible-missing", AppState::default()));
 
@@ -963,7 +984,20 @@ fn bible_verse_of_day_preview_state() -> AppState {
     let folder = root.join("RVR1960");
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("index.tsv"), "GEN\tGénesis\t1\tGEN.txt\n").unwrap();
-    let long = "En el principio creó Dios los cielos y la tierra, y la tierra estaba desordenada y vacía, y las tinieblas estaban sobre la faz del abismo, y el Espíritu de Dios se movía sobre la faz de las aguas.";
+    // Long enough that the marked verse wraps across a page at Standard
+    // and Large book size, so page two opens on its wrapped lines.
+    let long = "En el principio creó Dios los cielos y la tierra, y la tierra estaba \
+        desordenada y vacía, y las tinieblas estaban sobre la faz del abismo, y el \
+        Espíritu de Dios se movía sobre la faz de las aguas. Y dijo Dios: Sea la luz; \
+        y fue la luz. Y vio Dios que la luz era buena; y separó Dios la luz de las \
+        tinieblas. Y llamó Dios a la luz Día, y a las tinieblas llamó Noche. Y fue la \
+        tarde y la mañana el primer día. Y dijo Dios: Haya expansión en medio de las \
+        aguas, y separe las aguas de las aguas. E hizo Dios la expansión, y separó las \
+        aguas que estaban debajo de la expansión, de las aguas que estaban sobre la \
+        expansión. Y fue así. Y llamó Dios a la expansión Cielos. Y fue la tarde y la \
+        mañana el segundo día. Y dijo Dios: Júntense las aguas que están debajo de los \
+        cielos en un lugar, y descúbrase lo seco. Y fue así. Y llamó Dios a lo seco \
+        Tierra, y a la reunión de las aguas llamó Mares. Y vio Dios que era bueno.";
     let mut text = String::from("C\t1\nH\tLa creación\n");
     text.push_str("V\t1\t1\tEn el principio creó Dios los cielos y la tierra.\n");
     text.push_str(&format!("V\t2\t1\t{long}\n"));
@@ -978,6 +1012,57 @@ fn bible_verse_of_day_preview_state() -> AppState {
     };
     state.bible.open_at_marked(position, 1, 2);
     state.router.navigate_to(ScreenRoute::BibleReading);
+    state
+}
+
+/// The same marked range at the Large UI and Large book size, so a verse
+/// wraps to more lines and the range crosses the page.
+fn bible_verse_of_day_large_preview_state() -> AppState {
+    let mut state = bible_verse_of_day_preview_state();
+    state.display.font_size = UiFontSize::Large;
+    state.reader.preferences.font_size = crate::reader::BookFontSize::Large;
+    state
+}
+
+/// The page after the break of the verse-of-day state: it opens on the
+/// wrapped lines of the marked verse that began on the page before.
+fn bible_verse_of_day_page_2_preview_state() -> AppState {
+    let mut state = bible_verse_of_day_preview_state();
+    let position = state.bible.position().unwrap();
+    let pages = crate::app::screens::bible::chapter_pages(&state, position);
+    state.bible.turn_page(true, pages);
+    state
+}
+
+/// Weather as boot leaves it after loading `/RUSTMIX/FORECAST.TXT`: the
+/// cache adopted `Stale` with no error, and hours before the local clock
+/// already dropped.
+fn weather_cached_preview_state(route: ScreenRoute) -> AppState {
+    let mut state = sample_state();
+    let config = WeatherConfig::parse(SAMPLE_CONFIG).unwrap();
+    let data = parse_open_meteo_response(SAMPLE_RESPONSE).unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "wave-preview-forecast-cache-{}",
+        std::process::id()
+    ));
+    crate::weather_cache::save_to_path(&path, &config.location, &data).unwrap();
+    // A local clock after the forecast's first hours, so the load drops the
+    // ones past. The RTC keeps its own basis, as on the device.
+    let now = RtcDateTime {
+        year: 2026,
+        month: 10,
+        day: 2,
+        weekday: 5,
+        hour: 18,
+        minute: 20,
+        second: 0,
+    };
+    let cached = crate::weather_cache::load_from_path(&path, &config.location, Some(now))
+        .expect("the sample cache parses for the config's location");
+    let _ = std::fs::remove_file(&path);
+    state.board.rtc = Some(state.regional.local_to_rtc(now));
+    state.weather.adopt_cache(cached);
+    state.router.navigate_to(route);
     state
 }
 

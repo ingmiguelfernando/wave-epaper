@@ -1,6 +1,6 @@
-//! The AI record of one voice note: `VOICE###.AI`, next to its WAV. It holds
-//! the processing state, the provider names, the summary and the transcript.
-//! No file means the note was never processed.
+//! The AI record of one voice note: `VOICE###.AI`, next to its WAV or Ogg
+//! file. It holds the processing state, the provider names, the summary and
+//! the transcript. No file means the note was never processed.
 
 use anyhow::{bail, Context, Result};
 
@@ -63,12 +63,15 @@ pub struct NoteRecord {
     pub transcript: String,
 }
 
-/// The record's file name for a WAV name: `VOICE001.WAV` gives `VOICE001.AI`.
-/// `None` for a name that is not a voice WAV.
+/// The record's file name for a note name: `VOICE001.WAV` or `VOICE001.OGG`
+/// gives `VOICE001.AI`. Both share one record on purpose: a note is one or
+/// the other. `None` for a name that is not a voice note.
 #[must_use]
-pub fn record_file_name(wav_name: &str) -> Option<String> {
-    let upper = wav_name.to_ascii_uppercase();
-    let stem = upper.strip_suffix(".WAV")?;
+pub fn record_file_name(note_name: &str) -> Option<String> {
+    let upper = note_name.to_ascii_uppercase();
+    let stem = upper
+        .strip_suffix(".WAV")
+        .or_else(|| upper.strip_suffix(".OGG"))?;
     (stem.len() == 8 && stem.starts_with("VOICE")).then(|| format!("{stem}.AI"))
 }
 
@@ -90,7 +93,7 @@ pub fn load_record(root: &std::path::Path, wav_name: &str) -> Result<Option<Note
 /// Save the record of `wav_name` through `sd_file`, creating the folder first.
 pub fn save_record(root: &std::path::Path, wav_name: &str, record: &NoteRecord) -> Result<()> {
     let name =
-        record_file_name(wav_name).with_context(|| format!("not a voice WAV: {wav_name}"))?;
+        record_file_name(wav_name).with_context(|| format!("not a voice note: {wav_name}"))?;
     std::fs::create_dir_all(root).with_context(|| format!("creating {}", root.display()))?;
     crate::sd_file::replace(&root.join(name), &record.serialized()).context("saving the AI record")
 }
@@ -508,16 +511,45 @@ mod tests {
     }
 
     #[test]
-    fn the_record_name_shares_the_wav_stem() {
+    fn the_record_name_shares_the_note_stem() {
         assert_eq!(
             record_file_name("VOICE001.WAV").as_deref(),
             Some("VOICE001.AI")
         );
+        assert_eq!(
+            record_file_name("VOICE001.OGG").as_deref(),
+            Some("VOICE001.AI")
+        );
+        // WAV and Ogg of one number share one record: a note is one or the other.
+        assert_eq!(
+            record_file_name("VOICE001.WAV"),
+            record_file_name("VOICE001.OGG")
+        );
+        assert_eq!(
+            record_file_name("voice001.ogg").as_deref(),
+            Some("VOICE001.AI")
+        );
+        assert_eq!(
+            record_file_name("Voice001.Wav").as_deref(),
+            Some("VOICE001.AI")
+        );
         assert_eq!(record_file_name("notes.wav"), None, "not a voice note");
+        assert_eq!(record_file_name("notes.ogg"), None, "not a voice note");
         assert_eq!(
             record_file_name("VOICE1.WAV"),
             None,
             "the stem is eight characters"
+        );
+        assert_eq!(
+            record_file_name("VOICE1.OGG"),
+            None,
+            "the stem is eight characters"
+        );
+        assert_eq!(record_file_name("VOICE001.OPUS"), None, "only WAV and Ogg");
+        assert_eq!(
+            record_file_name("NOTE001.OGG"),
+            None,
+            "the stem starts with VOICE"
         );
     }
 
