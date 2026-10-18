@@ -6,7 +6,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Circle, Line, PrimitiveStyle, Rectangle, Triangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
@@ -113,16 +113,6 @@ fn draw_game_card(
     let name_style = card_text(state.display, selected, UiTextRole::Heading);
     let detail_style = card_text(state.display, selected, UiTextRole::Body);
     let name_left = CARD_LEFT + 100;
-    if selected {
-        // The mockup's `.game.sel::before`: a ▸ at the card's left edge.
-        // `▸` is not in the fonts; draw a small filled triangle.
-        let tip = Point::new(CARD_LEFT + 12, top + 60);
-        let top_left = Point::new(CARD_LEFT + 10, top + 48);
-        let bottom_left = Point::new(CARD_LEFT + 10, top + 72);
-        Triangle::new(tip, top_left, bottom_left)
-            .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
-            .draw(display)?;
-    }
     Text::new(
         &name_style.fit(&manifest.name, CARD_RIGHT - name_left - 12),
         Point::new(name_left, top + 38),
@@ -933,45 +923,31 @@ mod d25_tests {
         assert_eq!(manifest.entry, "MAIN.LUA");
     }
 
-    /// The Tetris hub icon is the mockup's staircase of six blocks.
+    /// The Tetris hub icon is the mockup's staircase: three blocks on the
+    /// bottom row, two above the right, one on top, and nothing in the three
+    /// other cells of its 3 x 3 grid.
     #[test]
     fn the_tetris_icon_is_a_staircase_of_six_blocks() {
         use embedded_graphics::prelude::Point;
-        let mut state = hub_state_with_games();
+        let state = hub_state_with_games();
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
-        // The first card is Sudoku; Tetris is the second (top ~ CARDS_TOP+132).
-        // Probe that the tetris icon area is not empty and has several block
-        // corners (more than a 2×2 blob would).
-        let mut blocks = 0;
-        for y in (150..250).step_by(4) {
-            for x in (30..90).step_by(4) {
-                if frame.is_black(Point::new(y, 479 - x)) == Some(true) {
-                    blocks += 1;
-                }
+        // Sudoku is selected and first; Tetris is the unselected second card.
+        use crate::app::screens::games::{CARDS_TOP, CARD_GAP, CARD_HEIGHT, CARD_LEFT};
+        let top = CARDS_TOP + CARD_HEIGHT + CARD_GAP;
+        let (left, up) = (CARD_LEFT + 20, top + 30);
+        let filled = [(0, 2), (1, 2), (2, 2), (1, 1), (2, 1), (2, 0)];
+        for row in 0..3 {
+            for column in 0..3 {
+                // The frame stores the portrait screen as (y, 479 - x).
+                let x = left + column * 20 + 9;
+                let y = up + row * 20 + 9;
+                assert_eq!(
+                    frame.is_black(Point::new(y, 479 - x)),
+                    Some(filled.contains(&(column, row))),
+                    "cell column {column}, row {row}"
+                );
             }
         }
-        assert!(blocks > 20, "the staircase draws ink, found {blocks}");
-    }
-
-    /// The selected hub card draws the mockup's ▸ at its left edge.
-    #[test]
-    fn the_selected_card_draws_a_marker_at_its_left_edge() {
-        use embedded_graphics::prelude::Point;
-        let mut state = hub_state_with_games();
-        let mut frame = FrameBuffer::new_white();
-        render_current_screen(&mut frame, &state).unwrap();
-        // First card top = CARDS_TOP (58); marker near (CARD_LEFT+12, top+60).
-        // Frame is rotated: (logical y, 479 - x).
-        let mut ink = 0;
-        for y in (60..80).step_by(2) {
-            for x in (110..140).step_by(2) {
-                if frame.is_black(Point::new(y, 479 - x)) == Some(true) {
-                    ink += 1;
-                }
-            }
-        }
-        assert!(ink > 3, "the ▸ triangle draws {ink} samples");
-        let _ = &mut state;
     }
 }

@@ -49,6 +49,11 @@ const THUMB_SIZE: Size = Size::new(THUMB_WIDTH as u32, THUMB_HEIGHT as u32);
 /// Top of the action and delete panels in the viewer.
 const PANEL_TOP: i32 = 430;
 
+/// The middle of the strip, between `/PHOTOS` (x 24) and the page (x 358):
+/// 182 px at most. The mockup's longer `Newest first · ★ = sleep screen`
+/// does not fit at any size and the ★ is not in the fonts.
+const STRIP_MIDDLE: &str = "Newest first";
+
 pub fn render_photos(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -76,7 +81,7 @@ pub fn render_photos(
         state.display,
         StatusRow {
             left: "/PHOTOS",
-            middle: "Newest first · starred = sleep screen",
+            middle: STRIP_MIDDLE,
             right: &page,
         },
     )?;
@@ -317,6 +322,26 @@ fn draw_delete_confirmation(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_strip_text_fits_between_its_neighbours_at_every_ui_size() {
+        use crate::app::display::{DisplayPreferences, UiFontFamily, UiFontSize};
+        for family in [UiFontFamily::Inter, UiFontFamily::AtkinsonHyperlegible] {
+            for size in [UiFontSize::Compact, UiFontSize::Standard, UiFontSize::Large] {
+                let preferences = DisplayPreferences {
+                    font_family: family,
+                    font_size: size,
+                };
+                let body = preferences.body_style();
+                // The left text ends before x 176, the middle before x 358.
+                assert!(24 + body.text_width("/PHOTOS") < 176, "{family:?} {size:?}");
+                assert!(
+                    176 + body.text_width(super::STRIP_MIDDLE) < 358,
+                    "{family:?} {size:?}: the middle runs into the page number"
+                );
+            }
+        }
+    }
+
     use std::fs;
 
     use embedded_graphics::prelude::Point;

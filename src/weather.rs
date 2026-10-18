@@ -136,7 +136,12 @@ impl CurrentConditions {
 
     #[must_use]
     pub const fn condition_label(&self) -> &'static str {
-        condition_label(self.weather_code)
+        // A clear sky is `Sunny` by day and only `Clear` at night.
+        if self.weather_code == 0 && !self.is_day {
+            "Clear"
+        } else {
+            condition_label(self.weather_code)
+        }
     }
 }
 
@@ -1040,6 +1045,18 @@ mod tests {
         assert_eq!(snapshot.state, WeatherFetchState::Retrying);
         assert_eq!(snapshot.current_summary(), "Partly cloudy  64.4 F");
         assert_eq!(snapshot.forecast.len(), 5);
+    }
+
+    #[test]
+    fn a_clear_night_is_not_called_sunny() {
+        let mut data = parse_open_meteo_response(super::SAMPLE_RESPONSE).unwrap();
+        data.current.weather_code = 0;
+        data.current.is_day = true;
+        assert_eq!(data.current.condition_label(), "Sunny");
+        data.current.is_day = false;
+        assert_eq!(data.current.condition_label(), "Clear");
+        data.current.weather_code = 95;
+        assert_eq!(data.current.condition_label(), "Storms");
     }
 
     #[test]
