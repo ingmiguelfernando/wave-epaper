@@ -728,7 +728,21 @@ you looked at and what you changed.
 **Tests:** none beyond the previews rendering, unless you change a screen;
 then a test for that change.
 
-**Status:** to do.
+**Status:** done. Built: `weather-cached` (Weather page one after boot
+loads `/RUSTMIX/FORECAST.TXT`: `adopt_cache` on the parsed text, local
+clock 18:20 so hours 13:00 to 17:00 are dropped), `home-weather-cached`
+(Home with that state), `bible-verse-of-day-large` (the verse-of-day
+card at Large UI and Large book size) and `bible-verse-of-day-page-2`
+(the same card one page on). No screen change: the footers already say
+`stale` without an error and the verse bar already follows a verse
+across a page break. Looked at: the weather footer reads
+`Updated 13:30 · stale · Open-Meteo` and `stale` is still readable when
+the UI is Large; the cached Weather page shows only the hours from 18:00
+and the days left; Home's strip still shows the cached conditions; the
+verse bar on page two starts at the top of the text (the wrapped lines
+of verse 2) and stops with that verse, nothing past the bottom bar on
+any of the four. Open: nothing known. Device check: `weather-cached`
+and `bible-verse-of-day-page-2` on the panel.
 
 ## Round 13 tasks (done in v0.12.5)
 
