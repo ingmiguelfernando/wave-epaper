@@ -651,7 +651,16 @@ test does for WAV; `transcription_form` still gives the WAV bytes; both
 names map to one record, in upper and lower case; `VOICE001.OPUS`,
 `VOICE1.OGG` and `NOTE001.OGG` give `None`.
 
-**Status:** to do.
+**Status:** done. Built: `AudioKind` (`Wav`, `Ogg`) with `file_name`
+(`note.wav`, `note.ogg`) and `content_type` (`audio/wav`, `audio/ogg`).
+`transcription_form_for` builds the form; `transcription_form` stays the
+WAV form and `ai_jobs.rs` is unchanged. `transcription_request` takes a
+`kind`. `record_file_name` accepts `VOICE###.OGG` and gives the same
+`VOICE###.AI` as `VOICE###.WAV` (upper and lower case); `VOICE001.OPUS`,
+`VOICE1.OGG` and `NOTE001.OGG` give `None`. Tests: the Ogg form against
+the exact bytes, `transcription_form` still the WAV bytes, both names map
+to one record, the refused names. Open: nothing known. Device check:
+none (the encoder is wired later).
 
 ### D63: Split an Ogg stream into parts
 

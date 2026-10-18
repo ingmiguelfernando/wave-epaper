@@ -22,11 +22,40 @@ pub struct Multipart {
     pub body: Vec<u8>,
 }
 
+/// The audio container a transcription request carries. Providers decide
+/// the format from the file name and content type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AudioKind {
+    Wav,
+    Ogg,
+}
+
+impl AudioKind {
+    /// The `filename` the provider sees: `note.wav` or `note.ogg`.
+    #[must_use]
+    pub const fn file_name(self) -> &'static str {
+        match self {
+            Self::Wav => "note.wav",
+            Self::Ogg => "note.ogg",
+        }
+    }
+
+    /// The `Content-Type` the provider sees: `audio/wav` or `audio/ogg`.
+    #[must_use]
+    pub const fn content_type(self) -> &'static str {
+        match self {
+            Self::Wav => "audio/wav",
+            Self::Ogg => "audio/ogg",
+        }
+    }
+}
+
 /// The `multipart/form-data` fields of `POST /audio/transcriptions` around
-/// the WAV file: the bytes before the file and the bytes after it. Without
+/// the audio file: the bytes before the file and the bytes after it. Without
 /// a language the provider detects it.
 #[must_use]
-pub fn transcription_form(
+pub fn transcription_form_for(
+    kind: AudioKind,
     model: &str,
     language: Option<&str>,
     boundary: &str,
@@ -54,24 +83,38 @@ pub fn transcription_form(
     part(&mut head, boundary);
     part(
         &mut head,
-        "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"note.wav\"\r\n\
-         Content-Type: audio/wav\r\n\r\n",
+        "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"",
     );
+    part(&mut head, kind.file_name());
+    part(&mut head, "\"\r\nContent-Type: ");
+    part(&mut head, kind.content_type());
+    part(&mut head, "\r\n\r\n");
     let tail = format!("\r\n--{boundary}--\r\n").into_bytes();
     (head, tail)
 }
 
-/// The whole transcription request for a WAV held in memory: model,
+/// The form for a WAV note: `transcription_form_for` with `AudioKind::Wav`.
+#[must_use]
+pub fn transcription_form(
+    model: &str,
+    language: Option<&str>,
+    boundary: &str,
+) -> (Vec<u8>, Vec<u8>) {
+    transcription_form_for(AudioKind::Wav, model, language, boundary)
+}
+
+/// The whole transcription request for audio held in memory: model,
 /// language, JSON response format and the file, byte-exact.
 #[must_use]
 pub fn transcription_request(
+    kind: AudioKind,
     model: &str,
     language: Option<&str>,
-    wav: &[u8],
+    audio: &[u8],
     boundary: &str,
 ) -> Multipart {
-    let (mut body, tail) = transcription_form(model, language, boundary);
-    body.extend_from_slice(wav);
+    let (mut body, tail) = transcription_form_for(kind, model, language, boundary);
+    body.extend_from_slice(audio);
     body.extend_from_slice(&tail);
     Multipart {
         content_type: format!("multipart/form-data; boundary={boundary}"),
@@ -238,7 +281,8 @@ mod tests {
     use super::{
         api_error, clean_reply, endpoint, is_retryable_status, language_code,
         parse_chat_completion, parse_transcription, split_title, summary_request,
-        transcription_form, transcription_request, wav_parts, MAX_PART_SECONDS,
+        transcription_form, transcription_form_for, transcription_request, wav_parts, AudioKind,
+        MAX_PART_SECONDS,
     };
     use crate::{
         ai_config::{AiLanguage, SummaryStyle},
@@ -258,7 +302,13 @@ mod tests {
     #[test]
     fn multipart_body_is_byte_exact() {
         let wav = tiny_wav();
-        let request = transcription_request("whisper-large-v3", Some("es"), &wav, "wave7");
+        let request = transcription_request(
+            AudioKind::Wav,
+            "whisper-large-v3",
+            Some("es"),
+            &wav,
+            "wave7",
+        );
         assert_eq!(request.content_type, "multipart/form-data; boundary=wave7");
 
         let mut expected: Vec<u8> = Vec::new();
@@ -308,7 +358,8 @@ mod tests {
     fn the_form_wraps_the_file_and_auto_language_is_left_out() {
         let wav = tiny_wav();
         let (head, tail) = transcription_form("whisper-large-v3-turbo", None, "b0");
-        let whole = transcription_request("whisper-large-v3-turbo", None, &wav, "b0");
+        let whole =
+            transcription_request(AudioKind::Wav, "whisper-large-v3-turbo", None, &wav, "b0");
         assert_eq!(
             whole.body,
             [head.as_slice(), wav.as_slice(), tail.as_slice()].concat()
@@ -320,6 +371,42 @@ mod tests {
         assert_eq!(language_code(AiLanguage::Auto), None);
         assert_eq!(language_code(AiLanguage::Spanish), Some("es"));
         assert_eq!(language_code(AiLanguage::English), Some("en"));
+    }
+
+    #[test]
+    fn each_kind_carries_its_file_name_and_content_type() {
+        assert_eq!(AudioKind::Wav.file_name(), "note.wav");
+        assert_eq!(AudioKind::Wav.content_type(), "audio/wav");
+        assert_eq!(AudioKind::Ogg.file_name(), "note.ogg");
+        assert_eq!(AudioKind::Ogg.content_type(), "audio/ogg");
+
+        let ogg = [0x4F, 0x67, 0x67, 0x53, 0x00, 0x80, 0xFF];
+        let request = transcription_request(
+            AudioKind::Ogg,
+            "whisper-large-v3",
+            Some("es"),
+            &ogg,
+            "wave8",
+        );
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(
+            body.contains("filename=\"note.ogg\"\r\nContent-Type: audio/ogg\r\n\r\n"),
+            "Ogg form names the ogg file: {body}"
+        );
+        assert!(!body.contains("note.wav"));
+        assert!(!body.contains("audio/wav"));
+
+        let (ogg_head, ogg_tail) =
+            transcription_form_for(AudioKind::Ogg, "whisper-large-v3", Some("es"), "wave8");
+        assert_eq!(
+            request.body,
+            [ogg_head.as_slice(), ogg.as_slice(), ogg_tail.as_slice()].concat()
+        );
+        // `transcription_form` stays the WAV form.
+        let (wav_head, _) = transcription_form("whisper-large-v3", Some("es"), "wave8");
+        let wav_body = String::from_utf8_lossy(&wav_head).into_owned();
+        assert!(wav_body.contains("filename=\"note.wav\""));
+        assert!(wav_body.contains("Content-Type: audio/wav"));
     }
 
     #[test]
