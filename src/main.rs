@@ -73,7 +73,7 @@ mod firmware {
             espidf::NetworkRuntime, NetworkLogFingerprint, NetworkSnapshot, WifiConnectionState,
         },
         network_config::{NetworkConfig, WIFI_CONFIG_PATH},
-        ota::should_mark_valid,
+        ota::{espidf::EspUpdateTransport, should_mark_valid},
         panel_refresh::{
             PanelGlobalReason, PanelRefreshCoordinator, PanelRefreshPlan, PanelRefreshRequest,
             PANEL_PARTIAL_REFRESH_LIMIT,
@@ -108,6 +108,8 @@ mod firmware {
             StorageBrowser, StorageSnapshot, StorageUiOutcome, SDMMC_COMMAND_TIMEOUT_MS,
             SDMMC_STABLE_SPEED_KHZ, SD_MOUNT_POINT, STORAGE_IO_RETRY_ATTEMPTS,
         },
+        update_state::{Failure as UpdateFailure, UpdateRequest},
+        update_worker::{UpdateJob, UpdateWorker},
         voice_note_metadata::{
             load_voice_notes_preferences, save_voice_notes_preferences, VoiceNotesPreferences,
             VOICE_UNKNOWN_RECORDED_AT,
@@ -669,6 +671,8 @@ mod firmware {
         let mut xiaozhi_drawn = state.xiaozhi.clone();
         let mut last_xiaozhi_refresh = Instant::now();
         let mut ai_worker = AiWorker::default();
+        let mut update_worker = UpdateWorker::default();
+        let mut update_job: Option<UpdateJob> = None;
         let mut ai_backoff = AiBackoff::default();
         let mut voice_stereo_buffer = vec![0_u8; VOICE_PCM_STEREO_CAPTURE_BYTES];
         let mut voice_mono_buffer = vec![0_u8; VOICE_PCM_MONO_CHUNK_BYTES];
@@ -991,6 +995,71 @@ mod firmware {
             {
                 ai_worker.cancel();
             }
+            // Updates: the worker's events, then the screen's requests.
+            for event in update_worker.poll() {
+                if state.apply_update_event(event) && state.panel_awake {
+                    refresh_screen(
+                        &mut panel,
+                        &mut frame,
+                        &mut state,
+                        &mut panel_refresh,
+                        RefreshRequest::Normal,
+                    )?;
+                }
+            }
+            if let Some(request) = state.take_update_request() {
+                let started = match request {
+                    UpdateRequest::Check => Some(UpdateJob::Check),
+                    UpdateRequest::Install(release) => Some(UpdateJob::Install(release)),
+                    UpdateRequest::Cancel => {
+                        update_worker.cancel();
+                        update_job = None;
+                        None
+                    }
+                    UpdateRequest::Restart => {
+                        info!("rustmix-wave=ota status=restarting");
+                        // SAFETY: a plain restart; the new image is already selected.
+                        unsafe { sys::esp_restart() }
+                    }
+                };
+                if let Some(job) = started {
+                    let refusal = if voice_recording.is_some()
+                        || voice_playback.is_some()
+                        || portal_active
+                        || xiaozhi_busy
+                    {
+                        Some(UpdateFailure::Busy)
+                    } else if network_config.is_none() || !network_runtime.has_radio() {
+                        Some(UpdateFailure::NoWifi)
+                    } else {
+                        None
+                    };
+                    match refusal {
+                        Some(failure) => {
+                            warn!("rustmix-wave=ota status=refused reason={failure:?}");
+                            state.update.fail(failure);
+                            if state.panel_awake {
+                                refresh_screen(
+                                    &mut panel,
+                                    &mut frame,
+                                    &mut state,
+                                    &mut panel_refresh,
+                                    RefreshRequest::Normal,
+                                )?;
+                            }
+                        }
+                        None => update_job = Some(job),
+                    }
+                }
+            }
+            // A check or an install is running or waits for the user: the
+            // radio stays on, and no voice note competes for it.
+            let update_busy = state.update.busy() && state.active_route() == ScreenRoute::Update;
+            let update_keeps_radio =
+                state.update.wants_radio() && state.active_route() == ScreenRoute::Update;
+            if update_keeps_radio && ai_worker.is_busy() {
+                ai_worker.cancel();
+            }
             let ai_battery = state.board.power.and_then(|power| power.battery_percent);
             let ai_waiting = !ai_worker.is_busy()
                 && !sleep_mode.is_sleeping()
@@ -998,6 +1067,7 @@ mod firmware {
                 && voice_playback.is_none()
                 && !portal_active
                 && !xiaozhi_busy
+                && !update_keeps_radio
                 && _mounted_sd.is_some()
                 && (on_usb_power
                     || ai_battery.map_or(true, |percent| percent >= AI_MIN_BATTERY_PERCENT))
@@ -1012,6 +1082,8 @@ mod firmware {
                     RadioPhase::Off => {
                         let reason = if xiaozhi_waiting {
                             Some("xiaozhi")
+                        } else if update_busy {
+                            Some("update")
                         } else if manual_weather_refresh && state.weather_enabled() {
                             Some("weather-refresh")
                         } else if transfer_waiting {
@@ -1063,6 +1135,15 @@ mod firmware {
                                 warn!("rustmix-wave=wifi-burst status=failed error={error}");
                                 network_runtime.fail_connect(error);
                                 radio.failed(now);
+                                if state.update.fail(UpdateFailure::NoWifi) && state.panel_awake {
+                                    refresh_screen(
+                                        &mut panel,
+                                        &mut frame,
+                                        &mut state,
+                                        &mut panel_refresh,
+                                        RefreshRequest::Normal,
+                                    )?;
+                                }
                                 state.update_network_snapshot(network_runtime.snapshot());
                             }
                         }
@@ -1070,6 +1151,19 @@ mod firmware {
                     RadioPhase::Connected => {
                         if ai_waiting {
                             start_ai_job(&mut ai_worker, &mut ai_backoff, &mut state);
+                        }
+                        if !update_worker.is_busy() {
+                            if let Some(job) = update_job.take() {
+                                info!("rustmix-wave=ota status=starting job={job:?}");
+                                if let Err(error) =
+                                    update_worker.start(job, Box::new(EspUpdateTransport))
+                                {
+                                    warn!("rustmix-wave=ota status=worker-failed error={error}");
+                                    state
+                                        .update
+                                        .fail(UpdateFailure::Other(format!("worker: {error}")));
+                                }
+                            }
                         }
                         let weather_settled = weather_due.map_or(true, |due| due > now)
                             && !weather_retry.is_pending()
@@ -1079,6 +1173,9 @@ mod firmware {
                             && !ai_worker.is_busy()
                             && !ai_waiting
                             && !xiaozhi_busy
+                            && !update_keeps_radio
+                            && !update_worker.is_busy()
+                            && update_job.is_none()
                             && radio.work_done(now, weather_settled)
                         {
                             radio_off(
@@ -1346,7 +1443,8 @@ mod firmware {
                 && voice_playback.is_none()
                 && wifi_transfer_server.is_none()
                 && !xiaozhi_busy
-                && !ai_worker.is_busy();
+                && !ai_worker.is_busy()
+                && !state.update.busy();
             let power_key_now_ms = uptime.elapsed().as_millis() as u64;
             let power_key_was_down = power_presses.is_down();
             let power_key_down = power_key_held(&power_key_pin);
@@ -1495,6 +1593,12 @@ mod firmware {
                             });
                             // Sleep switches Wi-Fi off: a note being sent waits in the queue.
                             ai_worker.cancel();
+                            // An update in flight stops too; its slot stays unused.
+                            if state.update.busy() {
+                                update_worker.cancel();
+                                update_job = None;
+                                state.update.fail(UpdateFailure::Stopped);
+                            }
                             if radio.phase() != RadioPhase::Off {
                                 if !radio_off(
                                     &mut network_runtime,

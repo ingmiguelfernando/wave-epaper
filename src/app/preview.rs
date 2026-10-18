@@ -399,6 +399,20 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         .navigate_to(ScreenRoute::SettingsSystem);
     states.push(("settings-system", settings_system));
 
+    // Settings › System › Check for updates, each screen of the flow.
+    for (name, kind) in [
+        ("update-checking", UpdatePreview::Checking),
+        ("update-available", UpdatePreview::Available),
+        ("update-up-to-date", UpdatePreview::UpToDate),
+        ("update-downloading", UpdatePreview::Downloading(42)),
+        ("update-verifying", UpdatePreview::Verifying),
+        ("update-installed", UpdatePreview::Installed),
+        ("update-battery", UpdatePreview::LowBattery),
+        ("update-no-wifi", UpdatePreview::NoWifi),
+    ] {
+        states.push((name, update_preview_state(kind)));
+    }
+
     // Settings › System › Memory: the stored snapshot, in sample numbers.
     let mut memory = sample_state();
     memory.update_memory_snapshot(crate::runtime_memory::RuntimeMemorySnapshot {
@@ -1723,6 +1737,100 @@ fn dice_options_session(dice: usize) -> LuaAppSession {
     let mut canvas = NativeGameCanvas::default();
     dice_view::render_options(&game, &mut canvas, &options).unwrap();
     dice_session("dice-options", "Dice · Options", canvas)
+}
+
+/// The screens of Check for updates a preview shows.
+#[derive(Clone, Copy)]
+enum UpdatePreview {
+    Checking,
+    Available,
+    UpToDate,
+    /// Downloading, with this percent done.
+    Downloading(u64),
+    Verifying,
+    Installed,
+    LowBattery,
+    NoWifi,
+}
+
+/// Check for updates as the owner sees it: version 0.13.0 installed and
+/// 0.13.1 on GitHub, 78% battery, joined to `HomeNet`.
+fn update_preview_state(kind: UpdatePreview) -> AppState {
+    use crate::{
+        ota::parse_release,
+        update_state::{Failure, Step, UpdateEvent},
+    };
+    let mut state = sample_state();
+    state.network.ssid = Some("HomeNet".into());
+    let release = parse_release(
+        r#"{"tag_name":"v0.13.1","assets":[
+          {"name":"wave-epaper-v0.13.1-app.bin","size":3200000,
+           "browser_download_url":"https://github.com/o/r/releases/download/v0.13.1/wave-epaper-v0.13.1-app.bin"},
+          {"name":"SHA256SUMS.txt","size":300,
+           "browser_download_url":"https://github.com/o/r/releases/download/v0.13.1/SHA256SUMS.txt"}]}"#,
+    )
+    .expect("the sample release parses");
+    state.router.navigate_to(ScreenRoute::SettingsSystem);
+    state.apply(crate::buttons::ButtonEvent::Select);
+    assert_eq!(state.active_route(), ScreenRoute::Update);
+    state.take_update_request();
+    let mut current = release.clone();
+    match kind {
+        UpdatePreview::Checking => {}
+        UpdatePreview::UpToDate => {
+            current.version = state.update.installed();
+            current.tag = format!("v{}", state.update.installed());
+            state.apply_update_event(UpdateEvent::Checked(Ok(current)));
+        }
+        UpdatePreview::NoWifi => {
+            state.update.fail(Failure::NoWifi);
+        }
+        _ => {
+            state.apply_update_event(UpdateEvent::Checked(Ok(release)));
+            if !matches!(kind, UpdatePreview::Available) {
+                state.board.power = Some(crate::power::PowerSnapshot {
+                    battery_percent: Some(if matches!(kind, UpdatePreview::LowBattery) {
+                        24
+                    } else {
+                        78
+                    }),
+                    battery_voltage_mv: None,
+                    vbus_present: false,
+                    charging: false,
+                });
+                state.apply(crate::buttons::ButtonEvent::Select);
+                state.take_update_request();
+                match kind {
+                    UpdatePreview::Downloading(percent) => {
+                        state.apply_update_event(UpdateEvent::Progress {
+                            step: Step::Download,
+                            done: 3_200_000 * percent / 100,
+                            total: 3_200_000,
+                        });
+                    }
+                    UpdatePreview::Verifying => {
+                        state.apply_update_event(UpdateEvent::Progress {
+                            step: Step::Verify,
+                            done: 0,
+                            total: 0,
+                        });
+                    }
+                    UpdatePreview::Installed => {
+                        state.apply_update_event(UpdateEvent::Installed);
+                    }
+                    _ => {}
+                }
+            } else {
+                state.board.power = Some(crate::power::PowerSnapshot {
+                    battery_percent: Some(78),
+                    battery_voltage_mv: None,
+                    vbus_present: false,
+                    charging: false,
+                });
+            }
+        }
+    }
+    state
 }
 
 /// Seven photos: four prepared (two starred), one waiting, one unreadable.

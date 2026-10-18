@@ -162,6 +162,22 @@ impl Release {
     }
 }
 
+/// The SHA-256 the release lists for `asset_name` in its `SHA256SUMS.txt`.
+/// Lines are `<64 hex>  <name>` as `sha256sum` writes them, with the name
+/// optionally under `./` or `*` (binary mode); other lines are skipped.
+#[must_use]
+pub fn checksum_for(sums: &str, asset_name: &str) -> Option<[u8; 32]> {
+    sums.lines().find_map(|line| {
+        let (hash, name) = line.trim().split_once(char::is_whitespace)?;
+        let name = name.trim().trim_start_matches('*');
+        let name = name.strip_prefix("./").unwrap_or(name);
+        if name != asset_name {
+            return None;
+        }
+        crate::sha256::from_hex(hash)
+    })
+}
+
 /// What checking found.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateCheck {
@@ -277,9 +293,9 @@ pub const fn should_mark_valid(uptime_ms: u64, about_to_sleep: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        check, check_image_prefix, may_start, parse_release, should_mark_valid, UpdateCheck,
-        Version, APP_DESC_MAGIC, APP_DESC_OFFSET, CHIP_ID_ESP32S3, IMAGE_PREFIX_BYTES,
-        MIN_BATTERY_PERCENT, VALIDATE_AFTER_MS,
+        check, check_image_prefix, checksum_for, may_start, parse_release, should_mark_valid,
+        FlashSink, UpdateCheck, Version, APP_DESC_MAGIC, APP_DESC_OFFSET, CHIP_ID_ESP32S3,
+        IMAGE_PREFIX_BYTES, MIN_BATTERY_PERCENT, VALIDATE_AFTER_MS,
     };
 
     fn v(text: &str) -> Version {
@@ -362,6 +378,29 @@ mod tests {
     }
 
     #[test]
+    fn the_checksum_of_an_asset_is_read_from_the_sums_file() {
+        let app = crate::sha256::digest(b"app image");
+        let other = crate::sha256::digest(b"other");
+        let sums = format!(
+            "{}  ./wave-epaper-v0.13.1.bin\n{}  ./wave-epaper-v0.13.1-app.bin\nnot a line\n{}  *star.bin\n",
+            crate::sha256::to_hex(&other),
+            crate::sha256::to_hex(&app).to_uppercase(),
+            crate::sha256::to_hex(&other),
+        );
+        assert_eq!(
+            checksum_for(&sums, "wave-epaper-v0.13.1-app.bin"),
+            Some(app)
+        );
+        assert_eq!(checksum_for(&sums, "wave-epaper-v0.13.1.bin"), Some(other));
+        assert_eq!(checksum_for(&sums, "star.bin"), Some(other));
+        assert_eq!(checksum_for(&sums, "missing.bin"), None);
+        // A name that only ends the same, and a short hash, do not match.
+        assert_eq!(checksum_for(&sums, "app.bin"), None);
+        assert_eq!(checksum_for("abcd  x.bin", "x.bin"), None);
+        assert_eq!(checksum_for("", "x.bin"), None);
+    }
+
+    #[test]
     fn only_a_newer_release_is_an_update() {
         assert_eq!(
             check(v("0.12.7"), v("0.13.0")),
@@ -430,11 +469,541 @@ mod tests {
         assert!(check_image_prefix(&unterminated, v("0.13.0")).is_err());
     }
 
+    /// A sink that records what the stream does to it.
+    #[derive(Default)]
+    struct Recorder {
+        log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+        written: std::rc::Rc<std::cell::RefCell<Vec<u8>>>,
+        fail_write: bool,
+    }
+
+    impl FlashSink for Recorder {
+        fn begin(&mut self, size: u64) -> Result<(), crate::update_state::Failure> {
+            self.log.borrow_mut().push(format!("begin {size}"));
+            Ok(())
+        }
+        fn write(&mut self, data: &[u8]) -> Result<(), crate::update_state::Failure> {
+            if self.fail_write {
+                return Err(crate::update_state::Failure::Other("flash full".into()));
+            }
+            self.written.borrow_mut().extend_from_slice(data);
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), crate::update_state::Failure> {
+            self.log.borrow_mut().push("finish".into());
+            Ok(())
+        }
+        fn abort(&mut self) {
+            self.log.borrow_mut().push("abort".into());
+        }
+    }
+
+    /// An image of `len` bytes whose header says `version`.
+    fn image(version: &str, len: usize) -> Vec<u8> {
+        let mut bytes = prefix(version);
+        bytes.resize(len, 0x5A);
+        bytes
+    }
+
+    fn stream_of(bytes: &[u8], version: &str, recorder: Recorder) -> super::ImageStream<Recorder> {
+        super::ImageStream::new(
+            recorder,
+            v(version),
+            crate::sha256::digest(bytes),
+            bytes.len() as u64,
+        )
+    }
+
+    #[test]
+    fn a_good_image_in_odd_chunks_is_written_whole_and_finished_once() {
+        let bytes = image("0.13.1", 10_000);
+        for chunk_size in [1_usize, 7, 79, 80, 81, 4096, 10_000] {
+            let recorder = Recorder::default();
+            let (log, written) = (recorder.log.clone(), recorder.written.clone());
+            let mut stream = stream_of(&bytes, "0.13.1", recorder);
+            for chunk in bytes.chunks(chunk_size) {
+                stream.feed(chunk).unwrap();
+            }
+            stream.complete().unwrap();
+            assert_eq!(*written.borrow(), bytes, "chunks of {chunk_size}");
+            assert_eq!(
+                *log.borrow(),
+                vec!["begin 10000".to_string(), "finish".to_string()]
+            );
+        }
+    }
+
+    #[test]
+    fn a_wrong_image_is_refused_before_the_first_byte_is_written() {
+        // Another version under this tag, a bad magic and another chip.
+        for bytes in [
+            image("0.12.7", 5_000),
+            {
+                let mut bad = image("0.13.1", 5_000);
+                bad[0] = 0;
+                bad
+            },
+            {
+                let mut bad = image("0.13.1", 5_000);
+                bad[12] = 2;
+                bad
+            },
+        ] {
+            let recorder = Recorder::default();
+            let (log, written) = (recorder.log.clone(), recorder.written.clone());
+            let mut stream = stream_of(&bytes, "0.13.1", recorder);
+            let outcome: Result<(), _> =
+                bytes.chunks(1000).try_for_each(|chunk| stream.feed(chunk));
+            assert!(
+                matches!(outcome, Err(crate::update_state::Failure::WrongImage(_))),
+                "{outcome:?}"
+            );
+            drop(stream);
+            assert!(written.borrow().is_empty(), "nothing was written");
+            assert!(
+                log.borrow().is_empty(),
+                "the slot was never opened or aborted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_checksum_that_differs_aborts_instead_of_finishing() {
+        let bytes = image("0.13.1", 6_000);
+        let recorder = Recorder::default();
+        let log = recorder.log.clone();
+        // The expected digest is of other bytes.
+        let mut stream = super::ImageStream::new(
+            recorder,
+            v("0.13.1"),
+            crate::sha256::digest(b"not this image"),
+            bytes.len() as u64,
+        );
+        for chunk in bytes.chunks(1000) {
+            stream.feed(chunk).unwrap();
+        }
+        let outcome = stream.complete();
+        assert!(matches!(
+            outcome,
+            Err(crate::update_state::Failure::WrongImage(_))
+        ));
+        assert_eq!(
+            *log.borrow(),
+            vec!["begin 6000".to_string(), "abort".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_short_long_or_cut_download_never_finishes() {
+        let bytes = image("0.13.1", 6_000);
+        // Ends early.
+        let recorder = Recorder::default();
+        let log = recorder.log.clone();
+        let mut early = stream_of(&bytes, "0.13.1", recorder);
+        early.feed(&bytes[..3_000]).unwrap();
+        assert!(early.complete().is_err());
+        assert_eq!(
+            *log.borrow(),
+            vec!["begin 6000".to_string(), "abort".to_string()]
+        );
+        // Longer than the release says.
+        let recorder = Recorder::default();
+        let log = recorder.log.clone();
+        let mut long =
+            super::ImageStream::new(recorder, v("0.13.1"), crate::sha256::digest(&bytes), 5_000);
+        let outcome = bytes.chunks(1000).try_for_each(|chunk| long.feed(chunk));
+        assert!(matches!(
+            outcome,
+            Err(crate::update_state::Failure::WrongImage(_))
+        ));
+        drop(long);
+        assert_eq!(
+            *log.borrow(),
+            vec!["begin 5000".to_string(), "abort".to_string()]
+        );
+        // Shorter than a header: never begun, nothing to abort.
+        let recorder = Recorder::default();
+        let log = recorder.log.clone();
+        let tiny = stream_of(&bytes[..10], "0.13.1", recorder);
+        let mut tiny = tiny;
+        tiny.feed(&bytes[..10]).unwrap();
+        assert!(tiny.complete().is_err());
+        assert!(log.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_failed_write_and_a_dropped_stream_abort_the_slot() {
+        let bytes = image("0.13.1", 6_000);
+        let recorder = Recorder {
+            fail_write: true,
+            ..Recorder::default()
+        };
+        let log = recorder.log.clone();
+        let mut stream = stream_of(&bytes, "0.13.1", recorder);
+        let outcome = bytes.chunks(1000).try_for_each(|chunk| stream.feed(chunk));
+        assert!(matches!(
+            outcome,
+            Err(crate::update_state::Failure::Other(_))
+        ));
+        drop(stream);
+        assert_eq!(
+            *log.borrow(),
+            vec!["begin 6000".to_string(), "abort".to_string()]
+        );
+
+        // A cancelled install drops its stream half way: the slot is aborted.
+        let recorder = Recorder::default();
+        let log = recorder.log.clone();
+        let mut stream = stream_of(&bytes, "0.13.1", recorder);
+        stream.feed(&bytes[..4_000]).unwrap();
+        drop(stream);
+        assert_eq!(
+            *log.borrow(),
+            vec!["begin 6000".to_string(), "abort".to_string()]
+        );
+    }
+
     #[test]
     fn an_image_marks_itself_valid_after_thirty_seconds_or_before_sleep() {
         assert!(!should_mark_valid(0, false));
         assert!(!should_mark_valid(VALIDATE_AFTER_MS - 1, false));
         assert!(should_mark_valid(VALIDATE_AFTER_MS, false));
         assert!(should_mark_valid(1_000, true));
+    }
+}
+
+/// Where an image's bytes go: flash on the device, memory in tests.
+pub trait FlashSink {
+    /// Open the slot for `size` bytes.
+    fn begin(&mut self, size: u64) -> Result<(), crate::update_state::Failure>;
+    fn write(&mut self, data: &[u8]) -> Result<(), crate::update_state::Failure>;
+    /// Validate what was written and make it the next boot image.
+    fn finish(&mut self) -> Result<(), crate::update_state::Failure>;
+    /// Give the slot up; what was written is never booted.
+    fn abort(&mut self);
+}
+
+/// An app image arriving in chunks. Nothing reaches the sink until the
+/// start of the image has passed `check_image_prefix`; every byte is hashed;
+/// the sink is finished only if the whole image has the expected size and
+/// SHA-256. Dropped on any other path, it aborts the sink.
+pub struct ImageStream<S: FlashSink> {
+    sink: S,
+    version: Version,
+    expected: [u8; 32],
+    total: u64,
+    hash: crate::sha256::Sha256,
+    head: Vec<u8>,
+    begun: bool,
+    finished: bool,
+    done: u64,
+}
+
+impl<S: FlashSink> ImageStream<S> {
+    #[must_use]
+    pub fn new(sink: S, version: Version, expected: [u8; 32], total: u64) -> Self {
+        Self {
+            sink,
+            version,
+            expected,
+            total,
+            hash: crate::sha256::Sha256::new(),
+            head: Vec::new(),
+            begun: false,
+            finished: false,
+            done: 0,
+        }
+    }
+
+    /// Bytes received so far.
+    #[must_use]
+    pub const fn done(&self) -> u64 {
+        self.done
+    }
+
+    /// The next bytes of the image.
+    pub fn feed(&mut self, chunk: &[u8]) -> Result<(), crate::update_state::Failure> {
+        use crate::update_state::Failure;
+        self.done += chunk.len() as u64;
+        if self.done > self.total {
+            return Err(Failure::WrongImage("bigger than the release says".into()));
+        }
+        self.hash.update(chunk);
+        if self.begun {
+            return self.sink.write(chunk);
+        }
+        // Hold the start of the image until its header can be read, and
+        // refuse a wrong image before the first write.
+        self.head.extend_from_slice(chunk);
+        if self.head.len() < IMAGE_PREFIX_BYTES {
+            return Ok(());
+        }
+        check_image_prefix(&self.head, self.version)
+            .map_err(|error| Failure::WrongImage(format!("{error}")))?;
+        self.sink.begin(self.total)?;
+        self.begun = true;
+        let head = core::mem::take(&mut self.head);
+        self.sink.write(&head)
+    }
+
+    /// The image has ended: check its size and checksum, then finish.
+    pub fn complete(mut self) -> Result<(), crate::update_state::Failure> {
+        use crate::update_state::Failure;
+        if self.done != self.total {
+            return Err(Failure::Unreachable);
+        }
+        if !self.begun {
+            return Err(Failure::WrongImage("the download is too short".into()));
+        }
+        let digest = core::mem::take(&mut self.hash).finish();
+        if digest != self.expected {
+            return Err(Failure::WrongImage("the checksum differs".into()));
+        }
+        self.sink.finish()?;
+        self.finished = true;
+        Ok(())
+    }
+}
+
+impl<S: FlashSink> Drop for ImageStream<S> {
+    fn drop(&mut self) {
+        if self.begun && !self.finished {
+            self.sink.abort();
+        }
+    }
+}
+
+/// The network and the flash, on the device.
+#[cfg(target_os = "espidf")]
+pub mod espidf {
+    use std::{
+        sync::atomic::{AtomicBool, Ordering},
+        time::Duration,
+    };
+
+    use embedded_svc::http::{client::Client as HttpClient, Method};
+    use esp_idf_svc::{
+        http::client::{Configuration as HttpConfiguration, EspHttpConnection},
+        sys,
+    };
+
+    use super::{checksum_for, parse_release, FlashSink, ImageStream, Release, LATEST_RELEASE_URL};
+    use crate::{
+        json_lite::MAX_INPUT_BYTES,
+        update_state::{Failure, Step},
+        update_worker::UpdateTransport,
+    };
+
+    /// One read from the connection, and so one write to flash.
+    const CHUNK_BYTES: usize = 4096;
+    const HTTP_TIMEOUT_SECONDS: u64 = 30;
+    /// GitHub's download redirect carries a long signed URL in `Location`.
+    const HTTP_BUFFER_BYTES: usize = 4096;
+
+    /// The update transport of the firmware: HTTPS to GitHub, `esp_ota_*`.
+    #[derive(Default)]
+    pub struct EspUpdateTransport;
+
+    /// The next update slot, as a flash sink.
+    struct EspSink {
+        partition: *const sys::esp_partition_t,
+        handle: Option<sys::esp_ota_handle_t>,
+    }
+
+    impl FlashSink for EspSink {
+        fn begin(&mut self, size: u64) -> Result<(), Failure> {
+            let mut handle: sys::esp_ota_handle_t = 0;
+            // SAFETY: `partition` came from `esp_ota_get_next_update_partition`
+            // and `handle` is a valid out pointer.
+            let code = unsafe { sys::esp_ota_begin(self.partition, size as usize, &mut handle) };
+            if code != sys::ESP_OK {
+                return Err(Failure::Other(format!("could not open the slot ({code})")));
+            }
+            self.handle = Some(handle);
+            Ok(())
+        }
+
+        fn write(&mut self, data: &[u8]) -> Result<(), Failure> {
+            let Some(handle) = self.handle else {
+                return Err(Failure::Other("the slot is not open".into()));
+            };
+            // SAFETY: `data` is a live slice and the handle is open.
+            let code = unsafe { sys::esp_ota_write(handle, data.as_ptr().cast(), data.len()) };
+            if code != sys::ESP_OK {
+                return Err(Failure::Other(format!("flash write failed ({code})")));
+            }
+            Ok(())
+        }
+
+        /// Validate the image the esp-idf way (checksum, digest, header),
+        /// then select the slot for the next start.
+        fn finish(&mut self) -> Result<(), Failure> {
+            let Some(handle) = self.handle.take() else {
+                return Err(Failure::Other("the slot is not open".into()));
+            };
+            // SAFETY: the handle is open; `esp_ota_end` closes it either way.
+            let code = unsafe { sys::esp_ota_end(handle) };
+            if code != sys::ESP_OK {
+                return Err(Failure::WrongImage(format!("failed validation ({code})")));
+            }
+            // SAFETY: `partition` is the slot just written and validated.
+            let code = unsafe { sys::esp_ota_set_boot_partition(self.partition) };
+            if code != sys::ESP_OK {
+                return Err(Failure::Other(format!(
+                    "could not select the slot ({code})"
+                )));
+            }
+            Ok(())
+        }
+
+        fn abort(&mut self) {
+            if let Some(handle) = self.handle.take() {
+                // SAFETY: the handle is open and was never ended.
+                unsafe { sys::esp_ota_abort(handle) };
+            }
+        }
+    }
+
+    fn connect() -> Result<HttpClient<EspHttpConnection>, Failure> {
+        let config = HttpConfiguration {
+            crt_bundle_attach: Some(sys::esp_crt_bundle_attach),
+            timeout: Some(Duration::from_secs(HTTP_TIMEOUT_SECONDS)),
+            buffer_size: Some(HTTP_BUFFER_BYTES),
+            buffer_size_tx: Some(HTTP_BUFFER_BYTES),
+            ..Default::default()
+        };
+        let connection = EspHttpConnection::new(&config).map_err(|error| {
+            log::warn!("rustmix-wave=ota status=http-init-failed error={error}");
+            Failure::Unreachable
+        })?;
+        Ok(HttpClient::wrap(connection))
+    }
+
+    /// GET `url`, follow redirects, and hand each chunk of a 200 reply to
+    /// `sink`, which says whether to go on (`Ok(true)`).
+    fn get(
+        url: &str,
+        accept: &str,
+        cancel: &AtomicBool,
+        mut sink: impl FnMut(&[u8]) -> Result<bool, Failure>,
+    ) -> Result<(), Failure> {
+        let mut client = connect()?;
+        let headers = [("accept", accept), ("user-agent", "wave-epaper-updater")];
+        let request = client
+            .request(Method::Get, url, &headers)
+            .map_err(|error| {
+                log::warn!("rustmix-wave=ota status=request-failed error={error}");
+                Failure::Unreachable
+            })?;
+        let mut response = request.submit().map_err(|error| {
+            log::warn!("rustmix-wave=ota status=submit-failed error={error}");
+            Failure::Unreachable
+        })?;
+        let status = response.status();
+        if status != 200 {
+            log::warn!("rustmix-wave=ota status=http-status code={status}");
+            return Err(Failure::Unreachable);
+        }
+        let mut chunk = vec![0_u8; CHUNK_BYTES];
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(Failure::Stopped);
+            }
+            let read = response.read(&mut chunk).map_err(|error| {
+                log::warn!("rustmix-wave=ota status=read-failed error={error:?}");
+                Failure::Unreachable
+            })?;
+            if read == 0 {
+                return Ok(());
+            }
+            if !sink(&chunk[..read])? {
+                return Ok(());
+            }
+        }
+    }
+
+    /// A small text reply (the release JSON, the checksum list), bounded.
+    fn get_text(url: &str, accept: &str, cancel: &AtomicBool) -> Result<String, Failure> {
+        let mut body: Vec<u8> = Vec::new();
+        get(url, accept, cancel, |chunk| {
+            if body.len() + chunk.len() > MAX_INPUT_BYTES {
+                return Err(Failure::Other("the reply is too large".into()));
+            }
+            body.extend_from_slice(chunk);
+            Ok(true)
+        })?;
+        String::from_utf8(body).map_err(|_| Failure::Other("the reply is not text".into()))
+    }
+
+    impl UpdateTransport for EspUpdateTransport {
+        fn latest_release(&mut self, cancel: &AtomicBool) -> Result<Release, Failure> {
+            let text = get_text(LATEST_RELEASE_URL, "application/vnd.github+json", cancel)?;
+            let release = parse_release(&text)
+                .map_err(|error| Failure::Other(format!("release not understood: {error:#}")))?;
+            log::info!("rustmix-wave=ota status=latest tag={}", release.tag);
+            Ok(release)
+        }
+
+        fn install(
+            &mut self,
+            release: &Release,
+            cancel: &AtomicBool,
+            progress: &mut dyn FnMut(Step, u64, u64),
+        ) -> Result<(), Failure> {
+            let app = release
+                .app_image()
+                .map_err(|error| Failure::WrongImage(format!("{error}")))?;
+            let sums_asset = release
+                .checksums()
+                .map_err(|error| Failure::WrongImage(format!("{error}")))?;
+            progress(Step::Download, 0, app.size);
+
+            // The expected checksum comes first, so a release without one is
+            // refused before anything is downloaded or written.
+            let sums = get_text(&sums_asset.url, "text/plain", cancel)?;
+            let expected = checksum_for(&sums, &app.name).ok_or_else(|| {
+                Failure::WrongImage("the release lists no checksum for it".into())
+            })?;
+
+            // SAFETY: null asks for the slot after the running one.
+            let partition = unsafe { sys::esp_ota_get_next_update_partition(core::ptr::null()) };
+            if partition.is_null() {
+                return Err(Failure::NoSlot);
+            }
+            // SAFETY: checked non-null; the table entry lives as long as the app.
+            let slot_size = u64::from(unsafe { (*partition).size });
+            if app.size > slot_size {
+                return Err(Failure::WrongImage("bigger than the update slot".into()));
+            }
+            log::info!(
+                "rustmix-wave=ota status=downloading tag={} bytes={} slot-bytes={slot_size}",
+                release.tag,
+                app.size
+            );
+
+            let mut stream = ImageStream::new(
+                EspSink {
+                    partition,
+                    handle: None,
+                },
+                release.version,
+                expected,
+                app.size,
+            );
+            get(&app.url, "application/octet-stream", cancel, |chunk| {
+                stream.feed(chunk)?;
+                progress(Step::Download, stream.done(), app.size);
+                Ok(true)
+            })?;
+            progress(Step::Verify, 0, 0);
+            let bytes = stream.done();
+            stream.complete()?;
+            log::info!(
+                "rustmix-wave=ota status=installed tag={} bytes={bytes}",
+                release.tag
+            );
+            progress(Step::Restart, 0, 0);
+            Ok(())
+        }
     }
 }

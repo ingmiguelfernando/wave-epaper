@@ -178,7 +178,13 @@ const SETTINGS_CLOCK_ALARMS_ENTRIES: [MenuEntry; 2] = [
 ];
 
 /// Sub-list opened from the System group.
-const SETTINGS_SYSTEM_ENTRIES: [MenuEntry; 5] = [
+const SETTINGS_SYSTEM_ENTRIES: [MenuEntry; 6] = [
+    MenuEntry {
+        label: "Check for updates",
+        subtitle: "GitHub releases, over Wi-Fi",
+        badge: "",
+        route: ScreenRoute::Update,
+    },
     MenuEntry {
         label: "Device Info",
         subtitle: "Firmware, board and services",
@@ -279,7 +285,7 @@ mod tests {
         assert_eq!(category_entries(ScreenRoute::Tools).len(), 4);
         assert_eq!(category_entries(ScreenRoute::Settings).len(), 9);
         assert_eq!(category_entries(ScreenRoute::SettingsClockAlarms).len(), 2);
-        assert_eq!(category_entries(ScreenRoute::SettingsSystem).len(), 5);
+        assert_eq!(category_entries(ScreenRoute::SettingsSystem).len(), 6);
         for route in CATEGORIES {
             assert!(category_entries(route)
                 .iter()

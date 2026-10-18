@@ -3,6 +3,21 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.14.0 — Update over Wi-Fi
+
+- **Settings › System › Check for updates.** It reads the latest GitHub
+  release, offers a newer version with its size, and on your choice
+  downloads the app image into the free slot, checks it (header, version,
+  SHA-256 against `SHA256SUMS.txt`) and selects it for the next start.
+  **Restart now** starts it; if it does not run for 30 seconds the
+  bootloader returns to the previous version. It needs 30% battery or USB,
+  Wi-Fi set in Wi-Fi & transfer, and the v0.13.0 USB flash.
+- A cancelled or failed update (hold BOOT, no Wi-Fi, a wrong or damaged
+  image, sleep) leaves the installed version untouched; nothing is
+  downloaded or checked on its own.
+- `sha256.rs` (the checksum, in plain Rust), `update_state.rs` (the screen),
+  `update_worker.rs` (the download on its own thread, as voice notes).
+
 ## v0.13.0 — Two app slots for updates
 
 - **The flash has two app slots** (6 MB each) and an update record, ready

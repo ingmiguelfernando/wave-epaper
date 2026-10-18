@@ -26,6 +26,7 @@ use crate::{
     sleep_screen::{SleepMode, SleepScreenSetting, SleepScreenSettings},
     storage::StorageSnapshot,
     unit_converter::UnitConverterUiState,
+    update_state::{Outcome as UpdateOutcome, UpdateEvent, UpdateRequest, UpdateUi},
     voice_note_record::NoteState,
     voice_notes::{VoiceNotesUiRequest, VoiceNotesUiState},
     weather::{WeatherFetchState, WeatherSnapshot},
@@ -225,6 +226,8 @@ pub struct AppState {
     /// Compact LAN portal lifecycle snapshot.
     pub wifi_transfer: WifiTransferSnapshot,
     wifi_transfer_request: Option<WifiTransferUiRequest>,
+    /// `Settings › System › Check for updates`: its screen state and requests.
+    pub update: UpdateUi,
     /// SD-backed PCM WAV voice-note catalog and recorder UI snapshot.
     pub voice_notes: VoiceNotesUiState,
     /// AI result screen: the open tab and the body scroll.
@@ -318,6 +321,15 @@ impl Default for AppState {
             audio_action_selected: 0,
             network_action_selected: 0,
             wifi_transfer: WifiTransferSnapshot::default(),
+            update: UpdateUi::new(
+                crate::ota::Version::parse(crate::build_info::FIRMWARE_VERSION).unwrap_or(
+                    crate::ota::Version {
+                        major: 0,
+                        minor: 0,
+                        patch: 0,
+                    },
+                ),
+            ),
             wifi_transfer_request: None,
             voice_notes: VoiceNotesUiState::default(),
             voice_notes_result: crate::voice_note_result::ResultUiState::default(),
@@ -501,6 +513,17 @@ impl AppState {
                     self.wifi_transfer_request = Some(WifiTransferUiRequest::Stop);
                     self.router.navigate_to(ScreenRoute::Network);
                 }
+                (ScreenRoute::Update, ButtonEvent::Up) => self.update.move_row(-1),
+                (ScreenRoute::Update, ButtonEvent::Down) => self.update.move_row(1),
+                (ScreenRoute::Update, ButtonEvent::Select) => {
+                    self.note_select_press();
+                    let (battery, usb) = self.board.power.map_or((None, false), |power| {
+                        (power.battery_percent, power.vbus_present)
+                    });
+                    if self.update.select(battery, usb) == UpdateOutcome::Leave {
+                        self.back();
+                    }
+                }
                 (ScreenRoute::DeviceInfo, ButtonEvent::Select) => {
                     self.note_select_press();
                     self.router.navigate_to(ScreenRoute::DeviceInfoBoard);
@@ -636,6 +659,10 @@ impl AppState {
         self.note_select_press();
         if target == ScreenRoute::WeatherSettings {
             self.weather_settings_ui = WeatherSettingsUiState::default();
+        }
+        if target == ScreenRoute::Update {
+            // Opening the screen asks for a check; nothing runs before that.
+            self.update.open();
         }
         if target == ScreenRoute::Audio {
             self.audio_action_selected = 0;
@@ -1919,6 +1946,12 @@ impl AppState {
     /// Navigate one level toward Home. The hardware runtime calls this after a
     /// validated GPIO0 BOOT-button long press.
     pub fn back(&mut self) {
+        // Holding BOOT during an install cancels it and stays on the screen.
+        if self.router.current() == ScreenRoute::Update
+            && self.update.hold_back() == UpdateOutcome::Stay
+        {
+            return;
+        }
         if self.router.current() == ScreenRoute::PowerKeyMenu {
             self.close_power_key_menu();
             return;
@@ -2096,6 +2129,21 @@ impl AppState {
     }
 
     #[must_use]
+    /// The update screen's request for the main loop, once.
+    pub fn take_update_request(&mut self) -> Option<UpdateRequest> {
+        self.update.take_request()
+    }
+
+    /// Apply an update worker's event. True when the screen needs drawing
+    /// again (and it is the one showing).
+    pub fn apply_update_event(&mut self, event: UpdateEvent) -> bool {
+        let now = self.board.rtc.map(|rtc| {
+            let local = self.regional.localize_rtc(rtc);
+            format!("{:02}:{:02}", local.hour, local.minute)
+        });
+        self.update.on_event(event, now) && self.router.current() == ScreenRoute::Update
+    }
+
     pub fn take_wifi_transfer_request(&mut self) -> Option<WifiTransferUiRequest> {
         self.wifi_transfer_request.take()
     }
@@ -2878,7 +2926,7 @@ mod tests {
     }
 
     #[test]
-    fn system_sublist_opens_all_five_diagnostics_and_walks_back() {
+    fn system_sublist_opens_every_row_and_walks_back() {
         let mut state = open_from_home(ScreenRoute::Settings);
         // System is the last group, after the AI row.
         for _ in 0..8 {
@@ -2887,6 +2935,7 @@ mod tests {
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::SettingsSystem);
         let expected = [
+            ScreenRoute::Update,
             ScreenRoute::DeviceInfo,
             ScreenRoute::SettingsMemory,
             ScreenRoute::Audio,
@@ -2902,6 +2951,79 @@ mod tests {
         }
         state.back();
         assert_eq!(state.active_route(), ScreenRoute::Settings);
+    }
+
+    /// Check for updates through the keys: opening asks for a check, the
+    /// event offers the release, Select asks to install (with power for it),
+    /// and holding BOOT cancels instead of leaving.
+    #[test]
+    fn the_update_screen_checks_installs_and_cancels_through_the_keys() {
+        use crate::{
+            ota::{parse_release, Release},
+            update_state::{Failure, UpdateEvent, UpdatePhase, UpdateRequest},
+        };
+        let release: Release = parse_release(
+            r#"{"tag_name":"v9.9.9","assets":[
+              {"name":"wave-epaper-v9.9.9-app.bin","size":3200000,
+               "browser_download_url":"https://github.com/o/r/releases/download/v9.9.9/wave-epaper-v9.9.9-app.bin"},
+              {"name":"SHA256SUMS.txt","size":300,
+               "browser_download_url":"https://github.com/o/r/releases/download/v9.9.9/SHA256SUMS.txt"}]}"#,
+        )
+        .unwrap();
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::SettingsSystem);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::Update);
+        assert_eq!(state.take_update_request(), Some(UpdateRequest::Check));
+        assert!(state.update.wants_radio());
+
+        // Not on the update screen, nothing is drawn for its events.
+        assert!(state.apply_update_event(UpdateEvent::Checked(Ok(release))));
+        assert!(matches!(state.update.phase(), UpdatePhase::Available(_)));
+
+        // No battery reading and no USB: refused, nothing requested.
+        state.apply(ButtonEvent::Select);
+        assert_eq!(
+            state.update.phase(),
+            &UpdatePhase::Failed(Failure::BatteryUnknown)
+        );
+        assert_eq!(state.take_update_request(), None);
+        // Back from the failure leaves; a fresh open checks again.
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::SettingsSystem);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.take_update_request(), Some(UpdateRequest::Check));
+
+        // With USB power the install is requested, and hold BOOT cancels it.
+        state.board.power = Some(crate::power::PowerSnapshot {
+            battery_percent: Some(80),
+            battery_voltage_mv: None,
+            vbus_present: true,
+            charging: false,
+        });
+        let again = parse_release(
+            r#"{"tag_name":"v9.9.9","assets":[
+              {"name":"wave-epaper-v9.9.9-app.bin","size":10,
+               "browser_download_url":"https://github.com/o/r/releases/download/v9.9.9/wave-epaper-v9.9.9-app.bin"},
+              {"name":"SHA256SUMS.txt","size":3,
+               "browser_download_url":"https://github.com/o/r/releases/download/v9.9.9/SHA256SUMS.txt"}]}"#,
+        )
+        .unwrap();
+        state.apply_update_event(UpdateEvent::Checked(Ok(again)));
+        state.apply(ButtonEvent::Select);
+        assert!(matches!(
+            state.take_update_request(),
+            Some(UpdateRequest::Install(_))
+        ));
+        assert!(state.update.busy());
+        state.back();
+        assert_eq!(
+            state.active_route(),
+            ScreenRoute::Update,
+            "BOOT hold cancels"
+        );
+        assert_eq!(state.take_update_request(), Some(UpdateRequest::Cancel));
+        assert!(!state.update.busy());
     }
 
     /// A short BOOT on the recording screen queues a pause, then a resume,

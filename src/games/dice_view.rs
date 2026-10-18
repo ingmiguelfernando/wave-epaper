@@ -6,7 +6,7 @@
 
 use super::{
     canvas::{CanvasTextStyle, GameSprite, NativeGameCanvas},
-    dice::{DiceGame, FRAMES, HISTORY_LEN, MAX_DICE},
+    dice::{DiceGame, FRAMES, HISTORY_LEN},
     dirty_regions::GAME_CANVAS_WIDTH,
 };
 
@@ -418,6 +418,7 @@ fn draw_dice_count_strip(
 mod tests {
     use super::*;
     use crate::games::canvas::MAX_GAME_DRAW_COMMANDS;
+    use crate::games::dice::MAX_DICE;
 
     fn ready_game(dice: usize, seed: u32) -> DiceGame {
         let mut game = DiceGame::new(seed);
