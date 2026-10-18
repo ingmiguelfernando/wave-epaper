@@ -79,6 +79,8 @@ esptool.py --chip esp32s3 write_flash 0x0 wave-epaper-<version>.bin
 
 ```sh
 espflash save-image --chip esp32s3 --merge --skip-padding --flash-size 16mb \
+  --partition-table partitions.csv \
+  --bootloader target/xtensa-esp32s3-espidf/release/bootloader.bin \
   target/xtensa-esp32s3-espidf/release/waveshare-epd397-rust-app wave-epaper.bin
 ```
 
