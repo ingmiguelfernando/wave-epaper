@@ -775,7 +775,19 @@ count mid-roll waits for `Ready`; the history keeps six totals, newest
 first; a full refresh is due on the tenth roll and not the ninth;
 `advance` in `Ready` does nothing.
 
-**Status:** to do.
+**Status:** done on `side-tasks-17`. Built `src/games/dice.rs` with
+`pub mod dice;` in `src/games/mod.rs`. `DiceGame::new(seed)` uses the
+same xorshift and zero-seed rule as `race.rs`/`tetris.rs` (copied, theirs
+unchanged). Constants `MAX_DICE`, `DEFAULT_DICE`, `SIDES`, `FRAMES`,
+`HISTORY_LEN`, `FULL_REFRESH_EVERY` at the top. `request_roll` fixes
+`final_faces` at once and enters `Rolling { frame: 1 }`; while rolling it
+is a no-op. `FRAMES` advances play tumbling faces (never the final set,
+never the same set twice in a row) and the last one lands in `Ready`,
+pushes the total and increments `rolls`. `set_dice` clamps to 1..=3 and
+takes effect from `Ready` (a mid-roll change waits; new dice are dealt,
+kept ones stay). `full_refresh_due` on every tenth roll. Ten host tests
+cover the list, including a tumbling-frame test and a 6 000-roll fair die
+check. Open: nothing known.
 
 ### D73: The Dice screens and previews (no wiring)
 
