@@ -52,7 +52,8 @@ Last updated: 2026-10-18, firmware v0.13.0.
 | Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
 | Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (libraries and previews only) | | PR #16 | Done, merged without a release; wiring is the main line's |
 | Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | | In progress: needs the USB flash once; the download and the Settings screen are slice 2 |
-| Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | side-tasks-18 | Published (Round 18) |
+| Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | PR #18 | Done, merged without a release; wiring is the main line's |
+| Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | side-tasks-19 | Published (Round 19) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.

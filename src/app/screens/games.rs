@@ -17,6 +17,7 @@ use crate::{
         typography::{Text, UiTextRole},
         widgets::{
             bottom_bar::{draw_bottom_bar, KeyCap},
+            list_row::draw_selection_marker,
             status_bar::{draw_status_bar, draw_status_text, STATUS_BAR_HEIGHT, STATUS_BAR_RIGHT},
         },
     },
@@ -99,6 +100,10 @@ fn draw_game_card(
     )
     .into_styled(style)
     .draw(display)?;
+    if selected {
+        // The mockup's `▸` before the icon, as on Home and the lists.
+        draw_selection_marker(display, CARD_LEFT + 4, top + CARD_HEIGHT / 2)?;
+    }
     draw_icon(
         display,
         manifest,
@@ -851,6 +856,20 @@ mod d25_tests {
             frame.is_black(Point::new(566, 479 - 455)),
             Some(true),
             "the selected card fills the fourth slot"
+        );
+        // The mockup's `▸` leads the selected card: paper inside the marker,
+        // ink just above it, at the card's vertical middle (y 454 + 60).
+        let cy = 454 + super::CARD_HEIGHT / 2;
+        let left = super::CARD_LEFT + 4;
+        assert_eq!(
+            frame.is_black(Point::new(cy, 479 - (left + 2))),
+            Some(false),
+            "the marker is paper"
+        );
+        assert_eq!(
+            frame.is_black(Point::new(cy - 12, 479 - (left + 2))),
+            Some(true),
+            "ink above the marker"
         );
         // The first slot's card keeps its white interior.
         assert_eq!(

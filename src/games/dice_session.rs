@@ -78,6 +78,9 @@ impl Options {
     }
 }
 
+/// The last row of the Options list, `Back to Games`.
+const BACK_ROW: usize = 5;
+
 /// Keys the session understands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Key {
@@ -211,6 +214,11 @@ impl DiceSession {
                 Screen::Ready => self.start_roll(now_ms),
                 Screen::Rolling { .. } => Output::idle(),
                 Screen::Options => {
+                    if self.options_selected == BACK_ROW {
+                        let mut output = Output::idle();
+                        output.ended = true;
+                        return output;
+                    }
                     // Change the selected row's value.
                     self.change_option();
                     self.redraw()
@@ -228,17 +236,20 @@ impl DiceSession {
                 Screen::Options => {
                     let rows = 6;
                     let selected = self.options_selected as i32;
+                    // Up goes to the row above, Down to the one below.
                     let next = if key == Key::Up {
-                        selected + 1
-                    } else {
                         selected + rows - 1
+                    } else {
+                        selected + 1
                     };
                     self.options_selected = next.rem_euclid(rows) as usize;
                     self.redraw()
                 }
             },
             Key::BootShort => match self.screen {
-                Screen::Ready | Screen::Rolling { .. } => {
+                // `rolling, keys wait`: Options open after the dice land.
+                Screen::Rolling { .. } => Output::idle(),
+                Screen::Ready => {
                     self.screen = Screen::Options;
                     self.options_selected = 0;
                     self.redraw()
@@ -300,7 +311,7 @@ impl DiceSession {
     /// Seed and dice count the rattle needs for the roll in flight.
     #[must_use]
     pub fn rattle_start(&self) -> Option<RattleAction> {
-        if !self.is_rolling() {
+        if !self.is_rolling() || !self.options.sound {
             return None;
         }
         Some(RattleAction::Start {
@@ -325,10 +336,15 @@ impl DiceSession {
         self.frame_index = 0;
         self.game_seed = self.game_seed.wrapping_add(1);
         let mut output = self.redraw();
-        output.rattle = RattleAction::Start {
-            seed: self.game_seed,
-            dice: self.options.dice,
-            frames: FRAMES,
+        // With Sound off the frames keep their timing and nothing plays.
+        output.rattle = if self.options.sound {
+            RattleAction::Start {
+                seed: self.game_seed,
+                dice: self.options.dice,
+                frames: FRAMES,
+            }
+        } else {
+            RattleAction::Keep
         };
         output.next_tick = self.frame_times.first().copied();
         output
@@ -478,11 +494,66 @@ mod tests {
             },
         );
         let out = quiet.on_key(Key::Select, 0);
+        assert_eq!(out.rattle, RattleAction::Keep, "nothing plays");
+        assert_eq!(quiet.rattle_start(), None);
+        assert!(quiet.is_rolling());
+        // The frames keep the timing of a sound roll.
+        let mut loud = DiceSession::new(7, Options::default());
+        let loud_out = loud.on_key(Key::Select, 0);
+        assert_eq!(out.next_tick, loud_out.next_tick, "same first frame");
+        let mut times = Vec::new();
+        for session in [&mut quiet, &mut loud] {
+            let mut now = 0;
+            let mut landed = 0;
+            while session.is_rolling() && now < 5_000 {
+                let step = session.tick(now);
+                match step.next_tick {
+                    Some(next) => now = next,
+                    None => break,
+                }
+                landed = now;
+            }
+            times.push(landed);
+        }
+        assert_eq!(times[0], times[1], "the result lands at the same time");
+    }
+
+    #[test]
+    fn options_move_up_and_down_and_back_to_games_ends() {
+        let mut s = session();
+        s.on_key(Key::BootShort, 0);
+        // Down goes from Dice (row 0) to Sound; Up returns, then wraps to the
+        // last row, Back to Games.
+        s.on_key(Key::Down, 1);
+        s.on_key(Key::Select, 2);
+        assert!(!s.options().sound, "Down reached the Sound row");
+        s.on_key(Key::Up, 3);
+        s.on_key(Key::Up, 4);
+        let out = s.on_key(Key::Select, 5);
+        assert!(out.ended, "Select on Back to Games leaves");
+    }
+
+    #[test]
+    fn a_short_boot_while_rolling_does_not_open_options() {
+        let mut s = session();
+        s.on_key(Key::Select, 0);
+        let out = s.on_key(Key::BootShort, 10);
+        assert_eq!(out.redraw, None);
+        assert!(s.is_rolling(), "the roll goes on");
+        // Run to the landing: the session ends on Ready, not Options.
+        let mut now = 0;
+        while s.is_rolling() && now < 5_000 {
+            match s.tick(now).next_tick {
+                Some(next) => now = next,
+                None => break,
+            }
+        }
+        assert!(!s.is_rolling());
+        let again = s.on_key(Key::Select, now + 2_000);
         assert!(
-            matches!(out.rattle, RattleAction::Start { .. }),
-            "timing is kept"
+            matches!(again.rattle, RattleAction::Start { .. }),
+            "Ready again: Select rolls"
         );
-        assert!(out.next_tick.is_some());
     }
 
     #[test]
@@ -542,8 +613,12 @@ mod tests {
         for roll in 1..=12 {
             let out = s.on_key(Key::Select, roll * 10_000);
             let mut now = out.next_tick.unwrap_or(roll * 10_000 + 1);
+            let mut landing = None;
             while s.is_rolling() {
                 let step = s.tick(now);
+                if !s.is_rolling() {
+                    landing = step.redraw;
+                }
                 match step.next_tick {
                     Some(next) => now = next,
                     None => now += 5,
@@ -554,11 +629,13 @@ mod tests {
             }
             // After landing, the last redraw was Full on the tenth.
             if roll == 10 {
+                assert_eq!(landing, Some(Refresh::Full), "the tenth landing is full");
                 assert_eq!(s.game().rolls(), 10);
                 assert!(s.game().full_refresh_due());
             }
             if roll == 9 {
                 assert!(!s.game().full_refresh_due());
+                assert_eq!(landing, Some(Refresh::Partial), "the ninth is partial");
             }
         }
     }

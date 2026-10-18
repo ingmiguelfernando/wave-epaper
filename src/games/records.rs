@@ -46,8 +46,8 @@ impl GameRecords {
             if key == "dice_last" {
                 // A bad value is dropped, so the card simply has no last roll
                 // and the rest of the file still loads.
-                if parse_dice_faces(value).is_some() {
-                    records.dice_last = Some(value.to_string());
+                if let Some(faces) = dice_faces_from_digits(value) {
+                    records.dice_last = Some(faces);
                 }
                 continue;
             }
@@ -81,8 +81,20 @@ impl GameRecords {
             self.sudoku_medium,
             self.sudoku_hard
         );
-        if let Some(faces) = &self.dice_last {
-            text.push_str(&format!("dice_last={faces}\n"));
+        if let Some(digits) = self
+            .dice_last
+            .as_deref()
+            .and_then(parse_dice_faces)
+            .map(|faces| {
+                faces
+                    .iter()
+                    .map(|face| face.to_string())
+                    .collect::<String>()
+            })
+        {
+            // Digits, `46` for `4+6`: firmware before this one reads every
+            // value as a number and drops the whole file on a `+`.
+            text.push_str(&format!("dice_last={digits}\n"));
         }
         text
     }
@@ -204,6 +216,22 @@ impl GameRecords {
     }
 }
 
+/// `46` (digits, one per face) as `4+6`; `None` unless it is one to three
+/// faces of 1..=6.
+fn dice_faces_from_digits(digits: &str) -> Option<String> {
+    if digits.is_empty() || digits.len() > 3 || !digits.bytes().all(|b| (b'1'..=b'6').contains(&b))
+    {
+        return None;
+    }
+    Some(
+        digits
+            .chars()
+            .map(|digit| digit.to_string())
+            .collect::<Vec<_>>()
+            .join("+"),
+    )
+}
+
 /// `4+6` or `5`: one to three faces of 1..=6 joined by `+`. `None` otherwise.
 #[must_use]
 pub fn parse_dice_faces(value: &str) -> Option<Vec<u8>> {
@@ -305,7 +333,10 @@ mod tests {
         let empty = GameRecords::parse("dice_last=\n").unwrap();
         assert_eq!(empty.dice_last, None, "empty dice_last is ignored");
         // Malformed: ignored, the rest of the file loads.
-        let bad = GameRecords::parse("tetris_zen=7\ndice_last=4+7\ndice_last=nope\n").unwrap();
+        let bad = GameRecords::parse(
+            "tetris_zen=7\ndice_last=47\ndice_last=nope\ndice_last=4+6\ndice_last=1234\n",
+        )
+        .unwrap();
         assert_eq!(bad.tetris_zen, 7, "the score still loads");
         assert_eq!(bad.dice_last, None, "a bad dice_last is dropped");
         // Good values round-trip.
@@ -319,6 +350,28 @@ mod tests {
         assert!(records.observe_dice_faces("5"));
         let parsed = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(parsed.dice_last.as_deref(), Some("5"));
+        records.observe_dice_faces("1+2+3");
+        let text = records.serialized();
+        assert!(text.contains("dice_last=123\n"), "{text}");
+        assert_eq!(
+            GameRecords::parse(&text).unwrap().dice_last.as_deref(),
+            Some("1+2+3")
+        );
+    }
+
+    /// Firmware before this one parses every value as a number and fails the
+    /// whole file otherwise; a rollback must not lose the best scores.
+    #[test]
+    fn every_value_the_file_holds_is_a_number_older_firmware_reads() {
+        let mut records = GameRecords {
+            tetris_zen: 99,
+            ..GameRecords::default()
+        };
+        records.observe_dice_faces("4+6");
+        for line in records.serialized().lines().filter(|l| !l.starts_with('#')) {
+            let (_, value) = line.split_once('=').unwrap();
+            assert!(value.trim().parse::<u32>().is_ok(), "{line}");
+        }
     }
 
     #[test]
