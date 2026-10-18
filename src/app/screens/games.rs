@@ -455,7 +455,7 @@ mod d25_tests {
         state.lua_runtime.records.sudoku_hard = 1_500;
         state.lua_runtime.records.sudoku_easy = 401;
         let (_, second) = super::game_details(&state, &manifest);
-        assert_eq!(second, "Best time 6:41 · Easy");
+        assert_eq!(second, "Best time 06:41 · Easy");
         // A running game and a best time.
         state.lua_runtime.sudoku_save = Some(SudokuSave {
             difficulty: SudokuDifficulty::Medium,

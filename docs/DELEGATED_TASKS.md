@@ -841,7 +841,31 @@ those.
 **Tests:** one test for each fix that changes pixels (a probe of where the
 new thing is), none for a layout that only moved by a few pixels.
 
-**Status:** to do.
+**Status:** done on `side-tasks-18`. Compared each preview with the
+mockup's figure (headless Chrome screenshots of `mockups/index.html`)
+side by side. Table of every visible difference:
+
+| Screen | Difference | Fixed (commit) or blocked |
+|---|---|---|
+| `games` | Tetris card said `Zen · best` not `Zen (no gravity) · best` | Fixed (D75 `875c466`) |
+| `games` | Race card said `Zen · no best yet` not `Zen: the road moves on a key` | Fixed (D75 `875c466`) |
+| `games` | Sudoku icon had a filled cell, not the mockup's digits 5/7/3/9 | Fixed (D75 `875c466`) |
+| `games` | Info box text differed (`Moves use…` vs `Only the cells…`) | Fixed (D75 `875c466`) |
+| `games` | Key bar `BOOT hold: back` vs mockup `BOOT options` | Fixed (D75 `875c466`) |
+| `games` | Dice card missing | Fixed (D75 `875c466`) |
+| `sudoku-*` | Chips use `›` (`U+203A`) between steps; matches mockup | Already matching |
+| `sudoku-*` | Number strip strikethrough, inverted choice, options line | Already matching |
+| `sudoku-*` | Status `7:41` vs mockup `07:41` | Fixed: zero-pad the clock |
+| `tetris-*` | Board, NEXT/SCORE/LINES/BEST/MODE, ghost outline, footer | Already matching |
+| `tetris-*` | Zen note `No gravity: the piece moves only when you press.` | Already matching |
+| `race-play` | DISTANCE/BEST/NITRO, dashed lanes, cones, streaks, speed bar, info | Already matching |
+| `race-crash` | Crash picture, `2.5 km`, `Best 5.1km · 2.6 km to go`, three rows | Already matching |
+| `race-crash` | Key bar `BOOT hold: back` vs mockup `BOOT select` on the rows | Fixed: `BOOT` = back on crash |
+
+Pixel tests: the Sudoku clock zero-pad (a probe of the status bar text),
+the crash key hint labels. Layout-only nits left alone. Open: the
+Tetris/Race side panels sit at the right edge as the mockup does; no
+primitive is missing.
 
 ### D77: A Dice session, so the wiring is a few lines
 
