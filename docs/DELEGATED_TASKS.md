@@ -864,7 +864,43 @@ Home, Photos and Photos: view and choose, previews `home`, `photos`,
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-19`. Compared each figure with headless
+Chrome screenshots of `mockups/index.html` at zoom 1, crops next to the
+preview. **Font note (all tables):** the device uses Inter/Atkinson and
+Literata; the mockup uses system-ui / Iowan / SF Mono. Letterforms and
+exact weights differ everywhere and are not listed per row.
+
+### D78 Games leftovers
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Tetris hub icon | Preview was a 2×2 blob; mockup is a staircase (3 bottom, 2 mid-right, 1 top) | Fixed: staircase at 60/3 cells |
+| Selected hub card | No `▸` at the left edge (`.game.sel::before`) | Fixed: filled triangle (`▸` not in the fonts) |
+| Sudoku givens | Mockup `font-weight:800`; device Heading is Inter SemiBold | Blocked: needs an ExtraBold UI strike at 12–22 px (atlas is SemiBold) |
+| Sudoku step chips | Mockup 13 px chips; preview `CHAR_WIDTH=11` + 16 padding is wider | Blocked: canvas text has no metrics (games canvas docs say so) |
+
+Probe: the Tetris staircase draws six blocks in the mockup's columns.
+
+### D78 Home
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Status bar | `WAVE` / time / battery / wifi | Matches (crop) |
+| Date + weather | `Fri, Oct 2` and `18°C · Partly cloudy` | Matches (crop) |
+| CONTINUE READING | Serif title, bar, `12% · 25 min today` | Matches (layout; sample book name differs) |
+| Menu rows | ▸ + icon + name + right value, Photos selected | Matches after the ▸ fix |
+| Footer | `move` / `open` / `display menu` | Matches (crop) |
+
+### D78 Photos
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Header | Was `PHOTOS` + `/RUSTMIX/PHOTOS ON THE SD CARD` | Fixed: `Photos` + `N · M starred` |
+| Strip | Was `N photos` / `N starred` / page | Fixed: `/PHOTOS` + `Newest first · starred = sleep screen` + page |
+| Grid | 3×2 thumbs, names, ★ badge, selected frame | Matches (crop) |
+| Info line | `name · size · date` | Matches (crop) |
+
+Open: nothing known.
 
 ### D79: Reading and the Bible
 

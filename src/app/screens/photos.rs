@@ -64,15 +64,19 @@ pub fn render_photos(
     draw_header(
         display,
         state.display,
-        "PHOTOS",
-        "/RUSTMIX/PHOTOS ON THE SD CARD",
+        "Photos",
+        &format!(
+            "{} · {} starred",
+            photos.photos.len(),
+            photos.starred_count()
+        ),
     )?;
     draw_status_row(
         display,
         state.display,
         StatusRow {
-            left: &count,
-            middle: &starred,
+            left: "/PHOTOS",
+            middle: "Newest first · starred = sleep screen",
             right: &page,
         },
     )?;
