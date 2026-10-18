@@ -685,7 +685,24 @@ January of the next year, and one finished on 1 January is; a malformed
 date is an error, as other malformed fields are; without a clock
 (`None`) the book is still marked finished.
 
-**Status:** to do.
+**Status:** done. Built: `BookStats` keeps the finish day as
+`Option<Option<u32>>` (`None` not finished, `Some(None)` finished with
+the day unknown, `Some(Some(day))` the finish day). The book line's last
+field is `0`, `1` or `day_label`; old `1` lines load and save unchanged;
+a malformed date is an error. `mark_finished(book, day)` takes
+`Option<u32>` and a second finish keeps the first day.
+`books_finished_between(first, last)` counts only dated finishes in the
+range; `is_finished` still covers every finished book.
+`note_reading_page_turn` passes `self.local_day()`. The Reading Stats
+year row uses `books_finished_between(first_of_year(today), today)`.
+The Reading Stats and Library previews give their sample books dates in
+this year so the count still shows. Tests: a `1` line loads, counts as
+finished, is in no year and saves as `1`; a dated line round-trips and
+counts in its year; finishing twice keeps the first day; 31 December
+counts in its year and not the next, 1 January counts in the new year;
+a malformed date is an error; without a clock the book is finished with
+no day. Open: nothing known. Device check: finish a book and see this
+year's `books finished` go up in Reading Stats.
 
 ### D66: Split an Ogg file into parts without holding it in memory
 

@@ -354,7 +354,7 @@ fn render_sample_reading_stats(preferences: DisplayPreferences, with_data: bool)
                 Some("/sdcard/RUSTMIX/BOOKS/Don Quijote.txt"),
             );
         }
-        stats.mark_finished("/sdcard/RUSTMIX/BOOKS/Other.txt");
+        stats.mark_finished("/sdcard/RUSTMIX/BOOKS/Other.txt", Some(TODAY - 21));
     }
     let current = with_data.then(|| CurrentBook {
         title: "Don Quijote de la Mancha",
@@ -1160,7 +1160,7 @@ fn library_preview_state(tab: crate::reader::ReaderLibraryTab) -> AppState {
         .find(|book| book.title == "Quijote")
         .map(|book| book.path.clone())
         .expect("the sample book is listed");
-    state.reading_stats.mark_finished(&quijote);
+    state.reading_stats.mark_finished(&quijote, Some(20_700));
     state.router.navigate_to(ScreenRoute::Library);
     state
 }
