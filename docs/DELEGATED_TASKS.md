@@ -825,7 +825,27 @@ when tilted; the three frames of a roll are not equal; the command count
 stays under the limit for three dice; `render_ready` is a pure function
 of the state (render twice, same commands).
 
-**Status:** to do.
+**Status:** done on `side-tasks-17`. Built `src/games/dice_view.rs`
+(engine stays pure). New canvas command `Die` (`src/games/canvas.rs`)
+and its drawing in `src/app/screens/lua_game.rs` (rounded square, round
+pips at the mockup's `die-1`..`die-6` centres, dashed rest outline, shear
+for the tilt). `render_ready`, `render_rolling` and `render_options` at
+the mockup's geometry: two 180 px dice at x 50 and 250, the big total,
+`4 + 6` sum line, `Last rolls` chips (52 × 40), the info box and the key
+bars (`● roll · ▲▼ dice · BOOT options · hold: back` and `rolling, keys
+wait`). Rolling keeps the dashed rest seats, the offset sheared dice and
+the motion lines; frames differ; the three-frame strip is on the figure.
+Options has the six rows and the 1/2/3-dice strip. Previews `dice-ready`
+(also `-1`, `-3`, `-large`), `dice-rolling-1..3`, `dice-options` looked at
+enlarged next to the mockup. **Differs and why:** (1) die corners are
+`RoundedRectangle`, not the SVG `rx=17` curve; (2) tilt is a shear plus
+offset, not a rotate transform; (3) the ready preview rolls six times
+first so the history chips show (a fresh engine's history is empty);
+(4) the speaker mark in the status bar is drawn as paper shapes, not the
+mockup's SVG; (5) `LuaEventBridge` is `Static` and the key hints come
+from the session id — the Games hub card and `main.rs` wiring are the
+next round. Command count is well under `MAX_GAME_DRAW_COMMANDS`. Open:
+nothing known.
 
 ### D74: The dice rattle (library only)
 
@@ -865,7 +885,22 @@ that; more dice give more clicks (count them by the peaks); a buffer
 that is not a whole number of frames is refused or truncated to whole
 frames, and the test says which.
 
-**Status:** to do.
+**Status:** done on `side-tasks-17`. Built `src/dice_sound.rs` with
+`pub mod dice_sound;` in `src/lib.rs`; `src/audio/` is unchanged.
+`Rattle::new(seed, dice, frames)` (xorshift, zero seed as `race.rs`) and
+`next_chunk(&mut self, out) -> usize` in `PCM_CHUNK_FRAMES` chunks of
+16-bit stereo PCM at 16 kHz. About 620 ms: 12 to 18 band-limited noise
+clicks (4 ms, growing gaps, falling amplitude) then an 80 ms 120 Hz
+triangle knock, then a 20 ms silent tail. Peak is 12 000 (under half of
+full scale). `duration_ms(dice)` reports the length so a screen can wait
+for the result. A buffer that is not a whole number of frames is
+**truncated** to whole frames (the test says so). Module doc explains the
+clicks, the knock and how to retime them (constants at the top). Tests:
+same seed / different seed, peak bounds, silent tail and early start,
+length equals `duration_ms`, chunks join exactly with a short last one
+and `0` after, more dice more peaks, partial-frame truncation, empty
+buffer. Open: nothing known. Device check: play a rattle through the
+speaker once the main line wires the playback loop.
 
 ## Round 16 tasks (done in v0.12.7)
 
