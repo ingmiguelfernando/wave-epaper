@@ -34,7 +34,8 @@ SCALE = 16
 
 RENDER_MODES = ("mono", "gray", "outline")
 FACE_KEYS = {"source", "axes", "render", "threshold", "tracking"}
-STRIKE_KEYS = {"name", "face", "px", "cap", "line_height"}
+STRIKE_KEYS = {"name", "face", "px", "cap", "line_height", "overrides"}
+OVERRIDE_KEYS = {"advance", "bitmap"}
 
 # Stand-ins for characters a font lacks, tried before the "?" fallback.
 SUBSTITUTES = {"\u00a0": " ", "\u00ad": "-", "\u00b5": "\u03bc"}
@@ -122,6 +123,57 @@ def pack(image):
                     value |= 0x80 >> bit
             rows.append(value)
     return bytes(rows)
+
+
+def pack_rows(rows):
+    """Pack a list of `#`/`.` strings as `pack` does an image."""
+    width = len(rows[0]) if rows else 0
+    height = len(rows)
+    image = Image.new("1", (width, height), 0)
+    pixels = image.load()
+    for y, row in enumerate(rows):
+        for x, cell in enumerate(row):
+            if cell == "#":
+                pixels[x, y] = 1
+            elif cell != ".":
+                fail(f"override row {y!r}: use only # and .")
+    return pack(image)
+
+
+def override_glyph(name, face_name, pixels, character, settings, line_height):
+    """A hand-written glyph from the TOML, or `None` when there is no override.
+
+    Fails, naming the face and size, when the bitmap does not fit the strike.
+    """
+    unknown = set(settings) - OVERRIDE_KEYS
+    if unknown:
+        fail(
+            f"strike {name} override {character!r}: unknown keys {sorted(unknown)}"
+        )
+    rows = settings.get("bitmap")
+    if not rows:
+        fail(f"strike {name} override {character!r}: empty bitmap")
+    widths = {len(row) for row in rows}
+    if len(widths) != 1:
+        fail(f"strike {name} override {character!r}: rows must share one width")
+    width = widths.pop()
+    height = len(rows)
+    if height > line_height:
+        fail(
+            f"strike {name} ({face_name} at {pixels} px): override "
+            f"{character!r} is {height} rows, line height is {line_height}"
+        )
+    if width == 0:
+        fail(f"strike {name} override {character!r}: empty row")
+    advance = settings.get("advance")
+    if not isinstance(advance, int) or advance < width:
+        fail(
+            f"strike {name} override {character!r}: advance must be an "
+            f"integer of at least the bitmap width {width}"
+        )
+    left = (advance - width + 1) // 2
+    # The last row sits on the baseline, as a rasterized glyph's top of -height.
+    return (width, height, advance, left, -height, pack_rows(rows))
 
 
 class Face:
@@ -236,17 +288,25 @@ def build(entry, faces, characters):
         fail(f"strike {name}: unknown face {entry.get('face')!r}")
     strike = strike_for(entry, face)
     fallback = strike.glyph("?")
+    overrides = entry.get("overrides", {})
     glyphs, bitmap, notes = [], bytearray(), []
     for character in characters:
-        substitute = SUBSTITUTES.get(character, "")
-        if face.has(character):
-            glyph = strike.glyph(character)
-        elif face.has(substitute):
-            glyph = strike.glyph(substitute)
-            notes.append(f"U+{ord(character):04X} as U+{ord(substitute):04X}")
+        hand = overrides.get(character)
+        if hand is not None:
+            glyph = override_glyph(
+                name, entry.get("face"), strike.pixels, character, hand, entry["line_height"]
+            )
+            notes.append(f"U+{ord(character):04X} override")
         else:
-            glyph = fallback
-            notes.append(f"U+{ord(character):04X} missing")
+            substitute = SUBSTITUTES.get(character, "")
+            if face.has(character):
+                glyph = strike.glyph(character)
+            elif face.has(substitute):
+                glyph = strike.glyph(substitute)
+                notes.append(f"U+{ord(character):04X} as U+{ord(substitute):04X}")
+            else:
+                glyph = fallback
+                notes.append(f"U+{ord(character):04X} missing")
         width, height, advance, left, top, rows = glyph
         glyphs.append((len(bitmap), width, height, advance, left, top))
         bitmap.extend(rows)

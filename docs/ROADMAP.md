@@ -388,10 +388,6 @@ Done in v0.9.7 (D27); kept as the reference.
   sleep can only wake from RTC GPIOs (0 to 21). BOOT and the wheel qualify,
   and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
   also drives high. Needs research before any change (the study is D70).
-- The `%` sign is broken in the Inter Standard Detail strike (12 px). Task D6
-  found no `fonts.toml` setting that fixes it alone; a fix needs a per-glyph
-  override in the generator (D68). Until then, show percentages in Body
-  size.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics. Reading is done (0.10.4).

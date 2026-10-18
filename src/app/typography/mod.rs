@@ -423,4 +423,30 @@ mod tests {
             preferences.heading_style().line_height() >= preferences.body_style().line_height()
         );
     }
+
+    #[test]
+    fn standard_detail_percent_has_ink_on_the_diagonal_between_its_rings() {
+        use super::assets::INTER_STANDARD_DETAIL;
+        use crate::charset::glyph_index;
+
+        let glyph = INTER_STANDARD_DETAIL.glyphs[glyph_index('%').unwrap()];
+        assert_eq!(
+            (glyph.width, glyph.height),
+            (9, 9),
+            "the hand-drawn % is the rasterized glyph's size"
+        );
+        let stride = (usize::from(glyph.width) + 7) / 8;
+        let offset = glyph.offset as usize;
+        let ink = |row: usize, column: usize| {
+            let byte = INTER_STANDARD_DETAIL.bitmap[offset + row * stride + column / 8];
+            byte & (0x80 >> (column % 8)) != 0
+        };
+        // Two rings at the corners; the slash crosses the rows between them.
+        for row in 2..=6 {
+            assert!(
+                (2..=6).any(|column| ink(row, column)),
+                "row {row} has no slash ink between the rings"
+            );
+        }
+    }
 }

@@ -14,6 +14,12 @@
 # [[outputs]]   One Rust atlas file. Each strike sets `px` (font size in pixels)
 #               or `cap` (capital H height; the smallest size reaching it is
 #               used) and keeps the line height its layouts expect.
+#   overrides   Optional map of one character to a hand-written glyph for that
+#               face at that size: `advance` in pixels and `bitmap`, rows of
+#               `#` (ink) and `.` (paper). Every row must share one width, and
+#               the height must fit the strike's `line_height`. The generator
+#               replaces the rasterized glyph and names the face and size when
+#               the bitmap does not fit.
 
 [sources]
 inter = "https://raw.githubusercontent.com/google/fonts/9710da1eacb3be272583c3224dcb70f9da6eadbb/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
@@ -81,7 +87,9 @@ strikes = [
     { name = "INTER_COMPACT_BODY", face = "inter-medium", px = 13, line_height = 18 },
     { name = "INTER_COMPACT_HEADING", face = "inter-semibold", px = 18, line_height = 24 },
     { name = "INTER_COMPACT_LARGE", face = "inter-semibold", px = 22, line_height = 29 },
-    { name = "INTER_STANDARD_DETAIL", face = "inter-medium", px = 12, line_height = 17 },
+    # Inter's rasterized % at 12 px loses its slash (KNOWN_ISSUES). Two rings
+    # and a diagonal, as wide as that glyph and on its baseline.
+    { name = "INTER_STANDARD_DETAIL", face = "inter-medium", px = 12, line_height = 17, overrides = { "%" = { advance = 12, bitmap = ["##.....##", "##.....##", ".....##..", "....##...", "...##....", "..##.....", ".##......", "##.....##", "##.....##"] } } },
     { name = "INTER_STANDARD_BODY", face = "inter-medium", px = 15, line_height = 20 },
     { name = "INTER_STANDARD_HEADING", face = "inter-semibold", px = 20, line_height = 26 },
     { name = "INTER_STANDARD_LARGE", face = "inter-semibold", px = 24, line_height = 31 },

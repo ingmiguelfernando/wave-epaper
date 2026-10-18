@@ -107,8 +107,8 @@ fn draw_tiles(
             .draw(display)?;
         fit_line(display, label, preferences.detail_style(), bounds, 108)?;
         fit_line(display, value, preferences.heading_style(), bounds, 142)?;
-        // The change label contains '%', which is broken at the Detail size.
-        fit_line(display, sub, preferences.body_style(), bounds, 170)?;
+        // The mockup's sub-label is Detail (D68 restored `%`).
+        fit_line(display, sub, preferences.detail_style(), bounds, 170)?;
     }
     Ok(())
 }
@@ -350,11 +350,11 @@ fn draw_current_book(
     )?;
     let read = stats.book(current.path).map_or(0, |totals| totals.seconds);
     let summary = book_summary(read, current.percent);
-    // The percentage belongs to this Body line, never the Detail size.
+    // The mockup's summary line is Detail (D68 restored `%`).
     fit_line(
         display,
         &summary,
-        preferences.body_style(),
+        preferences.detail_style(),
         bounds,
         top + 102,
     )?;

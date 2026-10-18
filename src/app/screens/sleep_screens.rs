@@ -366,7 +366,7 @@ pub fn render_sleep_weather(
         text_block(
             display,
             day.rain,
-            preferences.body_style(),
+            preferences.detail_style(),
             TextBounds::new(left + 4, layout.rain_y, left + 132, layout.rain_y + 34),
             1,
             true,
@@ -1051,7 +1051,7 @@ mod tests {
                     ),
                     ("23° / 12°", preferences.body_style(), 128, 1, 34),
                     ("Sat", preferences.heading_style(), 128, 1, 36),
-                    ("100%", preferences.body_style(), 128, 1, 34),
+                    ("100%", preferences.detail_style(), 128, 1, 34),
                 ] {
                     let wrapped = style.wrap(text, width);
                     assert!(wrapped.len() <= lines);
@@ -1208,7 +1208,7 @@ mod tests {
                         assert!(layout.details.top >= layout.icon.bottom + 12);
                         assert_eq!(layout.rule_y - layout.details.bottom, 34);
                         assert!(layout.rain_y + 34 < 746);
-                        assert!(i32::from(preferences.body_style().line_height()) <= 34);
+                        assert!(i32::from(preferences.detail_style().line_height()) <= 34);
                     }
                 }
             }

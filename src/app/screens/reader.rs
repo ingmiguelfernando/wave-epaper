@@ -365,8 +365,8 @@ pub fn render_page(
         let week = state.local_day().map_or_else(DayStats::default, |today| {
             state.reading_stats.total(today.saturating_sub(6), today)
         });
-        // Body size keeps the percent glyph whole (KNOWN_ISSUES).
-        let label_style = state.display.body_style();
+        // The mockup's page label is the Detail size (D68 restored `%`).
+        let label_style = state.display.detail_style();
         let full = reader_progress_label(session, week);
         if fits_beside_hints(&full, label_style, width, state.display) {
             full
@@ -378,7 +378,7 @@ pub fn render_page(
     };
     if !footer_label.is_empty() {
         // Same baseline as the bar's words: centred on the bar, cap height down.
-        let label_style = state.display.body_style();
+        let label_style = state.display.detail_style();
         let label_width = label_style.text_width(&footer_label);
         let bar_center = (height - BOTTOM_BAR_HEIGHT + 3 + height) / 2;
         let baseline = bar_center + label_style.cap_height() / 2;
@@ -821,7 +821,7 @@ fn draw_tabs(
 /// row's state on the right (a drawn check for a finished book, the percent,
 /// `Ch. N` for an old EPUB place or `new`), and a bar under the author for a
 /// book in progress. BOOKMARKS rows show their place in the state slot.
-/// Row percents draw in Body size (KNOWN_ISSUES percent glyph).
+/// Row percents draw in Detail size (D68 restored `%`).
 fn draw_book_row(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
@@ -846,8 +846,6 @@ fn draw_book_row(
     )
     .with_color(ink);
     let detail = state.display.detail_style().with_color(ink);
-    // Percent glyphs need Body size (KNOWN_ISSUES).
-    let body = state.display.body_style().with_color(ink);
     let frame = if selected {
         PrimitiveStyle::with_fill(BinaryColor::On)
     } else {
@@ -867,7 +865,7 @@ fn draw_book_row(
     let state_text = row_state_text(state, entry, bookmarks);
     let state_width = state_text
         .as_ref()
-        .map_or(0, |text| body.text_width(text).max(detail.text_width(text)));
+        .map_or(0, |text| detail.text_width(text));
     let column_left;
     let text_width;
     let column_width;
@@ -926,7 +924,7 @@ fn draw_book_row(
             Point::new(column_left, state_baseline - cap - 4),
         )?;
     } else if let Some(text) = state_text {
-        Text::new(&text, Point::new(column_left, state_baseline), body).draw(display)?;
+        Text::new(&text, Point::new(column_left, state_baseline), detail).draw(display)?;
     }
     // The bar under the author marks a book in progress.
     if !bookmarks && entry.location.is_some() {
@@ -1252,7 +1250,7 @@ mod tests {
                 font_family: family,
                 font_size: UiFontSize::Large,
             };
-            let style = preferences.body_style();
+            let style = preferences.detail_style();
             let full = "Ch. 8 · 12% · 9 min left";
             let short = "Ch. 8 · 12%";
             assert!(
@@ -1379,9 +1377,8 @@ mod tests {
                 font_size: UiFontSize::Large,
             };
             let detail = preferences.detail_style();
-            let body = preferences.body_style();
             let chip_width = detail.text_width("EPUB") + 12;
-            let state_width = body.text_width("100%").max(detail.text_width("Ch. 00"));
+            let state_width = detail.text_width("100%").max(detail.text_width("Ch. 00"));
             let (column_left, text_width, _column_width) =
                 super::row_column_layout(chip_width, state_width);
             assert!(

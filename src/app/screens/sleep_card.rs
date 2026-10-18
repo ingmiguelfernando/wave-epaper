@@ -42,7 +42,12 @@ pub fn render_sleep_card(
     }
     centered(display, card.wake_hint, 690, body)?;
     if let Some(percent) = card.battery_percent {
-        centered(display, &format!("Battery {percent}%"), 736, body)?;
+        centered(
+            display,
+            &format!("Battery {percent}%"),
+            736,
+            preferences.detail_style(),
+        )?;
     }
     Ok(())
 }

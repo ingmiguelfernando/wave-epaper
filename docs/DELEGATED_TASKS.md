@@ -726,7 +726,27 @@ between its rings; the previews `sleep-card` and `sleep-weather` at Inter
 Standard, looked at enlarged. Update Known Issues and the roadmap's
 Backlog line.
 
-**Status:** to do.
+**Status:** done on `side-tasks-16`. Built: `fonts.toml` documents the
+`overrides` key (a character map of `advance` and a `#`/`.` bitmap) and
+`generate.py` replaces the rasterized glyph, failing with the face and
+size when the bitmap is too tall for the line height or a row has the
+wrong width. `%` for Inter 12 px is two rings and a diagonal, 9 × 9 as
+the rasterized glyph, advance 12. The atlas was patched by hand to only
+that glyph (regenerating under local Pillow/fontTools rewrote hundreds of
+unrelated Inter and display glyphs; the `fonts` workflow's toolchain is
+the one that matches the committed atlases). Checked the atlas diff with
+`git diff`: only `INTER_STANDARD_DETAIL`'s `%` metrics (`left` 1 → 2),
+its 18 bitmap bytes and the strike summary line. Percentages moved back
+to Detail: the sleep card's battery, the sleep-weather rain row, the
+Reader page label and library row percents, and Reading Stats' change
+label and current-book summary. Not in the files this round leaves alone:
+`src/app/widgets/reading_header.rs` (the reading header's clock and
+battery). Host test `standard_detail_percent_has_ink_on_the_diagonal_between_its_rings`.
+Previews `sleep-card` and `sleep-weather` looked at enlarged: the slash
+reads in `Battery 78%`, `0%`/`80%`/`60%` and the footer `78%`. Known
+Issues' Percent glyph section is gone; the roadmap's Backlog line is
+gone. Open: nothing known. Device check: the sleep card and the sleep
+weather screen on the panel.
 
 ### D69: Voice Notes screens say audio, not WAV
 
