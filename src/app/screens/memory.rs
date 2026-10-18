@@ -171,7 +171,8 @@ mod tests {
         }
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::SettingsSystem);
-        // Memory sits under Device Info.
+        // Memory sits under Check for updates and Device Info.
+        state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::SettingsMemory);

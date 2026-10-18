@@ -1,6 +1,6 @@
 [package]
 name = "waveshare-epd397-rust-app"
-version = "0.13.0"
+version = "0.14.0"
 authors = ["Piyush Daiya"]
 edition = "2021"
 resolver = "2"

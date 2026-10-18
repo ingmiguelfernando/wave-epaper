@@ -1,14 +1,18 @@
 # Wave known issues
 
-Firmware v0.13.0. This is not a list of promised mockup features. See
+Firmware v0.14.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)
 
-The flash has two app slots, but nothing downloads an update yet; update by
-USB as before. The first flash of v0.13.0 must be the full image at `0x0`
-(the partition table changed). A flashed `-app.bin` at `0x0` would erase the
-bootloader: use the merged image there.
+Settings › System › Check for updates installs a newer release over Wi-Fi.
+It needs the full image of v0.13.0 or later flashed once by USB at `0x0`
+(the partition table changed); a flashed `-app.bin` at `0x0` would erase the
+bootloader, so use the merged image there. A release is only offered if its
+tag equals the version inside its image (`v0.14.1` and `0.14.1`), as the
+build makes them. The release is read from the latest GitHub release over
+HTTPS; a rate limit or an outage shows `Cannot reach GitHub`. Nothing checks
+on its own.
 
 ## USB flashing and disappearing serial port
 

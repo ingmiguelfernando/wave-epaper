@@ -302,6 +302,31 @@ light sleep. Restore the owner's original preferences afterward.
    finished` beside this year goes up by one. `STATS.TXT` has a
    `done|<path>|<date>` line for it, and its `book|` line still ends in `1`.
 
+## Update over Wi-Fi (v0.14.0)
+
+Needs two releases: flash v0.14.0 by USB (the v0.13.0 flash notes below
+apply), then publish a tag `v0.14.1` (the tag must equal `Cargo.toml`'s
+version, which sets the version inside the image).
+
+- [ ] Settings › System › Check for updates with Wi-Fi off in the settings of
+   the portal: `No Wi-Fi` and the installed version still 0.14.0.
+- [ ] With Wi-Fi set and v0.14.0 the latest release: `You have the latest
+   version` and the time; Wi-Fi goes off after the check (Network shows Off).
+- [ ] With v0.14.1 published: the screen offers 0.14.1 with its size; with the
+   battery under 30% and no USB, `Download and install` shows `Battery NN%`
+   and nothing downloads.
+- [ ] On USB power, `Download and install`: the percentage climbs, the screen
+   redraws about every 10%, then `Installed and verified`; the boot log has
+   `rustmix-wave=ota status=installed`.
+- [ ] Hold BOOT during the download: `Download stopped`; Device Info still
+   says 0.14.0 and a restart boots it as before.
+- [ ] `Restart now`: the device starts 0.14.1 (Device Info), the log shows
+   `status=image-confirmed result=0` about 30 s later, and Check for updates
+   says `You have the latest version`.
+- [ ] Rollback: publish a release whose image crashes at start (or reset the
+   board three times in the first 30 s of a new image): the bootloader
+   returns to the previous version.
+
 ## Two app slots (v0.13.0), flashed once by USB
 
 - [ ] Flash the merged image at `0x0` from v0.12.x without erasing the flash.

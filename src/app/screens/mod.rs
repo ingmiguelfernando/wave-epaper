@@ -36,6 +36,7 @@ pub mod sleep_card;
 pub mod sleep_screens;
 pub mod sleep_settings;
 pub mod unit_converter;
+pub mod update;
 pub mod voice_notes;
 pub mod weather;
 pub mod weather_settings;
@@ -113,6 +114,7 @@ pub fn render_active_screen(
         ScreenRoute::PowerKeyMenu => power_key::render_power_key_menu(display, state),
         ScreenRoute::DeviceInfo => device_info::render_device_info(display, state),
         ScreenRoute::SettingsMemory => memory::render_settings_memory(display, state),
+        ScreenRoute::Update => update::render_update(display, state),
         ScreenRoute::DeviceInfoBoard => device_info::render_device_info_board(display, state),
         ScreenRoute::DeviceInfoRuntime => device_info::render_device_info_runtime(display, state),
         ScreenRoute::Bible | ScreenRoute::BibleBooks => {

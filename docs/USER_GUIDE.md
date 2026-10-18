@@ -1,6 +1,6 @@
 # Wave user guide
 
-This guide describes firmware v0.13.0: what is implemented, not the future
+This guide describes firmware v0.14.0: what is implemented, not the future
 mockup. Current menus and key handlers are authoritative. For visual
 references, download the `screen-previews` artifact from a green
 [host CI run](https://github.com/ingmiguelfernando/wave-epaper/actions/workflows/ci.yml).
@@ -177,8 +177,21 @@ snooze and dismiss). Hold BOOT returns to Settings.
 
 ### System
 
-A list with **Device Info** (firmware, board and services), **Memory**,
-**Audio**, **Environment** and **Motion**. Hold BOOT returns to Settings.
+A list with **Check for updates**, **Device Info** (firmware, board and
+services), **Memory**, **Audio**, **Environment** and **Motion**. Hold BOOT
+returns to Settings.
+
+**Check for updates** turns Wi-Fi on, reads the latest release from GitHub
+and says whether a newer version exists. Nothing is downloaded until you
+choose **Download and install**, which needs 30% battery or USB power. The
+screen shows four steps (check, download, verify, restart) and a percentage
+that redraws every 10%; hold BOOT cancels. The image is checked (its header,
+its version and its SHA-256 against the release's `SHA256SUMS.txt`) before
+it is selected, and an update that fails for any reason leaves the installed
+version as it was. After **Restart now** the new version starts; if it does
+not run for 30 seconds, the device goes back to the previous version by
+itself. It needs the one-time USB flash of v0.13.0 or later (see the
+README), and Wi-Fi set in Wi-Fi & transfer.
 
 **Memory** shows internal RAM free, its largest free block, the lowest free
 since boot, PSRAM free and its lowest, and the main task's stack margin;

@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-18, firmware v0.13.0.
+Last updated: 2026-10-18, firmware v0.14.0.
 
 ## Status
 
@@ -51,7 +51,8 @@ Last updated: 2026-10-18, firmware v0.13.0.
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
 | Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
 | Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (libraries and previews only) | | PR #16 | Done, merged without a release; wiring is the main line's |
-| Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | | In progress: needs the USB flash once; the download and the Settings screen are slice 2 |
+| Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | PR #17 | Done, waiting for the USB flash and the device test |
+| Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, waiting for device test (needs a newer release to install) |
 | Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | PR #18 | Done, merged without a release; wiring is the main line's |
 | Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | side-tasks-19 | Published (Round 19) |
 
@@ -389,7 +390,8 @@ Done in v0.9.7 (D27); kept as the reference.
   Uploading the image through the Wi-Fi portal also works. The screens are
   drawn in the mockup (`Ajustes y reposo`: System, update available, up to
   date, downloading, installed, refused); slice 2 builds them once the owner
-  approves them.
+  approves them. Built in 0.14.0 (the mockup's "Free slot" column and release
+  date became the release tag and the size).
 - **Safety.**
   - `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`: a new image marks itself valid
     only after reaching Home.
