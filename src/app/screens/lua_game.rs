@@ -445,7 +445,22 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
             .display
             .text_style(UiTextRole::Heading, BinaryColor::Off),
         CanvasTextStyle::Player => player_digit_style(state.display.heading_style()),
+        CanvasTextStyle::Givens => givens_style(state.display),
     }
+}
+
+/// Sudoku givens: Inter ExtraBold at the cell's digit size (mockup 800).
+fn givens_style(preferences: crate::app::display::DisplayPreferences) -> UiTextStyle {
+    use crate::app::display::UiFontSize;
+    use crate::app::typography::{
+        INTER_COMPACT_GIVENS, INTER_LARGE_GIVENS, INTER_STANDARD_GIVENS,
+    };
+    let font = match preferences.font_size {
+        UiFontSize::Compact => &INTER_COMPACT_GIVENS,
+        UiFontSize::Standard => &INTER_STANDARD_GIVENS,
+        UiFontSize::Large => &INTER_LARGE_GIVENS,
+    };
+    UiTextStyle::new(font, BinaryColor::On)
 }
 
 /// One die as the mockup's `die-N` symbols: a rounded square with a thick

@@ -76,6 +76,13 @@ axes = { wght = 800, opsz = 32 }
 render = "gray"
 threshold = 128
 
+# UI ExtraBold (the mockup's weight 800) for Sudoku givens.
+[faces.inter-extrabold-ui]
+source = "inter"
+axes = { wght = 800, opsz = 14 }
+render = "gray"
+threshold = 128
+
 # UI roles: Detail and Body use the regular weight, Heading and Large the bold
 # one. Sizes and line heights match the original ASCII atlases.
 [[outputs]]
@@ -97,6 +104,10 @@ strikes = [
     { name = "INTER_LARGE_BODY", face = "inter-medium", px = 17, line_height = 23 },
     { name = "INTER_LARGE_HEADING", face = "inter-semibold", px = 22, line_height = 29 },
     { name = "INTER_LARGE_LARGE", face = "inter-semibold", px = 26, line_height = 34 },
+    # Sudoku givens: the mockup's weight 800 at the cell's digit size.
+    { name = "INTER_COMPACT_GIVENS", face = "inter-extrabold-ui", px = 18, line_height = 24 },
+    { name = "INTER_STANDARD_GIVENS", face = "inter-extrabold-ui", px = 24, line_height = 31 },
+    { name = "INTER_LARGE_GIVENS", face = "inter-extrabold-ui", px = 28, line_height = 35 },
     { name = "ATKINSON_COMPACT_DETAIL", face = "atkinson-regular", px = 11, line_height = 13 },
     { name = "ATKINSON_COMPACT_BODY", face = "atkinson-regular", px = 13, line_height = 15 },
     { name = "ATKINSON_COMPACT_HEADING", face = "atkinson-bold", px = 18, line_height = 20 },

@@ -33,7 +33,6 @@ const PICK_HEIGHT: i32 = 52;
 const PICK_GAP: i32 = 4;
 const PICK_LEFT: i32 = (GAME_CANVAS_WIDTH - (10 * PICK_WIDTH + 9 * PICK_GAP)) / 2;
 /// Canvas text has no metrics, so chips are sized from a generous advance.
-const CHAR_WIDTH: i32 = 11;
 const SUDOKU_PICK_RECT: DirtyRect = DirtyRect::new(
     PICK_LEFT,
     PICK_TOP,
@@ -700,7 +699,7 @@ impl SudokuGame {
             }
             let (x, y) = cell_origin(index);
             let style = if self.givens[index] {
-                CanvasTextStyle::Heading
+                CanvasTextStyle::Givens
             } else {
                 CanvasTextStyle::Player
             };
@@ -742,25 +741,31 @@ impl SudokuGame {
     }
 
     /// `1 · ROW › 2 · CELL › 3 · NUMBER`, centered, the current chip inverted.
+    /// Labels use Detail (the mockup's 13 px chips) and `text_center` so the
+    /// device measures with the real font.
     fn draw_step_strip(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         const STEPS: [SudokuStep; 3] = [SudokuStep::Row, SudokuStep::Cell, SudokuStep::Number];
-        const ARROW: i32 = 24;
+        const ARROW: i32 = 18;
         let total = STEPS.iter().map(|&step| chip_width(step)).sum::<i32>() + 2 * ARROW;
         let mut x = (GAME_CANVAS_WIDTH - total) / 2;
         for step in STEPS {
             let width = chip_width(step);
             let label = step.chip_label().to_string();
             if step == self.step {
-                canvas.rect(x, 56, width, 30, true)?;
-                canvas.text(x + 8, 77, label, CanvasTextStyle::Inverse)?;
+                canvas.rect(x, 56, width, 28, true)?;
+                canvas.text_center(x + width / 2, 77, label, CanvasTextStyle::Inverse)?;
             } else {
-                canvas.rect(x, 56, width, 30, false)?;
-                canvas.rect(x + 1, 57, width - 2, 28, false)?;
-                canvas.text(x + 8, 77, label, CanvasTextStyle::Body)?;
+                canvas.rect(x, 56, width, 28, false)?;
+                canvas.text_center(x + width / 2, 77, label, CanvasTextStyle::Detail)?;
             }
             x += width;
             if step != SudokuStep::Number {
-                canvas.text(x + 8, 77, "\u{203a}".into(), CanvasTextStyle::Body)?;
+                canvas.text_center(
+                    x + ARROW / 2,
+                    77,
+                    "\u{203a}".into(),
+                    CanvasTextStyle::Detail,
+                )?;
                 x += ARROW;
             }
         }
@@ -882,7 +887,8 @@ fn cell_origin(index: usize) -> (i32, i32) {
 }
 
 fn chip_width(step: SudokuStep) -> i32 {
-    step.chip_label().chars().count() as i32 * CHAR_WIDTH + 16
+    // Detail-size labels (the mockup's 13 px chips); 8 px padding a side.
+    step.chip_label().chars().count() as i32 * 8 + 16
 }
 
 /// The highlight of a snapshot: the row band during the Row step, otherwise

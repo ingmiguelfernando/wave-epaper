@@ -13,6 +13,7 @@ use super::display::{DisplayPreferences, UiFontFamily, UiFontSize};
 use crate::charset::glyph_index;
 
 mod assets;
+pub use assets::{INTER_COMPACT_GIVENS, INTER_LARGE_GIVENS, INTER_STANDARD_GIVENS};
 
 /// Atlas index of `?`, drawn for characters the fonts do not contain.
 const FALLBACK_GLYPH: usize = '?' as usize - 0x20;

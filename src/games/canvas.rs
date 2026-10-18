@@ -16,6 +16,8 @@ pub enum CanvasTextStyle {
     InverseHeading,
     /// The player's digits: a lighter book face, mapped to the Reader body style.
     Player,
+    /// Sudoku givens: the mockup's weight 800.
+    Givens,
 }
 
 /// Named sprite shapes the game canvas draws in one command, from the
@@ -68,6 +70,7 @@ impl CanvasTextStyle {
             "inverse" => Some(Self::Inverse),
             "inverse-heading" => Some(Self::InverseHeading),
             "player" => Some(Self::Player),
+            "givens" => Some(Self::Givens),
             _ => None,
         }
     }
