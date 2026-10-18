@@ -73,6 +73,7 @@ mod firmware {
             espidf::NetworkRuntime, NetworkLogFingerprint, NetworkSnapshot, WifiConnectionState,
         },
         network_config::{NetworkConfig, WIFI_CONFIG_PATH},
+        ota::should_mark_valid,
         panel_refresh::{
             PanelGlobalReason, PanelRefreshCoordinator, PanelRefreshPlan, PanelRefreshRequest,
             PANEL_PARTIAL_REFRESH_LIMIT,
@@ -693,7 +694,21 @@ mod firmware {
         let mut last_imu_event_screen_refresh = Instant::now();
         let mut weather_retry = WeatherRetryState::default();
         let mut last_voice_record_refresh = Instant::now();
+        // A new image stays pending until it has run for a while; a reset
+        // before then makes the bootloader return to the previous one.
+        let mut ota_confirmed = false;
         loop {
+            if !ota_confirmed
+                && should_mark_valid(
+                    u64::try_from(uptime.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    false,
+                )
+            {
+                ota_confirmed = true;
+                // SAFETY: no arguments; the call only updates otadata.
+                let result = unsafe { sys::esp_ota_mark_app_valid_cancel_rollback() };
+                info!("rustmix-wave=ota status=image-confirmed result={result}");
+            }
             maintain_wifi_transfer_server(
                 &mut wifi_transfer_server,
                 &mut state,

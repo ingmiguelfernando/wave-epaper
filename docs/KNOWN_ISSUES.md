@@ -1,7 +1,14 @@
 # Wave known issues
 
-Firmware v0.12.7. This is not a list of promised mockup features. See
+Firmware v0.13.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
+
+## Updates over the air (v0.13.0)
+
+The flash has two app slots, but nothing downloads an update yet; update by
+USB as before. The first flash of v0.13.0 must be the full image at `0x0`
+(the partition table changed). A flashed `-app.bin` at `0x0` would erase the
+bootloader: use the merged image there.
 
 ## USB flashing and disappearing serial port
 

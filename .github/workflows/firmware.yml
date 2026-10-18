@@ -95,6 +95,8 @@ jobs:
           mkdir -p dist
           # Bootloader, partition table and app in a single image that is flashed at offset 0x0.
           espflash save-image --chip esp32s3 --merge --skip-padding --flash-size 16mb "$APP_ELF" "dist/wave-epaper-$VERSION.bin"
+          # The app image alone: what an over-the-air update writes to a slot.
+          espflash save-image --chip esp32s3 --flash-size 16mb "$APP_ELF" "dist/wave-epaper-$VERSION-app.bin"
           cp "$APP_ELF" "dist/wave-epaper-$VERSION.elf"
           (cd dist && sha256sum ./* > SHA256SUMS.txt)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"

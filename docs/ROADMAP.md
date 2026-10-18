@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-18, firmware v0.12.7.
+Last updated: 2026-10-18, firmware v0.13.0.
 
 ## Status
 
@@ -51,6 +51,7 @@ Last updated: 2026-10-18, firmware v0.12.7.
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
 | Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
 | Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (libraries and previews only) | | PR #16 | Done, merged without a release; wiring is the main line's |
+| Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | | In progress: needs the USB flash once; the download and the Settings screen are slice 2 |
 | Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | side-tasks-18 | Published (Round 18) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
@@ -371,11 +372,17 @@ Done in v0.9.7 (D27); kept as the reference.
 
 ## Phase 8: OTA updates
 
-- **Partitions.** A custom `partitions.csv` with `nvs`, `otadata`, `phy_init`,
-  `ota_0` and `ota_1` (about 6 MB each). Moving to it needs one USB flash, and
-  the README must say so.
-- **Release assets.** `firmware.yml` also publishes the app-only image used by
-  OTA.
+- **Partitions.** Done in 0.13.0: `partitions.csv` with `nvs` (same place and
+  size as before, so the AI keys survive), `phy_init`, `otadata`, `ota_0` and
+  `ota_1` (6 MB each). Moving to it needs one USB flash; the README says so.
+- **Release assets.** Done in 0.13.0: `firmware.yml` also publishes
+  `wave-epaper-<tag>-app.bin`, the app-only image used by OTA.
+- **Rollback.** Done in 0.13.0: `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; the
+  running image marks itself valid after 30 s of uptime (`ota.rs`,
+  `main.rs`), so a reset before then returns to the previous image.
+- **Decisions in `src/ota.rs`** (host-tested, no network): the latest
+  release's JSON, version comparison, the app asset, the battery gate and
+  the check of an image's header and version before it is written.
 - **Update source.** Settings › System › Check for updates reads the latest
   GitHub release over HTTPS (certificate bundle) and downloads the app image.
   Uploading the image through the Wi-Fi portal also works.
