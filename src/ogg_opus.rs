@@ -335,12 +335,16 @@ pub struct OggOpusStream {
     pub packets: Vec<Vec<u8>>,
 }
 
-/// Read every complete packet. A cut or damaged page ends the stream without
-/// an error for the pages before it. The `OpusHead` and `OpusTags` packets
-/// are not returned as audio.
-pub fn read_stream(reader: &mut impl Read) -> io::Result<OggOpusStream> {
-    let mut head = None;
-    let mut packets: Vec<Vec<u8>> = Vec::new();
+/// Walk every complete audio packet: `visit` sees each one in order. The
+/// `OpusHead` and `OpusTags` packets are not visited. A cut or damaged page
+/// ends the walk without an error for the packets before it. Returns the
+/// head (default when the stream has none) and how many packets were seen.
+fn walk_packets(
+    reader: &mut impl Read,
+    mut visit: impl FnMut(&[u8]) -> io::Result<()>,
+) -> io::Result<(OpusHead, usize)> {
+    let mut head = OpusHead::default();
+    let mut count = 0;
     let mut pending: Vec<u8> = Vec::new();
     let mut started = false;
     loop {
@@ -352,10 +356,7 @@ pub fn read_stream(reader: &mut impl Read) -> io::Result<OggOpusStream> {
         for &lace in &page.segment_table {
             let take = usize::from(lace);
             if offset + take > page.body.len() {
-                return Ok(OggOpusStream {
-                    head: head.unwrap_or_default(),
-                    packets,
-                });
+                return Ok((head, count));
             }
             let piece = &page.body[offset..offset + take];
             offset += take;
@@ -370,7 +371,7 @@ pub fn read_stream(reader: &mut impl Read) -> io::Result<OggOpusStream> {
                 // A complete packet.
                 if !started {
                     if let Some(parsed) = OpusHead::parse(&pending) {
-                        head = Some(parsed);
+                        head = parsed;
                         pending.clear();
                         continue;
                     }
@@ -383,14 +384,32 @@ pub fn read_stream(reader: &mut impl Read) -> io::Result<OggOpusStream> {
                     pending.clear();
                     continue;
                 }
-                packets.push(core::mem::take(&mut pending));
+                let packet = core::mem::take(&mut pending);
+                visit(&packet)?;
+                count += 1;
             }
         }
     }
-    Ok(OggOpusStream {
-        head: head.unwrap_or_default(),
-        packets,
-    })
+    Ok((head, count))
+}
+
+/// Read every complete packet. A cut or damaged page ends the stream without
+/// an error for the pages before it. The `OpusHead` and `OpusTags` packets
+/// are not returned as audio.
+pub fn read_stream(reader: &mut impl Read) -> io::Result<OggOpusStream> {
+    let mut packets: Vec<Vec<u8>> = Vec::new();
+    let (head, _) = walk_packets(reader, |packet| {
+        packets.push(packet.to_vec());
+        Ok(())
+    })?;
+    Ok(OggOpusStream { head, packets })
+}
+
+/// Read the pages once and count the audio packets (the head and tags are
+/// not counted). A cut or damaged page ends the count without an error for
+/// the pages before it, as `read_stream` does.
+pub fn count_packets(reader: &mut impl Read) -> io::Result<(OpusHead, usize)> {
+    walk_packets(reader, |_| Ok(()))
 }
 
 /// Duration in milliseconds from the last page's granule less the pre-skip,
@@ -429,6 +448,21 @@ pub fn duration_ms(reader: &mut (impl Read + Seek), pre_skip: u16) -> io::Result
     }))
 }
 
+/// How many packets go in each balanced part: `(count, size)` packets per
+/// part, the way `ai_client::wav_parts` splits a recording, so none is a
+/// short tail. An empty stream is `(0, 0)`.
+fn balanced_shape(total: usize, max_seconds: u32) -> (usize, usize) {
+    if total == 0 {
+        return (0, 0);
+    }
+    let limit = (max_seconds as usize)
+        .saturating_mul(PACKETS_PER_SECOND)
+        .max(1);
+    let count = total.div_ceil(limit);
+    let size = total.div_ceil(count);
+    (count, size)
+}
+
 /// Split a stream into complete Ogg Opus files of at most `max_seconds` of
 /// packets each (50 a second). The parts hold balanced packet counts, the
 /// way `ai_client::wav_parts` splits a recording, so none is a short tail.
@@ -437,17 +471,9 @@ pub fn duration_ms(reader: &mut (impl Read + Seek), pre_skip: u16) -> io::Result
 /// the number. A packet too big for one Ogg page (read from a damaged file)
 /// is an error, not a panic.
 pub fn split_parts(stream: &OggOpusStream, max_seconds: u32) -> io::Result<Vec<Vec<u8>>> {
-    let total = stream.packets.len();
-    if total == 0 {
-        return Ok(Vec::new());
-    }
-    let limit = (max_seconds as usize)
-        .saturating_mul(PACKETS_PER_SECOND)
-        .max(1);
-    let count = total.div_ceil(limit);
-    let size = total.div_ceil(count);
-    let mut parts = Vec::with_capacity(count);
-    for chunk in stream.packets.chunks(size) {
+    let (_, size) = balanced_shape(stream.packets.len(), max_seconds);
+    let mut parts = Vec::new();
+    for chunk in stream.packets.chunks(size.max(1)) {
         let mut writer = OggOpusWriter::new(Vec::new(), stream.head, 0)?;
         for packet in chunk {
             writer.write_packet(packet)?;
@@ -458,14 +484,62 @@ pub fn split_parts(stream: &OggOpusStream, max_seconds: u32) -> io::Result<Vec<V
     Ok(parts)
 }
 
+/// Split an Ogg Opus file into balanced parts without holding the stream in
+/// memory: count the packets, rewind, then write each packet to a complete
+/// Ogg Opus file through `make_part(index)`. Each part is finished before
+/// the next starts. At most one page and one packet are held at a time.
+/// Returns the number of parts; an empty stream calls `make_part` zero
+/// times. Errors from `make_part` or a writer are returned.
+pub fn split_file<W: Write>(
+    reader: &mut (impl Read + Seek),
+    max_seconds: u32,
+    mut make_part: impl FnMut(usize) -> io::Result<W>,
+) -> io::Result<usize> {
+    let (head, total) = count_packets(reader)?;
+    reader.seek(SeekFrom::Start(0))?;
+    let (_, size) = balanced_shape(total, max_seconds);
+    if total == 0 {
+        return Ok(0);
+    }
+    let size = size.max(1);
+    let mut current: Option<OggOpusWriter<W>> = None;
+    let mut in_part = 0;
+    let mut opened = 0;
+    walk_packets(reader, |packet| {
+        if in_part == size {
+            if let Some(mut done) = current.take() {
+                done.finish()?;
+            }
+            in_part = 0;
+        }
+        if current.is_none() {
+            current = Some(OggOpusWriter::new(make_part(opened)?, head, 0)?);
+            opened += 1;
+        }
+        if let Some(writer) = current.as_mut() {
+            writer.write_packet(packet)?;
+        }
+        in_part += 1;
+        Ok(())
+    })?;
+    if let Some(mut done) = current.take() {
+        done.finish()?;
+    }
+    Ok(opened)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        duration_ms, lacing_values, ogg_crc, opus_tags_bytes, read_stream, split_parts,
-        OggOpusStream, OggOpusWriter, OpusHead, FLAG_BOS, FLAG_EOS, PACKETS_PER_SECOND,
-        SAMPLES_PER_PACKET,
+        count_packets, duration_ms, lacing_values, ogg_crc, opus_tags_bytes, read_stream,
+        split_file, split_parts, OggOpusStream, OggOpusWriter, OpusHead, FLAG_BOS, FLAG_EOS,
+        PACKETS_PER_SECOND, SAMPLES_PER_PACKET,
     };
-    use std::io::Cursor;
+    use std::{
+        cell::RefCell,
+        io::{Cursor, Write},
+        rc::Rc,
+    };
 
     #[test]
     fn crc_matches_the_check_value() {
@@ -743,5 +817,146 @@ mod tests {
             packets: vec![sample_packet(0), vec![0x55; 255 * 255]],
         };
         assert!(split_parts(&stream, 600).is_err());
+    }
+
+    /// A `Write` that stores each part in a shared list, so the test can
+    /// compare the bytes after `split_file` drops its writers.
+    struct SlotWriter {
+        parts: Rc<RefCell<Vec<Vec<u8>>>>,
+        index: usize,
+    }
+
+    impl Write for SlotWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.parts.borrow_mut()[self.index].extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Run `split_file` over `bytes`, collecting each part.
+    fn split_file_collect(bytes: &[u8], max_seconds: u32) -> Vec<Vec<u8>> {
+        let parts = Rc::new(RefCell::new(Vec::new()));
+        let mut cursor = Cursor::new(bytes);
+        let opened = split_file(&mut cursor, max_seconds, |index| {
+            parts.borrow_mut().push(Vec::new());
+            Ok(SlotWriter {
+                parts: parts.clone(),
+                index,
+            })
+        })
+        .unwrap();
+        let collected = parts.borrow().clone();
+        assert_eq!(opened, collected.len());
+        collected
+    }
+
+    /// Bytes of a stream of `count` packets of `packet_len`.
+    fn file_of(count: usize, packet_len: usize) -> Vec<u8> {
+        let mut writer =
+            OggOpusWriter::new(Cursor::new(Vec::new()), OpusHead::default(), 7).unwrap();
+        for index in 0..count {
+            writer
+                .write_packet(&vec![0xA0 | (index as u8 & 0x0F); packet_len])
+                .unwrap();
+        }
+        writer.finish().unwrap();
+        writer.inner.into_inner()
+    }
+
+    #[test]
+    fn split_file_matches_split_parts_byte_for_byte() {
+        for count in [1_usize, 29_999, 30_000, 30_001, 60_001] {
+            let bytes = file_of(count, 40);
+            let stream = read_stream(&mut Cursor::new(bytes.clone())).unwrap();
+            let expected = split_parts(&stream, 600).unwrap();
+            let got = split_file_collect(&bytes, 600);
+            assert_eq!(got.len(), expected.len(), "count {count}");
+            for (index, (a, b)) in got.iter().zip(&expected).enumerate() {
+                assert_eq!(a, b, "count {count} part {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn packets_that_cross_a_page_split_the_same_way() {
+        // 2000-byte packets need many segments each; the writer puts a few
+        // per page, so packets continue across the page boundary.
+        let bytes = file_of(120, 2000);
+        let stream = read_stream(&mut Cursor::new(bytes.clone())).unwrap();
+        assert_eq!(stream.packets.len(), 120);
+        let expected = split_parts(&stream, 2).unwrap();
+        let got = split_file_collect(&bytes, 2);
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn a_cut_file_gives_the_parts_of_the_complete_packets_before_the_cut() {
+        let bytes = file_of(120, 40);
+        let mut cut = bytes.clone();
+        cut.truncate(cut.len() - 10);
+        let stream = read_stream(&mut Cursor::new(cut.clone())).unwrap();
+        let expected = split_parts(&stream, 2).unwrap();
+        let got = split_file_collect(&cut, 2);
+        assert_eq!(got, expected);
+        assert!(!got.is_empty());
+    }
+
+    #[test]
+    fn an_empty_stream_calls_make_part_zero_times() {
+        let empty = file_of(0, 40);
+        let mut calls = 0;
+        let mut cursor = Cursor::new(empty);
+        let opened = split_file(&mut cursor, 600, |_| {
+            calls += 1;
+            Ok(Vec::new())
+        })
+        .unwrap();
+        assert_eq!(opened, 0);
+        assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn an_error_from_make_part_or_a_writer_is_returned() {
+        let bytes = file_of(10, 40);
+        let mut cursor = Cursor::new(bytes.clone());
+        let error = split_file(&mut cursor, 600, |_| {
+            Err::<Vec<u8>, _>(std::io::Error::new(std::io::ErrorKind::Other, "no file"))
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+
+        struct Fails;
+        impl Write for Fails {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "disk full"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut cursor = Cursor::new(bytes);
+        let error = split_file(&mut cursor, 600, |_| Ok(Fails)).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn count_packets_matches_read_stream_and_stops_at_a_cut() {
+        let bytes = file_of(120, 40);
+        let mut cursor = Cursor::new(bytes.clone());
+        let (head, count) = count_packets(&mut cursor).unwrap();
+        let stream = read_stream(&mut Cursor::new(bytes.clone())).unwrap();
+        assert_eq!(head, stream.head);
+        assert_eq!(count, stream.packets.len());
+
+        let mut cut = bytes;
+        cut.truncate(cut.len() - 10);
+        let (_, cut_count) = count_packets(&mut Cursor::new(cut.clone())).unwrap();
+        assert_eq!(
+            cut_count,
+            read_stream(&mut Cursor::new(cut)).unwrap().packets.len()
+        );
     }
 }

@@ -735,7 +735,22 @@ cut in the middle of a page gives the parts of the complete packets
 before the cut; an empty stream calls `make_part` zero times; an error
 from `make_part` or from a writer is returned, not swallowed.
 
-**Status:** to do.
+**Status:** done. Built: `count_packets(reader)` walks the pages once and
+counts audio packets (head and tags excluded), stopping at a cut or
+damaged page as `read_stream` does. `split_file(reader, max_seconds,
+make_part)` counts, rewinds, then writes each packet to a complete Ogg
+Opus file through `make_part(index)`; each part is finished before the
+next starts, at most one page and one packet are held, and it returns
+the number of parts. An empty stream calls `make_part` zero times.
+Errors from `make_part` or a writer are returned (no `expect`).
+`split_parts` stays as the reference; both use one `balanced_shape`.
+`read_stream` and the new walk share one packet path. Tests: `split_file`
+into `Vec<u8>` writers is byte for byte `split_parts` for 1, 29 999,
+30 000, 30 001 and 60 001 packets at 600 s; packets that cross a page
+split the same way; a cut file gives the complete packets before the
+cut; empty calls `make_part` zero times; `make_part` and writer errors
+are returned. Open: nothing known. Device check: none yet (the encoder
+is wired later).
 
 ### D67: Voice note text for an Ogg note
 
