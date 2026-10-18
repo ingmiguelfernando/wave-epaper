@@ -886,7 +886,22 @@ a tick with nothing due returns the next due time and no redraw; the
 tenth roll asks for a full refresh and the ninth does not; every `Output`
 for a fixed script of events is the same on two runs.
 
-**Status:** to do.
+**Status:** done on `side-tasks-18`. Built `src/games/dice_session.rs`
+(`pub mod dice_session;` in `games/mod.rs`). `DiceSession::new(seed,
+options)` with `on_shake`, `on_key` (`Select`/`Up`/`Down`/`BootShort`/
+`BootHold`) and `tick`, each returning `Output { redraw, rattle,
+next_tick, ended }`. Shake rolls only on Ready with Shake to roll on and
+outside `SHAKE_COOLDOWN_MS` (900, named here with a comment for
+`imu_events.rs`); a key rolls even with shaking off. Frame times are
+`knock * i / FRAMES` inside `dice_sound::duration_ms`, so the last lands
+with the knock; Sound off keeps the same timing. `Options` (dice, sound,
+shake, `Strength` → `shake_delta_mg` 300/420/550) is returned for the
+caller to save. No drawing, audio, IMU or clock. Tests: shake and
+cooldown, key roll without shake, increasing frame times with the last
+at the knock, sound-off timing, Options swallowing shakes, mid-roll
+count waits, hold Boot from every screen, tick with nothing due, tenth
+roll full refresh, the same event script twice, strength mapping. Open:
+nothing known.
 
 ## Round 17 tasks (done, merged without a release)
 
