@@ -188,6 +188,13 @@ canvas.full{position:absolute;inset:0;width:480px;height:800px;image-rendering:p
 .road{display:block;width:448px;margin:10px 16px 0}
 .rstats{display:flex;justify-content:space-between;margin:12px 16px 0}
 .rstats b{display:block;font-size:26px}
+.upd{margin:22px 16px 0;text-align:center}
+.upd .v{display:block;font:800 64px/1.05 "SF Mono",Menlo,Consolas,monospace;letter-spacing:-2px}
+.upd .arrow{display:block;font-size:22px;font-weight:800;margin:4px 0}
+.upd .sub{font-size:17px;font-weight:600;margin-top:8px}
+.pct{margin-top:36px;text-align:center;font:800 130px/1 "SF Mono",Menlo,Consolas,monospace;letter-spacing:-4px}
+.big{height:26px;margin:22px 16px 0;border:3px solid currentColor}
+.big i{display:block;height:100%;background:currentColor}
 .dice{display:block;width:448px;margin:14px 16px 0}
 .total{text-align:center;font:800 112px/1 "SF Mono",Menlo,Consolas,monospace;letter-spacing:-4px;margin-top:6px}
 .sumline{text-align:center;font-size:20px;font-weight:700;margin-top:6px}
@@ -785,6 +792,100 @@ canvas.full{position:absolute;inset:0;width:480px;height:800px;image-rendering:p
   <div class="set"><div><div class="t">System</div><div class="d">Version, SD, memory, OTA</div></div><div class="v">v0.2</div></div>
   <div class="ft"><span><i class="k">▲▼</i>move</span><span><i class="k">●</i>open</span><span><i class="k">BOOT</i>hold: back</span></div>
 </div></div><figcaption><b>Settings</b>Todo en inglés y agrupado. El Wi-Fi viene apagado y se enciende solo cuando algo lo necesita.</figcaption></figure>
+
+<!-- Settings › System -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Settings › System</span><span class="r">v0.13.0</span></div>
+  <div class="set sel"><div><div class="t">Check for updates</div><div class="d">GitHub releases, over Wi-Fi</div></div><div class="v">v0.13.0</div></div>
+  <div class="set"><div><div class="t">Device Info</div><div class="d">Firmware, board and services</div></div><div class="v"></div></div>
+  <div class="set"><div><div class="t">Memory</div><div class="d">RAM, PSRAM and stack margin</div></div><div class="v"></div></div>
+  <div class="set"><div><div class="t">Audio</div><div class="d">Speaker test and alarm chime</div></div><div class="v"></div></div>
+  <div class="set"><div><div class="t">Environment</div><div class="d">Temperature and humidity</div></div><div class="v"></div></div>
+  <div class="set"><div><div class="t">Motion</div><div class="d">Accelerometer and gyroscope</div></div><div class="v"></div></div>
+  <div class="ft"><span><i class="k">▲▼</i>move</span><span><i class="k">●</i>open</span><span><i class="k">BOOT</i>hold: back</span></div>
+</div></div><figcaption><b>Settings › System</b>La primera fila es nueva: abre la búsqueda de actualizaciones y muestra la versión instalada. Nada se descarga solo; todo empieza cuando tú lo pides.</figcaption></figure>
+
+<!-- Update: available -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Check for updates</span><span class="r">12:04</span></div>
+  <div class="upd">
+    <div class="lbl">Installed</div><span class="v" style="font-size:44px">0.13.0</span>
+    <span class="arrow">▼</span>
+    <div class="lbl">Available</div><span class="v">0.13.1</span>
+    <div class="sub">3.2 MB · released Oct 20</div>
+  </div>
+  <div class="rstats" style="margin:22px 16px 0">
+    <div><div class="lbl">Wi-Fi</div><b style="font-size:20px">HomeNet</b></div>
+    <div><div class="lbl">Battery</div><b style="font-size:20px">78%</b></div>
+    <div><div class="lbl">Free slot</div><b style="font-size:20px">ota_1</b></div>
+  </div>
+  <div class="kv sel" style="margin-top:22px;border-top:2px solid var(--ink)">Download and install <span class="v">3.2 MB</span></div>
+  <div class="kv">Check again <span class="v"></span></div>
+  <div class="kv">Back <span class="v"></span></div>
+  <div class="infobox">Takes about two minutes. The version you have now stays on the device until the new one has started correctly.</div>
+  <div class="ft"><span><i class="k">▲▼</i>choose</span><span><i class="k">●</i>select</span><span><i class="k">BOOT</i>hold: back</span></div>
+</div></div><figcaption><b>Actualización disponible</b>Compara la versión instalada con la última de GitHub, muestra el tamaño y comprueba antes la batería (30 % o USB) y el Wi-Fi. «Free slot» es el hueco donde se escribe; el actual no se toca.</figcaption></figure>
+
+<!-- Update: up to date -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Check for updates</span><span class="r">12:04</span></div>
+  <div class="upd" style="margin-top:70px">
+    <svg viewBox="0 0 60 60" style="width:96px;height:96px" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle cx="30" cy="30" r="26"/><path d="M17 31l9 9 17-19"/></svg>
+    <span class="v" style="margin-top:14px;font-size:44px">0.13.0</span>
+    <div class="sub" style="font-size:22px;font-weight:800;margin-top:10px">You have the latest version</div>
+    <div class="sub">Checked today at 12:04</div>
+  </div>
+  <div class="kv sel" style="margin-top:60px;border-top:2px solid var(--ink)">Check again <span class="v"></span></div>
+  <div class="kv">Back <span class="v"></span></div>
+  <div class="infobox">Wi-Fi is turned on only for the check and goes off again when it ends.</div>
+  <div class="ft"><span><i class="k">▲▼</i>choose</span><span><i class="k">●</i>select</span><span><i class="k">BOOT</i>hold: back</span></div>
+</div></div><figcaption><b>Al día</b>Si no hay nada nuevo lo dice y apaga el Wi-Fi. También se muestra cuando la versión instalada es más nueva que la publicada (una compilación tuya).</figcaption></figure>
+
+<!-- Update: downloading -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Updating to 0.13.1</span><span class="r">78%</span></div>
+  <div class="chips" style="margin:14px 0 0"><span class="chip">1 · CHECK</span><span class="chip on">2 · DOWNLOAD</span><span class="chip">3 · VERIFY</span><span class="chip">4 · RESTART</span></div>
+  <div class="pct">42%</div>
+  <div class="big"><i style="width:42%"></i></div>
+  <div style="text-align:center;font-size:20px;font-weight:700;margin-top:14px">1.3 of 3.2 MB</div>
+  <div style="text-align:center;font-size:15px;margin-top:4px">about 1 min left</div>
+  <div class="infobox" style="margin-top:36px"><b>Do not turn the device off.</b> It writes to the free slot; if the power fails, the current version still starts. The screen refreshes every 10% to save battery.</div>
+  <div class="ft"><span><i class="k">BOOT</i>hold: cancel</span></div>
+</div></div><figcaption><b>Descargando</b>Una barra y un porcentaje, y cuatro pasos: buscar, descargar, verificar (tamaño, cabecera y suma SHA-256) y reiniciar. Se redibuja cada 10 % para gastar poca batería. Mantener BOOT cancela sin dejar nada a medias.</figcaption></figure>
+
+<!-- Update: installed -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Updating to 0.13.1</span><span class="r">78%</span></div>
+  <div class="chips" style="margin:14px 0 0"><span class="chip">1 · CHECK</span><span class="chip">2 · DOWNLOAD</span><span class="chip">3 · VERIFY</span><span class="chip on">4 · RESTART</span></div>
+  <div class="upd" style="margin-top:60px">
+    <svg viewBox="0 0 60 60" style="width:96px;height:96px" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle cx="30" cy="30" r="26"/><path d="M17 31l9 9 17-19"/></svg>
+    <span class="v" style="margin-top:14px;font-size:44px">0.13.1</span>
+    <div class="sub" style="font-size:22px;font-weight:800;margin-top:10px">Installed and verified</div>
+    <div class="sub">Restart to start it</div>
+  </div>
+  <div class="kv sel" style="margin-top:50px;border-top:2px solid var(--ink)">Restart now <span class="v"></span></div>
+  <div class="kv">Later <span class="v">next start</span></div>
+  <div class="infobox">If the new version does not start, the device goes back to 0.13.0 by itself. It confirms itself after 30 seconds of running.</div>
+  <div class="ft"><span><i class="k">▲▼</i>choose</span><span><i class="k">●</i>select</span></div>
+</div></div><figcaption><b>Instalada</b>Con la suma verificada, el hueco queda listo y el próximo arranque usa la versión nueva. Si no arranca bien, el cargador vuelve solo a la anterior (retroceso automático); la nueva se confirma tras 30 s funcionando.</figcaption></figure>
+
+<!-- Update: refused / failed -->
+<figure><div class="bezel"><div class="s" lang="en">
+  <div class="sb"><span>Check for updates</span><span class="r">12:04</span></div>
+  <div class="upd" style="margin-top:50px">
+    <svg viewBox="0 0 60 60" style="width:96px;height:96px" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle cx="30" cy="30" r="26"/><path d="M30 16v17M30 42v.01"/></svg>
+    <div class="sub" style="font-size:24px;font-weight:800;margin-top:16px">Battery 24%</div>
+    <div class="sub" style="font-weight:500">Charge to 30% or connect USB to update.</div>
+  </div>
+  <div class="grp" style="margin-top:34px"><div class="lbl">Other messages</div></div>
+  <div class="kv">No Wi-Fi <span class="v">Set it in Wi-Fi &amp; transfer</span></div>
+  <div class="kv">Cannot reach GitHub <span class="v">try again later</span></div>
+  <div class="kv">Download stopped <span class="v">the current version is untouched</span></div>
+  <div class="kv">Wrong image <span class="v">not written</span></div>
+  <div class="kv sel" style="margin-top:26px">Back <span class="v"></span></div>
+  <div class="infobox">Every failure leaves the installed version as it was: nothing is written to the other slot until the file's header, version and checksum agree.</div>
+  <div class="ft"><span><i class="k">●</i>back</span><span><i class="k">BOOT</i>hold: back</span></div>
+</div></div><figcaption><b>No se puede actualizar</b>Antes de descargar nada se comprueba la batería. El resto son los mensajes de error posibles; ninguno toca la versión instalada.</figcaption></figure>
 
 <!-- Sleep screen settings -->
 <figure><div class="bezel"><div class="s" lang="en">

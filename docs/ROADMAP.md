@@ -386,7 +386,10 @@ Done in v0.9.7 (D27); kept as the reference.
   the check of an image's header and version before it is written.
 - **Update source.** Settings › System › Check for updates reads the latest
   GitHub release over HTTPS (certificate bundle) and downloads the app image.
-  Uploading the image through the Wi-Fi portal also works.
+  Uploading the image through the Wi-Fi portal also works. The screens are
+  drawn in the mockup (`Ajustes y reposo`: System, update available, up to
+  date, downloading, installed, refused); slice 2 builds them once the owner
+  approves them.
 - **Safety.**
   - `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`: a new image marks itself valid
     only after reaching Home.
