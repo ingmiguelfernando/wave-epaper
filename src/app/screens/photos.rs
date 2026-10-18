@@ -59,11 +59,6 @@ pub fn render_photos(
     state: &AppState,
 ) -> Result<(), Infallible> {
     let photos = &state.photos;
-    let count = match photos.photos.len() {
-        1 => "1 photo".to_string(),
-        count => format!("{count} photos"),
-    };
-    let starred = format!("{} starred", photos.starred_count());
     let page = format!("{}/{}", photos.page() + 1, photos.page_count());
 
     draw_header(

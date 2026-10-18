@@ -3,6 +3,17 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.16.0 — Voice notes upload as Opus
+
+- **A note goes to the transcription provider as Ogg Opus at 24 kbps**,
+  about ten times smaller than the WAV (a ten-minute part is about 1.8 MB
+  instead of 19 MB), so uploads are faster and the radio stays on for less.
+  The recording on the card is still the WAV. The device encodes each part
+  just before sending it; if the encoder fails, or the provider answers 400,
+  415 or 422 to the Ogg, that part and the rest go as WAV, as before.
+- The AI worker's stack is 40 KB (the encoder needs it). The log reports the
+  encoder's speed: `rustmix-wave=opus-encode status=done audio-ms=… took-ms=…`.
+
 ## v0.15.0 — Dice
 
 - **Dice is playable.** Games › Dice rolls one to three dice with ● or by

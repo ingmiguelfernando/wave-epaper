@@ -75,6 +75,7 @@ mod firmware {
             espidf::NetworkRuntime, NetworkLogFingerprint, NetworkSnapshot, WifiConnectionState,
         },
         network_config::{NetworkConfig, WIFI_CONFIG_PATH},
+        opus_encode::espidf::EspPartEncoder,
         ota::{espidf::EspUpdateTransport, should_mark_valid},
         panel_refresh::{
             PanelGlobalReason, PanelRefreshCoordinator, PanelRefreshPlan, PanelRefreshRequest,
@@ -2731,7 +2732,11 @@ mod firmware {
             summary_key,
         };
         log_runtime_memory("before-voice-ai");
-        match worker.start(job, Box::new(EspAiTransport)) {
+        match worker.start(
+            job,
+            Box::new(EspAiTransport),
+            Some(Box::new(EspPartEncoder)),
+        ) {
             Ok(()) => {
                 state.ai_busy_note = Some(wav_name.clone());
                 info!("rustmix-wave=voice-ai status=started file={wav_name}");

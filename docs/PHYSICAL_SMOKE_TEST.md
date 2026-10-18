@@ -298,6 +298,28 @@ light sleep. Restore the owner's original preferences afterward.
 - [X] (v0.12.6) Turn to the last page of a book: Reading Stats' `books finished` beside this year goes up by one. `STATS.TXT` has a
   `done|<path>|<date>` line for it, and its `book|` line still ends in `1`.
 
+## Voice notes upload as Opus (v0.16.0)
+
+Needs the AI keys and providers of the section below set up.
+
+- [ ] Record a 60-second note with `process=online` and Wi-Fi on: the log
+   shows `rustmix-wave=opus-encode status=done audio-ms=60000 took-ms=…`
+   with `bytes` near 180 000, then the transcript arrives as before. Write
+   down `took-ms`: the encoder must be faster than the audio (under 60 000
+   for 60 s); if it is not, say so.
+- [ ] A 12-minute note goes in two parts, each encoded, and the transcript
+   joins them; the AI worker does not reboot the board (stack) and the
+   screen stays usable while it encodes.
+- [ ] Pressing a key during the encode (a page turn, the Games hub) does not
+   make the encode fail; starting a recording stops the job and queues the
+   note again.
+- [ ] With a provider that does not take Ogg (or a wrong model for audio),
+   the log has `opus-refused` or `opus-failed` and the note still
+   transcribes, as WAV.
+- [ ] Airplane mode / Wi-Fi off: nothing is encoded until the radio is on
+   (the note stays `QUEUED · OFFLINE`).
+- [ ] The WAV on the card is unchanged and still plays.
+
 ## Dice (v0.15.0)
 
 Copy `examples/sd-card/RUSTMIX/APPS/DICE/` to the card (its `MAIN.LUA` says
