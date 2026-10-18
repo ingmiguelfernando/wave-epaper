@@ -22,6 +22,8 @@ pub const INPUT_SAMPLE_RATE: u32 = 16_000;
 pub const SAMPLES_PER_PACKET: u64 = 960;
 /// Segments one page can hold.
 const MAX_SEGMENTS: usize = 255;
+/// The biggest packet one page can hold: 254 full segments and one of 254.
+const MAX_PACKET_BYTES: usize = MAX_SEGMENTS * 255 - 1;
 /// Packets per second of audio; one page holds a second when they fit.
 pub const PACKETS_PER_SECOND: usize = 50;
 
@@ -366,6 +368,14 @@ fn walk_packets(
                 pending.clear();
             }
             pending.extend_from_slice(piece);
+            if pending.len() > MAX_PACKET_BYTES {
+                // Only a damaged file continues a packet this far; stop
+                // before it fills the memory.
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "packet does not fit in one Ogg page",
+                ));
+            }
             first = false;
             if lace < 255 {
                 // A complete packet.
@@ -448,19 +458,14 @@ pub fn duration_ms(reader: &mut (impl Read + Seek), pre_skip: u16) -> io::Result
     }))
 }
 
-/// How many packets go in each balanced part: `(count, size)` packets per
-/// part, the way `ai_client::wav_parts` splits a recording, so none is a
-/// short tail. An empty stream is `(0, 0)`.
-fn balanced_shape(total: usize, max_seconds: u32) -> (usize, usize) {
-    if total == 0 {
-        return (0, 0);
-    }
+/// How many packets go in each balanced part, the way `ai_client::wav_parts`
+/// splits a recording, so none is a short tail. Never zero.
+fn balanced_part_size(total: usize, max_seconds: u32) -> usize {
     let limit = (max_seconds as usize)
         .saturating_mul(PACKETS_PER_SECOND)
         .max(1);
-    let count = total.div_ceil(limit);
-    let size = total.div_ceil(count);
-    (count, size)
+    let count = total.div_ceil(limit).max(1);
+    total.div_ceil(count).max(1)
 }
 
 /// Split a stream into complete Ogg Opus files of at most `max_seconds` of
@@ -471,9 +476,9 @@ fn balanced_shape(total: usize, max_seconds: u32) -> (usize, usize) {
 /// the number. A packet too big for one Ogg page (read from a damaged file)
 /// is an error, not a panic.
 pub fn split_parts(stream: &OggOpusStream, max_seconds: u32) -> io::Result<Vec<Vec<u8>>> {
-    let (_, size) = balanced_shape(stream.packets.len(), max_seconds);
+    let size = balanced_part_size(stream.packets.len(), max_seconds);
     let mut parts = Vec::new();
-    for chunk in stream.packets.chunks(size.max(1)) {
+    for chunk in stream.packets.chunks(size) {
         let mut writer = OggOpusWriter::new(Vec::new(), stream.head, 0)?;
         for packet in chunk {
             writer.write_packet(packet)?;
@@ -497,11 +502,10 @@ pub fn split_file<W: Write>(
 ) -> io::Result<usize> {
     let (head, total) = count_packets(reader)?;
     reader.seek(SeekFrom::Start(0))?;
-    let (_, size) = balanced_shape(total, max_seconds);
     if total == 0 {
         return Ok(0);
     }
-    let size = size.max(1);
+    let size = balanced_part_size(total, max_seconds);
     let mut current: Option<OggOpusWriter<W>> = None;
     let mut in_part = 0;
     let mut opened = 0;
@@ -531,9 +535,9 @@ pub fn split_file<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::{
-        count_packets, duration_ms, lacing_values, ogg_crc, opus_tags_bytes, read_stream,
-        split_file, split_parts, OggOpusStream, OggOpusWriter, OpusHead, FLAG_BOS, FLAG_EOS,
-        PACKETS_PER_SECOND, SAMPLES_PER_PACKET,
+        build_page, count_packets, duration_ms, lacing_values, ogg_crc, opus_tags_bytes,
+        read_stream, split_file, split_parts, OggOpusStream, OggOpusWriter, OpusHead, FLAG_BOS,
+        FLAG_CONTINUED, FLAG_EOS, PACKETS_PER_SECOND, SAMPLES_PER_PACKET,
     };
     use std::{
         cell::RefCell,
@@ -940,6 +944,21 @@ mod tests {
         let mut cursor = Cursor::new(bytes);
         let error = split_file(&mut cursor, 600, |_| Ok(Fails)).unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn a_packet_continued_past_one_page_is_an_error_not_a_huge_buffer() {
+        // Pages that only ever continue (every lace 255) build a packet
+        // with no end; reading stops once it passes what one page holds.
+        let mut bytes = file_of(0, 40);
+        let body = vec![0x55; 255 * 255];
+        for sequence in 2..6 {
+            let flags = if sequence == 2 { 0 } else { FLAG_CONTINUED };
+            bytes.extend(build_page(flags, 0, 7, sequence, &body, &[255; 255]));
+        }
+        let error = count_packets(&mut Cursor::new(bytes.clone())).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(read_stream(&mut Cursor::new(bytes)).is_err());
     }
 
     #[test]

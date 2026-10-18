@@ -221,7 +221,7 @@ impl ReadingStats {
         for (index, line) in text.trim_start_matches('\u{feff}').lines().enumerate() {
             let line = line.trim_matches(' ');
             let kind = line.split('|').next().unwrap_or_default();
-            if kind != "day" && kind != "book" {
+            if kind != "day" && kind != "book" && kind != "done" {
                 continue;
             }
             let parsed = (|| -> Result<()> {
@@ -248,12 +248,12 @@ impl ReadingStats {
                         if fields.len() != 5 || !valid_book(fields[1]) {
                             bail!("book requires a valid path, seconds, pages and finished flag");
                         }
-                        // `0` not finished, `1` finished with the day unknown
-                        // (what older files hold), otherwise the finish date.
+                        // `0` not finished, `1` finished; a `done` line
+                        // after it may give the day.
                         let finished = match fields[4] {
                             "0" => None,
                             "1" => Some(None),
-                            date => Some(Some(parse_day(date)?)),
+                            _ => bail!("finished must be 0 or 1"),
                         };
                         let entry = BookStats {
                             path: fields[1].into(),
@@ -265,6 +265,21 @@ impl ReadingStats {
                         };
                         stats.remove_book(&entry.path);
                         stats.push_book(entry);
+                    }
+                    "done" => {
+                        if fields.len() != 3 || !valid_book(fields[1]) {
+                            bail!("done requires a valid path and a date");
+                        }
+                        let day = parse_day(fields[2])?;
+                        // The day of a finished book listed above; a book
+                        // evicted since, or not finished, is ignored.
+                        if let Some(entry) = stats
+                            .books
+                            .iter_mut()
+                            .find(|entry| entry.path == fields[1] && entry.finished.is_some())
+                        {
+                            entry.finished = Some(Some(day));
+                        }
                     }
                     _ => unreachable!(),
                 }
@@ -287,15 +302,21 @@ impl ReadingStats {
             ));
         }
         for entry in &self.books {
-            let finished = match entry.finished {
-                None => "0".to_string(),
-                Some(None) => "1".to_string(),
-                Some(Some(day)) => day_label(day),
-            };
             text.push_str(&format!(
                 "book|{}|{}|{}|{}\n",
-                entry.path, entry.totals.seconds, entry.totals.pages, finished
+                entry.path,
+                entry.totals.seconds,
+                entry.totals.pages,
+                u8::from(entry.finished.is_some())
             ));
+        }
+        // Finish days on their own lines, after the books: firmware before
+        // v0.12.6 skips a kind it does not know, so a downgrade keeps the
+        // file and loses only the days.
+        for entry in &self.books {
+            if let Some(Some(day)) = entry.finished {
+                text.push_str(&format!("done|{}|{}\n", entry.path, day_label(day)));
+            }
         }
         text
     }
@@ -770,12 +791,37 @@ mod tests {
     #[test]
     fn a_dated_finish_line_round_trips_and_counts_in_its_year() {
         let day = day_label(20_729); // 2026-10-03
-        let text = format!("# Wave reading stats v1\nbook|/a/One.txt|0|0|{day}\n");
+        let text =
+            format!("# Wave reading stats v1\nbook|/a/One.txt|0|0|1\ndone|/a/One.txt|{day}\n");
         let stats = ReadingStats::parse(&text).unwrap();
         assert!(stats.is_finished("/a/One.txt"));
         assert_eq!(stats.books_finished_between(20_454, 20_729), 1);
         assert_eq!(stats.books_finished_between(20_454, 20_728), 0);
         assert_eq!(stats.serialized(), text);
+    }
+
+    #[test]
+    fn finish_days_stay_out_of_the_lines_older_firmware_reads() {
+        // Firmware before v0.12.6 accepts only `0` or `1` at the end of a
+        // book line and skips other kinds; a downgrade must not lose the
+        // file.
+        let mut stats = ReadingStats::default();
+        stats.record(20_729, 60, 1, Some("/a/One.txt"));
+        stats.mark_finished("/a/One.txt", Some(20_729));
+        stats.mark_finished("/a/Two.txt", None);
+        stats.mark_saved();
+        let text = stats.serialized();
+        for line in text.lines().filter(|line| line.starts_with("book|")) {
+            assert!(line.ends_with("|0") || line.ends_with("|1"), "{line}");
+        }
+        assert!(text.contains("done|/a/One.txt|2026-10-03\n"), "{text}");
+        assert!(!text.contains("done|/a/Two.txt"));
+        assert_eq!(ReadingStats::parse(&text).unwrap(), stats);
+        // A day for a book not listed, or not finished, is ignored.
+        let extra = format!("{text}done|/a/Gone.txt|2026-10-01\nbook|/a/Open.txt|0|0|0\ndone|/a/Open.txt|2026-10-01\n");
+        let parsed = ReadingStats::parse(&extra).unwrap();
+        assert!(!parsed.is_finished("/a/Open.txt"));
+        assert_eq!(parsed.books_finished_between(0, u32::MAX), 1);
     }
 
     #[test]
@@ -808,10 +854,10 @@ mod tests {
     #[test]
     fn a_malformed_finish_date_is_an_error() {
         for field in ["2", "01", "2026-13-01", "2026-02-30", "yesterday"] {
-            let line = format!("book|/a/One.txt|0|0|{field}");
-            let error = ReadingStats::parse(&line).unwrap_err();
+            let text = format!("book|/a/One.txt|0|0|1\ndone|/a/One.txt|{field}");
+            let error = ReadingStats::parse(&text).unwrap_err();
             assert!(
-                format!("{error:#}").contains("line 1"),
+                format!("{error:#}").contains("line 2"),
                 "{field:?}: {error:#}"
             );
         }
