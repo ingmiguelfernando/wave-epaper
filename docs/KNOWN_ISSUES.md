@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.12.5. This is not a list of promised mockup features. See
+Firmware v0.12.6. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Percent glyph at Detail size
@@ -56,7 +56,8 @@ estimates until the battery log confirms them on the device.
 
 - Notes go as WAV (about 1.9 MB a minute), so a long note takes a while to
   upload and uses battery; the mockup's Opus recording is not done yet
-  (the Ogg Opus file format is, in v0.12.5, but nothing records or sends it).
+  (the Ogg Opus file, its upload form and its split into parts are, since
+  v0.12.5 and v0.12.6, but nothing records or sends it).
 - Keys typed in the portal cross the LAN as plain HTTP, like the files the
   portal moves. Type them on a home network you trust.
 - Recording, playback, the transfer portal or sleep stops the note being

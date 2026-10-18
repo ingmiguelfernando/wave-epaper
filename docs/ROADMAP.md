@@ -5,7 +5,7 @@ current firmware is built is in [architecture.md](architecture.md); small tasks
 handed to a second developer are in [DELEGATED_TASKS.md](DELEGATED_TASKS.md).
 The UI follows `mockups/index.html`.
 
-Last updated: 2026-10-18, firmware v0.12.5.
+Last updated: 2026-10-18, firmware v0.12.6.
 
 ## Status
 
@@ -48,7 +48,8 @@ Last updated: 2026-10-18, firmware v0.12.5.
 | Fix: a new Sudoku overflowed the main task's stack (recursive generator); main task stack 24 KB | 0.12.4 | 47c21ab | Done, waiting for device test |
 | Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | 0.12.5 | PR #12 | Done, waiting for device test |
 | Delegated tasks D62 to D64: the upload form and parts for Ogg Opus, previews of the cached forecast and the verse mark | | PR #13 | Done, merged without a release (library and previews only) |
-| Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | | side-tasks-15 | Published (Round 15) |
+| Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
+| Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study | | side-tasks-16 | Published (Round 16) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -291,9 +292,9 @@ Done in v0.9.7 (D27); kept as the reference.
 - **Screen.** Today, a bar chart of this week (like the battery chart), the
   streak (days with at least 5 minutes) and books finished (D14). Without a
   set clock it says how to set one.
-  - "Books finished" counts every retained finished book, because
-    `STATS.TXT` keeps no finish date. Storing one to count per year is
-    D65.
+  - "Books finished" counts the books finished this year (D65, v0.12.6):
+    the finish day is a `done|<path>|<date>` line after the books, which
+    older firmware skips.
 - Home shows `5-day streak`, and the Continue reading card shows
   `12% · 25 min today`.
 
@@ -380,10 +381,11 @@ Done in v0.9.7 (D27); kept as the reference.
 - **Deeper sleep.** The mockup's 8 µA needs deep sleep in sleep mode. Deep
   sleep can only wake from RTC GPIOs (0 to 21). BOOT and the wheel qualify,
   and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
-  also drives high. Needs research before any change.
+  also drives high. Needs research before any change (the study is D70).
 - The `%` sign is broken in the Inter Standard Detail strike (12 px). Task D6
   found no `fonts.toml` setting that fixes it alone; a fix needs a per-glyph
-  override in the generator. Until then, show percentages in Body size.
+  override in the generator (D68). Until then, show percentages in Body
+  size.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics. Reading is done (0.10.4).
