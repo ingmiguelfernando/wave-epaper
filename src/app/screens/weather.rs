@@ -70,7 +70,7 @@ pub fn render_weather(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(display, state.display, "WEATHER", &place(state))?;
+    draw_header(display, state.display, "Weather", &place(state))?;
     let (config, current) = match shown_forecast(state) {
         Ok(found) => found,
         Err(missing) => return draw_missing(display, state, missing),
@@ -92,7 +92,7 @@ pub fn render_weather_details(
     display: &mut OrientedFrameBuffer<'_>,
     state: &AppState,
 ) -> Result<(), Infallible> {
-    draw_header(display, state.display, "WEATHER", &place(state))?;
+    draw_header(display, state.display, "Weather", &place(state))?;
     let config = match shown_forecast(state) {
         Ok((config, _)) => config,
         Err(missing) => return draw_missing(display, state, missing),

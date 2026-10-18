@@ -452,10 +452,11 @@ fn parse_hourly(hourly: &str) -> Result<Vec<HourlyForecast>> {
     Ok(hours)
 }
 
+/// WMO code to the mockup's short label.
 #[must_use]
 pub const fn condition_label(code: u16) -> &'static str {
     match code {
-        0 => "Clear",
+        0 => "Sunny",
         1 | 2 => "Partly cloudy",
         3 => "Overcast",
         45 | 48 => "Fog",
@@ -464,7 +465,7 @@ pub const fn condition_label(code: u16) -> &'static str {
         71 | 73 | 75 | 77 => "Snow",
         80 | 81 | 82 => "Showers",
         85 | 86 => "Snow showers",
-        95 => "Thunderstorm",
+        95 => "Storms",
         96 | 99 => "Thunder + hail",
         _ => "Unknown",
     }
@@ -1043,9 +1044,9 @@ mod tests {
 
     #[test]
     fn classifies_common_wmo_weather_codes() {
-        assert_eq!(condition_label(0), "Clear");
+        assert_eq!(condition_label(0), "Sunny");
         assert_eq!(condition_label(61), "Rain");
-        assert_eq!(condition_label(95), "Thunderstorm");
+        assert_eq!(condition_label(95), "Storms");
         assert_eq!(condition_label(500), "Unknown");
     }
 

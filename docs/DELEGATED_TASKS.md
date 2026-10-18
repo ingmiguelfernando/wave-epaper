@@ -946,7 +946,25 @@ Notes screens are in `src/app/screens/voice_notes.rs`.
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-19`. Same method. Settings figures are
+out of scope. XiaoZhi is the main line's file: listed only.
+
+| Figure | Element | Difference | Fixed or blocked |
+|---|---|---|---|
+| Weather | Header | Was `WEATHER` / place | Fixed: `Weather` |
+| Weather | Condition words | `Clear` / `Thunderstorm` vs mockup `Sunny` / `Storms` | Fixed in `weather::condition_label` |
+| Weather | Icon, temp, chips, NEXT HOURS, NEXT DAYS, footer | Matches (crop) | — |
+| AI hub | XiaoZhi + Voice Notes cards, recent notes, info, footer | Matches (layout; sample names differ) | — |
+| AI hub | Status `Online` with wifi glyph | Preview has `Online` only | Blocked: wifi glyph is a widget icon (`widgets/` this round only for fonts) |
+| XiaoZhi | Call screen | Differences listed, not changed (main line's file): chip row `LISTEN/THINK/SPEAK`, waveform, timer | Blocked on ownership |
+| Voice Notes | List, recording, result | Matches (layout; WAV→audio wording from D69) | — |
+| Sleep photo | Full-bleed image | Matches (crop) | — |
+| Sleep clock | Large time, date, weather line, footer | Matches (crop) | — |
+| Sleep weather | Temp, 3-day row, rain in Detail | Matches (crop) | — |
+| Sleep verse | Verse text and footer | Matches (layout) | — |
+
+Probe: `condition_label(0)` is `Sunny` and `condition_label(95)` is
+`Storms`. Open: nothing known.
 
 ## Round 18 tasks (done, merged without a release)
 
