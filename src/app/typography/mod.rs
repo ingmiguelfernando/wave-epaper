@@ -127,6 +127,12 @@ impl UiTextStyle {
         Self { color, ..self }
     }
 
+    /// The raster strike this style draws with (tests probe its glyphs).
+    #[must_use]
+    pub const fn font(self) -> &'static BitmapFont {
+        self.font
+    }
+
     #[must_use]
     pub const fn line_height(self) -> u8 {
         self.font.line_height

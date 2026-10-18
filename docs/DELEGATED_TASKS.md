@@ -893,7 +893,22 @@ digits' (count ink columns of an `8` of each); the chip widths against the
 mockup's at the three UI sizes; the other previews unchanged (say how you
 checked: the atlas diff changes only the new strike).
 
-**Status:** to do.
+**Status:** done on `side-tasks-20`. Mockup Sudoku figure rendered at zoom 1
+(`--z` 1, only that figure) and compared with `sudoku-number` side by side;
+chip boxes measured in screen coordinates on both. **Font note:** the mockup
+uses system-ui / Iowan; letterforms differ and are not listed per row.
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Given digits | Mockup `.c.g` weight 800; device Heading was Inter SemiBold | Fixed: Inter ExtraBold (`wght=800`) strikes `INTER_*_GIVENS` at the givens' sizes, `CanvasTextStyle::Givens`. Probe: `given_digits_have_thicker_stems_than_the_players` counts ink runs of `8` |
+| Player digits | Mockup `.c.u` is italic Iowan 31 px | Kept Literata at the givens' cap height (`player_digit_style` now matches `givens_style`, not Heading). Size close; italic is a face choice |
+| Step chips size | Mockup 13 px labels, 2 px border, 10 px padding, 24 px tall: widths 83 / 81 / 110 | Fixed: `DrawCommand::ChipRow` measures with the real font (`2*(2+10)+text_width`, Body face). Preview boxes 79 / 82 / 111 at Standard (within 4 px). Probe: `step_chip_widths_track_the_mockup_at_every_ui_size` |
+| Step chips arrows | Mockup `▸` between chips, 20 px gap | Fixed: drawn as a 6 px triangle (the glyph is not in the fonts), same as the hub marker |
+| Step chips label weight | Mockup `.chip{font-weight:800}`; device Body is Inter Medium | Blocked: needs an ExtraBold strike at Body sizes (11–17 px). Widths already match; weight is the shared chip style on the device |
+| Other previews | Atlas must not rewrite unrelated glyphs | Checked: the `fonts` workflow artifact vs `main` is 1965 insertions only — the three `INTER_*_GIVENS` strikes; every other generated file is byte-identical |
+
+Old `CHAR_WIDTH=11` drew `1 · ROW` at 93 px (mockup 83); the chip-row
+command carries labels, not pre-sized boxes (`chip_row_asks_the_screen_to_measure_the_labels`).
 
 ### D82: XiaoZhi's call screen and the AI hub's Wi-Fi mark
 

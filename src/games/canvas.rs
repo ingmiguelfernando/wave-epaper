@@ -4,6 +4,8 @@ use super::dirty_regions::{DirtyRect, DirtyRegions, GAME_CANVAS_HEIGHT, GAME_CAN
 
 pub const MAX_GAME_DRAW_COMMANDS: usize = 256;
 pub const MAX_GAME_TEXT_BYTES: usize = 160;
+/// The mockup's `.chip` height (2 px border + 2 px padding + a 13 px label).
+pub const CHIP_ROW_HEIGHT: i32 = 24;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CanvasTextStyle {
@@ -173,6 +175,12 @@ pub enum DrawCommand {
     InfoBox {
         top: i32,
         text: String,
+    },
+    /// A centred row of mockup chips with `▸` separators (the active one
+    /// filled). The screen measures each label with the real font.
+    ChipRow {
+        top: i32,
+        items: Vec<(String, bool)>,
     },
 }
 
@@ -511,6 +519,23 @@ impl NativeGameCanvas {
         self.validate_point(16, top)?;
         self.push(DrawCommand::InfoBox { top, text })?;
         self.dirty.invalidate(DirtyRect::new(16, top, 448, 96));
+        Ok(())
+    }
+
+    /// A centred row of mockup chips (`1 · ROW`, `2 · CELL`, …) with `▸`
+    /// separators. The screen sizes each box from the real font; `top` is the
+    /// box's top edge (the mockup's chip height).
+    pub fn chip_row(&mut self, top: i32, items: Vec<(String, bool)>) -> Result<(), String> {
+        let text_bytes: usize = items.iter().map(|(label, _)| label.len()).sum();
+        if items.is_empty() || text_bytes > MAX_GAME_TEXT_BYTES {
+            return Err(format!(
+                "game chip row needs 1..={MAX_GAME_TEXT_BYTES} label bytes"
+            ));
+        }
+        self.validate_rect(DirtyRect::new(0, top, GAME_CANVAS_WIDTH, CHIP_ROW_HEIGHT))?;
+        self.push(DrawCommand::ChipRow { top, items })?;
+        self.dirty
+            .invalidate(DirtyRect::new(0, top, GAME_CANVAS_WIDTH, CHIP_ROW_HEIGHT));
         Ok(())
     }
 
