@@ -820,7 +820,24 @@ ESP-IDF 5.5 documentation:
 and every claim about the chip names its documentation page. Say what
 you could not find.
 
-**Status:** to do.
+**Status:** done on `side-tasks-16`. Built `docs/DEEP_SLEEP.md`, no code.
+Covered: ESP-IDF v5.5 wake sources (`ext0`, `ext1`, timer, ULP; GPIO and
+UART are light-sleep only) and which of the device's inputs reach an RTC
+GPIO — BOOT GPIO0, wheel GPIO4/5/6 and Power GPIO1 are RTC GPIOs 0–21;
+**GPIO45 (RTC alarm) and GPIO38 (PMIC IRQ) are not**, so the alarm cannot
+use `ext0`/`ext1` (the main hardware gap; timer-to-next-alarm or a board
+rewire). What a wake loses (RAM, PSRAM, Wi-Fi, panel driver state) vs
+survives (RTC memory, panel image, SD files, NVS), plus the `AppState`
+fields that are RAM-only with the file that would hold each. Boot steps
+from the `rustmix-wave=` markers in `src/main.rs` with a skip list for a
+wake-to-sleep path and a rough 1.5–4 s cold / 200–800 ms warm budget to
+measure. How alarms, weather slots and the clock minute would wake the
+chip (timer; alarm needs the GPIO45 workaround). An eight-step plan with
+risks and measurements. Could not find: measured boot timings (the table
+says "owner must measure"), the exact ALDO3 behaviour for a partial
+refresh after deep sleep in clock/weather modes, and what the mockup's
+8 µA assumes for the PMIC/SD rails. Open: the owner's choice between
+timer alarms and a board rewire (study §7).
 
 ### D71: Dice, the mockup
 
