@@ -27,6 +27,8 @@ pub struct GameRecords {
     pub sudoku_hard: u32,
     /// Last Dice faces as `4+6` (one to three faces). `None` when never rolled.
     pub dice_last: Option<String>,
+    /// The Dice options as four digits (`2111`), see `dice_session::Options`.
+    pub dice_options: Option<String>,
 }
 
 impl GameRecords {
@@ -43,6 +45,12 @@ impl GameRecords {
                 .with_context(|| format!("records line {} must contain '='", number + 1))?;
             let key = key.trim();
             let value = value.trim();
+            if key == "dice_options" {
+                if crate::games::dice_session::Options::from_digits(value).is_some() {
+                    records.dice_options = Some(value.to_string());
+                }
+                continue;
+            }
             if key == "dice_last" {
                 // A bad value is dropped, so the card simply has no last roll
                 // and the rest of the file still loads.
@@ -81,6 +89,10 @@ impl GameRecords {
             self.sudoku_medium,
             self.sudoku_hard
         );
+        if let Some(digits) = &self.dice_options {
+            // Digits as well: see `dice_last`.
+            text.push_str(&format!("dice_options={digits}\n"));
+        }
         if let Some(digits) = self
             .dice_last
             .as_deref()
@@ -202,6 +214,22 @@ impl GameRecords {
         }
     }
 
+    /// Keep the Dice options; `true` when the file must be saved.
+    pub fn observe_dice_options(&mut self, options: crate::games::dice_session::Options) -> bool {
+        let digits = options.to_digits();
+        // The defaults are kept as "not set", so the file stays as it was for
+        // a player who never opens Options.
+        if self.dice_options.is_none() && options == crate::games::dice_session::Options::default()
+        {
+            return false;
+        }
+        if self.dice_options.as_deref() == Some(digits.as_str()) {
+            return false;
+        }
+        self.dice_options = Some(digits);
+        true
+    }
+
     /// Store the last Dice roll's faces (`4+6`); `true` when the file must be
     /// saved. A value that is not one to three faces of 1..=6 is refused.
     pub fn observe_dice_faces(&mut self, faces: &str) -> bool {
@@ -264,6 +292,7 @@ mod tests {
             sudoku_medium: 0,
             sudoku_hard: 0,
             dice_last: None,
+            dice_options: None,
         };
         let parsed = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(parsed, records);
@@ -359,6 +388,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dice_options_round_trip_and_the_defaults_write_nothing() {
+        use crate::games::dice_session::{Options, Strength};
+        let mut records = GameRecords::default();
+        assert!(
+            !records.observe_dice_options(Options::default()),
+            "defaults: no line"
+        );
+        assert!(!records.serialized().contains("dice_options"));
+        let custom = Options {
+            dice: 3,
+            sound: false,
+            shake: false,
+            strength: Strength::Low,
+        };
+        assert!(records.observe_dice_options(custom));
+        assert!(
+            !records.observe_dice_options(custom),
+            "the same options save nothing"
+        );
+        let text = records.serialized();
+        assert!(text.contains("dice_options=3000\n"), "{text}");
+        let parsed = GameRecords::parse(&text).unwrap();
+        assert_eq!(
+            parsed
+                .dice_options
+                .as_deref()
+                .and_then(Options::from_digits),
+            Some(custom)
+        );
+        // Back to the defaults is a change worth saving once options were set.
+        assert!(records.observe_dice_options(Options::default()));
+        // A malformed line is dropped; the rest of the file loads.
+        let bad =
+            GameRecords::parse("tetris_zen=5\ndice_options=9999\ndice_options=abc\n").unwrap();
+        assert_eq!(bad.tetris_zen, 5);
+        assert_eq!(bad.dice_options, None);
+    }
+
     /// Firmware before this one parses every value as a number and fails the
     /// whole file otherwise; a rollback must not lose the best scores.
     #[test]
@@ -368,6 +436,10 @@ mod tests {
             ..GameRecords::default()
         };
         records.observe_dice_faces("4+6");
+        records.observe_dice_options(crate::games::dice_session::Options {
+            sound: false,
+            ..Default::default()
+        });
         for line in records.serialized().lines().filter(|l| !l.starts_with('#')) {
             let (_, value) = line.split_once('=').unwrap();
             assert!(value.trim().parse::<u32>().is_ok(), "{line}");

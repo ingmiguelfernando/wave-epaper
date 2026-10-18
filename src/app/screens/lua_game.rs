@@ -200,8 +200,16 @@ pub fn render_lua_game(
 }
 
 /// Hints for the game's current mode; game canvases leave the bar band free.
-/// Dice is named by its session id until the main line wires the engine.
+/// A Dice session answers from its screen; the previews of its three screens
+/// hold a static bridge and are named by their session id.
 fn game_hints(session: &crate::lua_runtime::LuaAppSession) -> &'static [(KeyCap, &'static str)] {
+    if let LuaEventBridge::Dice(app) = &session.event_bridge {
+        return match app.view() {
+            crate::games::dice_session::View::Ready => &DICE_HINTS,
+            crate::games::dice_session::View::Rolling { .. } => &DICE_ROLLING_HINTS,
+            crate::games::dice_session::View::Options { .. } => &DICE_OPTIONS_HINTS,
+        };
+    }
     match session.entry.manifest.id.as_str() {
         "dice-options" => return &DICE_OPTIONS_HINTS,
         "dice-rolling" => return &DICE_ROLLING_HINTS,
@@ -234,6 +242,8 @@ fn game_hints(session: &crate::lua_runtime::LuaAppSession) -> &'static [(KeyCap,
             }
         }
         LuaEventBridge::RaceStart(_) => &CHOOSE_HINTS,
+        // Answered above, from the screen the session is on.
+        LuaEventBridge::Dice(_) => &DICE_HINTS,
     }
 }
 

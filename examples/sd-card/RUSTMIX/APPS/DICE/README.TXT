@@ -13,5 +13,6 @@ A roll is three quick frames with the sound of real dice and a knock
 where they land. A full refresh every 10 rolls clears ghosting. The
 last faces are saved to RECORDS.TXT as dice_last when you leave.
 
-NOTE: the firmware that wires Dice is not released yet. Until then this
-app is listed in the Games hub but cannot be played.
+The options are saved to RECORDS.TXT as dice_options when you leave (four
+digits: dice, sound, shake, strength), and the sensor runs only while the
+table is open and Shake to roll is on.

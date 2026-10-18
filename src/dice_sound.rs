@@ -38,6 +38,22 @@ const ZERO_SEED: u32 = 0x9E37_79B9;
 
 /// How long a rattle for `dice` dice plays, in milliseconds. The roll's
 /// three animation frames fit inside it.
+/// The whole rattle as 16-bit stereo PCM, for a thread that plays it while
+/// the main loop draws (a panel refresh is slower than the audio buffer).
+#[must_use]
+pub fn render_pcm(seed: u32, dice: usize, frames: u8) -> Vec<u8> {
+    let mut rattle = Rattle::new(seed, dice, frames);
+    let mut pcm = Vec::with_capacity(duration_frames(dice) as usize * PCM_BYTES_PER_FRAME);
+    let mut chunk = [0_u8; RATTLE_CHUNK_FRAMES * PCM_BYTES_PER_FRAME];
+    loop {
+        let written = rattle.next_chunk(&mut chunk);
+        if written == 0 {
+            return pcm;
+        }
+        pcm.extend_from_slice(&chunk[..written]);
+    }
+}
+
 #[must_use]
 pub fn duration_ms(dice: usize) -> u32 {
     let _ = dice;
@@ -283,6 +299,24 @@ mod tests {
             head.iter().any(|sample| *sample != 0),
             "nothing plays within 10 ms"
         );
+    }
+
+    #[test]
+    fn the_rendered_pcm_is_the_whole_rattle_in_whole_frames() {
+        for dice in 1..=3 {
+            let pcm = render_pcm(3, dice, 3);
+            assert_eq!(pcm.len() % PCM_BYTES_PER_FRAME, 0);
+            assert_eq!(
+                pcm.len(),
+                duration_frames(dice) as usize * PCM_BYTES_PER_FRAME
+            );
+            assert_eq!(
+                pcm,
+                render(&mut Rattle::new(3, dice, 3)),
+                "same bytes as the chunks"
+            );
+        }
+        assert_ne!(render_pcm(3, 2, 3), render_pcm(4, 2, 3), "the seed matters");
     }
 
     #[test]

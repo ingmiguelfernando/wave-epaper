@@ -27,6 +27,18 @@ use super::{
     ES8311_I2C_ADDRESS_LOW, MAX_AUDIO_VOLUME_PERCENT,
 };
 
+impl<I2C> Drop for AudioRuntime<'_, I2C> {
+    /// A PCM thread holds the channel's address: it ends before the channel.
+    fn drop(&mut self) {
+        if let Some(stream) = self.pcm_stream.take() {
+            stream
+                .abort
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            let _ = stream.thread.join();
+        }
+    }
+}
+
 /// Time for the DAC reference to settle after a codec resume, before the
 /// amplifier switches on.
 const CODEC_WAKE_SETTLE_MS: u32 = 20;
@@ -37,11 +49,21 @@ pub struct AudioRuntime<'d, I2C> {
     bus: I2C,
     codec: BoardEs8311,
     profile: CodecProfileSnapshot,
-    tx: I2sDriver<'d, I2sBiDir>,
+    /// Boxed so its address stays put while a PCM thread writes to it.
+    tx: Box<I2sDriver<'d, I2sBiDir>>,
     amplifier: PinDriver<'d, Output>,
     snapshot: AudioSnapshot,
     chime: ChimeGenerator,
     codec_awake: bool,
+    /// A generated sound playing on its own thread (the dice rattle).
+    pcm_stream: Option<PcmStream>,
+}
+
+/// Generated PCM being written to the I2S channel by a short-lived thread,
+/// so a slow panel refresh in the main loop cannot starve the audio buffer.
+struct PcmStream {
+    thread: std::thread::JoinHandle<()>,
+    abort: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<'d, I2C> AudioRuntime<'d, I2C>
@@ -104,7 +126,7 @@ where
             bus,
             codec,
             profile,
-            tx,
+            tx: Box::new(tx),
             amplifier,
             snapshot: AudioSnapshot {
                 available: true,
@@ -119,6 +141,7 @@ where
             },
             chime: ChimeGenerator::default(),
             codec_awake,
+            pcm_stream: None,
         })
     }
 
@@ -196,6 +219,7 @@ where
     }
 
     pub fn begin_voice_note_playback(&mut self) -> Result<()> {
+        self.halt_pcm_stream();
         self.chime.stop();
         self.wake_codec()?;
         self.codec
@@ -222,11 +246,89 @@ where
             .map_err(|error| anyhow!("I2S voice-note TX write failed: {error:?}"))
     }
 
+    /// Play `pcm` (16-bit stereo at the codec's rate) on a thread of its own
+    /// and return at once. Poll `poll_pcm_stream` to see it end.
+    pub fn begin_pcm_stream(&mut self, pcm: Vec<u8>) -> Result<()> {
+        self.begin_voice_note_playback()?;
+        let abort = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop = std::sync::Arc::clone(&abort);
+        // The thread gets the channel's address: `tx` is boxed, so it does
+        // not move, and every method that touches the channel halts the
+        // stream first (`halt_pcm_stream`), so the thread is the only writer.
+        let address = std::ptr::addr_of_mut!(*self.tx) as usize;
+        let builder = std::thread::Builder::new()
+            .name("pcm-out".into())
+            .stack_size(6 * 1024);
+        let thread = crate::photos::worker::spawn_on_second_core(builder, move || {
+            // SAFETY: see above; the runtime joins this thread before it
+            // writes, reads, drops or hands out the channel.
+            let tx = unsafe { &mut *(address as *mut I2sDriver<'static, I2sBiDir>) };
+            for chunk in pcm.chunks(PCM_CHUNK_BYTES) {
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                if tx.write_all(chunk, BLOCK).is_err() {
+                    return;
+                }
+            }
+        });
+        match thread {
+            Ok(thread) => {
+                self.pcm_stream = Some(PcmStream { thread, abort });
+                Ok(())
+            }
+            Err(error) => {
+                let _ = self.stop_playback();
+                Err(anyhow!("could not start the PCM thread: {error}"))
+            }
+        }
+    }
+
+    /// A PCM stream is playing or has just ended and is not yet collected.
+    #[must_use]
+    pub const fn pcm_stream_active(&self) -> bool {
+        self.pcm_stream.is_some()
+    }
+
+    /// Collect a stream that has ended: the amplifier and the codec go back
+    /// to sleep. `true` when one ended now.
+    pub fn poll_pcm_stream(&mut self) -> Result<bool> {
+        let ended = self
+            .pcm_stream
+            .as_ref()
+            .is_some_and(|stream| stream.thread.is_finished());
+        if !ended {
+            return Ok(false);
+        }
+        self.stop_playback()?;
+        Ok(true)
+    }
+
+    /// Stop a PCM stream now, if one plays.
+    pub fn stop_pcm_stream(&mut self) -> Result<()> {
+        if self.pcm_stream.is_none() {
+            return Ok(());
+        }
+        self.stop_playback()
+    }
+
+    /// Ask a PCM thread to stop and wait for it, so nothing else writes to
+    /// the channel while it does.
+    fn halt_pcm_stream(&mut self) {
+        if let Some(stream) = self.pcm_stream.take() {
+            stream
+                .abort
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            let _ = stream.thread.join();
+        }
+    }
+
     pub fn finish_voice_note_playback(&mut self) -> Result<()> {
         self.stop_playback()
     }
 
     pub fn begin_voice_recording(&mut self) -> Result<()> {
+        self.halt_pcm_stream();
         self.chime.stop();
         self.wake_codec()?;
         self.amplifier
@@ -298,6 +400,7 @@ where
     }
 
     pub fn stop_playback(&mut self) -> Result<()> {
+        self.halt_pcm_stream();
         self.chime.stop();
         self.amplifier
             .set_low()
@@ -324,6 +427,7 @@ where
     }
 
     fn begin_playback(&mut self, mode: ChimeMode) -> Result<()> {
+        self.halt_pcm_stream();
         self.wake_codec()?;
         match mode {
             ChimeMode::TestOnce => self.chime.start_test_once(),
@@ -413,6 +517,7 @@ where
     I2C::Error: core::fmt::Debug,
 {
     fn start_call(&mut self) -> Result<()> {
+        self.halt_pcm_stream();
         self.chime.stop();
         self.wake_codec()?;
         self.set_speaker(false)?;

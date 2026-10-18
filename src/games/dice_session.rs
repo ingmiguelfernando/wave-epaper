@@ -62,6 +62,48 @@ impl Default for Options {
 }
 
 impl Options {
+    /// Four digits for `RECORDS.TXT`: dice, sound, shake, strength
+    /// (`2111`). Digits, because firmware before Dice reads every value in
+    /// that file as a number.
+    #[must_use]
+    pub fn to_digits(self) -> String {
+        format!(
+            "{}{}{}{}",
+            self.dice,
+            u8::from(self.sound),
+            u8::from(self.shake),
+            match self.strength {
+                Strength::Low => 0,
+                Strength::Medium => 1,
+                Strength::High => 2,
+            }
+        )
+    }
+
+    /// The options of `to_digits`; `None` for anything else.
+    #[must_use]
+    pub fn from_digits(digits: &str) -> Option<Self> {
+        let bytes = digits.as_bytes();
+        if bytes.len() != 4 || !bytes.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        let at = |index: usize| usize::from(bytes[index] - b'0');
+        let dice = at(0);
+        if !(1..=MAX_DICE).contains(&dice) || at(1) > 1 || at(2) > 1 || at(3) > 2 {
+            return None;
+        }
+        Some(Self {
+            dice,
+            sound: at(1) == 1,
+            shake: at(2) == 1,
+            strength: match at(3) {
+                0 => Strength::Low,
+                1 => Strength::Medium,
+                _ => Strength::High,
+            },
+        })
+    }
+
     /// The same values as the options screen.
     #[must_use]
     pub const fn view(self) -> DiceOptions {
@@ -138,6 +180,20 @@ enum Screen {
     Options,
 }
 
+/// Which screen the session shows now.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum View {
+    Ready,
+    /// A roll's frame, 1-based.
+    Rolling {
+        frame: u8,
+    },
+    /// The Options list with this row chosen.
+    Options {
+        selected: usize,
+    },
+}
+
 /// A Dice game session. No drawing, no audio, no clock of its own.
 #[derive(Clone, Debug)]
 pub struct DiceSession {
@@ -184,6 +240,58 @@ impl DiceSession {
     #[must_use]
     pub const fn game(&self) -> &DiceGame {
         &self.game
+    }
+
+    #[must_use]
+    pub const fn view(&self) -> View {
+        match self.screen {
+            Screen::Ready => View::Ready,
+            Screen::Rolling { frame } => View::Rolling { frame },
+            Screen::Options => View::Options {
+                selected: self.options_selected,
+            },
+        }
+    }
+
+    /// When the next roll frame is due, on the caller's clock, even if that
+    /// time has already passed (a late tick still runs the frame).
+    #[must_use]
+    pub fn next_tick(&self) -> Option<u64> {
+        self.frame_times.get(self.frame_index).copied()
+    }
+
+    /// The faces of the last roll, `4+6`, or `None` before the first roll.
+    #[must_use]
+    pub fn last_faces(&self) -> Option<String> {
+        if self.game.rolls() == 0 {
+            return None;
+        }
+        Some(
+            self.game
+                .faces()
+                .iter()
+                .map(|face| face.to_string())
+                .collect::<Vec<_>>()
+                .join("+"),
+        )
+    }
+
+    /// Give a session that has not rolled yet a new seed (the first key's
+    /// time), so each session rolls differently. Does nothing after a roll.
+    pub fn reseed(&mut self, seed: u32) {
+        if self.game.rolls() > 0 || !matches!(self.screen, Screen::Ready) {
+            return;
+        }
+        let seed = seed.max(1);
+        self.game = DiceGame::new(seed);
+        self.game.set_dice(self.options.dice);
+        self.game_seed = seed;
+    }
+
+    /// A shake counts now: on a screen that rolls, with Shake to roll on.
+    #[must_use]
+    pub const fn wants_motion(&self) -> bool {
+        self.options.shake && !matches!(self.screen, Screen::Options)
     }
 
     #[must_use]
@@ -659,6 +767,90 @@ mod tests {
         let left = script(&mut DiceSession::new(42, Options::default()));
         let right = script(&mut DiceSession::new(42, Options::default()));
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn options_round_trip_as_four_digits() {
+        let options = Options {
+            dice: 3,
+            sound: false,
+            shake: true,
+            strength: Strength::High,
+        };
+        assert_eq!(options.to_digits(), "3012");
+        assert_eq!(Options::from_digits("3012"), Some(options));
+        assert_eq!(
+            Options::from_digits(&Options::default().to_digits()),
+            Some(Options::default())
+        );
+        for bad in [
+            "", "211", "21111", "0111", "4111", "2211", "2121", "21x1", "-111",
+        ] {
+            assert_eq!(Options::from_digits(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_new_seed_changes_the_first_roll_but_never_after_one() {
+        let faces = |seed: u32| {
+            let mut s = session();
+            s.reseed(seed);
+            s.on_key(Key::Select, 0);
+            let mut now = 0;
+            while s.is_rolling() {
+                match s.tick(now).next_tick {
+                    Some(next) => now = next,
+                    None => break,
+                }
+            }
+            (s.last_faces().unwrap(), s)
+        };
+        let (a, _) = faces(11);
+        let (b, _) = faces(11);
+        assert_eq!(a, b, "the same seed rolls the same");
+        let distinct: std::collections::HashSet<String> =
+            (1..40_u32).map(|seed| faces(seed * 7919).0).collect();
+        assert!(distinct.len() > 5, "{distinct:?}");
+        // After a roll a reseed changes nothing.
+        let (_, mut rolled) = faces(5);
+        let before = rolled.last_faces();
+        rolled.reseed(99);
+        assert_eq!(rolled.last_faces(), before);
+    }
+
+    #[test]
+    fn the_view_the_tick_time_and_the_motion_want_follow_the_screen() {
+        let mut s = session();
+        assert_eq!(s.view(), View::Ready);
+        assert_eq!(s.last_faces(), None, "nothing rolled yet");
+        assert!(s.wants_motion());
+        assert_eq!(s.next_tick(), None);
+        s.on_key(Key::Select, 100);
+        assert_eq!(s.view(), View::Rolling { frame: 1 });
+        let due = s.next_tick().expect("a roll has a next frame");
+        // A tick long after the due time still runs the frame, and the next
+        // due time is still reported even though it is already past.
+        let late = s.tick(due + 5_000);
+        assert!(late.redraw.is_some());
+        assert!(s.next_tick().is_some_and(|next| next < due + 5_000));
+        let mut now = due + 5_000;
+        while s.is_rolling() {
+            s.tick(now);
+            now += 1;
+        }
+        assert_eq!(s.view(), View::Ready);
+        assert_eq!(s.last_faces().map(|f| f.split('+').count()), Some(2));
+        s.on_key(Key::BootShort, now);
+        assert_eq!(s.view(), View::Options { selected: 0 });
+        assert!(!s.wants_motion(), "Options ignores shakes");
+        let quiet = DiceSession::new(
+            1,
+            Options {
+                shake: false,
+                ..Options::default()
+            },
+        );
+        assert!(!quiet.wants_motion(), "Shake to roll is off");
     }
 
     #[test]
