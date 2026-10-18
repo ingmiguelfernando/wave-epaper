@@ -38,6 +38,9 @@ pub enum GameSprite {
     Streaks,
     /// The player's car turned 14 degrees, for the crash picture.
     CrashCar,
+    /// A small speaker with two sound waves, in paper color for the black
+    /// status bar (`#spk`). Unlike the others it ignores the body color.
+    Speaker,
 }
 
 impl GameSprite {
@@ -50,6 +53,7 @@ impl GameSprite {
             Self::Burst => (60, 60),
             Self::Streaks => (38, 34),
             Self::CrashCar => (84, 70),
+            Self::Speaker => (24, 20),
         }
     }
 }
@@ -127,6 +131,19 @@ pub enum DrawCommand {
         x: i32,
         y: i32,
         sprite: GameSprite,
+    },
+    /// One die: a rounded square with round pips, as the mockup's `die-1`
+    /// to `die-6`. `(x, y)` is the top-left of the untilted square. `face`
+    /// is 0 for the empty rest outline, or 1 to 6 for pips. `dashed` draws
+    /// the rest outline of a die that is tumbling. `angle` turns the die
+    /// about its centre, in degrees (0 is square).
+    Die {
+        x: i32,
+        y: i32,
+        size: i32,
+        face: u8,
+        dashed: bool,
+        angle: i32,
     },
     /// Large display numerals, centred between `left` and `right`.
     Numerals {
@@ -358,6 +375,36 @@ impl NativeGameCanvas {
         self.validate_rect(DirtyRect::new(x, y, width, height))?;
         self.push(DrawCommand::Sprite { x, y, sprite })?;
         self.dirty.invalidate(DirtyRect::new(x, y, width, height));
+        Ok(())
+    }
+
+    /// One die whose untilted square has its top-left at `(x, y)`, turned
+    /// by `angle` degrees about its centre. The dirty rectangle grows by
+    /// what the tilt and the stroke reach.
+    pub fn die(
+        &mut self,
+        x: i32,
+        y: i32,
+        size: i32,
+        face: u8,
+        dashed: bool,
+        angle: i32,
+    ) -> Result<(), String> {
+        if face > 6 {
+            return Err(format!("die face {face} is out of range 0-6"));
+        }
+        let pad = super::die_shape::tilt_padding(size, angle);
+        let rect = DirtyRect::new(x - pad, y - pad, size + 2 * pad, size + 2 * pad);
+        self.validate_rect(rect)?;
+        self.push(DrawCommand::Die {
+            x,
+            y,
+            size,
+            face,
+            dashed,
+            angle,
+        })?;
+        self.dirty.invalidate(rect);
         Ok(())
     }
 

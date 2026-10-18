@@ -6,6 +6,9 @@
 //! never exposed to removable-storage code.
 
 pub mod canvas;
+pub mod dice;
+pub mod dice_view;
+pub mod die_shape;
 pub mod dirty_regions;
 pub mod minesweeper;
 pub mod race;

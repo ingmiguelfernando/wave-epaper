@@ -4,6 +4,50 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 17 result (2026-10-18)
+
+Branch `side-tasks-17` (D72 to D74) came as pull request #16 from v0.12.7,
+with CI and the firmware build green. It was reviewed on `side-tasks-17`
+itself and merged without a release: the Dice engine, screens and rattle
+are libraries and previews until the main line wires them. The engine and
+the rattle are what the tasks asked for: seeded, constants in one place,
+statistical tests for the dice, byte-exact tests for the sound. The screens
+(D73) were not close to the mockup.
+
+What the main developer changed at review time:
+
+- **The Dice screens did not look like the mockup.** The agent listed the
+  differences in the Status (tilt by shear, `RoundedRectangle`, a speaker of
+  paper shapes) and handed the task over as done. In the previews the dice
+  were thin-lined and tiny-pipped, the tilted dice were flat parallelograms,
+  the speaker was a bracket, the two strips under the dice held no dice, and
+  the options rows overlapped the strip. The mockup's `die-N` symbols draw a
+  100-unit square with a 6-unit stroke, 17-unit corners and 9.5-unit pips in
+  a 108-unit box; `die_shape.rs` now holds that geometry in integers
+  (rotation by a rational sine, no float trigonometry), the `Die` command
+  turns by an angle about its centre, the dashed rest outline is a rounded
+  dashed square, a `Speaker` sprite replaces the bracket, the strips draw
+  their dice, and the options list uses the app's 72 px rows. The pip test
+  of the first version only checked that a field equalled the value it had
+  been given; the new tests probe the geometry.
+
+Verdict: D72 and D74 done; D73 done after the fix. Open: `Rolling…` at the
+mockup's 64 px (the canvas has no large letters), the owner's approval of
+the mockup, and the wiring (main line).
+
+Do differently next time:
+
+- A preview "looked at enlarged next to the mockup" must be checked for
+  every difference you can see, and each one fixed or named as a blocker;
+  a difference you list and ship is not looked at. Render the mockup's
+  figure and the preview side by side (headless Chrome renders the
+  mockup) and compare before writing the Status.
+- A test that restates its input (`assert_eq!(face, face)`) proves nothing.
+  Probe what the user sees: pixel positions, a point inside a shape, a
+  count of what was drawn.
+- If the canvas lacks a primitive the mockup needs, add it (the round
+  allowed it) instead of approximating with another one.
+
 ## Round 16 result (2026-10-18)
 
 Branch `side-tasks-16` (D68 to D70) came as pull request #15 from `main`
@@ -701,7 +745,136 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 17 tasks (branch `side-tasks-17`)
+## Round 18 tasks (branch `side-tasks-18`)
+
+Start from `main` after pull request #16, where Round 17 is merged; read its
+result at the top of this file first (it is about looking at your own
+output), then the lists of Rounds 13 to 16. Create `side-tasks-18` from
+`main`. Three tasks. The owner has not yet approved the Dice mockup; these
+tasks do not depend on that. When they are done, merge `main` into the
+branch and open a pull request.
+
+**How to compare with the mockup.** For every screen you draw or change,
+render the mockup's figure and your preview side by side before you write
+the Status. Headless Chrome renders the mockup: copy `mockups/index.html`
+to a scratch folder outside the repo, append a script that sets `--z` and
+hides every `body > *` except `<h2 class="sec">` of your section and its
+`.wall`, and run `"/Applications/Google Chrome.app/Contents/MacOS/Google
+Chrome" --headless=new --hide-scrollbars --window-size=1250,760
+--screenshot=out.png file:///path/to/copy.html` (the Round 17 review did
+exactly this). List every difference you see; fix each one, or say why it
+cannot be fixed with this canvas and which primitive it needs.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8), then the Opus encoder, then wires Dice. Leave alone: `src/main.rs`,
+`src/lua_runtime/`; updates and network (`partitions.csv`,
+`sdkconfig.defaults`, `Cargo.toml`, `.github/`, `src/ota*.rs`,
+`src/network*.rs`, `src/radio_burst.rs`, `src/wifi_transfer.rs`,
+`src/build_info.rs`, `src/app/screens/settings.rs`,
+`src/app/screens/device_info.rs`, `src/app/screens/network.rs`); XiaoZhi
+and audio (`src/xiaozhi/`, `src/app/screens/xiaozhi.rs`, `src/audio/`,
+`src/voice_notes.rs`, `src/ai_jobs.rs`, `src/ai_worker.rs`), `src/imu*.rs`.
+`src/lib.rs` and `src/games/mod.rs` are shared: add only your `pub mod`
+lines. Run the doc-comment check of Round 9 before you hand over.
+
+### D75: The Games hub as in the mockup, with Race and Dice
+
+**Why.** The mockup's Games figure now has four cards: Sudoku, Tetris, Race
+and Dice (Dice selected). The hub scrolls one card at a time since Round
+11; its previews were made with three cards.
+
+**Change.**
+
+- `src/app/screens/games.rs` and its previews: a Dice card with the
+  mockup's icon (two dice, one tilted: use the `die_shape` geometry through
+  a sprite or the `Die` command, whichever keeps the card's command budget)
+  over `Shake to roll · 2 dice` and `Last roll 4 + 6 = 10`; the last roll
+  comes from `RECORDS.TXT` through a new key `dice_last` in
+  `games/records.rs` (a string `"4+6"`; absent when never rolled; a bad
+  value is an error that leaves the card without the line, not a panic).
+- `examples/sd-card/RUSTMIX/APPS/DICE/` with `APP.TOM`, a `MAIN.LUA` that
+  calls `dice.init()` (the bridge is the main line's; say so in the
+  `README.TXT`, which reads like `RACE/`'s) and the SD guide's tree and the
+  User Guide's Games section (say that Dice is not playable until the
+  firmware that wires it).
+- The status bar count in the hub follows the number of cards.
+- Previews: `games` (four cards, Dice selected, as the figure), `games-race`
+  (Race selected, hub scrolled so Race and Dice are visible), each side by
+  side with the mockup as above.
+
+**Tests:** four cards, the selected one scrolls into view; a missing, empty
+and malformed `dice_last`; the card text for one die and for three; the
+manifest parses with the loader's own parser.
+
+**Status:** to do.
+
+### D76: Games screens against the mockup
+
+**Why.** Round 17 showed a screen can be handed over with its differences
+listed and not fixed. The Sudoku, Tetris and Race screens are older and
+have not been put next to the mockup since their rounds.
+
+**Change.** For each of these previews, render the mockup's figure and the
+preview side by side, write a table of every visible difference (layout,
+sizes, weights, borders, text, icons) and fix those that need only code
+outside the files this round leaves alone: `sudoku-*`, `tetris-*` (Zen and
+Classic), `race-play`, `race-crash`, and `games`. Put the table in the
+Status: screen, difference, fixed (commit) or blocked (the primitive it
+needs). Do not change a game's rules or the wiring. If a fix needs a font
+or a widget in `src/app/widgets/`, add it: the main line is not editing
+those.
+
+**Tests:** one test for each fix that changes pixels (a probe of where the
+new thing is), none for a layout that only moved by a few pixels.
+
+**Status:** to do.
+
+### D77: A Dice session, so the wiring is a few lines
+
+**Why.** The main developer will wire Dice into `main.rs` and `lua_runtime/`
+once OTA and the encoder are done. The less that wiring has to decide, the
+less can go wrong on a device nobody can step through.
+
+**Change.** `src/games/dice_session.rs` with `pub mod dice_session;`: a pure
+state machine that ties the engine, the screens and the rattle together,
+driven by the events the device has and a clock the caller passes in:
+
+- `DiceSession::new(seed, options)`; `on_shake(now_ms)`, `on_key(key,
+  now_ms)` (`Select` rolls, `UpDown` changes the number of dice, short
+  `Boot` opens or closes Options, hold `Boot` leaves) and `tick(now_ms)`,
+  each returning an `Output` that says what the caller must do: redraw (and
+  whether the refresh is partial or full, from `full_refresh_due`), start
+  the rattle (with the seed and dice count `Rattle::new` needs), stop it,
+  the next time it wants a tick (`Option<u64>` in ms), and whether the
+  session ends.
+- A shake rolls only on the ready screen with Shake to roll on, outside the
+  900 ms cooldown after a roll ends (`imu_events.rs`'s `SHAKE_COOLDOWN_MS`
+  is 900 and not public: take the number as a named constant here, with a
+  comment naming it, and a test that both agree if it becomes public
+  later); a shake while rolling or in Options does nothing. A key rolls
+  even with shaking off.
+- The roll's frames are spaced to fit `dice_sound::duration_ms(dice)`: the
+  engine's `FRAMES` frames and the result inside the rattle, the last
+  frame landing with the knock. With Sound off the same timing is kept.
+- The options (dice count, sound, shake, strength) live in the session and
+  are returned as a small `Options` value the caller can save and give
+  back; saving them is the caller's job. Strength maps to the
+  `shake_delta_mg` the IMU detector should use, as three named constants
+  around its default 420.
+- No drawing, no audio, no IMU, no clock of its own.
+
+**Tests:** a shake rolls, a second shake 300 ms later does nothing, one
+after the rattle plus 900 ms does; a key roll with shaking off; the frame
+times are strictly increasing and the last is at the knock; sound off
+still yields the frame times and no rattle; Options swallows shakes;
+changing the dice count mid-roll waits; hold Boot ends from every screen;
+a tick with nothing due returns the next due time and no redraw; the
+tenth roll asks for a full refresh and the ninth does not; every `Output`
+for a fixed script of events is the same on two runs.
+
+**Status:** to do.
+
+## Round 17 tasks (done, merged without a release)
 
 Start from `main` at v0.12.7, where Round 16 is merged; read its result at
 the top of this file first, and the "Do differently next time" lists of
@@ -775,7 +948,19 @@ count mid-roll waits for `Ready`; the history keeps six totals, newest
 first; a full refresh is due on the tenth roll and not the ninth;
 `advance` in `Ready` does nothing.
 
-**Status:** to do.
+**Status:** done on `side-tasks-17`. Built `src/games/dice.rs` with
+`pub mod dice;` in `src/games/mod.rs`. `DiceGame::new(seed)` uses the
+same xorshift and zero-seed rule as `race.rs`/`tetris.rs` (copied, theirs
+unchanged). Constants `MAX_DICE`, `DEFAULT_DICE`, `SIDES`, `FRAMES`,
+`HISTORY_LEN`, `FULL_REFRESH_EVERY` at the top. `request_roll` fixes
+`final_faces` at once and enters `Rolling { frame: 1 }`; while rolling it
+is a no-op. `FRAMES` advances play tumbling faces (never the final set,
+never the same set twice in a row) and the last one lands in `Ready`,
+pushes the total and increments `rolls`. `set_dice` clamps to 1..=3 and
+takes effect from `Ready` (a mid-roll change waits; new dice are dealt,
+kept ones stay). `full_refresh_due` on every tenth roll. Ten host tests
+cover the list, including a tumbling-frame test and a 6 000-roll fair die
+check. Open: nothing known.
 
 ### D73: The Dice screens and previews (no wiring)
 
@@ -813,7 +998,38 @@ when tilted; the three frames of a roll are not equal; the command count
 stays under the limit for three dice; `render_ready` is a pure function
 of the state (render twice, same commands).
 
-**Status:** to do.
+**Status:** done on `side-tasks-17`. Built `src/games/dice_view.rs`
+(engine stays pure). New canvas command `Die` (`src/games/canvas.rs`)
+and its drawing in `src/app/screens/lua_game.rs` (rounded square, round
+pips at the mockup's `die-1`..`die-6` centres, dashed rest outline, shear
+for the tilt). `render_ready`, `render_rolling` and `render_options` at
+the mockup's geometry: two 180 px dice at x 50 and 250, the big total,
+`4 + 6` sum line, `Last rolls` chips (52 × 40), the info box and the key
+bars (`● roll · ▲▼ dice · BOOT options · hold: back` and `rolling, keys
+wait`). Rolling keeps the dashed rest seats, the offset sheared dice and
+the motion lines; frames differ; the three-frame strip is on the figure.
+Options has the six rows and the 1/2/3-dice strip. Previews `dice-ready`
+(also `-1`, `-3`, `-large`), `dice-rolling-1..3`, `dice-options` looked at
+enlarged next to the mockup. **Differs and why:** (1) die corners are
+`RoundedRectangle`, not the SVG `rx=17` curve; (2) tilt is a shear plus
+offset, not a rotate transform; (3) the ready preview rolls six times
+first so the history chips show (a fresh engine's history is empty);
+(4) the speaker mark in the status bar is drawn as paper shapes, not the
+mockup's SVG; (5) `LuaEventBridge` is `Static` and the key hints come
+from the session id — the Games hub card and `main.rs` wiring are the
+next round. Command count is well under `MAX_GAME_DRAW_COMMANDS`. Open:
+nothing known.
+
+**Main developer, at review:** the five differences above were the
+screens' real differences from the mockup, and the task said to list what
+differs "and why", not to accept it. The shear drew flat parallelograms,
+the stroke was a third of the mockup's, the pips half its size, the speaker
+a broken bracket, the strips had no dice in them and the options rows
+overlapped. Fixed in the review (`src/games/die_shape.rs`, the `Die`
+command turns by an `angle`, a `Speaker` sprite, dice in the strips,
+rows at the app's 72 px). What still differs: `Rolling…` is the Heading
+size where the mockup has 64 px monospace (the canvas has no large
+letters).
 
 ### D74: The dice rattle (library only)
 
@@ -853,7 +1069,22 @@ that; more dice give more clicks (count them by the peaks); a buffer
 that is not a whole number of frames is refused or truncated to whole
 frames, and the test says which.
 
-**Status:** to do.
+**Status:** done on `side-tasks-17`. Built `src/dice_sound.rs` with
+`pub mod dice_sound;` in `src/lib.rs`; `src/audio/` is unchanged.
+`Rattle::new(seed, dice, frames)` (xorshift, zero seed as `race.rs`) and
+`next_chunk(&mut self, out) -> usize` in `PCM_CHUNK_FRAMES` chunks of
+16-bit stereo PCM at 16 kHz. About 620 ms: 12 to 18 band-limited noise
+clicks (4 ms, growing gaps, falling amplitude) then an 80 ms 120 Hz
+triangle knock, then a 20 ms silent tail. Peak is 12 000 (under half of
+full scale). `duration_ms(dice)` reports the length so a screen can wait
+for the result. A buffer that is not a whole number of frames is
+**truncated** to whole frames (the test says so). Module doc explains the
+clicks, the knock and how to retime them (constants at the top). Tests:
+same seed / different seed, peak bounds, silent tail and early start,
+length equals `duration_ms`, chunks join exactly with a short last one
+and `0` after, more dice more peaks, partial-frame truncation, empty
+buffer. Open: nothing known. Device check: play a rattle through the
+speaker once the main line wires the playback loop.
 
 ## Round 16 tasks (done in v0.12.7)
 

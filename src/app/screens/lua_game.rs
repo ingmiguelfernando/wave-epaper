@@ -5,7 +5,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Line, PrimitiveStyle, Rectangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
@@ -84,6 +84,20 @@ const RACE_ZEN_HINTS: [(KeyCap, &str); 3] = [
 const RACE_CRASH_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "choose"),
     (KeyCap::Select, "select"),
+    (KeyCap::Boot, "hold: back"),
+];
+
+const DICE_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::Select, "roll"),
+    (KeyCap::UpDown, "dice"),
+    (KeyCap::Boot, "options · hold: back"),
+];
+
+const DICE_ROLLING_HINTS: [(KeyCap, &str); 1] = [(KeyCap::Boot, "rolling, keys wait")];
+
+const DICE_OPTIONS_HINTS: [(KeyCap, &str); 3] = [
+    (KeyCap::UpDown, "choose"),
+    (KeyCap::Select, "change"),
     (KeyCap::Boot, "hold: back"),
 ];
 
@@ -182,12 +196,19 @@ pub fn render_lua_game(
     for command in session.canvas.commands() {
         draw_command(display, state, command)?;
     }
-    draw_bottom_bar(display, state.display, game_hints(&session.event_bridge))
+    draw_bottom_bar(display, state.display, game_hints(session))
 }
 
 /// Hints for the game's current mode; game canvases leave the bar band free.
-fn game_hints(bridge: &LuaEventBridge) -> &'static [(KeyCap, &'static str)] {
-    match bridge {
+/// Dice is named by its session id until the main line wires the engine.
+fn game_hints(session: &crate::lua_runtime::LuaAppSession) -> &'static [(KeyCap, &'static str)] {
+    match session.entry.manifest.id.as_str() {
+        "dice-options" => return &DICE_OPTIONS_HINTS,
+        "dice-rolling" => return &DICE_ROLLING_HINTS,
+        "dice" => return &DICE_HINTS,
+        _ => {}
+    }
+    match &session.event_bridge {
         LuaEventBridge::Static => &BACK_HINTS,
         LuaEventBridge::Sudoku(game) => match game.step() {
             SudokuStep::Start => &CHOOSE_HINTS,
@@ -344,6 +365,16 @@ fn draw_command(
         DrawCommand::Sprite { x, y, sprite } => {
             game_sprites::draw_sprite(display, Point::new(*x, *y), *sprite, BinaryColor::On)?;
         }
+        DrawCommand::Die {
+            x,
+            y,
+            size,
+            face,
+            dashed,
+            angle,
+        } => {
+            draw_die(display, *x, *y, *size, *face, *dashed, *angle)?;
+        }
         DrawCommand::Numerals {
             text,
             left,
@@ -407,6 +438,109 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
     }
 }
 
+/// One die as the mockup's `die-N` symbols: a rounded square with a thick
+/// stroke and round pips, or its dashed rest outline, turned by `angle`
+/// degrees about its centre.
+fn draw_die(
+    display: &mut OrientedFrameBuffer<'_>,
+    x: i32,
+    y: i32,
+    size: i32,
+    face: u8,
+    dashed: bool,
+    angle: i32,
+) -> Result<(), Infallible> {
+    use crate::games::die_shape::{
+        outline, pip_centres, DASH_PERCENT, PIP_PERCENT, REST_STROKE_PERCENT, STROKE_PERCENT,
+    };
+    let (cx, cy) = (x + size / 2, y + size / 2);
+    // The mockup's symbols draw a 100-unit square and its stroke inside a
+    // 108-unit box, so the box `size` holds a square a little smaller.
+    let side = size * 100 / 108;
+    let points = outline(cx, cy, side, angle);
+    if dashed {
+        let width = (side * REST_STROKE_PERCENT / 100).max(2) as u32;
+        let dash = side * DASH_PERCENT.0 / 100;
+        let gap = side * DASH_PERCENT.1 / 100;
+        stroke_path(display, &points, width, Some((dash.max(2), gap.max(2))))?;
+        return Ok(());
+    }
+    let width = (side * STROKE_PERCENT / 100).max(2) as u32;
+    stroke_path(display, &points, width, None)?;
+    let pip = (side * PIP_PERCENT / 100).max(3) as u32;
+    for (px, py) in pip_centres(face, cx, cy, side, angle) {
+        Circle::new(Point::new(px - pip as i32 / 2, py - pip as i32 / 2), pip)
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
+    }
+    Ok(())
+}
+
+/// A closed path drawn with a round-capped stroke of `width`. With
+/// `dashes` as `(dash, gap)` lengths it draws a dashed line along the path.
+fn stroke_path(
+    display: &mut OrientedFrameBuffer<'_>,
+    points: &[(i32, i32)],
+    width: u32,
+    dashes: Option<(i32, i32)>,
+) -> Result<(), Infallible> {
+    let ink = PrimitiveStyle::with_stroke(BinaryColor::On, width);
+    let cap = PrimitiveStyle::with_fill(BinaryColor::On);
+    let dot = |display: &mut OrientedFrameBuffer<'_>, at: Point| {
+        Circle::new(at - Point::new(width as i32 / 2, width as i32 / 2), width)
+            .into_styled(cap)
+            .draw(display)
+    };
+    // `along` is how far the path has gone; a dash is drawn while
+    // `along % (dash + gap)` is under `dash`.
+    let mut along = 0_i32;
+    for index in 0..points.len() {
+        let (x1, y1) = points[index];
+        let (x2, y2) = points[(index + 1) % points.len()];
+        let (dx, dy) = (x2 - x1, y2 - y1);
+        let length = isqrt(dx * dx + dy * dy).max(1);
+        let Some((dash, gap)) = dashes else {
+            Line::new(Point::new(x1, y1), Point::new(x2, y2))
+                .into_styled(ink)
+                .draw(display)?;
+            dot(display, Point::new(x1, y1))?;
+            continue;
+        };
+        // Walk the edge in steps of one pixel's worth of its length, drawing
+        // the pieces that fall inside a dash.
+        let period = dash + gap;
+        let mut start = 0;
+        while start < length {
+            let phase = (along + start) % period;
+            if phase < dash {
+                let run = (dash - phase).min(length - start);
+                let a = Point::new(x1 + dx * start / length, y1 + dy * start / length);
+                let b = Point::new(
+                    x1 + dx * (start + run) / length,
+                    y1 + dy * (start + run) / length,
+                );
+                Line::new(a, b).into_styled(ink).draw(display)?;
+                dot(display, a)?;
+                dot(display, b)?;
+                start += run;
+            } else {
+                start += period - phase;
+            }
+        }
+        along += length;
+    }
+    Ok(())
+}
+
+/// Integer square root, rounded down.
+fn isqrt(value: i32) -> i32 {
+    let mut root = 0;
+    while (root + 1) * (root + 1) <= value {
+        root += 1;
+    }
+    root
+}
+
 /// Literata at the size whose capitals come closest to the givens', so the
 /// player's digits match them in size but not in weight.
 fn player_digit_style(givens: UiTextStyle) -> UiTextStyle {
@@ -467,7 +601,25 @@ mod tests {
     fn zen_race_shows_its_own_key_hints() {
         let mut canvas = NativeGameCanvas::default();
         let bridge = LuaEventBridge::load("race.init('zen', 3)", &mut canvas).unwrap();
-        let hints = super::game_hints(&bridge);
+        let session = crate::lua_runtime::LuaAppSession {
+            entry: LuaAppEntry {
+                directory_name: "RACE".into(),
+                directory: std::path::PathBuf::from("/tmp/RACE"),
+                manifest: LuaAppManifest {
+                    id: "race".into(),
+                    name: "Race".into(),
+                    kind: LuaAppKind::Game,
+                    entry: "MAIN.LUA".into(),
+                    version: "1.0".into(),
+                    input: vec![],
+                },
+            },
+            source_bytes: 0,
+            canvas,
+            refresh_plan: GameRefreshPlan::PartialFullscreen { regions: vec![] },
+            event_bridge: bridge,
+        };
+        let hints = super::game_hints(&session);
         let labels: Vec<&str> = hints.iter().map(|(_, label)| *label).collect();
         assert_eq!(labels, ["lane", "step", "hold: back"]);
     }

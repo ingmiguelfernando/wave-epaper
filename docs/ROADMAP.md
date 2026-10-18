@@ -50,7 +50,8 @@ Last updated: 2026-10-18, firmware v0.12.7.
 | Delegated tasks D62 to D64: the upload form and parts for Ogg Opus, previews of the cached forecast and the verse mark | | PR #13 | Done, merged without a release (library and previews only) |
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
 | Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
-| Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (library only) | | side-tasks-17 | Published (Round 17) |
+| Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (libraries and previews only) | | PR #16 | Done, merged without a release; wiring is the main line's |
+| Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | side-tasks-18 | Published (Round 18) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -325,7 +326,7 @@ Done in v0.9.7 (D27); kept as the reference.
   speaker; the roll is two or three partial refreshes, then the result.
   The IMU runs only while Dice is open (D3 kept motion out of games until
   now). The mockup is D71 (drawn, waiting for the owner's approval); the
-  engine, screens and rattle are Round 17 (D72 to D74), libraries only;
+  engine, screens and rattle are Round 17 (D72 to D74, merged), libraries only;
   wiring the shake and the sound is the main line's.
 - **Race** (native engine, SD app `RACE`): the mockup's two Race screens.
   Four lanes on a road that runs right to left and moves in steps; ▲▼

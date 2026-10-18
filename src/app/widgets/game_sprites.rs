@@ -41,6 +41,7 @@ pub fn draw_sprite(
         GameSprite::MoveHint => move_hint(display, origin, ink),
         GameSprite::Streaks => streaks(display, origin, ink),
         GameSprite::CrashCar => crash_car(display, origin, ink, paper),
+        GameSprite::Speaker => speaker(display, origin, paper),
     }
 }
 
@@ -277,6 +278,44 @@ fn streaks(
     Ok(())
 }
 
+/// The mockup's `#spk`: a speaker with two sound waves, in `paper` for the
+/// black status bar, inside its 24 × 20 size.
+fn speaker(
+    display: &mut OrientedFrameBuffer<'_>,
+    origin: Point,
+    color: BinaryColor,
+) -> Result<(), Infallible> {
+    let fill = PrimitiveStyle::with_fill(color);
+    Rectangle::new(origin + Point::new(0, 6), Size::new(5, 8))
+        .into_styled(fill)
+        .draw(display)?;
+    Triangle::new(
+        origin + Point::new(4, 6),
+        origin + Point::new(12, 0),
+        origin + Point::new(12, 19),
+    )
+    .into_styled(fill)
+    .draw(display)?;
+    Triangle::new(
+        origin + Point::new(4, 6),
+        origin + Point::new(4, 13),
+        origin + Point::new(12, 19),
+    )
+    .into_styled(fill)
+    .draw(display)?;
+    for diameter in [12_u32, 20] {
+        Arc::with_center(
+            origin + Point::new(11, 10),
+            diameter,
+            Angle::from_degrees(-45.0),
+            Angle::from_degrees(90.0),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(color, 2))
+        .draw(display)?;
+    }
+    Ok(())
+}
+
 /// The player's car turned 14 degrees, for the crash picture. The tilt is
 /// baked in: the crash screen draws the same picture every time.
 fn crash_car(
@@ -367,7 +406,8 @@ fn rounded_rect_points(
 #[cfg(test)]
 mod tests {
     use embedded_graphics::pixelcolor::BinaryColor;
-    use embedded_graphics::prelude::Point;
+    use embedded_graphics::prelude::{Drawable, Point, Primitive, Size};
+    use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 
     use super::draw_sprite;
     use crate::{
@@ -375,6 +415,37 @@ mod tests {
         games::canvas::GameSprite,
         orientation::{DisplayOrientation, OrientedFrameBuffer},
     };
+
+    /// The speaker is paper-colored: on a black bar it leaves paper pixels
+    /// inside its own size and none outside.
+    #[test]
+    fn the_speaker_draws_paper_inside_its_size_on_a_black_bar() {
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
+        Rectangle::new(Point::new(0, 0), Size::new(480, 300))
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(&mut display)
+            .unwrap();
+        let origin = Point::new(100, 200);
+        draw_sprite(&mut display, origin, GameSprite::Speaker, BinaryColor::On).unwrap();
+        drop(display);
+        let (width, height) = GameSprite::Speaker.size();
+        let (mut inside, mut outside) = (0_u32, 0_u32);
+        for y in 0..300 {
+            for x in 0..480 {
+                if frame.is_black(Point::new(y, 479 - x)) == Some(true) {
+                    continue;
+                }
+                if x >= origin.x && x < origin.x + width && y >= origin.y && y < origin.y + height {
+                    inside += 1;
+                } else {
+                    outside += 1;
+                }
+            }
+        }
+        assert_eq!(outside, 0, "paper outside the speaker's size");
+        assert!(inside > 60, "the speaker drew {inside} paper pixels");
+    }
 
     /// Every sprite drawn alone at a cell's place leaves no ink outside its
     /// own size, so the cells a step dirties cover what changed.
