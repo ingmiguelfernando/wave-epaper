@@ -3,6 +3,18 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.12.7 — `%` at the small size
+
+- **The `%` sign draws whole at the small (Detail) size in Inter.** It lost
+  its slash at 12 px, so percentages were set one size larger. They are
+  back at the mockup's size: the sleep card's battery, the weather rain
+  chances, the Reader's page label and library rows, and Reading Stats'
+  change label and current-book line. The font generator takes a
+  hand-written glyph for one character at one size.
+- **Voice Notes screens say audio, not WAV**, as a note can be Ogg too.
+- `docs/DEEP_SLEEP.md`: a study of deep sleep (wake pins, what a wake
+  loses, boot time, a plan). No change to the firmware.
+
 ## v0.12.6 — Books finished this year
 
 - **Reading Stats counts the books finished this year**, beside this

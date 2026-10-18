@@ -1,15 +1,7 @@
 # Wave known issues
 
-Firmware v0.12.6. This is not a list of promised mockup features. See
+Firmware v0.12.7. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
-
-## Percent glyph at Detail size
-
-In Inter at the Standard size, the Detail strike (12 px) draws `%` without its
-slash. Inter Compact and Large and every Atkinson size are fine. Task D6 found
-no `fonts.toml` setting that fixes it without changing other glyphs, so
-screens show percentages in Body size instead (sleep card battery, weather
-rain chances). Do not infer a battery-reading failure from the glyph.
 
 ## USB flashing and disappearing serial port
 

@@ -4,6 +4,37 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 16 result (2026-10-18)
+
+Branch `side-tasks-16` (D68 to D70) came as pull request #15 from `main`
+after the Dice mockup, with CI, the `fonts` workflow and the firmware
+build green. It was reviewed on `side-tasks-16` itself, merged and
+released as v0.12.7 (milestone `percent-detail`). D71 (the Dice mockup)
+was drawn by the main developer. The generator override is clean and
+checked (the committed atlas is byte for byte what the `fonts` workflow
+generates), the wording hits are all listed, and the deep sleep study
+names the file and line of every claim about this repo, and says what it
+could not find.
+
+What the main developer changed at review time:
+
+- **The `%` was two solid 2 × 2 blobs and a slash**, which reads as
+  `0/0` at 12 px. The rings are open 3 × 3 now (a paper pixel in the
+  middle of each), and the test checks that. The atlas was patched by
+  hand to match the TOML; the `fonts` workflow generates the same bytes.
+
+Verdict: D68 to D70 done after the fix. Open for the owner: D70's
+question (a timer for the alarm, or a board rewire, study §7) and the
+approval of the Dice mockup (D71).
+
+Do differently next time:
+
+- Look at a hand-drawn glyph at the size it is used, among the other
+  glyphs, not only its bitmap: a shape that follows the right outline can
+  still read as another character.
+- When a task's acceptance is "the owner decides", write the options and
+  your recommendation first, as D70's section 7 does.
+
 ## Round 15 result (2026-10-18)
 
 Branch `side-tasks-15` (D65 to D67) came as pull request #14 from `main`
@@ -670,7 +701,161 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 16 tasks (branch `side-tasks-16`)
+## Round 17 tasks (branch `side-tasks-17`)
+
+Start from `main` at v0.12.7, where Round 16 is merged; read its result at
+the top of this file first, and the "Do differently next time" lists of
+Rounds 13 to 16. Create `side-tasks-17` from `main`. Three tasks, in this
+order. The owner asked for a Dice game (a die, rolled by shaking the
+device, with the sound of real dice); the mockup is the `Dice` figures in
+`mockups/index.html` (D71, waiting for the owner's approval). This round
+builds the parts that need neither the device nor `main.rs`, as Race's
+D49 did. When they are done, merge `main` into the branch and open a pull
+request.
+
+**Parts that may still change.** The owner has not approved the mockup's
+choices: up to three dice, three frames a roll, a shake strength option,
+six sides only. Keep the number of dice, the number of sides and the
+frame count as parameters or constants in one place each, so changing
+one is a one-line edit and a test follows it.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8), then wires the Opus encoder, then wires Dice: the Lua or
+native entry in `main.rs` and `lua_runtime/`, the shake events and the
+motion sensor's switching, and the playback. Leave alone: `src/main.rs`,
+`src/lua_runtime/`; updates and network (`partitions.csv`,
+`sdkconfig.defaults`, `Cargo.toml`, `.github/`, `src/ota*.rs`,
+`src/network*.rs`, `src/radio_burst.rs`, `src/wifi_transfer.rs`,
+`src/build_info.rs`, `src/app/screens/settings.rs`,
+`src/app/screens/device_info.rs`, `src/app/screens/network.rs`); XiaoZhi
+and audio (`src/xiaozhi/`, `src/app/screens/xiaozhi.rs`, `src/audio/`,
+`src/voice_notes.rs`, `src/ai_jobs.rs`, `src/ai_worker.rs`); the
+widgets in `src/app/widgets/`, `src/app/display_assets.rs`,
+`src/imu*.rs`. `src/lib.rs` is shared: add only your `pub mod` lines.
+
+Run the doc-comment check of Round 9 before you hand over. Test the
+edges, as Round 13 and 14's lists say. No `expect` or `unwrap` outside
+tests on data from the card.
+
+### D72: The dice engine (library only)
+
+**Why.** Everything the game does that is not drawing: rolling, the dice
+count, the history. It must be testable on the host, as `race.rs`'s
+engine is.
+
+**Change.** `src/games/dice.rs`, a pure engine, with `pub mod dice;` in
+`src/games/mod.rs`:
+
+- `DiceGame::new(seed)`: the same seeded xorshift as `race.rs` and
+  `tetris.rs` (a zero seed starts from a constant; copy the rule, or
+  share a helper if one exists, without changing theirs).
+- State: `dice` (1 to 3, default 2), `sides` (6), the current faces, the
+  history of the last six totals (newest first), `rolls` since the last
+  full refresh, and a `phase` (`Ready`, `Rolling { frame }`).
+- `request_roll()`: from `Ready`, picks the final faces now (so a test
+  can see them) and goes to `Rolling { frame: 1 }`; while rolling it
+  does nothing and says so (a shake during a roll must not restart it).
+  A shake that arrives within the cooldown after a roll ends is the
+  caller's business, not the engine's.
+- `advance()`: one frame on; the last frame ends in `Ready` with the
+  final faces, the total pushed on the history, and `rolls + 1`. Frames
+  before it show tumbling faces that are not the final ones when more
+  than one face is possible, and are never the same two frames in a row.
+- `set_dice(n)` clamps to 1..=3, takes effect from `Ready` only, and
+  keeps the history. `full_refresh_due()` is true every tenth roll.
+- Every constant (`MAX_DICE`, `DEFAULT_DICE`, `SIDES`, `FRAMES`,
+  `HISTORY_LEN`, `FULL_REFRESH_EVERY`) is a named `const` at the top.
+
+**Tests:** the same seed rolls the same faces; over 6 000 rolls of one
+die every face 1 to 6 comes up, each between 14% and 19%; two dice total
+2 to 12 and the totals are not uniform (7 is the most common); a roll
+takes exactly `FRAMES` calls to `advance`; `request_roll` while rolling
+changes nothing; `set_dice(0)` and `set_dice(9)` clamp; changing the
+count mid-roll waits for `Ready`; the history keeps six totals, newest
+first; a full refresh is due on the tenth roll and not the ninth;
+`advance` in `Ready` does nothing.
+
+**Status:** to do.
+
+### D73: The Dice screens and previews (no wiring)
+
+**Why.** The mockup's three screens, drawn from the engine on the game
+canvas, with previews to compare with the mockup.
+
+**Change.** In `src/games/dice.rs` (or `src/games/dice_view.rs` if it
+grows past the file's size limits; say which) and
+`src/app/preview.rs`, following `race.rs`'s `render` and its previews:
+
+- `render_ready`, `render_rolling` and `render_options` on
+  `NativeGameCanvas` at 480 × 800, from the mockup's `Dice`, `Dice:
+  tirando` and `Dice: opciones` figures: status bar, the dice drawn as
+  rounded squares with round pips (`GameSprite` shapes if they fit, else
+  new commands in `src/games/canvas.rs`, which this round may extend),
+  the total, the last rolls, the info box, the key bar. A rolling frame
+  draws the dice tilted and offset with the dashed rest outlines and the
+  motion lines; frame 1 to `FRAMES` differ.
+- A roll redraws only what changed (`dirty_regions.rs`); the full
+  refresh comes when `full_refresh_due()` says so. Show in a test how
+  many commands and what dirty area a roll's frames produce, and keep
+  every screen far under `MAX_GAME_DRAW_COMMANDS`.
+- Text uses only characters in `src/charset.rs`; `●▲▼` only in key caps.
+- Previews: `dice-ready` (one, two and three dice), `dice-rolling-1`,
+  `dice-rolling-2`, `dice-rolling-3`, `dice-options`, each at the
+  Standard size and `dice-ready` also at Large UI. Open each, look at
+  it enlarged next to the mockup, and list in the Status what differs
+  and why.
+- The Games hub's Dice card is not part of this task (it needs the SD
+  app and `main.rs`).
+
+**Tests:** the pips of each face 1 to 6 are where the mockup puts them
+(probe the canvas); two dice do not overlap and stay inside the screen
+when tilted; the three frames of a roll are not equal; the command count
+stays under the limit for three dice; `render_ready` is a pure function
+of the state (render twice, same commands).
+
+**Status:** to do.
+
+### D74: The dice rattle (library only)
+
+**Why.** The owner wants the sound of real dice. The firmware has no
+sound files and plays 16-bit stereo PCM at 16 kHz (`src/audio/tone.rs`:
+`PCM_CHANNELS`, `PCM_BYTES_PER_FRAME`, `AUDIO_SAMPLE_RATE_HZ`); a
+rattle can be made from short decaying noise clicks with a small
+fixed-point generator, with no float trigonometry and no large arrays,
+as `tone.rs` says.
+
+**Change.** `src/dice_sound.rs` with `pub mod dice_sound;` in
+`src/lib.rs`; `src/audio/` stays untouched and unread-only:
+
+- A `Rattle` generator seeded like the engine, giving PCM in chunks of
+  `PCM_CHUNK_FRAMES` frames so the playback loop the main developer
+  writes can pull a chunk at a time: `new(seed, dice, frames)` and
+  `next_chunk(&mut self, out: &mut [u8]) -> usize` (bytes written, `0`
+  when finished).
+- The sound: a rattle of about 600 ms made of 12 to 18 clicks (more for
+  more dice) whose gaps grow and whose amplitude falls, each click a few
+  milliseconds of band-limited noise with an exponential decay, then a
+  knock about 80 ms long, a low decaying sine-like thump, at the end
+  where the result lands. Total amplitude stays under half of full scale
+  (the speaker is small and the chime uses 12 000).
+- One function, `duration_ms(dice)`, says how long it plays, so a screen
+  can show the result when the sound ends; the roll's three frames fit
+  in it.
+- Document in the module doc how the clicks and the knock are made and
+  how a different timing is chosen (constants at the top).
+
+**Tests:** the same seed gives the same bytes; a different seed gives
+different bytes; the peak is under the limit and over silence; the
+output ends in silence (the last 20 ms) and starts within 10 ms of a
+click; the total length equals `duration_ms`; the chunks join to exactly
+the length, the last one is short, and `next_chunk` returns `0` after
+that; more dice give more clicks (count them by the peaks); a buffer
+that is not a whole number of frames is refused or truncated to whole
+frames, and the test says which.
+
+**Status:** to do.
+
+## Round 16 tasks (done in v0.12.7)
 
 Start from `main` at v0.12.6, where Round 15 is merged; read its result at
 the top of this file first, and the "Do differently next time" lists of
@@ -726,7 +911,27 @@ between its rings; the previews `sleep-card` and `sleep-weather` at Inter
 Standard, looked at enlarged. Update Known Issues and the roadmap's
 Backlog line.
 
-**Status:** to do.
+**Status:** done on `side-tasks-16`. Built: `fonts.toml` documents the
+`overrides` key (a character map of `advance` and a `#`/`.` bitmap) and
+`generate.py` replaces the rasterized glyph, failing with the face and
+size when the bitmap is too tall for the line height or a row has the
+wrong width. `%` for Inter 12 px is two rings and a diagonal, 9 × 9 as
+the rasterized glyph, advance 12. The atlas was patched by hand to only
+that glyph (regenerating under local Pillow/fontTools rewrote hundreds of
+unrelated Inter and display glyphs; the `fonts` workflow's toolchain is
+the one that matches the committed atlases). Checked the atlas diff with
+`git diff`: only `INTER_STANDARD_DETAIL`'s `%` metrics (`left` 1 → 2),
+its 18 bitmap bytes and the strike summary line. Percentages moved back
+to Detail: the sleep card's battery, the sleep-weather rain row, the
+Reader page label and library row percents, and Reading Stats' change
+label and current-book summary. Not in the files this round leaves alone:
+`src/app/widgets/reading_header.rs` (the reading header's clock and
+battery). Host test `standard_detail_percent_has_ink_on_the_diagonal_between_its_rings`.
+Previews `sleep-card` and `sleep-weather` looked at enlarged: the slash
+reads in `Battery 78%`, `0%`/`80%`/`60%` and the footer `78%`. Known
+Issues' Percent glyph section is gone; the roadmap's Backlog line is
+gone. Open: nothing known. Device check: the sleep card and the sleep
+weather screen on the panel.
 
 ### D69: Voice Notes screens say audio, not WAV
 
@@ -749,7 +954,21 @@ may be left in the Voice Notes and AI screens.
 the `voice-note-audio` and `voice-note-result-audio-ogg` previews looked
 at.
 
-**Status:** to do.
+**Status:** done. Built: the result header is `SAVED AUDIO`. Every other
+user-visible `WAV`/`PCM` hit in `src/app/screens/voice_notes.rs` and
+`src/app/screens/ai.rs`: `SD PCM WAV RECORDINGS` → `SD AUDIO
+RECORDINGS`; `Internal WAV filename remains unchanged.` → `Internal
+filename remains unchanged.`; `This permanently removes the WAV file.` →
+`… the audio file.`; `Saved as recovery-safe WAV.` → `… recovery-safe
+audio.`; `WAV · 16 kHz mono · … so far` → `Audio · 16 kHz mono · …`;
+the placeholder `VOICE---.WAV` → `VOICE---`. `ai.rs` had no
+user-visible WAV/PCM text (only test file names and `wav_bytes` /
+`pcm_bytes` fields). The free-space line `SD: … free (~132 h)` is
+unchanged. Tests: the header text and each other string in
+`screens_say_audio_not_wav`, plus the updated info-box test. Looked at
+`voice-note-audio` and `voice-note-result-audio-ogg` (Opus text still
+reads). Open: nothing known. Device check: open a note's result and the
+delete confirm on the panel.
 
 ### D70: Deep sleep, a study
 
@@ -786,7 +1005,24 @@ ESP-IDF 5.5 documentation:
 and every claim about the chip names its documentation page. Say what
 you could not find.
 
-**Status:** to do.
+**Status:** done on `side-tasks-16`. Built `docs/DEEP_SLEEP.md`, no code.
+Covered: ESP-IDF v5.5 wake sources (`ext0`, `ext1`, timer, ULP; GPIO and
+UART are light-sleep only) and which of the device's inputs reach an RTC
+GPIO — BOOT GPIO0, wheel GPIO4/5/6 and Power GPIO1 are RTC GPIOs 0–21;
+**GPIO45 (RTC alarm) and GPIO38 (PMIC IRQ) are not**, so the alarm cannot
+use `ext0`/`ext1` (the main hardware gap; timer-to-next-alarm or a board
+rewire). What a wake loses (RAM, PSRAM, Wi-Fi, panel driver state) vs
+survives (RTC memory, panel image, SD files, NVS), plus the `AppState`
+fields that are RAM-only with the file that would hold each. Boot steps
+from the `rustmix-wave=` markers in `src/main.rs` with a skip list for a
+wake-to-sleep path and a rough 1.5–4 s cold / 200–800 ms warm budget to
+measure. How alarms, weather slots and the clock minute would wake the
+chip (timer; alarm needs the GPIO45 workaround). An eight-step plan with
+risks and measurements. Could not find: measured boot timings (the table
+says "owner must measure"), the exact ALDO3 behaviour for a partial
+refresh after deep sleep in clock/weather modes, and what the mockup's
+8 µA assumes for the PMIC/SD rails. Open: the owner's choice between
+timer alarms and a board rewire (study §7).
 
 ### D71: Dice, the mockup
 
