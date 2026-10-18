@@ -4,6 +4,55 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 19 result (2026-10-19)
+
+Branch `side-tasks-19` (D78 to D80) came as pull request #21 from v0.15.0,
+with CI and the firmware build green. It was reviewed on `side-tasks-19`
+itself and merged without a release. The audit was done with the method
+(a table per figure, honest `Blocked` rows with the primitive each needs,
+the XiaoZhi file only listed), and most of the fixes are right: the Tetris
+staircase, the title-case headers, the centred Library tabs. Three of the
+changes broke something the previews showed.
+
+What the main developer changed at review time:
+
+- **The Photos strip text ran into the page number.** The strip's three
+  fields sit at fixed columns (x 24, 176, 358); the new middle text
+  `Newest first · starred = sleep screen` is 270 px and drew over `1/2`.
+  The Status said Photos was fixed and the preview was not looked at.
+  The middle is `Newest first`, and a test measures the text at every UI
+  font and size (it fails on the old text, which I checked).
+- **A second `▸` on the selected hub card.** The review of Round 18 had
+  already added the marker (`draw_selection_marker`); `main` was merged in
+  and the new triangle drew over it. One marker stays. Its test sampled a
+  region of the card that is black whatever is drawn (the card is
+  filled), so it could not fail; the Tetris icon test counted ink in a
+  region and also passed for the old blob. The icon test probes the nine
+  cells of the staircase now, and the marker is probed by the Round 18
+  test.
+- **A clear night was called `Sunny`.** `condition_label(0)` became
+  `Sunny` for every use; the current conditions have `is_day`. A clear sky
+  is `Sunny` by day and `Clear` at night; a forecast day stays `Sunny`.
+- `Storms` for code 95 and the title-case headers are the mockup's and
+  stay.
+
+Verdict: D78 to D80 done after the fixes. Open: the blocked rows (Sudoku
+givens in ExtraBold, the step chips' size, the Wi-Fi glyph on the AI
+hub, XiaoZhi's call screen), which D81 to D83 take.
+
+Do differently next time:
+
+- Look at the preview of every screen whose text you changed, after the
+  change, before you write `fixed`: a longer string in a strip of fixed
+  columns, a header or a chip is the commonest way to break a screen.
+  Add a width test at every UI font and size for any text that has to fit.
+- Run the new test against the old behaviour (put the old code back for a
+  minute): a test that passes both ways is not a test.
+- `main` moves while you work: after you merge it, render the screens
+  you touch again; two fixes for one difference draw twice.
+- A label that depends on a state you can see (day or night, on or off)
+  is a function of that state, not of the code alone.
+
 ## Round 18 result (2026-10-18)
 
 Branch `side-tasks-18` (D75 to D77) came as pull request #18 from `main`
@@ -798,7 +847,94 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 19 tasks (branch `side-tasks-19`)
+## Round 20 tasks (branch `side-tasks-20`)
+
+Start from `main` after pull request #21, where Round 19 is merged; read its
+result at the top of this file first (it is about what a change does to the
+screens next to it), then the lists of Rounds 13 to 18. Create
+`side-tasks-20` from `main`. Three tasks: the blocked rows of Round 19 and
+the Settings figures. The method of Round 19 stands (render the mockup's
+figure at zoom 1, put it next to your preview, one table per figure, every
+difference fixed or named with the primitive it needs), with two additions:
+look at each preview again after your last change, and run each new test
+against the old behaviour. When they are done, merge `main` into the
+branch and open a pull request.
+
+**Main line during this round.** The main developer works on the next
+release steps (a release checklist, device tests of OTA and Dice) and
+nothing in `src/`: the files of Phase 8 and Dice are finished. Everything
+in `src/` is yours except `src/main.rs`, `src/lua_runtime/`, `src/ota.rs`,
+`src/update_*.rs`, `src/audio/` and `src/games/dice*.rs`,
+`src/dice_sound.rs`. A file the device writes keeps its old lines readable
+by the previous firmware: check with `git show v0.15.0:<path>`. Run the
+doc-comment check of Round 9 before you hand over.
+
+### D81: Bold digits and small chips for Sudoku
+
+**Why.** Sudoku's given digits are weight 800 in the mockup and SemiBold on
+the device; its step chips are smaller in the mockup. Round 19 marked both
+blocked: no ExtraBold strike at those sizes, and no text metrics on the
+games canvas.
+
+**Change.** `scripts/fonts/fonts.toml` and the atlases it generates
+(`src/app/typography/assets.rs`): an Inter ExtraBold face (`wght = 800`) and
+the strike Sudoku's givens use (the size the givens draw at; find it in
+`games/sudoku.rs` and `app/screens/lua_game.rs`), and the canvas style that
+selects it (`CanvasTextStyle` has `Player` for the lighter digits; add the
+matching bold one if the givens need their own). The `fonts` workflow
+regenerates the atlases (download its artifact and commit it; local runs
+rewrite unrelated glyphs, as Round 16 found). The chips: measure what the
+canvas draws against the mockup's 13 px label and fix it, adding a canvas
+command if the text needs a metric the canvas lacks (the Dice screens add
+`text_center`, which measures with the real font: use it).
+
+**Tests:** a probe that the givens' stems are thicker than the player's
+digits' (count ink columns of an `8` of each); the chip widths against the
+mockup's at the three UI sizes; the other previews unchanged (say how you
+checked: the atlas diff changes only the new strike).
+
+**Status:** to do.
+
+### D82: XiaoZhi's call screen and the AI hub's Wi-Fi mark
+
+**Why.** Round 19 listed the differences of XiaoZhi's call screen against
+the mockup without changing the file; the AI hub's `Online` has no Wi-Fi
+glyph.
+
+**Change.** `src/app/screens/xiaozhi.rs` is yours now: the method on the
+`XiaoZhi` figure (the chips `LISTEN · THINK · SPEAK`, the face, the
+waveform ring, the timer, the `YOU` and `XIAOZHI` boxes, the volume row
+and the device-tool line), and the Wi-Fi glyph beside `Online` on the AI
+hub (the widgets in `src/app/widgets/` are yours too: `home.rs` draws a
+Wi-Fi glyph in its status bar; reuse it). Do not change the call's
+behaviour or `src/xiaozhi/`.
+
+**Tests:** a probe for each element you add; the screen still renders at
+the three UI sizes with the longest text the protocol allows.
+
+**Status:** to do.
+
+### D83: Settings against the mockup
+
+**Why.** The Settings figures (`Settings`, `Settings › Weather`,
+`Settings › AI`, `Settings › Sleep screen`, and the new `Settings › System`
+and the update screens, which the main developer built) were out of every
+earlier audit.
+
+**Change.** The method on those figures against their previews
+(`settings`, `settings-weather`, `settings-ai`, `sleep-settings`,
+`settings-system`, `update-*`). `src/app/screens/settings.rs` and its
+siblings are yours. The update screens were drawn by the main developer
+from the mockup: list what differs there too, and fix it unless the
+difference is on purpose (the Status of D83's table says so for each row:
+the main developer's choices are the `Free slot` column that became
+`Download` and the release date that became the release tag).
+
+**Tests:** as the method says.
+
+**Status:** to do.
+
+## Round 19 tasks (done, merged without a release)
 
 Start from `main` after pull request #18, where Round 18 is merged; read
 its result at the top of this file first, then the lists of Rounds 13 to
@@ -864,7 +1000,43 @@ Home, Photos and Photos: view and choose, previews `home`, `photos`,
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-19`. Compared each figure with headless
+Chrome screenshots of `mockups/index.html` at zoom 1, crops next to the
+preview. **Font note (all tables):** the device uses Inter/Atkinson and
+Literata; the mockup uses system-ui / Iowan / SF Mono. Letterforms and
+exact weights differ everywhere and are not listed per row.
+
+### D78 Games leftovers
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Tetris hub icon | Preview was a 2×2 blob; mockup is a staircase (3 bottom, 2 mid-right, 1 top) | Fixed: staircase at 60/3 cells |
+| Selected hub card | No `▸` at the left edge (`.game.sel::before`) | Fixed: filled triangle (`▸` not in the fonts) |
+| Sudoku givens | Mockup `font-weight:800`; device Heading is Inter SemiBold | Blocked: needs an ExtraBold UI strike at 12–22 px (atlas is SemiBold) |
+| Sudoku step chips | Mockup 13 px chips; preview `CHAR_WIDTH=11` + 16 padding is wider | Blocked: canvas text has no metrics (games canvas docs say so) |
+
+Probe: the Tetris staircase draws six blocks in the mockup's columns.
+
+### D78 Home
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Status bar | `WAVE` / time / battery / wifi | Matches (crop) |
+| Date + weather | `Fri, Oct 2` and `18°C · Partly cloudy` | Matches (crop) |
+| CONTINUE READING | Serif title, bar, `12% · 25 min today` | Matches (layout; sample book name differs) |
+| Menu rows | ▸ + icon + name + right value, Photos selected | Matches after the ▸ fix |
+| Footer | `move` / `open` / `display menu` | Matches (crop) |
+
+### D78 Photos
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Header | Was `PHOTOS` + `/RUSTMIX/PHOTOS ON THE SD CARD` | Fixed: `Photos` + `N · M starred` |
+| Strip | Was `N photos` / `N starred` / page | Fixed: `/PHOTOS` + `Newest first · starred = sleep screen` + page |
+| Grid | 3×2 thumbs, names, ★ badge, selected frame | Matches (crop) |
+| Info line | `name · size · date` | Matches (crop) |
+
+Open: nothing known.
 
 ### D79: Reading and the Bible
 
@@ -878,7 +1050,24 @@ layout and weight, not the words.
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-19`. Same method (headless Chrome, zoom 1,
+crops). **Font note:** as D78. The Bible and Reader show the owner's text;
+compared layout and weight only.
+
+| Figure | Element | Difference | Fixed or blocked |
+|---|---|---|---|
+| Library | Header `Library` / `N books` | Matches (crop) | — |
+| Library | Tab row | Preview left-aligned at x 16; mockup centred | Fixed: centre the chips |
+| Library | Book rows | Serif title, author, EPUB chip, bar, % / check / `new` | Matches (layout); sample has one row | — |
+| Reader | Header capitals + clock + footer label | Matches (crop) | — |
+| Reader | Chapter title band + rule, justified body | Matches (layout; Literata vs Iowan) | — |
+| Reading Stats | Header | Was `READING STATS` / `THIS WEEK` | Fixed: `Reading Stats` / `This week` |
+| Reading Stats | Tiles, bar chart, last 12 weeks, current book | Matches (crop) | — |
+| Bible reading | Header `BIBLIA · RVR1960`, verse numbers, footer | Matches (layout; sample text differs) | — |
+| Bible books | List rows and selection | Matches (layout) | — |
+
+Probe: the library tab row's left edge is near 16 before the fix and near
+the centre after (pixel probe of the first chip). Open: nothing known.
 
 ### D80: Weather, AI and the sleep screens
 
@@ -893,7 +1082,25 @@ Notes screens are in `src/app/screens/voice_notes.rs`.
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-19`. Same method. Settings figures are
+out of scope. XiaoZhi is the main line's file: listed only.
+
+| Figure | Element | Difference | Fixed or blocked |
+|---|---|---|---|
+| Weather | Header | Was `WEATHER` / place | Fixed: `Weather` |
+| Weather | Condition words | `Clear` / `Thunderstorm` vs mockup `Sunny` / `Storms` | Fixed in `weather::condition_label` |
+| Weather | Icon, temp, chips, NEXT HOURS, NEXT DAYS, footer | Matches (crop) | — |
+| AI hub | XiaoZhi + Voice Notes cards, recent notes, info, footer | Matches (layout; sample names differ) | — |
+| AI hub | Status `Online` with wifi glyph | Preview has `Online` only | Blocked: wifi glyph is a widget icon (`widgets/` this round only for fonts) |
+| XiaoZhi | Call screen | Differences listed, not changed (main line's file): chip row `LISTEN/THINK/SPEAK`, waveform, timer | Blocked on ownership |
+| Voice Notes | List, recording, result | Matches (layout; WAV→audio wording from D69) | — |
+| Sleep photo | Full-bleed image | Matches (crop) | — |
+| Sleep clock | Large time, date, weather line, footer | Matches (crop) | — |
+| Sleep weather | Temp, 3-day row, rain in Detail | Matches (crop) | — |
+| Sleep verse | Verse text and footer | Matches (layout) | — |
+
+Probe: `condition_label(0)` is `Sunny` and `condition_label(95)` is
+`Storms`. Open: nothing known.
 
 ## Round 18 tasks (done, merged without a release)
 

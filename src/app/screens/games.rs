@@ -314,12 +314,13 @@ fn draw_icon(
             }
         }
         "tetris" => {
-            // A 2×2 piece over a floor row, the mockup's stack.
-            let block = ICON / 4;
-            for (column, row) in [(1_i32, 0_i32), (2, 0), (1, 1), (2, 1), (0, 2), (1, 2)] {
+            // The mockup's staircase: three on the bottom, two above the
+            // right, one on top (`die` figure's SVG rects at 16/60).
+            let block = ICON / 3;
+            for (column, row) in [(0_i32, 2_i32), (1, 2), (2, 2), (1, 1), (2, 1), (2, 0)] {
                 Rectangle::new(
                     Point::new(top_left.x + column * block, top_left.y + row * block),
-                    Size::new((block - 2) as u32, (block - 2) as u32),
+                    Size::new((block - 1) as u32, (block - 1) as u32),
                 )
                 .into_styled(ink)
                 .draw(display)?;
@@ -922,16 +923,31 @@ mod d25_tests {
         assert_eq!(manifest.entry, "MAIN.LUA");
     }
 
-    /// Four cards, as the mockup's Games figure.
+    /// The Tetris hub icon is the mockup's staircase: three blocks on the
+    /// bottom row, two above the right, one on top, and nothing in the three
+    /// other cells of its 3 x 3 grid.
     #[test]
-    fn the_hub_has_four_cards_in_the_mockups_order() {
+    fn the_tetris_icon_is_a_staircase_of_six_blocks() {
+        use embedded_graphics::prelude::Point;
         let state = hub_state_with_games();
-        let names: Vec<&str> = state
-            .lua_runtime
-            .games()
-            .iter()
-            .map(|manifest| manifest.name.as_str())
-            .collect();
-        assert_eq!(names, ["Sudoku", "Tetris", "Race", "Dice"]);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        // Sudoku is selected and first; Tetris is the unselected second card.
+        use crate::app::screens::games::{CARDS_TOP, CARD_GAP, CARD_HEIGHT, CARD_LEFT};
+        let top = CARDS_TOP + CARD_HEIGHT + CARD_GAP;
+        let (left, up) = (CARD_LEFT + 20, top + 30);
+        let filled = [(0, 2), (1, 2), (2, 2), (1, 1), (2, 1), (2, 0)];
+        for row in 0..3 {
+            for column in 0..3 {
+                // The frame stores the portrait screen as (y, 479 - x).
+                let x = left + column * 20 + 9;
+                let y = up + row * 20 + 9;
+                assert_eq!(
+                    frame.is_black(Point::new(y, 479 - x)),
+                    Some(filled.contains(&(column, row))),
+                    "cell column {column}, row {row}"
+                );
+            }
+        }
     }
 }

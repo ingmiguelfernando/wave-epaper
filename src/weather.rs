@@ -136,7 +136,12 @@ impl CurrentConditions {
 
     #[must_use]
     pub const fn condition_label(&self) -> &'static str {
-        condition_label(self.weather_code)
+        // A clear sky is `Sunny` by day and only `Clear` at night.
+        if self.weather_code == 0 && !self.is_day {
+            "Clear"
+        } else {
+            condition_label(self.weather_code)
+        }
     }
 }
 
@@ -452,10 +457,11 @@ fn parse_hourly(hourly: &str) -> Result<Vec<HourlyForecast>> {
     Ok(hours)
 }
 
+/// WMO code to the mockup's short label.
 #[must_use]
 pub const fn condition_label(code: u16) -> &'static str {
     match code {
-        0 => "Clear",
+        0 => "Sunny",
         1 | 2 => "Partly cloudy",
         3 => "Overcast",
         45 | 48 => "Fog",
@@ -464,7 +470,7 @@ pub const fn condition_label(code: u16) -> &'static str {
         71 | 73 | 75 | 77 => "Snow",
         80 | 81 | 82 => "Showers",
         85 | 86 => "Snow showers",
-        95 => "Thunderstorm",
+        95 => "Storms",
         96 | 99 => "Thunder + hail",
         _ => "Unknown",
     }
@@ -1042,10 +1048,22 @@ mod tests {
     }
 
     #[test]
+    fn a_clear_night_is_not_called_sunny() {
+        let mut data = parse_open_meteo_response(super::SAMPLE_RESPONSE).unwrap();
+        data.current.weather_code = 0;
+        data.current.is_day = true;
+        assert_eq!(data.current.condition_label(), "Sunny");
+        data.current.is_day = false;
+        assert_eq!(data.current.condition_label(), "Clear");
+        data.current.weather_code = 95;
+        assert_eq!(data.current.condition_label(), "Storms");
+    }
+
+    #[test]
     fn classifies_common_wmo_weather_codes() {
-        assert_eq!(condition_label(0), "Clear");
+        assert_eq!(condition_label(0), "Sunny");
         assert_eq!(condition_label(61), "Rain");
-        assert_eq!(condition_label(95), "Thunderstorm");
+        assert_eq!(condition_label(95), "Storms");
         assert_eq!(condition_label(500), "Unknown");
     }
 

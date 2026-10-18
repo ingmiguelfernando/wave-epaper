@@ -55,7 +55,8 @@ Last updated: 2026-10-18, firmware v0.15.0.
 | Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, waiting for device test (needs a newer release to install) |
 | Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | PR #18 | Done, merged without a release; wiring is the main line's |
 | Dice wired to the device: keys, shake, rattle, saved options | 0.15.0 | | Done, waiting for device test |
-| Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | side-tasks-19 | Published (Round 19) |
+| Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | PR #21 | Done, merged without a release |
+| Delegated tasks D81 to D83: Sudoku's bold digits, XiaoZhi's call screen and the AI hub's Wi-Fi mark, the Settings figures | | side-tasks-20 | Published (Round 20) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
