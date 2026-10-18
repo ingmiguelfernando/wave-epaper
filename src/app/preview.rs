@@ -1046,7 +1046,8 @@ fn weather_cached_preview_state(route: ScreenRoute) -> AppState {
         std::process::id()
     ));
     crate::weather_cache::save_to_path(&path, &config.location, &data).unwrap();
-    // A clock after the forecast's hours, so the load drops the ones past.
+    // A local clock after the forecast's first hours, so the load drops the
+    // ones past. The RTC keeps its own basis, as on the device.
     let now = RtcDateTime {
         year: 2026,
         month: 10,
@@ -1059,7 +1060,7 @@ fn weather_cached_preview_state(route: ScreenRoute) -> AppState {
     let cached = crate::weather_cache::load_from_path(&path, &config.location, Some(now))
         .expect("the sample cache parses for the config's location");
     let _ = std::fs::remove_file(&path);
-    state.board.rtc = Some(now);
+    state.board.rtc = Some(state.regional.local_to_rtc(now));
     state.weather.adopt_cache(cached);
     state.router.navigate_to(route);
     state

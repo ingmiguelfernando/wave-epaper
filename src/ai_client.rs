@@ -396,6 +396,25 @@ mod tests {
         assert!(!body.contains("note.wav"));
         assert!(!body.contains("audio/wav"));
 
+        let mut expected = String::new();
+        for (name, value) in [
+            ("model", "whisper-large-v3"),
+            ("language", "es"),
+            ("response_format", "json"),
+        ] {
+            expected.push_str(&format!(
+                "--wave8\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            ));
+        }
+        expected.push_str(
+            "--wave8\r\nContent-Disposition: form-data; name=\"file\"; filename=\"note.ogg\"\r\n\
+             Content-Type: audio/ogg\r\n\r\n",
+        );
+        let mut expected = expected.into_bytes();
+        expected.extend_from_slice(&ogg);
+        expected.extend_from_slice(b"\r\n--wave8--\r\n");
+        assert_eq!(request.body, expected, "the Ogg form, byte for byte");
+
         let (ogg_head, ogg_tail) =
             transcription_form_for(AudioKind::Ogg, "whisper-large-v3", Some("es"), "wave8");
         assert_eq!(
