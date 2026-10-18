@@ -201,7 +201,7 @@ impl LuaRuntimeUiState {
                 start.render(&mut session.canvas)?;
             }
             LuaEventBridge::Sudoku(game) => {
-                game.prepare(self.sudoku_save, self.records);
+                game.prepare(self.sudoku_save, self.records.clone());
                 // Redraw, so the start list shows the Continue row.
                 game.render_initial(&mut session.canvas)?;
             }

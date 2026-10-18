@@ -12,7 +12,7 @@ use crate::sd_file;
 pub const RECORDS_PATH: &str = "/sdcard/RUSTMIX/GAMES/RECORDS.TXT";
 
 /// Best scores, one key per game mode.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GameRecords {
     pub tetris_zen: u32,
     /// Best Tetris Classic score; slow gravity, its own record.
@@ -25,6 +25,8 @@ pub struct GameRecords {
     pub sudoku_easy: u32,
     pub sudoku_medium: u32,
     pub sudoku_hard: u32,
+    /// Last Dice faces as `4+6` (one to three faces). `None` when never rolled.
+    pub dice_last: Option<String>,
 }
 
 impl GameRecords {
@@ -39,11 +41,20 @@ impl GameRecords {
             let (key, value) = line
                 .split_once('=')
                 .with_context(|| format!("records line {} must contain '='", number + 1))?;
+            let key = key.trim();
+            let value = value.trim();
+            if key == "dice_last" {
+                // A bad value is dropped, so the card simply has no last roll
+                // and the rest of the file still loads.
+                if let Some(faces) = dice_faces_from_digits(value) {
+                    records.dice_last = Some(faces);
+                }
+                continue;
+            }
             let parsed = value
-                .trim()
                 .parse::<u32>()
                 .with_context(|| format!("records line {} has a bad number", number + 1))?;
-            match key.trim() {
+            match key {
                 "tetris_zen" => records.tetris_zen = parsed,
                 "tetris_classic" => records.tetris_classic = parsed,
                 "race_classic" => records.race_classic = parsed,
@@ -60,7 +71,7 @@ impl GameRecords {
 
     #[must_use]
     pub fn serialized(&self) -> String {
-        format!(
+        let mut text = format!(
             "# Wave game records v1\ntetris_zen={}\ntetris_classic={}\nrace_classic={}\nrace_zen={}\nsudoku_easy={}\nsudoku_medium={}\nsudoku_hard={}\n",
             self.tetris_zen,
             self.tetris_classic,
@@ -69,7 +80,23 @@ impl GameRecords {
             self.sudoku_easy,
             self.sudoku_medium,
             self.sudoku_hard
-        )
+        );
+        if let Some(digits) = self
+            .dice_last
+            .as_deref()
+            .and_then(parse_dice_faces)
+            .map(|faces| {
+                faces
+                    .iter()
+                    .map(|face| face.to_string())
+                    .collect::<String>()
+            })
+        {
+            // Digits, `46` for `4+6`: firmware before this one reads every
+            // value as a number and drops the whole file on a `+`.
+            text.push_str(&format!("dice_last={digits}\n"));
+        }
+        text
     }
 
     /// Load through `sd_file`, falling back to the `.BAK` copy. A missing file
@@ -174,6 +201,52 @@ impl GameRecords {
             SudokuDifficulty::Hard => &mut self.sudoku_hard,
         }
     }
+
+    /// Store the last Dice roll's faces (`4+6`); `true` when the file must be
+    /// saved. A value that is not one to three faces of 1..=6 is refused.
+    pub fn observe_dice_faces(&mut self, faces: &str) -> bool {
+        if parse_dice_faces(faces).is_none() {
+            return false;
+        }
+        if self.dice_last.as_deref() == Some(faces) {
+            return false;
+        }
+        self.dice_last = Some(faces.to_string());
+        true
+    }
+}
+
+/// `46` (digits, one per face) as `4+6`; `None` unless it is one to three
+/// faces of 1..=6.
+fn dice_faces_from_digits(digits: &str) -> Option<String> {
+    if digits.is_empty() || digits.len() > 3 || !digits.bytes().all(|b| (b'1'..=b'6').contains(&b))
+    {
+        return None;
+    }
+    Some(
+        digits
+            .chars()
+            .map(|digit| digit.to_string())
+            .collect::<Vec<_>>()
+            .join("+"),
+    )
+}
+
+/// `4+6` or `5`: one to three faces of 1..=6 joined by `+`. `None` otherwise.
+#[must_use]
+pub fn parse_dice_faces(value: &str) -> Option<Vec<u8>> {
+    let mut faces = Vec::new();
+    for part in value.split('+') {
+        let face = part.trim().parse::<u8>().ok()?;
+        if !(1..=6).contains(&face) {
+            return None;
+        }
+        faces.push(face);
+    }
+    if faces.is_empty() || faces.len() > 3 {
+        return None;
+    }
+    Some(faces)
 }
 
 #[cfg(test)]
@@ -190,6 +263,7 @@ mod tests {
             sudoku_easy: 0,
             sudoku_medium: 0,
             sudoku_hard: 0,
+            dice_last: None,
         };
         let parsed = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(parsed, records);
@@ -248,6 +322,56 @@ mod tests {
         assert!(!records.observe_tetris_zen(100), "same score saves nothing");
         assert!(records.observe_tetris_zen(101));
         assert_eq!(records.tetris_zen, 101);
+    }
+
+    #[test]
+    fn dice_last_round_trips_and_a_bad_value_leaves_the_card_without_it() {
+        // Missing: no line.
+        let none = GameRecords::parse("# Wave game records v1\n").unwrap();
+        assert_eq!(none.dice_last, None);
+        // Empty: still no line.
+        let empty = GameRecords::parse("dice_last=\n").unwrap();
+        assert_eq!(empty.dice_last, None, "empty dice_last is ignored");
+        // Malformed: ignored, the rest of the file loads.
+        let bad = GameRecords::parse(
+            "tetris_zen=7\ndice_last=47\ndice_last=nope\ndice_last=4+6\ndice_last=1234\n",
+        )
+        .unwrap();
+        assert_eq!(bad.tetris_zen, 7, "the score still loads");
+        assert_eq!(bad.dice_last, None, "a bad dice_last is dropped");
+        // Good values round-trip.
+        let mut records = GameRecords::default();
+        assert!(records.observe_dice_faces("4+6"));
+        assert!(
+            !records.observe_dice_faces("4+6"),
+            "same faces save nothing"
+        );
+        assert!(!records.observe_dice_faces("9"), "face 9 is refused");
+        assert!(records.observe_dice_faces("5"));
+        let parsed = GameRecords::parse(&records.serialized()).unwrap();
+        assert_eq!(parsed.dice_last.as_deref(), Some("5"));
+        records.observe_dice_faces("1+2+3");
+        let text = records.serialized();
+        assert!(text.contains("dice_last=123\n"), "{text}");
+        assert_eq!(
+            GameRecords::parse(&text).unwrap().dice_last.as_deref(),
+            Some("1+2+3")
+        );
+    }
+
+    /// Firmware before this one parses every value as a number and fails the
+    /// whole file otherwise; a rollback must not lose the best scores.
+    #[test]
+    fn every_value_the_file_holds_is_a_number_older_firmware_reads() {
+        let mut records = GameRecords {
+            tetris_zen: 99,
+            ..GameRecords::default()
+        };
+        records.observe_dice_faces("4+6");
+        for line in records.serialized().lines().filter(|l| !l.starts_with('#')) {
+            let (_, value) = line.split_once('=').unwrap();
+            assert!(value.trim().parse::<u32>().is_ok(), "{line}");
+        }
     }
 
     #[test]

@@ -436,7 +436,7 @@ impl SudokuGame {
                 .and_then(|source| Self::from_puzzle(source).ok()),
         };
         if let Some(mut started) = started {
-            started.records = self.records;
+            started.records = self.records.clone();
             // The clock runs from the starting press.
             started.last_event_ms = Some(now_ms);
             *self = started;
@@ -911,14 +911,15 @@ fn display_candidate(candidate: u8) -> String {
     }
 }
 
-/// Play-clock text: `7:41`, or `1:02:03` past an hour.
+/// Play-clock text: `07:41` (the mockup's zero-padded minutes), or
+/// `1:02:03` past an hour.
 #[must_use]
 pub fn time_text(seconds: u32) -> String {
     let (hours, rest) = (seconds / 3600, seconds % 3600);
     if hours > 0 {
         format!("{hours}:{:02}:{:02}", rest / 60, rest % 60)
     } else {
-        format!("{}:{:02}", rest / 60, rest % 60)
+        format!("{:02}:{:02}", rest / 60, rest % 60)
     }
 }
 
@@ -1243,9 +1244,15 @@ mod d24_tests {
 
     #[test]
     fn the_clock_text_matches_the_mockup_formats() {
-        assert_eq!(time_text(7 * 60 + 41), "7:41");
+        assert_eq!(time_text(7 * 60 + 41), "07:41");
         assert_eq!(time_text(3600 + 2 * 60 + 3), "1:02:03");
-        assert_eq!(time_text(0), "0:00");
+        assert_eq!(time_text(0), "00:00");
+    }
+
+    #[test]
+    fn the_play_clock_zero_pads_minutes_like_the_mockup() {
+        assert_eq!(time_text(7 * 60 + 41), "07:41");
+        assert_eq!(time_text(9 * 60 + 5), "09:05");
     }
 
     #[test]
@@ -1309,7 +1316,7 @@ mod d24_tests {
         let clock = DrawCommand::TextRight {
             right: 464,
             y: 30,
-            text: "0:00".into(),
+            text: "00:00".into(),
             style: CanvasTextStyle::Inverse,
         };
         assert!(canvas.commands().contains(&clock));
@@ -1357,9 +1364,9 @@ mod d24_tests {
             assert!(game.completed());
             game.status.clone()
         };
-        assert_eq!(solve(90), "Solved in 1:40 · best 1:30");
-        assert_eq!(solve(0), "Solved in 1:40 · new best");
-        assert_eq!(solve(120), "Solved in 1:40 · new best");
+        assert_eq!(solve(90), "Solved in 01:40 · best 01:30");
+        assert_eq!(solve(0), "Solved in 01:40 · new best");
+        assert_eq!(solve(120), "Solved in 01:40 · new best");
     }
 
     #[test]

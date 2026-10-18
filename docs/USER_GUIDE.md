@@ -349,7 +349,7 @@ costs about 2 mAh a day.
 
 Open **Home › Games** for the hub: one card per SD game — icon, name, and
 its state (Sudoku's running game and best time; Tetris' best score; Race's
-best distances; other games' version). ▲▼ picks a card, and the cards
+best distances; Dice's last roll). ▲▼ picks a card, and the cards
 scroll when there are more than four; ● plays it, hold
 BOOT in a game returns to the hub and hold BOOT on the hub returns Home.
 Install the bundled SD samples with the installer; there are no
@@ -362,6 +362,7 @@ IMU-controlled games or BLE remote page-turner in this build.
 | Minesweeper | Up/Down moves along the active axis; short BOOT switches axis. Select enters action mode; Up/Down chooses Reveal/Flag; Select applies; short BOOT cancels action mode |
 | Tetris | Opens a mode list: Zen or Classic (Up and Down move, Select starts). Up moves left, Down right, Select rotates clockwise, short BOOT drops and locks. Zen has no gravity: the piece moves only on a press. Classic falls one row a second. Game over shows the score; Select starts a new game. Each mode keeps its own best, saved to `/RUSTMIX/GAMES/RECORDS.TXT` when you leave |
 | Race | Opens a mode list: Classic or Zen (Up and Down move, Select starts). The road runs right to left: cars and cones arrive in the last column and move one column toward you each step, 20 m a step. Up and Down change a lane; a car or cone that reaches your car ends the run, and one that reaches your column in another lane has been passed. Select spends a nitro charge for three steps at once (Classic) or steps in place (Zen), short BOOT pauses Classic or steps Zen. Classic steps once a second at speed 1 and takes 100 ms off each kilometre, down to 500 ms; nitro gains one charge each kilometre, three at most. Zen has no timer: the road moves only when you press. After a crash: the distance, the best and how far it was, top speed, cars passed and nitro used, then `Race again`, `Mode` or `Back to Games`. Each mode keeps its own best distance in metres, saved to `/RUSTMIX/GAMES/RECORDS.TXT` when you leave |
+| Dice | **Not playable until the firmware that wires it.** The hub card shows `Shake to roll · 2 dice` and the last roll (`Last roll 4 + 6 = 10`). The table rolls one to three dice with SELECT or a shake, with the sound of real dice; BOOT opens Options (dice count, sound, shake and shake strength) and hold BOOT leaves. The last faces are saved to `/RUSTMIX/GAMES/RECORDS.TXT` |
 
 These are button-driven samples. A
 missing/invalid SD app reports an error;

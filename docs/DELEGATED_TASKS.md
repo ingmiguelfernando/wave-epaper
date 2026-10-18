@@ -4,6 +4,59 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 18 result (2026-10-18)
+
+Branch `side-tasks-18` (D75 to D77) came as pull request #18 from `main`
+after Round 17, with CI and the firmware build green. It was reviewed on
+`side-tasks-18` itself and merged without a release (the Dice screens and
+session are libraries and previews until the main line wires them). The
+hub's four cards, the `dice_last` record and the session's structure are
+what the tasks asked for.
+
+What the main developer changed at review time:
+
+- **`dice_last=4+6` would have wiped the best scores on a rollback.**
+  Firmware up to this one reads every value in `RECORDS.TXT` as a number,
+  even under a key it does not know, and drops the whole file on the first
+  one that is not (Round 15's lesson again, and now it matters: v0.13.0
+  rolls back to the previous image when a new one fails). The faces go in
+  the file as digits (`dice_last=46`), and a test reads every value as the
+  old parser does.
+- **The session's Options list moved the wrong way** (▲ went to the next
+  row, ▼ to the previous), **`Back to Games` did nothing on Select**, and
+  **a short BOOT while rolling opened Options in the middle of the roll**
+  (the next tick put the Rolling screen back over it). ▲ goes up, `Back to
+  Games` ends the session, and keys wait while rolling, as the key bar says.
+- **Sound off still started the rattle**, and the test asserted exactly
+  that, against the task ("sound off still yields the frame times and no
+  rattle"). It returns no rattle now and the test compares the landing time
+  with a roll with sound.
+- **The tenth-roll test** checked the engine's flag, not what the session
+  asks for; it checks the redraw of the landing (full on the tenth, partial
+  on the ninth).
+- **The selected hub card had no `▸`** before its icon, as the mockup's
+  `.game.sel` has; D76's table said the screens were already matching, but
+  it did not list the marker. The Sudoku givens are bold in the mockup and
+  regular here, and the Tetris card's icon is another arrangement of
+  blocks; neither was in the table.
+
+Verdict: D75 to D77 done after the fixes. Open: the Sudoku givens' weight
+and the Tetris hub icon (D78), and the wiring (main line).
+
+Do differently next time:
+
+- "Already matching" is a claim that needs a measurement: crop the mockup
+  and the preview at the same scale, put them next to each other and look
+  at weight, size, spacing and every glyph of every row; a table row that
+  says "matches" with no crop looked at is a guess. The previous round's
+  lesson stands: render, compare, then write.
+- Every file the device writes is read by two firmwares: this one and the
+  one it may roll back to. Check each new line against the old parser
+  (`git show <tag>:path`), as Round 15 said; use the old file's own kind of
+  value (numbers, digits) for new keys.
+- A test that asserts what the code does is not a test of the task: read
+  the task's sentence again before you write the assertion.
+
 ## Round 17 result (2026-10-18)
 
 Branch `side-tasks-17` (D72 to D74) came as pull request #16 from v0.12.7,
@@ -745,7 +798,104 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 18 tasks (branch `side-tasks-18`)
+## Round 19 tasks (branch `side-tasks-19`)
+
+Start from `main` after pull request #18, where Round 18 is merged; read
+its result at the top of this file first, then the lists of Rounds 13 to
+17. Create `side-tasks-19` from `main`. Three tasks: a screen-by-screen
+comparison with the mockup, by section. The owner noticed that Dice did not
+look like its mockup, and the Round 18 review found a miss in a table that
+said "already matching": this round is the careful version of that audit.
+When they are done, merge `main` into the branch and open a pull request.
+
+**The method, for every figure of your section.**
+
+1. Render the mockup's figure and your preview. Headless Chrome renders the
+   mockup: copy `mockups/index.html` to a scratch folder outside the repo,
+   append a script that sets `--z` to 1 and hides every `body > *` except
+   the `<h2 class="sec">` of your section and its `.wall`, and run
+   `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+   --headless=new --hide-scrollbars --window-size=1250,1700
+   --screenshot=out.png file:///path/to/copy.html`. The mockup's screen is
+   480 × 800 at zoom 1.
+2. Put the two next to each other and read them row by row: each text (its
+   words, size, weight and where it starts), each border and its width,
+   each icon and its size, every marker, each gap. Write down every
+   difference you see, however small, before you decide which to fix.
+3. Fix each one in code you may edit, or write down the primitive the
+   canvas, the font or the widget lacks. A difference that is only the
+   device's own font (Inter and Atkinson against the mockup's system
+   fonts) is not a difference to fix; say it once at the top of your table.
+4. In the Status, one table per figure: element, difference, fixed
+   (commit) or blocked (what it needs). A row that says "matches" says what
+   you compared (a crop, a pixel probe).
+5. A test for each fix that moves pixels (a probe of where the new thing
+   is). No test restates its own input.
+
+**Main line during this round.** The main developer works on OTA updates
+(Phase 8: the download and `Settings › System › Check for updates`), then
+the Opus encoder, then wires Dice. Leave alone: `src/main.rs`,
+`src/lua_runtime/`; updates and network (`partitions.csv`,
+`sdkconfig.defaults`, `Cargo.toml`, `.github/`, `src/ota*.rs`,
+`src/network*.rs`, `src/radio_burst.rs`, `src/wifi_transfer.rs`,
+`src/build_info.rs`, `src/app/screens/settings.rs`,
+`src/app/screens/device_info.rs`, `src/app/screens/network.rs`); XiaoZhi
+and audio (`src/xiaozhi/`, `src/app/screens/xiaozhi.rs`, `src/audio/`,
+`src/voice_notes.rs`, `src/ai_jobs.rs`, `src/ai_worker.rs`), `src/imu*.rs`.
+Settings figures (`Settings`, `Settings › Weather`, `Settings › AI`,
+`Settings › Sleep screen`) are not part of this round. A file the device
+writes keeps its old lines readable by the previous firmware: check with
+`git show v0.12.7:<path>` before you add a key. Run the doc-comment check
+of Round 9 before you hand over.
+
+### D78: Games leftovers, Home and Photos
+
+**Why.** Round 18 left two known differences, and the first two sections of
+the mockup have not been put through this method.
+
+**Change.** The Sudoku givens are bold in the mockup (weight 800, a bold
+face) and regular on the device: use the bold face the device has at that
+size, or say what is missing. The Sudoku step chips (`1 · ROW`, ...) are
+smaller in the mockup than the preview's. The Tetris hub icon is the
+mockup's arrangement of blocks (a staircase: three on the bottom row, two
+above, one on top, see the figure). Then the figures of `Inicio y fotos`:
+Home, Photos and Photos: view and choose, previews `home`, `photos`,
+`photo-view` and the like, each at Standard size and next to the figure.
+
+**Tests:** as the method says.
+
+**Status:** to do.
+
+### D79: Reading and the Bible
+
+**Why.** The `Lectura` and `Biblia` sections: Library, the Reader in
+Spanish, Reading Stats, Bible reading and Bible: pick a book.
+
+**Change.** The method above on those five figures against their previews
+(`library`, `reader-*`, `reading-stats`, `bible-reading`, `bible-books` and
+the like). The Bible and the Reader draw the owner's own text, so compare
+layout and weight, not the words.
+
+**Tests:** as the method says.
+
+**Status:** to do.
+
+### D80: Weather, AI and the sleep screens
+
+**Why.** The `Clima`, `AI` and `Ajustes y reposo` sections, without the
+Settings figures.
+
+**Change.** The method above on: Weather, the AI hub, XiaoZhi (look and
+list the differences; the file is the main line's, so write what you find
+without changing it), Voice Notes recording and result, and the sleep
+screens (photo, clock and date, weather, verse of the day). The Voice
+Notes screens are in `src/app/screens/voice_notes.rs`.
+
+**Tests:** as the method says.
+
+**Status:** to do.
+
+## Round 18 tasks (done, merged without a release)
 
 Start from `main` after pull request #16, where Round 17 is merged; read its
 result at the top of this file first (it is about looking at your own
@@ -806,7 +956,21 @@ and Dice (Dice selected). The hub scrolls one card at a time since Round
 and malformed `dice_last`; the card text for one die and for three; the
 manifest parses with the loader's own parser.
 
-**Status:** to do.
+**Status:** done on `side-tasks-18`. Built: a Dice card in
+`src/app/screens/games.rs` (icon: `die_shape` pair, `Shake to roll · 2
+dice`, `Last roll 4 + 6 = 10` from `dice_last`); `games/records.rs` gains
+`dice_last` (`4+6`, one to three faces of 1..=6; missing/empty/malformed
+leave the card without the line and do not fail the rest of the file);
+`examples/sd-card/RUSTMIX/APPS/DICE/` with `APP.TOM`, `MAIN.LUA`
+(`dice.init()`), `README.TXT` (says the wiring is not released); SD
+guide tree and User Guide Games table (Dice not playable yet). Hub count
+follows the card count. Previews `games` (four cards, Dice selected) and
+`games-race` compared side by side with headless Chrome. Fixed to match:
+Tetris `Zen (no gravity) · best …`, Race `Zen: the road moves on a key`
+when no best, Sudoku icon digits, info-box text, key bar `● options`.
+Tests: four cards in mockup order, dice card one/two/three faces, missing
+empty and malformed `dice_last`, `DICE/APP.TOM` through the loader's
+parser, fourth card selected in the fourth slot. Open: nothing known.
 
 ### D76: Games screens against the mockup
 
@@ -827,7 +991,31 @@ those.
 **Tests:** one test for each fix that changes pixels (a probe of where the
 new thing is), none for a layout that only moved by a few pixels.
 
-**Status:** to do.
+**Status:** done on `side-tasks-18`. Compared each preview with the
+mockup's figure (headless Chrome screenshots of `mockups/index.html`)
+side by side. Table of every visible difference:
+
+| Screen | Difference | Fixed (commit) or blocked |
+|---|---|---|
+| `games` | Tetris card said `Zen · best` not `Zen (no gravity) · best` | Fixed (D75 `875c466`) |
+| `games` | Race card said `Zen · no best yet` not `Zen: the road moves on a key` | Fixed (D75 `875c466`) |
+| `games` | Sudoku icon had a filled cell, not the mockup's digits 5/7/3/9 | Fixed (D75 `875c466`) |
+| `games` | Info box text differed (`Moves use…` vs `Only the cells…`) | Fixed (D75 `875c466`) |
+| `games` | Key bar `BOOT hold: back` vs mockup `BOOT options` | Fixed (D75 `875c466`) |
+| `games` | Dice card missing | Fixed (D75 `875c466`) |
+| `sudoku-*` | Chips use `›` (`U+203A`) between steps; matches mockup | Already matching |
+| `sudoku-*` | Number strip strikethrough, inverted choice, options line | Already matching |
+| `sudoku-*` | Status `7:41` vs mockup `07:41` | Fixed: zero-pad the clock |
+| `tetris-*` | Board, NEXT/SCORE/LINES/BEST/MODE, ghost outline, footer | Already matching |
+| `tetris-*` | Zen note `No gravity: the piece moves only when you press.` | Already matching |
+| `race-play` | DISTANCE/BEST/NITRO, dashed lanes, cones, streaks, speed bar, info | Already matching |
+| `race-crash` | Crash picture, `2.5 km`, `Best 5.1km · 2.6 km to go`, three rows | Already matching |
+| `race-crash` | Key bar `BOOT hold: back` vs mockup `BOOT select` on the rows | Fixed: `BOOT` = back on crash |
+
+Pixel tests: the Sudoku clock zero-pad (a probe of the status bar text),
+the crash key hint labels. Layout-only nits left alone. Open: the
+Tetris/Race side panels sit at the right edge as the mockup does; no
+primitive is missing.
 
 ### D77: A Dice session, so the wiring is a few lines
 
@@ -872,7 +1060,22 @@ a tick with nothing due returns the next due time and no redraw; the
 tenth roll asks for a full refresh and the ninth does not; every `Output`
 for a fixed script of events is the same on two runs.
 
-**Status:** to do.
+**Status:** done on `side-tasks-18`. Built `src/games/dice_session.rs`
+(`pub mod dice_session;` in `games/mod.rs`). `DiceSession::new(seed,
+options)` with `on_shake`, `on_key` (`Select`/`Up`/`Down`/`BootShort`/
+`BootHold`) and `tick`, each returning `Output { redraw, rattle,
+next_tick, ended }`. Shake rolls only on Ready with Shake to roll on and
+outside `SHAKE_COOLDOWN_MS` (900, named here with a comment for
+`imu_events.rs`); a key rolls even with shaking off. Frame times are
+`knock * i / FRAMES` inside `dice_sound::duration_ms`, so the last lands
+with the knock; Sound off keeps the same timing. `Options` (dice, sound,
+shake, `Strength` → `shake_delta_mg` 300/420/550) is returned for the
+caller to save. No drawing, audio, IMU or clock. Tests: shake and
+cooldown, key roll without shake, increasing frame times with the last
+at the knock, sound-off timing, Options swallowing shakes, mid-roll
+count waits, hold Boot from every screen, tick with nothing due, tenth
+roll full refresh, the same event script twice, strength mapping. Open:
+nothing known.
 
 ## Round 17 tasks (done, merged without a release)
 
