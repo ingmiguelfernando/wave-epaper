@@ -26,7 +26,7 @@ Last updated: 2026-10-18, firmware v0.15.0.
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3; the verse as a sleep screen and the place on Home in 0.12.2 |
 | Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3, Race from the mockup and a scrolling hub in 0.12.1 |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open (the Ogg Opus file in 0.12.5) |
-| Phase 8: OTA updates | | | Planned |
+| Phase 8: OTA updates | 0.13.0, 0.14.0 | PR #17, PR #19 | Done, tested on the device: updated from 0.14.0 to 0.15.0 over Wi-Fi |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
 | Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | 0.9.2 | PR #3 | Done, waiting for device test |
@@ -51,10 +51,10 @@ Last updated: 2026-10-18, firmware v0.15.0.
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
 | Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
 | Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (libraries and previews only) | | PR #16 | Done, merged without a release; wiring is the main line's |
-| Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | PR #17 | Done, waiting for the USB flash and the device test |
-| Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, waiting for device test (needs a newer release to install) |
+| Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | PR #17 | Done, tested on the device |
+| Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, tested on the device |
 | Delegated tasks D75 to D77: the Games hub with Race and Dice, Games screens against the mockup, a Dice session for the wiring | | PR #18 | Done, merged without a release; wiring is the main line's |
-| Dice wired to the device: keys, shake, rattle, saved options | 0.15.0 | | Done, waiting for device test |
+| Dice wired to the device: keys, shake, rattle, saved options | 0.15.0 | PR #20 | Done, tested on the device |
 | Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | PR #21 | Done, merged without a release |
 | Delegated tasks D81 to D83: Sudoku's bold digits, XiaoZhi's call screen and the AI hub's Wi-Fi mark, the Settings figures | | side-tasks-20 | Published (Round 20) |
 
