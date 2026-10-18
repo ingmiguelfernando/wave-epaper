@@ -5,7 +5,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Circle, Line, PrimitiveStyle, Rectangle, RoundedRectangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
@@ -371,9 +371,9 @@ fn draw_command(
             size,
             face,
             dashed,
-            shear,
+            angle,
         } => {
-            draw_die(display, *x, *y, *size, *face, *dashed, *shear)?;
+            draw_die(display, *x, *y, *size, *face, *dashed, *angle)?;
         }
         DrawCommand::Numerals {
             text,
@@ -438,19 +438,9 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
     }
 }
 
-/// Pip centres on a unit die, as in the mockup's `die-1` to `die-6`.
-const DIE_PIPS: [&[(i32, i32)]; 7] = [
-    &[],
-    &[(50, 50)],
-    &[(28, 28), (72, 72)],
-    &[(28, 28), (50, 50), (72, 72)],
-    &[(28, 28), (72, 28), (28, 72), (72, 72)],
-    &[(28, 28), (72, 28), (50, 50), (28, 72), (72, 72)],
-    &[(28, 26), (72, 26), (28, 50), (72, 50), (28, 74), (72, 74)],
-];
-
-/// One die: rounded square, round pips, optional dashed rest outline and a
-/// shear that tilts it (top edge shifted by `shear`).
+/// One die as the mockup's `die-N` symbols: a rounded square with a thick
+/// stroke and round pips, or its dashed rest outline, turned by `angle`
+/// degrees about its centre.
 fn draw_die(
     display: &mut OrientedFrameBuffer<'_>,
     x: i32,
@@ -458,80 +448,97 @@ fn draw_die(
     size: i32,
     face: u8,
     dashed: bool,
-    shear: i32,
+    angle: i32,
 ) -> Result<(), Infallible> {
-    let radius = (size / 6).max(2) as u32;
-    let shear_at = |row: i32| {
-        if size <= 0 {
-            return 0;
-        }
-        shear * (size / 2 - row) / size
+    use crate::games::die_shape::{
+        outline, pip_centres, DASH_PERCENT, PIP_PERCENT, REST_STROKE_PERCENT, STROKE_PERCENT,
     };
+    let (cx, cy) = (x + size / 2, y + size / 2);
+    // The mockup's symbols draw a 100-unit square and its stroke inside a
+    // 108-unit box, so the box `size` holds a square a little smaller.
+    let side = size * 100 / 108;
+    let points = outline(cx, cy, side, angle);
     if dashed {
-        // Rest outline of a die that is tumbling elsewhere on the table.
-        let mut dash = 0;
-        let perimeter = size * 4;
-        while dash < perimeter {
-            let (x1, y1, _, _) = die_perimeter(x, y, size, dash);
-            let (x2, y2, _, _) = die_perimeter(x, y, size, (dash + 8).min(perimeter));
-            Line::new(
-                Point::new(x1 + shear_at(y1 - y), y1),
-                Point::new(x2 + shear_at(y2 - y), y2),
-            )
-            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
-            .draw(display)?;
-            dash += 16;
-        }
-    } else if shear == 0 {
-        RoundedRectangle::with_equal_corners(
-            Rectangle::new(
-                Point::new(x, y),
-                Size::new(size.max(1) as u32, size.max(1) as u32),
-            ),
-            Size::new(radius, radius),
-        )
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
-        .draw(display)?;
-    } else {
-        // Sheared die: four sides as lines so the top edge shifts.
-        let half = shear_at(0);
-        let half_bottom = shear_at(size);
-        for (x1, y1, x2, y2) in [
-            (x + half, y, x + size + half, y),
-            (x + size + half, y, x + size + half_bottom, y + size),
-            (x + size + half_bottom, y + size, x + half_bottom, y + size),
-            (x + half_bottom, y + size, x + half, y),
-        ] {
-            Line::new(Point::new(x1, y1), Point::new(x2, y2))
-                .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 3))
-                .draw(display)?;
-        }
+        let width = (side * REST_STROKE_PERCENT / 100).max(2) as u32;
+        let dash = side * DASH_PERCENT.0 / 100;
+        let gap = side * DASH_PERCENT.1 / 100;
+        stroke_path(display, &points, width, Some((dash.max(2), gap.max(2))))?;
+        return Ok(());
     }
-    if (1..=6).contains(&face) && !dashed {
-        let pip = (size / 12).max(3) as u32;
-        for (px, py) in DIE_PIPS[usize::from(face)] {
-            let cx = x + size * *px / 100 + shear_at(size * *py / 100);
-            let cy = y + size * *py / 100;
-            Circle::new(Point::new(cx - pip as i32 / 2, cy - pip as i32 / 2), pip)
-                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(display)?;
-        }
+    let width = (side * STROKE_PERCENT / 100).max(2) as u32;
+    stroke_path(display, &points, width, None)?;
+    let pip = (side * PIP_PERCENT / 100).max(3) as u32;
+    for (px, py) in pip_centres(face, cx, cy, side, angle) {
+        Circle::new(Point::new(px - pip as i32 / 2, py - pip as i32 / 2), pip)
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
     }
     Ok(())
 }
 
-/// One point on the die's perimeter, walking clockwise from the top-left.
-fn die_perimeter(x: i32, y: i32, size: i32, along: i32) -> (i32, i32, i32, i32) {
-    let along = along.clamp(0, size * 4);
-    if along <= size {
-        (x + along, y, size, 0)
-    } else if along <= size * 2 {
-        (x + size, y + (along - size), 0, size)
-    } else if along <= size * 3 {
-        (x + size - (along - size * 2), y + size, size, 0)
-    } else {
-        (x, y + size - (along - size * 3), 0, size)
+/// A closed path drawn with a round-capped stroke of `width`. With
+/// `dashes` as `(dash, gap)` lengths it draws a dashed line along the path.
+fn stroke_path(
+    display: &mut OrientedFrameBuffer<'_>,
+    points: &[(i32, i32)],
+    width: u32,
+    dashes: Option<(i32, i32)>,
+) -> Result<(), Infallible> {
+    let ink = PrimitiveStyle::with_stroke(BinaryColor::On, width);
+    let cap = PrimitiveStyle::with_fill(BinaryColor::On);
+    let dot = |display: &mut OrientedFrameBuffer<'_>, at: Point| {
+        Circle::new(at - Point::new(width as i32 / 2, width as i32 / 2), width)
+            .into_styled(cap)
+            .draw(display)
+    };
+    // `along` is how far the path has gone; a dash is drawn while
+    // `along % (dash + gap)` is under `dash`.
+    let mut along = 0_i32;
+    for index in 0..points.len() {
+        let (x1, y1) = points[index];
+        let (x2, y2) = points[(index + 1) % points.len()];
+        let (dx, dy) = (x2 - x1, y2 - y1);
+        let length = isqrt(dx * dx + dy * dy).max(1);
+        let Some((dash, gap)) = dashes else {
+            Line::new(Point::new(x1, y1), Point::new(x2, y2))
+                .into_styled(ink)
+                .draw(display)?;
+            dot(display, Point::new(x1, y1))?;
+            continue;
+        };
+        // Walk the edge in steps of one pixel's worth of its length, drawing
+        // the pieces that fall inside a dash.
+        let period = dash + gap;
+        let mut start = 0;
+        while start < length {
+            let phase = (along + start) % period;
+            if phase < dash {
+                let run = (dash - phase).min(length - start);
+                let a = Point::new(x1 + dx * start / length, y1 + dy * start / length);
+                let b = Point::new(
+                    x1 + dx * (start + run) / length,
+                    y1 + dy * (start + run) / length,
+                );
+                Line::new(a, b).into_styled(ink).draw(display)?;
+                dot(display, a)?;
+                dot(display, b)?;
+                start += run;
+            } else {
+                start += period - phase;
+            }
+        }
+        along += length;
     }
+    Ok(())
+}
+
+/// Integer square root, rounded down.
+fn isqrt(value: i32) -> i32 {
+    let mut root = 0;
+    while (root + 1) * (root + 1) <= value {
+        root += 1;
+    }
+    root
 }
 
 /// Literata at the size whose capitals come closest to the givens', so the
@@ -615,23 +622,5 @@ mod tests {
         let hints = super::game_hints(&session);
         let labels: Vec<&str> = hints.iter().map(|(_, label)| *label).collect();
         assert_eq!(labels, ["lane", "step", "hold: back"]);
-    }
-
-    /// Pip centres match the mockup's `die-1` to `die-6` on a unit die.
-    #[test]
-    fn die_pips_match_the_mockup() {
-        use super::DIE_PIPS;
-        assert_eq!(DIE_PIPS[1], &[(50, 50)]);
-        assert_eq!(DIE_PIPS[2], &[(28, 28), (72, 72)]);
-        assert_eq!(DIE_PIPS[3], &[(28, 28), (50, 50), (72, 72)]);
-        assert_eq!(DIE_PIPS[4], &[(28, 28), (72, 28), (28, 72), (72, 72)]);
-        assert_eq!(
-            DIE_PIPS[5],
-            &[(28, 28), (72, 28), (50, 50), (28, 72), (72, 72)]
-        );
-        assert_eq!(
-            DIE_PIPS[6],
-            &[(28, 26), (72, 26), (28, 50), (72, 50), (28, 74), (72, 74)]
-        );
     }
 }
