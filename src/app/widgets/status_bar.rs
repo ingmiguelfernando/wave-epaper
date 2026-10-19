@@ -29,7 +29,9 @@ pub fn draw_status_bar(
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
         .draw(display)?;
     // Mockup `.sb{font-weight:800}` at the Heading sizes.
-    let style = preferences.extrabold_bar_style().with_color(BinaryColor::Off);
+    let style = preferences
+        .extrabold_bar_style()
+        .with_color(BinaryColor::Off);
     Text::new(title, Point::new(16, baseline(style)), style).draw(display)?;
     Ok(())
 }

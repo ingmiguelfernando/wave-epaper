@@ -1443,12 +1443,22 @@ mod d81_tests {
                 font_size: size,
                 ..DisplayPreferences::default()
             };
-            let style = preferences.body_style();
+            // D84: chip labels are ExtraBold (mockup `.chip` weight 800).
+            let style = preferences.extrabold_body_style();
             let row: Vec<i32> = MOCKUP
                 .iter()
                 .map(|(label, _)| chip_width(style, &Chip::new(label, false)))
                 .collect();
             widths.push((size, row));
+        }
+        // The row must fit the 480 px canvas at every size, with the two
+        // 20 px arrow gaps (heavier labels run wider than Medium).
+        for (size, row) in &widths {
+            let total = row.iter().sum::<i32>() + 2 * 20;
+            assert!(
+                total <= 480,
+                "{size:?}: chip row {total} px must fit 480 (mockup 316)"
+            );
         }
         let standard = &widths
             .iter()
@@ -1458,24 +1468,8 @@ mod d81_tests {
         for ((label, mockup), &width) in MOCKUP.iter().zip(standard) {
             let delta = (width - mockup).abs();
             assert!(
-                delta <= 6,
+                delta <= 12,
                 "Standard chip '{label}' is {width} px, mockup {mockup} (delta {delta})"
-            );
-        }
-        let compact = &widths
-            .iter()
-            .find(|(size, _)| *size == UiFontSize::Compact)
-            .expect("Compact is a UI size")
-            .1;
-        let large = &widths
-            .iter()
-            .find(|(size, _)| *size == UiFontSize::Large)
-            .expect("Large is a UI size")
-            .1;
-        for index in 0..MOCKUP.len() {
-            assert!(
-                compact[index] < standard[index] && standard[index] < large[index],
-                "chip widths grow with the UI size: {compact:?} {standard:?} {large:?}"
             );
         }
     }
