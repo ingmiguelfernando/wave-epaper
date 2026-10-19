@@ -431,7 +431,28 @@ fn draw_command(
         DrawCommand::InfoBox { top, text } => {
             super::games::draw_info_box(display, state.display, text, *top)?;
         }
+        DrawCommand::ChipRow { top, items } => {
+            draw_chip_row(display, state.display, *top, items)?;
+        }
     }
+    Ok(())
+}
+
+/// Mockup chips with `▸` separators, measured by `widgets::chips` (Body
+/// labels, 24 px tall — the figure's `.chip`).
+fn draw_chip_row(
+    display: &mut OrientedFrameBuffer<'_>,
+    preferences: crate::app::display::DisplayPreferences,
+    top: i32,
+    items: &[(String, bool)],
+) -> Result<(), Infallible> {
+    use crate::app::widgets::chips::{draw_chip_row_centered, Chip};
+
+    let chips: Vec<Chip<'_>> = items
+        .iter()
+        .map(|(label, filled)| Chip::new(label, *filled))
+        .collect();
+    draw_chip_row_centered(display, top, preferences.body_style(), &chips)?;
     Ok(())
 }
 
@@ -444,8 +465,14 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
         CanvasTextStyle::InverseHeading => state
             .display
             .text_style(UiTextRole::Heading, BinaryColor::Off),
-        CanvasTextStyle::Player => player_digit_style(state.display.heading_style()),
+        CanvasTextStyle::Player => player_digit_style(givens_style(state.display)),
+        CanvasTextStyle::Givens => givens_style(state.display),
     }
+}
+
+/// Sudoku givens: Inter ExtraBold at the cell's digit size (mockup 800).
+fn givens_style(preferences: crate::app::display::DisplayPreferences) -> UiTextStyle {
+    preferences.extrabold_style()
 }
 
 /// One die as the mockup's `die-N` symbols: a rounded square with a thick
@@ -632,5 +659,52 @@ mod tests {
         let hints = super::game_hints(&session);
         let labels: Vec<&str> = hints.iter().map(|(_, label)| *label).collect();
         assert_eq!(labels, ["lane", "step", "hold: back"]);
+    }
+
+    /// Ink columns of `character` that carry any pixel, and the thickest
+    /// horizontal run of ink (a stem) in the glyph.
+    fn ink_metrics(font: &crate::app::typography::BitmapFont, character: char) -> (usize, usize) {
+        use crate::charset::glyph_index;
+        let glyph = font.glyphs[glyph_index(character).expect("charset has the digit")];
+        let stride = (usize::from(glyph.width) + 7) / 8;
+        let offset = glyph.offset as usize;
+        let ink = |row: usize, column: usize| {
+            let byte = font.bitmap[offset + row * stride + column / 8];
+            byte & (0x80 >> (column % 8)) != 0
+        };
+        let mut columns = 0_usize;
+        for column in 0..usize::from(glyph.width) {
+            if (0..usize::from(glyph.height)).any(|row| ink(row, column)) {
+                columns += 1;
+            }
+        }
+        let mut stem = 0_usize;
+        for row in 0..usize::from(glyph.height) {
+            let mut run = 0_usize;
+            for column in 0..usize::from(glyph.width) {
+                if ink(row, column) {
+                    run += 1;
+                    stem = stem.max(run);
+                } else {
+                    run = 0;
+                }
+            }
+        }
+        (columns, stem)
+    }
+
+    /// Mockup `.c.g` is weight 800; the player's digits stay a book face.
+    #[test]
+    fn given_digits_have_thicker_stems_than_the_players() {
+        let preferences = crate::app::display::DisplayPreferences::default();
+        let givens = super::givens_style(preferences);
+        let player = super::player_digit_style(givens);
+        let (given_columns, given_stem) = ink_metrics(givens.font(), '8');
+        let (player_columns, player_stem) = ink_metrics(player.font(), '8');
+        assert!(
+            given_stem > player_stem,
+            "givens '8' stem {given_stem} must beat the player's {player_stem} \
+             (ink columns {given_columns} vs {player_columns})"
+        );
     }
 }

@@ -33,7 +33,6 @@ const PICK_HEIGHT: i32 = 52;
 const PICK_GAP: i32 = 4;
 const PICK_LEFT: i32 = (GAME_CANVAS_WIDTH - (10 * PICK_WIDTH + 9 * PICK_GAP)) / 2;
 /// Canvas text has no metrics, so chips are sized from a generous advance.
-const CHAR_WIDTH: i32 = 11;
 const SUDOKU_PICK_RECT: DirtyRect = DirtyRect::new(
     PICK_LEFT,
     PICK_TOP,
@@ -700,7 +699,7 @@ impl SudokuGame {
             }
             let (x, y) = cell_origin(index);
             let style = if self.givens[index] {
-                CanvasTextStyle::Heading
+                CanvasTextStyle::Givens
             } else {
                 CanvasTextStyle::Player
             };
@@ -741,30 +740,15 @@ impl SudokuGame {
         Ok(())
     }
 
-    /// `1 · ROW › 2 · CELL › 3 · NUMBER`, centered, the current chip inverted.
+    /// `1 · ROW › 2 · CELL › 3 · NUMBER`, centred, the current chip filled.
+    /// The screen measures the labels and draws the `▸` separators.
     fn draw_step_strip(&self, canvas: &mut NativeGameCanvas) -> Result<(), String> {
         const STEPS: [SudokuStep; 3] = [SudokuStep::Row, SudokuStep::Cell, SudokuStep::Number];
-        const ARROW: i32 = 24;
-        let total = STEPS.iter().map(|&step| chip_width(step)).sum::<i32>() + 2 * ARROW;
-        let mut x = (GAME_CANVAS_WIDTH - total) / 2;
-        for step in STEPS {
-            let width = chip_width(step);
-            let label = step.chip_label().to_string();
-            if step == self.step {
-                canvas.rect(x, 56, width, 30, true)?;
-                canvas.text(x + 8, 77, label, CanvasTextStyle::Inverse)?;
-            } else {
-                canvas.rect(x, 56, width, 30, false)?;
-                canvas.rect(x + 1, 57, width - 2, 28, false)?;
-                canvas.text(x + 8, 77, label, CanvasTextStyle::Body)?;
-            }
-            x += width;
-            if step != SudokuStep::Number {
-                canvas.text(x + 8, 77, "\u{203a}".into(), CanvasTextStyle::Body)?;
-                x += ARROW;
-            }
-        }
-        Ok(())
+        let items = STEPS
+            .iter()
+            .map(|&step| (step.chip_label().to_string(), step == self.step))
+            .collect();
+        canvas.chip_row(56, items)
     }
 
     /// The mockup's number strip: boxes for 1 to 9 and erase, the choice
@@ -879,10 +863,6 @@ fn cell_origin(index: usize) -> (i32, i32) {
         SUDOKU_GRID_X + (index % 9) as i32 * SUDOKU_CELL_SIZE,
         SUDOKU_GRID_Y + (index / 9) as i32 * SUDOKU_CELL_SIZE,
     )
-}
-
-fn chip_width(step: SudokuStep) -> i32 {
-    step.chip_label().chars().count() as i32 * CHAR_WIDTH + 16
 }
 
 /// The highlight of a snapshot: the row band during the Row step, otherwise
@@ -1140,16 +1120,14 @@ mod tests {
         let mut game = game();
         let mut canvas = NativeGameCanvas::default();
         game.render_initial(&mut canvas).unwrap();
-        let labels = canvas
-            .commands()
-            .iter()
-            .filter_map(|command| match command {
-                DrawCommand::Text { text, .. } => Some(text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert!(labels.iter().any(|text| text.contains("1 · ROW")));
-        assert!(labels.iter().any(|text| text.contains("3 · NUMBER")));
+        let labels = chip_labels(&canvas);
+        assert!(labels.iter().any(|text| text == "1 · ROW"), "{labels:?}");
+        assert!(labels.iter().any(|text| text == "3 · NUMBER"), "{labels:?}");
+        // The active step is the filled chip (Row at start).
+        assert!(canvas.commands().iter().any(
+            |command| matches!(command, DrawCommand::ChipRow { items, .. }
+                if items.iter().any(|(label, filled)| label == "1 · ROW" && *filled))
+        ));
         press(&mut game, ButtonEvent::Select);
         press(&mut game, ButtonEvent::Select);
         let mut canvas = NativeGameCanvas::default();
@@ -1158,13 +1136,32 @@ mod tests {
             .commands()
             .iter()
             .filter_map(|command| match command {
-                DrawCommand::Text { text, .. } => Some(text.clone()),
+                DrawCommand::Text { text, .. }
+                | DrawCommand::TextCenter { text, .. }
+                | DrawCommand::TextRight { text, .. } => Some(text.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>();
         assert!(labels.iter().any(|text| text.contains("Row 1 · Col 3")));
         assert!(labels.iter().any(|text| text.contains("options:")));
         assert!(labels.iter().any(|text| text == &display_candidate(1)));
+    }
+
+    /// Labels the player sees: chip-row items and every text command.
+    fn chip_labels(canvas: &NativeGameCanvas) -> Vec<String> {
+        let mut labels = Vec::new();
+        for command in canvas.commands() {
+            match command {
+                DrawCommand::ChipRow { items, .. } => {
+                    labels.extend(items.iter().map(|(label, _)| label.clone()));
+                }
+                DrawCommand::Text { text, .. }
+                | DrawCommand::TextCenter { text, .. }
+                | DrawCommand::TextRight { text, .. } => labels.push(text.clone()),
+                _ => {}
+            }
+        }
+        labels
     }
 
     #[test]
@@ -1421,5 +1418,98 @@ mod d24_tests {
         assert_eq!(records.sudoku_medium, 0);
         let round = GameRecords::parse(&records.serialized()).unwrap();
         assert_eq!(round, records);
+    }
+}
+
+#[cfg(test)]
+mod d81_tests {
+    //! Bold givens and the mockup-sized step chips.
+    use crate::{
+        app::{
+            display::{DisplayPreferences, UiFontSize},
+            widgets::chips::{chip_width, Chip},
+        },
+        games::canvas::{DrawCommand, NativeGameCanvas},
+    };
+
+    #[test]
+    fn step_chip_widths_track_the_mockup_at_every_ui_size() {
+        // Mockup at zoom 1 (measured on the Sudoku figure): 2 px border,
+        // 10 px padding and a 13 px label → 83 / 81 / 110.
+        const MOCKUP: [(&str, i32); 3] = [("1 · ROW", 83), ("2 · CELL", 81), ("3 · NUMBER", 110)];
+        let mut widths = Vec::new();
+        for size in UiFontSize::ALL {
+            let preferences = DisplayPreferences {
+                font_size: size,
+                ..DisplayPreferences::default()
+            };
+            let style = preferences.body_style();
+            let row: Vec<i32> = MOCKUP
+                .iter()
+                .map(|(label, _)| chip_width(style, &Chip::new(label, false)))
+                .collect();
+            widths.push((size, row));
+        }
+        let standard = &widths
+            .iter()
+            .find(|(size, _)| *size == UiFontSize::Standard)
+            .expect("Standard is a UI size")
+            .1;
+        for ((label, mockup), &width) in MOCKUP.iter().zip(standard) {
+            let delta = (width - mockup).abs();
+            assert!(
+                delta <= 6,
+                "Standard chip '{label}' is {width} px, mockup {mockup} (delta {delta})"
+            );
+        }
+        let compact = &widths
+            .iter()
+            .find(|(size, _)| *size == UiFontSize::Compact)
+            .expect("Compact is a UI size")
+            .1;
+        let large = &widths
+            .iter()
+            .find(|(size, _)| *size == UiFontSize::Large)
+            .expect("Large is a UI size")
+            .1;
+        for index in 0..MOCKUP.len() {
+            assert!(
+                compact[index] < standard[index] && standard[index] < large[index],
+                "chip widths grow with the UI size: {compact:?} {standard:?} {large:?}"
+            );
+        }
+    }
+
+    /// The old fixed `CHAR_WIDTH` strip drew 72 / 72 / 96; the mockup is
+    /// 83 / 81 / 110. The canvas command must carry the labels for the screen
+    /// to measure, not pre-sized boxes.
+    #[test]
+    fn chip_row_asks_the_screen_to_measure_the_labels() {
+        let mut canvas = NativeGameCanvas::default();
+        canvas
+            .chip_row(
+                56,
+                vec![
+                    ("1 · ROW".into(), true),
+                    ("2 · CELL".into(), false),
+                    ("3 · NUMBER".into(), false),
+                ],
+            )
+            .unwrap();
+        assert_eq!(
+            canvas.commands(),
+            &[DrawCommand::ChipRow {
+                top: 56,
+                items: vec![
+                    ("1 · ROW".to_string(), true),
+                    ("2 · CELL".to_string(), false),
+                    ("3 · NUMBER".to_string(), false),
+                ],
+            }]
+        );
+        assert!(!canvas
+            .commands()
+            .iter()
+            .any(|command| matches!(command, DrawCommand::Rect { .. })));
     }
 }

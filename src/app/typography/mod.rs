@@ -13,6 +13,7 @@ use super::display::{DisplayPreferences, UiFontFamily, UiFontSize};
 use crate::charset::glyph_index;
 
 mod assets;
+pub use assets::{INTER_COMPACT_GIVENS, INTER_LARGE_GIVENS, INTER_STANDARD_GIVENS};
 
 /// Atlas index of `?`, drawn for characters the fonts do not contain.
 const FALLBACK_GLYPH: usize = '?' as usize - 0x20;
@@ -124,6 +125,12 @@ impl UiTextStyle {
     #[must_use]
     pub const fn with_color(self, color: BinaryColor) -> Self {
         Self { color, ..self }
+    }
+
+    /// The raster strike this style draws with (tests probe its glyphs).
+    #[must_use]
+    pub const fn font(self) -> &'static BitmapFont {
+        self.font
     }
 
     #[must_use]
@@ -356,6 +363,25 @@ impl DisplayPreferences {
     #[must_use]
     pub const fn large_style(self) -> UiTextStyle {
         self.text_style(UiTextRole::Large, BinaryColor::On)
+    }
+
+    /// Inter ExtraBold (`wght = 800`), the mockup's weight for Sudoku givens
+    /// and the XiaoZhi name. Atkinson has no ExtraBold strike and keeps
+    /// Heading (its bold).
+    #[must_use]
+    pub const fn extrabold_style(self) -> UiTextStyle {
+        use assets::{INTER_COMPACT_GIVENS, INTER_LARGE_GIVENS, INTER_STANDARD_GIVENS};
+        match self.font_family {
+            UiFontFamily::Inter => {
+                let font = match self.font_size {
+                    UiFontSize::Compact => &INTER_COMPACT_GIVENS,
+                    UiFontSize::Standard => &INTER_STANDARD_GIVENS,
+                    UiFontSize::Large => &INTER_LARGE_GIVENS,
+                };
+                UiTextStyle::new(font, BinaryColor::On)
+            }
+            UiFontFamily::AtkinsonHyperlegible => self.heading_style(),
+        }
     }
 
     #[must_use]

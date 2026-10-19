@@ -119,7 +119,7 @@ const SETTINGS_ENTRIES: [MenuEntry; 9] = [
     },
     MenuEntry {
         label: "Sleep screen",
-        subtitle: "Photo, clock, weather",
+        subtitle: "Photo, clock, weather, verse",
         badge: "",
         route: ScreenRoute::SleepScreen,
     },
@@ -137,13 +137,13 @@ const SETTINGS_ENTRIES: [MenuEntry; 9] = [
     },
     MenuEntry {
         label: "Wi-Fi & transfer",
-        subtitle: "Network, file portal",
+        subtitle: "Network, file portal, API keys",
         badge: "",
         route: ScreenRoute::Network,
     },
     MenuEntry {
         label: "Clock & alarms",
-        subtitle: "Time, date, alarms",
+        subtitle: "NTP time, RTC alarms",
         badge: "",
         route: ScreenRoute::SettingsClockAlarms,
     },
@@ -155,7 +155,7 @@ const SETTINGS_ENTRIES: [MenuEntry; 9] = [
     },
     MenuEntry {
         label: "System",
-        subtitle: "Version, SD, diagnostics",
+        subtitle: "Version, SD, memory, OTA",
         badge: "",
         route: ScreenRoute::SettingsSystem,
     },

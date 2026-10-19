@@ -15,10 +15,9 @@ use crate::{
         typography::Text,
         widgets::{
             bottom_bar::{draw_bottom_bar, BACK_HINTS, CHANGE_HINTS, CHOOSE_HINTS},
-            header::draw_header,
             list_row::{draw_list_row, ListRow, LIST_ROW_HEIGHT},
             option_list::draw_option_list,
-            status_row::{draw_status_row, StatusRow},
+            status_bar::{draw_status_bar, STATUS_BAR_HEIGHT},
         },
     },
     orientation::OrientedFrameBuffer,
@@ -27,7 +26,8 @@ use crate::{
 
 use super::weather::draw_paragraph;
 
-const ROWS_TOP: i32 = 184;
+/// Under the status bar, as the mockup's `.tog` + `.kv` stack.
+const ROWS_TOP: i32 = STATUS_BAR_HEIGHT;
 const NOT_SET_UP: &str = "Save WEATHER.TXT with your location in /RUSTMIX on the SD card. \
     The SD card guide has an example. This screen then turns the service on or off and \
     sets how often it updates.";
@@ -37,33 +37,34 @@ pub fn render_weather_settings(
     state: &AppState,
 ) -> Result<(), Infallible> {
     let preferences = state.display;
-    draw_header(display, preferences, "WEATHER", "FORECAST AND UPDATES")?;
+    draw_status_bar(display, preferences, "Settings › Weather")?;
     let Some(config) = state.weather_config.as_ref() else {
         let heading = preferences.heading_style();
-        let baseline = draw_paragraph(display, heading, "Weather is not set up", 150)?;
+        let baseline = draw_paragraph(display, heading, "Weather is not set up", 80)?;
         draw_paragraph(display, preferences.body_style(), NOT_SET_UP, baseline + 8)?;
         return draw_bottom_bar(display, preferences, &BACK_HINTS);
     };
-    let place = preferences.body_style().fit(&config.location, 170);
-    draw_status_row(
-        display,
-        preferences,
-        StatusRow {
-            left: if config.enabled { "ON" } else { "OFF" },
-            middle: &place,
-            right: config.units.label(),
-        },
-    )?;
     let heading = preferences.heading_style();
     if let Some(highlighted) = state.weather_settings_ui.picker {
         let setting = state.weather_settings_ui.setting();
         let (options, current) = config.options(setting);
-        Text::new(setting.label(), Point::new(22, 160), heading).draw(display)?;
-        draw_option_list(display, preferences, 184, &options, current, highlighted)?;
+        Text::new(
+            setting.label(),
+            Point::new(22, STATUS_BAR_HEIGHT + 40),
+            heading,
+        )
+        .draw(display)?;
+        draw_option_list(
+            display,
+            preferences,
+            STATUS_BAR_HEIGHT + 64,
+            &options,
+            current,
+            highlighted,
+        )?;
         return draw_bottom_bar(display, preferences, &CHOOSE_HINTS);
     }
 
-    Text::new("Forecast", Point::new(22, 160), heading).draw(display)?;
     for (index, setting) in WeatherSetting::ALL.into_iter().enumerate() {
         let value = config.value_label(setting);
         let row = ListRow {
@@ -76,21 +77,34 @@ pub fn render_weather_settings(
         draw_list_row(display, preferences, top, row)?;
     }
 
-    let body = preferences.body_style();
-    let location = format!("Location: {}, from WEATHER.TXT", config.location);
-    let mut baseline = ROWS_TOP + WeatherSetting::ALL.len() as i32 * LIST_ROW_HEIGHT + 34;
-    for line in [location.as_str(), "Provider: Open-Meteo, no key"] {
-        let line = body.fit(line, 436);
-        Text::new(&line, Point::new(22, baseline), body).draw(display)?;
-        baseline += i32::from(body.line_height()) + 4;
+    // Location and Provider, the mockup's last two `.kv` rows.
+    let location = format!("{} · set in WEATHER.TXT", config.location);
+    let details = [
+        ("Location", location.as_str()),
+        ("Provider", "Open-Meteo · no key"),
+    ];
+    let mut top = ROWS_TOP + WeatherSetting::ALL.len() as i32 * LIST_ROW_HEIGHT;
+    for (label, value) in details {
+        draw_list_row(
+            display,
+            preferences,
+            top,
+            ListRow {
+                title: label,
+                subtitle: "",
+                value,
+                selected: false,
+            },
+        )?;
+        top += LIST_ROW_HEIGHT;
     }
-    draw_infobox(display, state, &battery_note(config), baseline + 6)?;
+    draw_infobox(display, state, &battery_note(config), top + 6)?;
     draw_bottom_bar(display, preferences, &CHANGE_HINTS)
 }
 
 fn subtitle(setting: WeatherSetting) -> &'static str {
     match setting {
-        WeatherSetting::Service => "Fetch the forecast on a schedule",
+        WeatherSetting::Service => "Fetch the forecast periodically",
         WeatherSetting::Refresh => "Each update turns Wi-Fi on briefly",
         WeatherSetting::Units => "BOOT on Weather switches them too",
         WeatherSetting::ShowOnHome => "Weather strip and row on Home",

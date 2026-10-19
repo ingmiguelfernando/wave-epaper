@@ -81,13 +81,15 @@ pub fn display_value(preferences: DisplayPreferences) -> String {
 }
 
 /// The sleep mode, with the starred photo count when it plays photos.
+/// The mockup writes `Photo ★ 12`; `★` is not in the fonts, so the count
+/// keeps the `·` separator the rest of the row uses.
 #[must_use]
 pub fn sleep_screen_value(state: &AppState) -> String {
     match state.sleep_screen.mode {
         SleepMode::Photo => match state.sleep_screen.source {
             SleepSource::Starred => match state.photos.starred.len() {
-                0 => "Photo · none starred".into(),
-                starred => format!("Photo · {starred} starred"),
+                0 => "Photo · none".into(),
+                starred => format!("Photo · {starred}"),
             },
             SleepSource::Folder => "Photo · folder".into(),
         },
@@ -279,10 +281,11 @@ mod tests {
     #[test]
     fn sleep_screen_value_counts_starred_photos() {
         let mut state = AppState::default();
-        assert_eq!(sleep_screen_value(&state), "Photo · none starred");
+        assert_eq!(sleep_screen_value(&state), "Photo · none");
         state.photos.starred.toggle("IMG_0407.jpg");
         state.photos.starred.toggle("IMG_0409.jpg");
-        assert_eq!(sleep_screen_value(&state), "Photo · 2 starred");
+        // Mockup `Photo ★ 12` — the star is not in the fonts.
+        assert_eq!(sleep_screen_value(&state), "Photo · 2");
         state.sleep_screen.source = SleepSource::Folder;
         assert_eq!(sleep_screen_value(&state), "Photo · folder");
         state.sleep_screen.mode = SleepMode::Clock;
@@ -300,6 +303,13 @@ mod tests {
             let value = group_value(&state, entry.route);
             assert!(!value.is_empty(), "{}", entry.label);
         }
+    }
+
+    /// Mockup `Process · When online`. The mockup's key-storage note under the
+    /// rows does not fit: eight rows and three labels already reach the bar.
+    #[test]
+    fn ai_settings_say_when_online() {
+        assert_eq!(crate::ai_config::AiProcess::Online.label(), "When online");
     }
 
     #[test]
@@ -371,9 +381,14 @@ pub fn render_ai_settings(
     let mut top = STATUS_BAR_HEIGHT + 16;
     for (index, (title, value)) in rows.iter().enumerate() {
         if let Some((_, label)) = groups.iter().find(|(first, _)| *first == index) {
-            // Each group's label sits low in its own band, clear of the row above.
+            // Mockup `.lbl`: capitals in Detail.
             let style = preferences.text_style(UiTextRole::Detail, BinaryColor::On);
-            Text::new(label, Point::new(LIST_TEXT_LEFT, top + 20), style).draw(display)?;
+            Text::new(
+                &label.to_uppercase(),
+                Point::new(LIST_TEXT_LEFT, top + 20),
+                style,
+            )
+            .draw(display)?;
             top += 28;
         }
         draw_list_row(

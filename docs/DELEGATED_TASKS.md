@@ -4,6 +4,73 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 21 tasks (branch `side-tasks-21`)
+
+Start from `main` after pull request #23, where Round 20 is merged; read its
+result below first. Create `side-tasks-21` from `main`. The method of Rounds
+19 and 20 stands (the mockup's figure at zoom 1 next to your preview, one
+table per figure, every difference fixed or named with the primitive it
+needs; look at each preview again after your last change; run each new test
+against the old behaviour). New: **a note, box or row you add must be
+checked for room at every UI size**: say the y where the page content ends
+and where the bottom bar starts. When done, merge `main` into the branch and
+open a pull request.
+
+### D84: ExtraBold at the Body and bar sizes
+
+The blocked rows of Round 20: chip labels (`.chip` weight 800) and the status
+bar title (`.sb` weight 800) use Medium/SemiBold because only the givens'
+sizes have an ExtraBold strike. Add the strikes (the `fonts` workflow, as in
+D81) for the Body sizes and the status-bar size, use them in
+`widgets::chips` and the bar, and check every other glyph of the atlas is
+unchanged. **Tests:** a chip label and the bar title are heavier than
+before (ink runs of one letter); widths at the three UI sizes still fit the
+widest chip row (Sudoku and XiaoZhi) and the longest bar title.
+
+**Status:** to do.
+
+### D85: XiaoZhi's boxes and the AI hub's note chips
+
+Blocked in Round 20: the YOU / XIAOZHI body text (mockup regular 21 px, the
+device draws Heading SemiBold), the `.lbl` labels (12 px, 800, letter
+spaced), and the AI hub's note rows with their `SUMMARY ✓` status chips.
+Do the first two with the strikes D84 adds or one more regular strike, the
+third with `widgets::chips`. **Tests:** a probe for each; the call and the
+hub render at three sizes with the longest text the protocol allows.
+
+**Status:** to do.
+
+### D86: Audit the screens not yet audited
+
+Rounds 18 to 20 audited the games, Home, Photos, Reading, Weather, AI,
+XiaoZhi and Settings. Do the same for the Library list, the Reader menu,
+Clock and alarms, Power, Voice Notes and the Files portal screen: a table
+per figure, fix what needs no new primitive, name the rest.
+
+**Status:** to do.
+
+## Round 20 result (2026-10-19)
+
+Branch `side-tasks-20` (D81 to D83) came as pull request #23 with CI and the
+firmware build green, reviewed on the branch and merged without a release.
+The method worked: the tables are honest (`Blocked` rows say which strike or
+glyph is missing), the ExtraBold strikes touch only their own atlas rows
+(the diff is 1965 inserted lines and nothing else), and the shared
+`draw_chip_row_centered` is used by Sudoku and XiaoZhi.
+
+What the main developer changed at review time:
+
+- **The Settings › AI note ran over the bottom bar.** Eight rows and three
+  group labels end at y 720 of 752, so the note's box (added under the last
+  row) was drawn across the bar and its last line was hidden. The preview was
+  not looked at after the change. The note is removed and the row says
+  `Blocked`; its test, which only counted ink in a large region and passed
+  with the note overlapping, became a check of the `When online` label.
+- Unused imports left by that change.
+
+Lesson: **a row or box added under a list needs a measured room**, not a
+region that is black whatever is drawn. Say where the content ends.
+
 ## Round 19 result (2026-10-19)
 
 Branch `side-tasks-19` (D78 to D80) came as pull request #21 from v0.15.0,
@@ -847,7 +914,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 20 tasks (branch `side-tasks-20`)
+## Round 20 tasks (done, merged without a release)
 
 Start from `main` after pull request #21, where Round 19 is merged; read its
 result at the top of this file first (it is about what a change does to the
@@ -893,7 +960,22 @@ digits' (count ink columns of an `8` of each); the chip widths against the
 mockup's at the three UI sizes; the other previews unchanged (say how you
 checked: the atlas diff changes only the new strike).
 
-**Status:** to do.
+**Status:** done on `side-tasks-20`. Mockup Sudoku figure rendered at zoom 1
+(`--z` 1, only that figure) and compared with `sudoku-number` side by side;
+chip boxes measured in screen coordinates on both. **Font note:** the mockup
+uses system-ui / Iowan; letterforms differ and are not listed per row.
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Given digits | Mockup `.c.g` weight 800; device Heading was Inter SemiBold | Fixed: Inter ExtraBold (`wght=800`) strikes `INTER_*_GIVENS` at the givens' sizes, `CanvasTextStyle::Givens`. Probe: `given_digits_have_thicker_stems_than_the_players` counts ink runs of `8` |
+| Player digits | Mockup `.c.u` is italic Iowan 31 px | Kept Literata at the givens' cap height (`player_digit_style` now matches `givens_style`, not Heading). Size close; italic is a face choice |
+| Step chips size | Mockup 13 px labels, 2 px border, 10 px padding, 24 px tall: widths 83 / 81 / 110 | Fixed: `DrawCommand::ChipRow` measures with the real font (`2*(2+10)+text_width`, Body face). Preview boxes 79 / 82 / 111 at Standard (within 4 px). Probe: `step_chip_widths_track_the_mockup_at_every_ui_size` |
+| Step chips arrows | Mockup `▸` between chips, 20 px gap | Fixed: drawn as a 6 px triangle (the glyph is not in the fonts), same as the hub marker |
+| Step chips label weight | Mockup `.chip{font-weight:800}`; device Body is Inter Medium | Blocked: needs an ExtraBold strike at Body sizes (11–17 px). Widths already match; weight is the shared chip style on the device |
+| Other previews | Atlas must not rewrite unrelated glyphs | Checked: the `fonts` workflow artifact vs `main` is 1965 insertions only — the three `INTER_*_GIVENS` strikes; every other generated file is byte-identical |
+
+Old `CHAR_WIDTH=11` drew `1 · ROW` at 93 px (mockup 83); the chip-row
+command carries labels, not pre-sized boxes (`chip_row_asks_the_screen_to_measure_the_labels`).
 
 ### D82: XiaoZhi's call screen and the AI hub's Wi-Fi mark
 
@@ -912,7 +994,32 @@ behaviour or `src/xiaozhi/`.
 **Tests:** a probe for each element you add; the screen still renders at
 the three UI sizes with the longest text the protocol allows.
 
-**Status:** to do.
+**Status:** done on `side-tasks-20`. Mockup figures (AI, XiaoZhi) at zoom 1
+next to `ai` and `xiaozhi-call`. **Font note:** mockup system-ui / Avenir
+vs Inter; letterforms differ and are not listed per row.
+
+### D82 AI hub
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Status `Online` | Mockup has a Wi-Fi glyph before the word | Fixed: `widgets::icons::WIFI`, same mark as `home.rs`. Probe: `online_draws_the_wifi_mark_before_the_word` |
+| Note rows' status chips (`SUMMARY ✓`, …) | Preview omits them | Out of D82 scope (hub content, not the Wi-Fi mark) |
+| Sample LINKED / providers / note names | Sample state | Not a code bug |
+
+### D82 XiaoZhi call
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Timer `● On call · 02:14` | Matches (crop; sample battery %) | — |
+| Face + waveform ring | Matches (crop; curve sampling) | — |
+| Name `XiaoZhi` | Mockup weight 800 | Fixed: `extrabold_style` (the D81 ExtraBold strikes). Probe: name is wider than Heading |
+| Chips `LISTEN ▸ THINK ▸ SPEAK` | Were Detail 26 px with a 22 px gap | Fixed: shared `widgets::chips::draw_chip_row_centered` (Body, 24 px, 20 px arrow gap) as Sudoku |
+| Chip label weight | Mockup `.chip{font-weight:800}` | Blocked: needs ExtraBold at Body sizes (same row as D81) |
+| YOU / XIAOZHI boxes | Structure matches; body text is Heading SemiBold | Blocked: mockup is regular 21 px; no regular UI strike at that size (closest is Heading 20 SemiBold). Labels are plain Detail vs `.lbl` 12 px 800 letter-spaced |
+| Device tool line | Missing `⚙` | Fixed: ring+hub mark (the glyph is not in the fonts). Probe: `tool_line_has_the_gear_mark` |
+| Volume row | Matches (crop) | — |
+| Footer | Matches (crop) | — |
+| Three UI sizes, longest text | — | Probe: `call_screen_draws_the_mockup_elements` paints Speaking with a long reply at Compact/Standard/Large |
 
 ### D83: Settings against the mockup
 
@@ -932,7 +1039,50 @@ the main developer's choices are the `Free slot` column that became
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-20`. Mockup figures at zoom 1 next to
+`settings`, `weather-settings`, `settings-ai`, `settings-system` and
+`update-available`. **Font note:** mockup system-ui vs Inter; `.set .t` is
+weight 800 and `.sb` is 800 — list titles use `extrabold_style`, status-bar
+titles stay Heading (shared chrome, every screen).
+
+### D83 Settings
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Row titles | Mockup `.set .t` weight 800 | Fixed: `list_row` titles use `extrabold_style` |
+| Sleep screen subtitle | Missing `verse` | Fixed: `Photo, clock, weather, verse` |
+| Wi-Fi subtitle | Missing `API keys` | Fixed: `Network, file portal, API keys` |
+| Clock subtitle | `Time, date, alarms` | Fixed: `NTP time, RTC alarms` |
+| System subtitle | `Version, SD, diagnostics` | Fixed: `Version, SD, memory, OTA` |
+| Sleep screen value | Mockup `Photo ★ 12` | Fixed: `Photo · 2` (`★` is not in the fonts). Probe: `sleep_screen_value_counts_starred_photos` |
+| Sample values (Literata · M, Ready, 2 alarms) | Sample state | Not a code bug |
+| Status-bar title weight | Mockup `.sb` 800 | Blocked: shared chrome; Heading is the boldest UI role without ExtraBold at bar size |
+
+### D83 Settings › Weather
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Chrome | Was `draw_header` `WEATHER` / `FORECAST AND UPDATES` | Fixed: status bar `Settings › Weather`, rows from the bar |
+| Forecast heading + status row | Extra chrome the mockup does not have | Fixed: removed; Location and Provider are list rows |
+| Location / Provider | Were paragraph lines | Fixed: `Location` / `Provider` rows (`Madrid · set in WEATHER.TXT`, `Open-Meteo · no key`) |
+| Service subtitle | `on a schedule` | Fixed: `Fetch the forecast periodically` (mockup) |
+| Toggle vs list row for the service | Mockup `.tog` switch | Blocked: list-row style kept (device's Settings pattern) |
+
+### D83 Settings › AI
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Group labels | Mixed case | Fixed: uppercase like `.lbl` |
+| Process value | `Online` | Fixed: `When online` |
+| Info note | Missing | Blocked: the eight rows and three labels reach the bottom bar (y 720 of 752); the note drew over the bar. Removed at review |
+| API keys / Language values | Sample (Unavailable / Auto) | Not a code bug |
+
+### D83 Settings › System and updates
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| System rows | Match (crop; sample `6 items` vs version) | — |
+| `update-available` preview | Shows the **up to date** state (checkmark); the mockup figure is the **update available** flow (Installed ▼ Available, Wi-Fi/Battery/Free slot, Download and install) | Named: different flow states. The available-update layout was drawn by the main developer (purposeful: `Free slot` column → `Download`, release date → release tag). The up-to-date chrome (title, Check again / Back, footer) matches the mockup's sibling figure |
 
 ## Round 19 tasks (done, merged without a release)
 

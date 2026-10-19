@@ -86,7 +86,7 @@ impl AiProcess {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Online => "Online",
+            Self::Online => "When online",
             Self::Manual => "Manual",
         }
     }

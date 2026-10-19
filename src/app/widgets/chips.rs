@@ -128,6 +128,42 @@ pub fn draw_chip_row(
     Ok(())
 }
 
+/// Gap between chips when the mockup puts a `▸` between them (flex `gap: 6`
+/// around an 8 px triangle): 20 px of room, triangle centred in it.
+pub const ARROW_GAP: i32 = 20;
+
+/// A centred row of chips with `▸` separators, as the mockup's `.chips`.
+/// Returns the left edge of the row.
+pub fn draw_chip_row_centered(
+    display: &mut OrientedFrameBuffer<'_>,
+    top: i32,
+    style: UiTextStyle,
+    chips: &[Chip<'_>],
+) -> Result<i32, Infallible> {
+    use embedded_graphics::primitives::{PrimitiveStyle, Triangle};
+
+    let arrows = chips.len().saturating_sub(1) as i32 * ARROW_GAP;
+    let total = chip_row_width(style, chips, 0) + arrows;
+    let mut left = (480 - total) / 2;
+    let start = left;
+    let middle = top + chip_height(style) / 2;
+    for (index, chip) in chips.iter().enumerate() {
+        let width = draw_chip(display, Point::new(left, top), style, chip)?;
+        left += width;
+        if index + 1 < chips.len() {
+            Triangle::new(
+                Point::new(left + (ARROW_GAP - 6) / 2, middle - 4),
+                Point::new(left + (ARROW_GAP - 6) / 2, middle + 4),
+                Point::new(left + (ARROW_GAP - 6) / 2 + 6, middle),
+            )
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
+            left += ARROW_GAP;
+        }
+    }
+    Ok(start)
+}
+
 #[cfg(test)]
 mod tests {
     use embedded_graphics::prelude::Point;

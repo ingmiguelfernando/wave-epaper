@@ -6,7 +6,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Circle, PrimitiveStyle, Rectangle, Triangle},
+    primitives::{Circle, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
@@ -37,7 +37,8 @@ const FACE_DIAMETER: i32 = 96;
 const FACE_CENTRE: Point = Point::new(240, STATUS_BAR_HEIGHT + 72);
 const NAME_BASELINE: i32 = STATUS_BAR_HEIGHT + 148;
 const CHIPS_TOP: i32 = NAME_BASELINE + 14;
-const CHIP_HEIGHT: i32 = 26;
+/// The mockup's `.chip` height (see `widgets::chips`).
+const CHIP_HEIGHT: i32 = 24;
 const MESSAGES_TOP: i32 = CHIPS_TOP + CHIP_HEIGHT + 14;
 const MESSAGE_GAP: i32 = 12;
 /// The volume row sits above the bottom bar, as in the mockup.
@@ -74,7 +75,7 @@ pub fn render_xiaozhi(
     if call.phase == CallPhase::Speaking {
         draw_waves(display)?;
     }
-    let name = preferences.large_style();
+    let name = preferences.extrabold_style();
     draw_centered(display, "XiaoZhi", NAME_BASELINE, name)?;
     let hints: &[(KeyCap, &str)] = match &call.phase {
         CallPhase::Idle | CallPhase::Connecting => {
@@ -293,59 +294,25 @@ fn draw_conversation(
     draw_volume(display, preferences, call.volume)
 }
 
-/// LISTEN ▸ THINK ▸ SPEAK, the current turn filled.
+/// LISTEN ▸ THINK ▸ SPEAK, the current turn filled — the mockup's chip row.
 fn draw_chips(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
     call: &XiaozhiUi,
 ) -> Result<(), Infallible> {
+    use crate::app::widgets::chips::{draw_chip_row_centered, Chip};
+
     let listen = if call.muted { "MIC OFF" } else { "LISTEN" };
     let chips = [
         (listen, CallPhase::Listening),
         ("THINK", CallPhase::Thinking),
         ("SPEAK", CallPhase::Speaking),
     ];
-    let label = preferences.detail_style();
-    let widths: Vec<i32> = chips
+    let row: Vec<Chip<'_>> = chips
         .iter()
-        .map(|(text, _)| label.text_width(text) + 24)
+        .map(|(text, phase)| Chip::new(text, call.phase == *phase))
         .collect();
-    // Between two chips: 8 px, a 6 px triangle, 8 px.
-    let total = widths.iter().sum::<i32>() + 2 * 22;
-    let mut left = (480 - total) / 2;
-    let baseline = CHIPS_TOP + (CHIP_HEIGHT + label.cap_height()) / 2;
-    let middle = CHIPS_TOP + CHIP_HEIGHT / 2;
-    let ink = PrimitiveStyle::with_fill(BinaryColor::On);
-    for (index, ((text, phase), &width)) in chips.iter().zip(&widths).enumerate() {
-        let on = call.phase == *phase;
-        let (style, color) = if on {
-            (ink, BinaryColor::Off)
-        } else {
-            (
-                PrimitiveStyle::with_stroke(BinaryColor::On, 2),
-                BinaryColor::On,
-            )
-        };
-        Rectangle::new(
-            Point::new(left, CHIPS_TOP),
-            Size::new(width as u32, CHIP_HEIGHT as u32),
-        )
-        .into_styled(style)
-        .draw(display)?;
-        let text_style = label.with_color(color);
-        Text::new(text, Point::new(left + 12, baseline), text_style).draw(display)?;
-        left += width;
-        if index + 1 < chips.len() {
-            Triangle::new(
-                Point::new(left + 8, middle - 4),
-                Point::new(left + 8, middle + 4),
-                Point::new(left + 14, middle),
-            )
-            .into_styled(ink)
-            .draw(display)?;
-            left += 22;
-        }
-    }
+    draw_chip_row_centered(display, CHIPS_TOP, preferences.body_style(), &row)?;
     Ok(())
 }
 
@@ -410,7 +377,8 @@ fn draw_message(
     Ok(top + height)
 }
 
-/// The device tool XiaoZhi used, in a dashed box under the messages.
+/// The device tool XiaoZhi used, in a dashed box under the messages. The
+/// mockup's `⚙` is not in the fonts; a small ring stands in for it.
 fn draw_tool(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
@@ -421,13 +389,21 @@ fn draw_tool(
     let height = i32::from(style.line_height()) + 16;
     let size = Size::new((RIGHT - LEFT) as u32, height as u32);
     draw_dashed_box(display, Point::new(LEFT, top), size)?;
+    // Ring gear mark (the mockup's ⚙), 12 px, before the words.
+    let cy = top + height / 2;
+    Circle::with_center(Point::new(LEFT + 20, cy), 12)
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
+        .draw(display)?;
+    Circle::with_center(Point::new(LEFT + 20, cy), 4)
+        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+        .draw(display)?;
     let mut text = format!("Device tool: {}", screen_text(tool));
     if tool.starts_with("bible.") {
         text.push_str(" from your SD");
     }
-    let line = style.fit(&text, RIGHT - LEFT - 24);
+    let line = style.fit(&text, RIGHT - LEFT - 48);
     let baseline = top + (height + style.cap_height()) / 2;
-    Text::new(&line, Point::new(LEFT + 12, baseline), style).draw(display)?;
+    Text::new(&line, Point::new(LEFT + 34, baseline), style).draw(display)?;
     Ok(())
 }
 
@@ -483,6 +459,7 @@ mod tests {
         framebuffer::FrameBuffer,
         xiaozhi::call::{CallEvent, CallPhase},
     };
+    use embedded_graphics::prelude::Point;
 
     #[test]
     fn screen_text_drops_what_the_fonts_cannot_draw() {
@@ -520,5 +497,96 @@ mod tests {
             let mut frame = FrameBuffer::new_white();
             render_current_screen(&mut frame, &state).unwrap();
         }
+    }
+
+    /// The mockup's call screen: ExtraBold name, a chip row with `▸`, the
+    /// YOU/XIAOZHI boxes, a gear mark on the tool line and the volume bar.
+    #[test]
+    fn call_screen_draws_the_mockup_elements() {
+        use crate::app::display::{DisplayPreferences, UiFontSize};
+        use crate::app::typography::UiTextStyle;
+        use crate::xiaozhi::call::CallPhase;
+
+        // Name is weight 800 (`extrabold_style` is thicker than Heading).
+        let preferences = DisplayPreferences::default();
+        let name = preferences.extrabold_style();
+        let heading = preferences.heading_style();
+        let width = |style: UiTextStyle, text: &str| style.text_width(text);
+        assert!(
+            width(name, "XiaoZhi") > width(heading, "XiaoZhi"),
+            "ExtraBold name must be wider than SemiBold at the same words"
+        );
+
+        // The call paints at every UI size with protocol-length text.
+        for size in UiFontSize::ALL {
+            let mut state = AppState::default();
+            state.display.font_size = size;
+            state.router.navigate_to(ScreenRoute::XiaoZhi);
+            state
+                .xiaozhi
+                .apply(CallEvent::Phase(CallPhase::Speaking), 0);
+            state
+                .xiaozhi
+                .apply(CallEvent::Heard("Léeme el Salmo 23".into()), 1_000);
+            state.xiaozhi.apply(
+                CallEvent::Said("«Jehová es mi pastor; nada me faltará…».".repeat(8)),
+                2_000,
+            );
+            state
+                .xiaozhi
+                .apply(CallEvent::Tool("bible.read(\"Sal 23\")".into()), 3_000);
+            let mut frame = FrameBuffer::new_white();
+            render_current_screen(&mut frame, &state).unwrap();
+            // The call dot is paper on the black status bar.
+            let paper = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(false);
+            let ink = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(true);
+            assert!(paper(22, 22), "{size:?}: call dot");
+            assert!(
+                (super::CHIPS_TOP..super::CHIPS_TOP + super::CHIP_HEIGHT)
+                    .any(|y| (200..280).any(|x| ink(x, y))),
+                "{size:?}: chip row"
+            );
+            assert!(
+                (super::VOLUME_BASELINE - 14..super::VOLUME_BASELINE + 4)
+                    .any(|y| (30..200).any(|x| ink(x, y))),
+                "{size:?}: volume row"
+            );
+        }
+    }
+
+    /// The tool line stands in for `⚙` with a ring at a known `top`.
+    #[test]
+    fn tool_line_has_the_gear_mark() {
+        use crate::app::display::DisplayPreferences;
+        use crate::orientation::{DisplayOrientation, OrientedFrameBuffer};
+
+        let mut frame = FrameBuffer::new_white();
+        let top = 400;
+        {
+            let mut display = OrientedFrameBuffer::new(&mut frame, DisplayOrientation::Portrait);
+            super::draw_tool(
+                &mut display,
+                DisplayPreferences::default(),
+                "bible.read(\"Sal 23\")",
+                top,
+            )
+            .unwrap();
+        }
+        let black = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(true);
+        let style = DisplayPreferences::default().detail_style();
+        let height = i32::from(style.line_height()) + 16;
+        let cy = top + height / 2;
+        let cx = 16 + 20;
+        // Circle::with_center takes a diameter: ring 12 (stroke 2), hub 4.
+        let mut ring_ink = 0_u32;
+        for dy in -7..=7 {
+            for dx in -7..=7 {
+                if black(cx + dx, cy + dy) {
+                    ring_ink += 1;
+                }
+            }
+        }
+        assert!(ring_ink > 12, "gear mark ink, found {ring_ink}");
+        assert!(black(cx, cy), "hub");
     }
 }
