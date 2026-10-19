@@ -5,7 +5,7 @@ use core::convert::Infallible;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Drawable, Point, Primitive, Size},
-    primitives::{Circle, Line, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, StrokeAlignment},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
 };
 
 use crate::{
@@ -438,80 +438,21 @@ fn draw_command(
     Ok(())
 }
 
-/// Mockup chips with `▸` separators: 2 px border, 10 px padding, the label in
-/// the UI's Body face (the mockup's 13 px measure), boxes 24 px tall and 20 px
-/// of arrow gap between them (the figure's flex `gap: 6` around an 8 px
-/// triangle).
+/// Mockup chips with `▸` separators, measured by `widgets::chips` (Body
+/// labels, 24 px tall — the figure's `.chip`).
 fn draw_chip_row(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: crate::app::display::DisplayPreferences,
     top: i32,
     items: &[(String, bool)],
 ) -> Result<(), Infallible> {
-    use crate::games::canvas::CHIP_ROW_HEIGHT;
-    use embedded_graphics::primitives::{PrimitiveStyle, Triangle};
+    use crate::app::widgets::chips::{draw_chip_row_centered, Chip};
 
-    const BORDER: i32 = 2;
-    const PADDING: i32 = 10;
-    const GAP: i32 = 20;
-    let label = preferences.body_style();
-    let widths: Vec<i32> = items
+    let chips: Vec<Chip<'_>> = items
         .iter()
-        .map(|(text, _)| 2 * (BORDER + PADDING) + label.text_width(text))
+        .map(|(label, filled)| Chip::new(label, *filled))
         .collect();
-    let arrows = items.len().saturating_sub(1) as i32 * GAP;
-    let total = widths.iter().sum::<i32>() + arrows;
-    let mut left = (480 - total) / 2;
-    let baseline = top + (CHIP_ROW_HEIGHT + label.cap_height()) / 2 - BORDER;
-    let middle = top + CHIP_ROW_HEIGHT / 2;
-    for (index, ((text, filled), &width)) in items.iter().zip(&widths).enumerate() {
-        let (box_style, ink) = if *filled {
-            (
-                PrimitiveStyleBuilder::new()
-                    .fill_color(BinaryColor::On)
-                    .stroke_color(BinaryColor::On)
-                    .stroke_width(BORDER as u32)
-                    .stroke_alignment(StrokeAlignment::Inside)
-                    .build(),
-                BinaryColor::Off,
-            )
-        } else {
-            (
-                PrimitiveStyleBuilder::new()
-                    .fill_color(BinaryColor::Off)
-                    .stroke_color(BinaryColor::On)
-                    .stroke_width(BORDER as u32)
-                    .stroke_alignment(StrokeAlignment::Inside)
-                    .build(),
-                BinaryColor::On,
-            )
-        };
-        Rectangle::new(
-            Point::new(left, top),
-            Size::new(width as u32, CHIP_ROW_HEIGHT as u32),
-        )
-        .into_styled(box_style)
-        .draw(display)?;
-        Text::new(
-            text,
-            Point::new(left + BORDER + PADDING, baseline),
-            label.with_color(ink),
-        )
-        .draw(display)?;
-        left += width;
-        if index + 1 < items.len() {
-            // A 6 px `▸` centred in the gap (the mockup's triangle, which the
-            // fonts do not carry).
-            Triangle::new(
-                Point::new(left + (GAP - 6) / 2, middle - 4),
-                Point::new(left + (GAP - 6) / 2, middle + 4),
-                Point::new(left + (GAP - 6) / 2 + 6, middle),
-            )
-            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-            .draw(display)?;
-            left += GAP;
-        }
-    }
+    draw_chip_row_centered(display, top, preferences.body_style(), &chips)?;
     Ok(())
 }
 
@@ -531,14 +472,7 @@ fn canvas_text_style(state: &AppState, style: CanvasTextStyle) -> UiTextStyle {
 
 /// Sudoku givens: Inter ExtraBold at the cell's digit size (mockup 800).
 fn givens_style(preferences: crate::app::display::DisplayPreferences) -> UiTextStyle {
-    use crate::app::display::UiFontSize;
-    use crate::app::typography::{INTER_COMPACT_GIVENS, INTER_LARGE_GIVENS, INTER_STANDARD_GIVENS};
-    let font = match preferences.font_size {
-        UiFontSize::Compact => &INTER_COMPACT_GIVENS,
-        UiFontSize::Standard => &INTER_STANDARD_GIVENS,
-        UiFontSize::Large => &INTER_LARGE_GIVENS,
-    };
-    UiTextStyle::new(font, BinaryColor::On)
+    preferences.extrabold_style()
 }
 
 /// One die as the mockup's `die-N` symbols: a rounded square with a thick

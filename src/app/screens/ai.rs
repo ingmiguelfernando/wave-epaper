@@ -50,12 +50,16 @@ pub fn render_ai_hub(
     state: &AppState,
 ) -> Result<(), Infallible> {
     draw_status_bar(display, state.display, ScreenRoute::Ai.label())?;
-    draw_status_text(
-        display,
-        state.display,
-        &network_label(state),
-        STATUS_BAR_RIGHT,
-    )?;
+    // `wifi Online` as the mockup's status bar draws it (home.rs has the mark).
+    let mut right = STATUS_BAR_RIGHT;
+    let label = network_label(state);
+    right = draw_status_text(display, state.display, &label, right)?;
+    if network_online(state) {
+        use crate::app::widgets::icons;
+        right = right - 8 - icons::WIFI.width();
+        let top = (STATUS_BAR_HEIGHT - icons::WIFI.height()) / 2;
+        icons::WIFI.draw(display, Point::new(right, top), BinaryColor::Off)?;
+    }
     let selected = state.category_selection(ScreenRoute::Ai);
     draw_xiaozhi_card(display, state, selected == 0)?;
     draw_voice_notes_card(display, state, selected == 1)?;
@@ -387,11 +391,15 @@ fn draw_mic_icon(
 mod d28_tests {
     use super::{ai_row_count, hub_info_text, network_label, note_meta, recent_notes, split_stamp};
     use crate::{
-        app::{render_current_screen, router::ScreenRoute, AppState},
+        app::{
+            render_current_screen, router::ScreenRoute, widgets::status_bar::STATUS_BAR_HEIGHT,
+            widgets::status_bar::STATUS_BAR_RIGHT, AppState,
+        },
         buttons::ButtonEvent,
         framebuffer::FrameBuffer,
         voice_notes::VoiceNoteEntry,
     };
+    use embedded_graphics::prelude::Point;
 
     fn note(name: &str, title: &str, stamp: &str, seconds: u32) -> VoiceNoteEntry {
         VoiceNoteEntry {
@@ -478,6 +486,38 @@ mod d28_tests {
         assert_eq!(network_label(&state), "Offline");
         state.network.wifi_state = crate::network::WifiConnectionState::Connected;
         assert_eq!(network_label(&state), "Online");
+    }
+
+    /// The mockup's status bar draws a Wi-Fi mark before `Online`.
+    #[test]
+    fn online_draws_the_wifi_mark_before_the_word() {
+        use crate::app::widgets::icons;
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Ai);
+        state.network.wifi_state = crate::network::WifiConnectionState::Connected;
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        // Status-bar marks are paper on the black bar (`is_black == Some(false)`).
+        let paper = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(false);
+        let online_left = STATUS_BAR_RIGHT - state.display.body_style().text_width("Online");
+        let icon_left = online_left - 8 - icons::WIFI.width();
+        let top = (STATUS_BAR_HEIGHT - icons::WIFI.height()) / 2;
+        assert!(
+            paper(icon_left + 9, top + 1),
+            "Wi-Fi mark paper expected at ({}, {})",
+            icon_left + 9,
+            top + 1
+        );
+        assert!(
+            !paper(icon_left - 4, top + 1),
+            "nothing belongs left of the Wi-Fi mark"
+        );
+        let mut offline = AppState::default();
+        offline.router.navigate_to(ScreenRoute::Ai);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &offline).unwrap();
+        let paper = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(false);
+        assert!(!paper(icon_left + 9, top + 1), "no mark when Offline");
     }
 
     #[test]

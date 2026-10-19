@@ -927,7 +927,32 @@ behaviour or `src/xiaozhi/`.
 **Tests:** a probe for each element you add; the screen still renders at
 the three UI sizes with the longest text the protocol allows.
 
-**Status:** to do.
+**Status:** done on `side-tasks-20`. Mockup figures (AI, XiaoZhi) at zoom 1
+next to `ai` and `xiaozhi-call`. **Font note:** mockup system-ui / Avenir
+vs Inter; letterforms differ and are not listed per row.
+
+### D82 AI hub
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Status `Online` | Mockup has a Wi-Fi glyph before the word | Fixed: `widgets::icons::WIFI`, same mark as `home.rs`. Probe: `online_draws_the_wifi_mark_before_the_word` |
+| Note rows' status chips (`SUMMARY ✓`, …) | Preview omits them | Out of D82 scope (hub content, not the Wi-Fi mark) |
+| Sample LINKED / providers / note names | Sample state | Not a code bug |
+
+### D82 XiaoZhi call
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Timer `● On call · 02:14` | Matches (crop; sample battery %) | — |
+| Face + waveform ring | Matches (crop; curve sampling) | — |
+| Name `XiaoZhi` | Mockup weight 800 | Fixed: `extrabold_style` (the D81 ExtraBold strikes). Probe: name is wider than Heading |
+| Chips `LISTEN ▸ THINK ▸ SPEAK` | Were Detail 26 px with a 22 px gap | Fixed: shared `widgets::chips::draw_chip_row_centered` (Body, 24 px, 20 px arrow gap) as Sudoku |
+| Chip label weight | Mockup `.chip{font-weight:800}` | Blocked: needs ExtraBold at Body sizes (same row as D81) |
+| YOU / XIAOZHI boxes | Structure matches; body text is Heading SemiBold | Blocked: mockup is regular 21 px; no regular UI strike at that size (closest is Heading 20 SemiBold). Labels are plain Detail vs `.lbl` 12 px 800 letter-spaced |
+| Device tool line | Missing `⚙` | Fixed: ring+hub mark (the glyph is not in the fonts). Probe: `tool_line_has_the_gear_mark` |
+| Volume row | Matches (crop) | — |
+| Footer | Matches (crop) | — |
+| Three UI sizes, longest text | — | Probe: `call_screen_draws_the_mockup_elements` paints Speaking with a long reply at Compact/Standard/Large |
 
 ### D83: Settings against the mockup
 
