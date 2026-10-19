@@ -361,7 +361,7 @@ fn render_voice_note_delete_confirmation(
 const RESULT_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "scroll"),
     (KeyCap::Boot, "tab"),
-    (KeyCap::Select, "actions"),
+    (KeyCap::Select, "menu"),
 ];
 
 /// One row of the result body: a wrapped line with its marker and indent.
@@ -531,7 +531,6 @@ pub fn render_voice_note_result(
     use crate::voice_note_result::ResultTab;
     let preferences = state.display;
     let detail = preferences.detail_style();
-    let large = preferences.text_style(UiTextRole::Large, BinaryColor::On);
     draw_status_bar(display, preferences, "Voice Note")?;
     let clock = state.board.time_label(state.regional);
     draw_status_text(display, preferences, &clock, STATUS_BAR_RIGHT)?;
@@ -541,12 +540,14 @@ pub fn render_voice_note_result(
         return Ok(());
     };
 
-    // The title in the Large role, up to two lines; the second cut with `…`.
+    // The title in ExtraBold (mockup weight 800), up to two lines; the second
+    // cut with `…`.
     let record = state.voice_notes_result.record.as_ref();
     let title = record
         .map(|record| record.title.as_str())
         .filter(|title| !title.trim().is_empty())
         .unwrap_or(note.title.as_str());
+    let large = preferences.extrabold_style();
     let mut title_lines = large.wrap(title, 436);
     if title_lines.len() > 2 {
         title_lines.truncate(2);
@@ -833,7 +834,10 @@ pub fn elapsed_label(seconds: u32) -> String {
 #[must_use]
 pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Vec<String> {
     let written = u64::from(voice.pcm_bytes) + 44;
-    let first = format!("Audio · 16 kHz mono · {} so far", size_one_decimal(written));
+    let first = format!(
+        "Opus 24 kbps · 16 kHz mono · {} so far",
+        size_one_decimal(written)
+    );
     let Some(free) = voice
         .available_storage_bytes
         .map(|available| available.saturating_sub(written))
@@ -844,11 +848,10 @@ pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Ve
     vec![
         first,
         format!(
-            "SD: {} free (~{} h)",
+            "SD: {} free (~{} h) · Wi-Fi off while recording",
             size_one_decimal(free),
             grouped(hours.min(u64::from(u32::MAX)) as u32)
         ),
-        "Wi-Fi off while recording".into(),
     ]
 }
 
@@ -943,7 +946,7 @@ mod tests {
         let mut voice = VoiceNotesUiState::default();
         voice.pcm_bytes = 32_000;
         let lines = recording_info_lines(&voice);
-        assert!(lines[0].starts_with("Audio · 16 kHz mono · "));
+        assert!(lines[0].starts_with("Opus 24 kbps · 16 kHz mono · "));
         assert!(!lines[0].contains("WAV"));
     }
 
@@ -987,14 +990,16 @@ mod tests {
         voice.pcm_bytes = 207 * 32_000;
         voice.available_storage_bytes = Some(15_247_133_901 + 6_624_044);
         let lines = recording_info_lines(&voice);
-        assert_eq!(lines[0], "Audio · 16 kHz mono · 6.3 MB so far");
-        assert_eq!(lines[1], "SD: 14.2 GB free (~132 h)");
-        assert_eq!(lines[2], "Wi-Fi off while recording");
+        assert_eq!(lines[0], "Opus 24 kbps · 16 kHz mono · 6.3 MB so far");
+        assert_eq!(
+            lines[1],
+            "SD: 14.2 GB free (~132 h) · Wi-Fi off while recording"
+        );
         voice.available_storage_bytes = None;
         let lines = recording_info_lines(&voice);
         assert_eq!(
             lines,
-            ["Audio · 16 kHz mono · 6.3 MB so far"],
+            ["Opus 24 kbps · 16 kHz mono · 6.3 MB so far"],
             "without the free space, the first line only"
         );
     }

@@ -27,7 +27,11 @@ unchanged. **Tests:** a chip label and the bar title are heavier than
 before (ink runs of one letter); widths at the three UI sizes still fit the
 widest chip row (Sudoku and XiaoZhi) and the longest bar title.
 
-**Status:** to do.
+**Status:** done on `side-tasks-21`. Nine strikes via the `fonts` workflow
+(Body ExtraBold 13/15/17, bar ExtraBold 18/20/22, message 18/21/24). Every
+other strike is byte-identical (named-strike diff). Used in `widgets::chips`
+and `draw_status_bar`. Probes: `chip_labels_and_bar_titles_are_extrabold`,
+`extrabold_chips_and_bar_titles_fit_every_ui_size`.
 
 ### D85: XiaoZhi's boxes and the AI hub's note chips
 
@@ -38,7 +42,11 @@ Do the first two with the strikes D84 adds or one more regular strike, the
 third with `widgets::chips`. **Tests:** a probe for each; the call and the
 hub render at three sizes with the longest text the protocol allows.
 
-**Status:** to do.
+**Status:** done on `side-tasks-21`. Messages use `message_style` (regular
+~21 px); labels are letter-spaced ExtraBold (`draw_spaced_text`); note rows
+use `widgets::chips`. Probes: `message_body_is_regular_and_labels_are_spaced_extrabold`,
+`note_rows_draw_status_chips`. Room: chips sit on existing rows; content
+ends above 752.
 
 ### D86: Audit the screens not yet audited
 
@@ -47,7 +55,45 @@ XiaoZhi and Settings. Do the same for the Library list, the Reader menu,
 Clock and alarms, Power, Voice Notes and the Files portal screen: a table
 per figure, fix what needs no new primitive, name the rest.
 
-**Status:** to do.
+**Status:** done on `side-tasks-21`. Mockup figures at zoom 1 next to
+`library`, `reader-page`, `voice-note-recording`, `voice-note-summary`.
+**Font note:** mockup Iowan / system-ui vs Literata / Inter.
+
+### D86 Library
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Tabs RECENT/ALL/BOOKMARKS/FILES, footer book/read/tab | Matches (crop) | — |
+| Book cards: serif title, author, EPUB/TXT chip, progress, ✓ / `new` | Structure matches (Literata titles) | Sample names differ |
+| Count `N books` | Matches | Sample `3 books` vs `24` |
+
+### D86 Reader page
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Page body, footer, status bar | Matches (crop; sample text) | — |
+
+### D86 Voice Notes recording
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| `● REC · Voice Notes`, timer, chips, footer | Matches (crop) | — |
+| Info box | Was `Audio · 16 kHz mono` in 3 lines | Fixed: `Opus 24 kbps · 16 kHz mono · …` and SD+Wi-Fi on one line (mockup) |
+| Level meter bar weight | Preview bars denser | Blocked: canvas meter primitive; noted |
+
+### D86 Voice Notes result
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Title | Was Large SemiBold | Fixed: `extrabold_style` (mockup weight 800) |
+| Footer `actions` | Mockup `menu` | Fixed: `menu` |
+| Tabs, body, AI-generated footer | Matches (crop) | Sample stamp differs |
+
+### D86 Clock & alarms, Power, Files portal
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Clock & alarms / Power / Files | No figure in `mockups/index.html` | Named: nothing to compare against; previews `settings-clock-alarms`, `power`, `library-files` render at Standard |
 
 ## Round 20 result (2026-10-19)
 
