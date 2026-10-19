@@ -320,7 +320,7 @@ fn draw_chips(
         .iter()
         .map(|(text, phase)| Chip::new(text, call.phase == *phase))
         .collect();
-    draw_chip_row_centered(display, CHIPS_TOP, preferences.body_style(), &row)?;
+    draw_chip_row_centered(display, CHIPS_TOP, preferences.extrabold_body_style(), &row)?;
     Ok(())
 }
 

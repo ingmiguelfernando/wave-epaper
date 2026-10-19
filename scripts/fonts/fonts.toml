@@ -108,6 +108,18 @@ strikes = [
     { name = "INTER_COMPACT_GIVENS", face = "inter-extrabold-ui", px = 18, line_height = 24 },
     { name = "INTER_STANDARD_GIVENS", face = "inter-extrabold-ui", px = 24, line_height = 31 },
     { name = "INTER_LARGE_GIVENS", face = "inter-extrabold-ui", px = 28, line_height = 35 },
+    # Mockup `.chip{font-weight:800}` at the Body sizes (chips).
+    { name = "INTER_COMPACT_BODY_XBOLD", face = "inter-extrabold-ui", px = 13, line_height = 18 },
+    { name = "INTER_STANDARD_BODY_XBOLD", face = "inter-extrabold-ui", px = 15, line_height = 20 },
+    { name = "INTER_LARGE_BODY_XBOLD", face = "inter-extrabold-ui", px = 17, line_height = 23 },
+    # Mockup `.sb{font-weight:800}` at the Heading sizes (status-bar title).
+    { name = "INTER_COMPACT_BAR", face = "inter-extrabold-ui", px = 18, line_height = 24 },
+    { name = "INTER_STANDARD_BAR", face = "inter-extrabold-ui", px = 20, line_height = 26 },
+    { name = "INTER_LARGE_BAR", face = "inter-extrabold-ui", px = 22, line_height = 29 },
+    # Mockup `.msg{font-size:21px}` regular: XiaoZhi's YOU / XIAOZHI boxes.
+    { name = "INTER_COMPACT_MESSAGE", face = "inter-medium", px = 18, line_height = 24 },
+    { name = "INTER_STANDARD_MESSAGE", face = "inter-medium", px = 21, line_height = 28 },
+    { name = "INTER_LARGE_MESSAGE", face = "inter-medium", px = 24, line_height = 31 },
     { name = "ATKINSON_COMPACT_DETAIL", face = "atkinson-regular", px = 11, line_height = 13 },
     { name = "ATKINSON_COMPACT_BODY", face = "atkinson-regular", px = 13, line_height = 15 },
     { name = "ATKINSON_COMPACT_HEADING", face = "atkinson-bold", px = 18, line_height = 20 },

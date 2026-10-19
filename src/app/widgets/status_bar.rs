@@ -28,7 +28,8 @@ pub fn draw_status_bar(
     Rectangle::new(Point::zero(), Size::new(480, STATUS_BAR_HEIGHT as u32))
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
         .draw(display)?;
-    let style = preferences.text_style(UiTextRole::Heading, BinaryColor::Off);
+    // Mockup `.sb{font-weight:800}` at the Heading sizes.
+    let style = preferences.extrabold_bar_style().with_color(BinaryColor::Off);
     Text::new(title, Point::new(16, baseline(style)), style).draw(display)?;
     Ok(())
 }

@@ -581,7 +581,8 @@ pub fn render_voice_note_result(
         .iter()
         .map(|tab| Chip::new(tab.label(), *tab == state.voice_notes_result.tab))
         .collect();
-    draw_chip_row(display, 22, RESULT_CHIPS_TOP, 8, detail, &chips)?;
+    let label = preferences.extrabold_body_style();
+    draw_chip_row(display, 22, RESULT_CHIPS_TOP, 8, label, &chips)?;
 
     // The body, one UI size up, scrolled by wrapped row.
     let body = result_body_style(preferences);
@@ -694,13 +695,13 @@ pub fn render_voice_note_recording(
     draw_level_meter(display, &voice.level_bars)?;
 
     // The chips: the active one filled.
-    let detail = state.display.detail_style();
+    let label = state.display.extrabold_body_style();
     let chips = [
         Chip::dotted("RECORDING", voice.mode == VoiceNotesMode::Recording),
         Chip::new("PAUSED", voice.mode == VoiceNotesMode::Paused),
     ];
-    let left = (480 - chip_row_width(detail, &chips, 6)) / 2;
-    draw_chip_row(display, left, CHIPS_TOP, 6, detail, &chips)?;
+    let left = (480 - chip_row_width(label, &chips, 6)) / 2;
+    draw_chip_row(display, left, CHIPS_TOP, 6, label, &chips)?;
 
     let lines = recording_info_lines(voice);
     draw_info_box(display, state.display, &lines.join("\n"), INFO_BOX_TOP)?;

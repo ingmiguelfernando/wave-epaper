@@ -13,7 +13,11 @@ use super::display::{DisplayPreferences, UiFontFamily, UiFontSize};
 use crate::charset::glyph_index;
 
 mod assets;
-pub use assets::{INTER_COMPACT_GIVENS, INTER_LARGE_GIVENS, INTER_STANDARD_GIVENS};
+pub use assets::{
+    INTER_COMPACT_BAR, INTER_COMPACT_BODY_XBOLD, INTER_COMPACT_GIVENS, INTER_COMPACT_MESSAGE,
+    INTER_LARGE_BAR, INTER_LARGE_BODY_XBOLD, INTER_LARGE_GIVENS, INTER_LARGE_MESSAGE,
+    INTER_STANDARD_BAR, INTER_STANDARD_BODY_XBOLD, INTER_STANDARD_GIVENS, INTER_STANDARD_MESSAGE,
+};
 
 /// Atlas index of `?`, drawn for characters the fonts do not contain.
 const FALLBACK_GLYPH: usize = '?' as usize - 0x20;
@@ -381,6 +385,57 @@ impl DisplayPreferences {
                 UiTextStyle::new(font, BinaryColor::On)
             }
             UiFontFamily::AtkinsonHyperlegible => self.heading_style(),
+        }
+    }
+
+    /// ExtraBold at the Body sizes (the mockup's `.chip` weight 800).
+    #[must_use]
+    pub const fn extrabold_body_style(self) -> UiTextStyle {
+        use assets::{INTER_COMPACT_BODY_XBOLD, INTER_LARGE_BODY_XBOLD, INTER_STANDARD_BODY_XBOLD};
+        match self.font_family {
+            UiFontFamily::Inter => {
+                let font = match self.font_size {
+                    UiFontSize::Compact => &INTER_COMPACT_BODY_XBOLD,
+                    UiFontSize::Standard => &INTER_STANDARD_BODY_XBOLD,
+                    UiFontSize::Large => &INTER_LARGE_BODY_XBOLD,
+                };
+                UiTextStyle::new(font, BinaryColor::On)
+            }
+            UiFontFamily::AtkinsonHyperlegible => self.body_style(),
+        }
+    }
+
+    /// ExtraBold at the Heading sizes (the mockup's `.sb` weight 800).
+    #[must_use]
+    pub const fn extrabold_bar_style(self) -> UiTextStyle {
+        use assets::{INTER_COMPACT_BAR, INTER_LARGE_BAR, INTER_STANDARD_BAR};
+        match self.font_family {
+            UiFontFamily::Inter => {
+                let font = match self.font_size {
+                    UiFontSize::Compact => &INTER_COMPACT_BAR,
+                    UiFontSize::Standard => &INTER_STANDARD_BAR,
+                    UiFontSize::Large => &INTER_LARGE_BAR,
+                };
+                UiTextStyle::new(font, BinaryColor::On)
+            }
+            UiFontFamily::AtkinsonHyperlegible => self.heading_style(),
+        }
+    }
+
+    /// Regular ~21 px (the mockup's `.msg`), for XiaoZhi's boxes.
+    #[must_use]
+    pub const fn message_style(self) -> UiTextStyle {
+        use assets::{INTER_COMPACT_MESSAGE, INTER_LARGE_MESSAGE, INTER_STANDARD_MESSAGE};
+        match self.font_family {
+            UiFontFamily::Inter => {
+                let font = match self.font_size {
+                    UiFontSize::Compact => &INTER_COMPACT_MESSAGE,
+                    UiFontSize::Standard => &INTER_STANDARD_MESSAGE,
+                    UiFontSize::Large => &INTER_LARGE_MESSAGE,
+                };
+                UiTextStyle::new(font, BinaryColor::On)
+            }
+            UiFontFamily::AtkinsonHyperlegible => self.body_style(),
         }
     }
 

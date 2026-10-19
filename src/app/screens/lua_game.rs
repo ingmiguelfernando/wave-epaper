@@ -452,7 +452,7 @@ fn draw_chip_row(
         .iter()
         .map(|(label, filled)| Chip::new(label, *filled))
         .collect();
-    draw_chip_row_centered(display, top, preferences.body_style(), &chips)?;
+    draw_chip_row_centered(display, top, preferences.extrabold_body_style(), &chips)?;
     Ok(())
 }
 
