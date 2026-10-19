@@ -74,8 +74,15 @@ pub fn render_network(
     draw_action(
         display,
         516,
-        "Provisioning details",
+        "Add a Wi-Fi network",
         state.network_action_selected == 1,
+        body,
+    )?;
+    draw_action(
+        display,
+        584,
+        "Known networks",
+        state.network_action_selected == 2,
         body,
     )?;
     draw_bottom_bar(display, state.display, &OPEN_HINTS)?;
@@ -91,6 +98,9 @@ pub fn render_wifi_transfer(
     let detail = state.display.detail_style();
     let transfer = &state.wifi_transfer;
 
+    if transfer.access_point.is_some() {
+        return render_wifi_setup(display, state);
+    }
     draw_header(
         display,
         state.display,
@@ -122,6 +132,54 @@ pub fn render_wifi_transfer(
     }
 
     draw_action(display, 640, "Stop and return", true, body)?;
+    draw_bottom_bar(display, state.display, &STOP_HINTS)?;
+    Ok(())
+}
+
+/// The device's own Wi-Fi, waiting for a phone to pick a network.
+fn render_wifi_setup(
+    display: &mut OrientedFrameBuffer<'_>,
+    state: &AppState,
+) -> Result<(), Infallible> {
+    let heading = state.display.heading_style();
+    let body = state.display.body_style();
+    let detail = state.display.detail_style();
+    let transfer = &state.wifi_transfer;
+    let name = transfer.access_point.as_deref().unwrap_or("");
+
+    draw_header(
+        display,
+        state.display,
+        "ADD A NETWORK",
+        "SET UP FROM A PHONE",
+    )?;
+    draw_status_row(
+        display,
+        state.display,
+        StatusRow {
+            left: transfer.state.label(),
+            middle: "OWN WI-FI",
+            right: "SETUP",
+        },
+    )?;
+    Text::new("On your phone", Point::new(22, 164), heading).draw(display)?;
+    line(
+        display,
+        212,
+        "1 Join",
+        if name.is_empty() { "--" } else { name },
+        body,
+    )?;
+    line(display, 252, "Password", transfer.code_label(), body)?;
+    line(display, 292, "2 Open", transfer.url_label(), body)?;
+    Text::new("3 Scan, pick the network, type", Point::new(22, 340), body).draw(display)?;
+    Text::new("its password and save.", Point::new(22, 380), body).draw(display)?;
+    Text::new("Saved", Point::new(22, 440), heading).draw(display)?;
+    Text::new(&transfer.last_action, Point::new(22, 488), detail).draw(display)?;
+    if let Some(error) = transfer.error.as_deref() {
+        Text::new(error, Point::new(22, 536), detail).draw(display)?;
+    }
+    draw_action(display, 640, "Done", true, body)?;
     draw_bottom_bar(display, state.display, &STOP_HINTS)?;
     Ok(())
 }

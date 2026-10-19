@@ -578,5 +578,13 @@ planned features as passed. Record failures/open checks in
   stronger one.
 - [ ] Network › Provisioning details lists the saved names (the joined one with
   `· joined`), no passwords.
+- [ ] Network › **Add a Wi-Fi network**: the screen shows `Wave-XXXX` and an
+  8-digit password; the phone joins it, `http://192.168.4.1/` opens the setup
+  page with the nearby networks listed. Pick the hotspot, type its password,
+  **Save network**: the device screen says `Saved <name>`. **Done** returns to
+  Network and the device joins the saved network in a few seconds (log
+  `wifi-setup status=stopped`, then a `wifi-burst reason=wifi-setup`).
+- [ ] The setup Wi-Fi ends by itself after ten idle minutes and when the
+  device sleeps; afterwards a normal burst (weather, Check for updates) works.
 - [ ] Rename or remove `WIFI.TXT` with a saved network: after a reboot Wi-Fi
   still connects (default time zone).

@@ -170,7 +170,9 @@ pub mod espidf {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use anyhow::{Context, Result};
-    use embedded_svc::wifi::{AuthMethod, ClientConfiguration, Configuration};
+    use embedded_svc::wifi::{
+        AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration,
+    };
     use esp_idf_svc::{
         eventloop::EspSystemEventLoop,
         hal::modem::WifiModemPeripheral,
@@ -201,6 +203,8 @@ pub mod espidf {
         store: Option<WifiNetworkStore>,
         /// The network of `WIFI.TXT` (or the first saved one).
         primary: Option<SavedNetwork>,
+        /// The device's own Wi-Fi is up, for setting up a network.
+        setup_ap: bool,
     }
 
     impl NetworkRuntime {
@@ -215,6 +219,7 @@ pub mod espidf {
                 connect_issued: false,
                 store: None,
                 primary: None,
+                setup_ap: false,
             }
         }
 
@@ -237,6 +242,7 @@ pub mod espidf {
                 connect_issued: false,
                 store: None,
                 primary: None,
+                setup_ap: false,
             }
         }
 
@@ -273,6 +279,7 @@ pub mod espidf {
                     ssid: config.ssid.clone(),
                     password: config.password.clone(),
                 }),
+                setup_ap: false,
             })
         }
 
@@ -373,6 +380,62 @@ pub mod espidf {
             self.snapshot.error = None;
             self.ntp_reported = false;
             Ok(true)
+        }
+
+        /// Bring up the device's own Wi-Fi (and keep the station for a scan),
+        /// hear the networks around, and return the access point's address.
+        /// The caller has stopped any connection burst.
+        pub fn start_setup_ap(
+            &mut self,
+            ssid: &str,
+            password: &str,
+        ) -> Result<(String, Vec<crate::wifi_networks::ScanEntry>)> {
+            let wifi = self.wifi.as_mut().context("Wi-Fi runtime is unavailable")?;
+            let _ = self.sntp.take();
+            let _ = wifi.disconnect();
+            let _ = wifi.stop();
+            wifi.set_configuration(&Configuration::Mixed(
+                ClientConfiguration::default(),
+                AccessPointConfiguration {
+                    ssid: ssid
+                        .try_into()
+                        .map_err(|_| anyhow::anyhow!("access point name"))?,
+                    password: password
+                        .try_into()
+                        .map_err(|_| anyhow::anyhow!("access point password"))?,
+                    auth_method: AuthMethod::WPA2Personal,
+                    channel: 6,
+                    max_connections: 2,
+                    ..Default::default()
+                },
+            ))?;
+            wifi.start()?;
+            self.setup_ap = true;
+            self.suspended = false;
+            self.snapshot.wifi_state = WifiConnectionState::Disabled;
+            self.snapshot.ipv4_address = None;
+            // Scan now, before a phone is joined: a scan can interrupt it.
+            let heard = wifi_networks::espidf::scan().unwrap_or_default();
+            let ip = wifi.wifi().ap_netif().get_ip_info()?.ip;
+            Ok((ip.to_string(), heard))
+        }
+
+        /// Put the station back as the connection bursts expect it.
+        pub fn stop_setup_ap(&mut self) -> Result<()> {
+            if !self.setup_ap {
+                return Ok(());
+            }
+            self.setup_ap = false;
+            let primary = self.primary.clone();
+            let wifi = self.wifi.as_mut().context("Wi-Fi runtime is unavailable")?;
+            let _ = wifi.stop();
+            if let Some(network) = primary {
+                wifi.set_configuration(&client_configuration(&network)?)?;
+            }
+            self.suspended = true;
+            self.connect_issued = false;
+            self.snapshot.wifi_state = WifiConnectionState::Disabled;
+            Ok(())
         }
 
         /// Switch the radio off after a burst that could not connect.

@@ -16,10 +16,13 @@ on its own.
 
 ## Wi-Fi networks
 
-Networks are added and removed in the Wi-Fi portal, which itself needs a
-network that works: save the hotspot (or any network you will need) before you
-leave. There is no on-device keyboard and no setup mode away from known
-networks yet. With more than one network known the radio scans before it
+Networks are added and removed in the Wi-Fi portal (needs a working network)
+or from a phone with Network › Add a Wi-Fi network, where the device opens its
+own Wi-Fi (WPA2, password on its screen, plain HTTP page at 192.168.4.1).
+There is no on-device keyboard, and removing a network is only in the portal.
+Setup needs the radio to exist: with neither `WIFI.TXT` nor a saved network
+the Wi-Fi never starts. "Scan again" on the setup page can drop the phone's
+connection for a few seconds. With more than one network known the radio scans before it
 connects, about two seconds. `WIFI.TXT` is tried with the saved networks, not
 first: the strongest one heard wins; none heard means `WIFI.TXT` is tried.
 Time zone and NTP server still come only from `WIFI.TXT`.
