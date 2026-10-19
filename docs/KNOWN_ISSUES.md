@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.17.0. This is not a list of promised mockup features. See
+Firmware v0.18.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)
@@ -13,6 +13,19 @@ tag equals the version inside its image (`v0.14.1` and `0.14.1`), as the
 build makes them. The release is read from the latest GitHub release over
 HTTPS; a rate limit or an outage shows `Cannot reach GitHub`. Nothing checks
 on its own.
+
+## Wi-Fi networks
+
+Networks are added and removed in the Wi-Fi portal (needs a working network)
+or from a phone with Network › Add a Wi-Fi network, where the device opens its
+own Wi-Fi (WPA2, password on its screen, plain HTTP page at 192.168.4.1).
+There is no on-device keyboard, and removing a network is only in the portal.
+Setup needs the radio to exist: with neither `WIFI.TXT` nor a saved network
+the Wi-Fi never starts. "Scan again" on the setup page can drop the phone's
+connection for a few seconds. With more than one network known the radio scans before it
+connects, about two seconds. `WIFI.TXT` is tried with the saved networks, not
+first: the strongest one heard wins; none heard means `WIFI.TXT` is tried.
+Time zone and NTP server still come only from `WIFI.TXT`.
 
 ## USB flashing and disappearing serial port
 

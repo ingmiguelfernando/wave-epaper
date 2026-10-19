@@ -563,3 +563,28 @@ planned features as passed. Record failures/open checks in
   `xiaozhi status=own-server host=…`.
 - [ ] A typo (`server=example.org`): the call stops at once with `XIAOZHI.TXT
   on the card is not a valid server address.`
+
+## Several Wi-Fi networks (v0.18.0)
+
+- [ ] Start the Wi-Fi portal at home. Under **Wi-Fi networks**: **Scan
+  nearby** lists networks with their signal; pick one, type its password and
+  **Save network**; it appears in the list. **Remove** deletes it. The log has
+  `wifi-network status=saved ssid=…` (never the password).
+- [ ] Save your phone's hotspot. Switch Wi-Fi off at the router side (or go out
+  with the hotspot on): the next weather update / Check for updates joins the
+  hotspot. The log has `wifi-choice status=chosen ssid=… known=2 heard=…` and
+  Network shows the hotspot's name.
+- [ ] With both the home network and the hotspot in range it joins the
+  stronger one.
+- [ ] Network › Provisioning details lists the saved names (the joined one with
+  `· joined`), no passwords.
+- [ ] Network › **Add a Wi-Fi network**: the screen shows `Wave-XXXX` and an
+  8-digit password; the phone joins it, `http://192.168.4.1/` opens the setup
+  page with the nearby networks listed. Pick the hotspot, type its password,
+  **Save network**: the device screen says `Saved <name>`. **Done** returns to
+  Network and the device joins the saved network in a few seconds (log
+  `wifi-setup status=stopped`, then a `wifi-burst reason=wifi-setup`).
+- [ ] The setup Wi-Fi ends by itself after ten idle minutes and when the
+  device sleeps; afterwards a normal burst (weather, Check for updates) works.
+- [ ] Rename or remove `WIFI.TXT` with a saved network: after a reboot Wi-Fi
+  still connects (default time zone).

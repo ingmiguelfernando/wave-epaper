@@ -255,9 +255,27 @@ battery really used.
 
 ### Network and Wi-Fi transfer
 
-Configure `/RUSTMIX/WIFI.TXT` on a computer and reboot to apply changes.
-Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Provisioning
-details** is read-only, not an on-device credential editor.
+`/RUSTMIX/WIFI.TXT` holds the main network (and the time zone and NTP
+server); edit it on a computer and reboot to apply changes. **More networks**
+(up to six, for example your phone's hotspot) are saved in the portal under
+**Wi-Fi networks**: **Scan nearby** lists what the device hears, pick one,
+type the password and **Save network**. The passwords are stored encrypted on
+the device, never on the card. When Wi-Fi starts, the device tries the
+`WIFI.TXT` network and the saved ones together and joins the strongest it
+hears (a scan adds about two seconds when more than one is known). With no
+`WIFI.TXT` the first saved network serves, with the default time zone.
+**Add a Wi-Fi network** (Network screen) works without any network: the device
+opens its own Wi-Fi, named `Wave-XXXX`, and shows its password. Join it from
+your phone, open `http://192.168.4.1/`, pick the network from the list (the
+device scanned just before), type its password and **Save network**; repeat
+for more. Press **Done** on the device: it stops its Wi-Fi and tries the saved
+networks. It also ends by itself after ten idle minutes, on sleep, or with
+BOOT held. It needs the radio started once, so `WIFI.TXT` or one saved network
+must exist.
+Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Known networks**
+lists the known networks (names only); adding or removing one is
+done in the portal. Save the hotspot while you are at home, then it works
+anywhere you turn it on.
 
 Wi-Fi normally runs in short bursts for weather and time sync, then turns off.
 An idle/off Wi-Fi indicator does not itself mean provisioning failed.

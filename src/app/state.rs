@@ -45,8 +45,8 @@ use super::{
 pub const AUDIO_ACTION_COUNT: usize = 6;
 /// Number of selectable rows in the Display settings screen.
 pub const DISPLAY_ACTION_COUNT: usize = DisplaySetting::ALL.len();
-/// Start/stop portal and provisioning-details rows on the Network screen.
-pub const NETWORK_ACTION_COUNT: usize = 2;
+/// Portal, add-a-network and details rows on the Network screen.
+pub const NETWORK_ACTION_COUNT: usize = 3;
 
 /// Today's verse for the sleep screen: kept in memory once a day, so
 /// drawing reads nothing from the card. Its text is empty when the card
@@ -208,6 +208,8 @@ pub struct AppState {
     pub ai: Option<crate::ai_config::AiConfig>,
     /// Which AI keys the device holds; main.rs reads them from NVS.
     pub ai_keys: crate::ai_keys::AiKeyPresence,
+    /// Names of the Wi-Fi networks saved from the portal (never passwords).
+    pub saved_networks: Vec<String>,
     /// The note an AI job is sending now; main.rs keeps it current.
     pub ai_busy_note: Option<String>,
     /// Set when the owner queues a note, so the queue tries at once.
@@ -314,6 +316,7 @@ impl Default for AppState {
             weather_config: None,
             ai: None,
             ai_keys: crate::ai_keys::AiKeyPresence::default(),
+            saved_networks: Vec::new(),
             ai_busy_note: None,
             ai_retry_now: false,
             weather_settings_ui: WeatherSettingsUiState::default(),
@@ -506,6 +509,11 @@ impl AppState {
                         } else {
                             WifiTransferUiRequest::Start
                         });
+                        self.router.navigate_to(ScreenRoute::WifiTransfer);
+                    } else if self.network_action_selected == 1 {
+                        if !self.wifi_transfer.is_active() {
+                            self.wifi_transfer_request = Some(WifiTransferUiRequest::StartSetup);
+                        }
                         self.router.navigate_to(ScreenRoute::WifiTransfer);
                     } else {
                         self.router.navigate_to(ScreenRoute::NetworkDetails);
@@ -3142,6 +3150,7 @@ mod tests {
             last_action: "Portal ready".into(),
             last_bytes: 0,
             error: None,
+            access_point: None,
         });
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::Network);
@@ -3149,6 +3158,38 @@ mod tests {
             state.take_wifi_transfer_request(),
             Some(crate::wifi_transfer::WifiTransferUiRequest::Stop)
         );
+    }
+
+    #[test]
+    fn add_a_network_asks_for_the_setup_wifi_and_shows_its_screen() {
+        use crate::wifi_transfer::{WifiTransferSnapshot, WifiTransferUiRequest};
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::Network);
+        state.apply(ButtonEvent::Down);
+        state.apply(ButtonEvent::Select);
+        assert_eq!(state.active_route(), ScreenRoute::WifiTransfer);
+        assert_eq!(
+            state.take_wifi_transfer_request(),
+            Some(WifiTransferUiRequest::StartSetup)
+        );
+        state.update_wifi_transfer_snapshot(WifiTransferSnapshot {
+            state: crate::wifi_transfer::WifiTransferState::Ready,
+            url: Some("http://192.168.4.1/".into()),
+            code: Some("48151623".into()),
+            access_point: Some("Wave-3FA2".into()),
+            ..WifiTransferSnapshot::default()
+        });
+        assert!(state.wifi_transfer.is_setup());
+        let mut frame = crate::framebuffer::FrameBuffer::new_white();
+        crate::app::render_current_screen(&mut frame, &state).unwrap();
+        // Select ends it, as it ends the portal.
+        state.apply(ButtonEvent::Select);
+        assert_eq!(
+            state.take_wifi_transfer_request(),
+            Some(WifiTransferUiRequest::Stop)
+        );
+        assert!(!WifiTransferSnapshot::default().is_setup());
+        assert!(WifiTransferSnapshot::starting_setup().is_setup());
     }
 
     fn sample_weather_config() -> WeatherConfig {

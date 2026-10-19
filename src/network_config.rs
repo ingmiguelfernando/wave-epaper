@@ -38,6 +38,19 @@ impl core::fmt::Debug for NetworkConfig {
 }
 
 impl NetworkConfig {
+    /// The configuration for a device without `WIFI.TXT` that has a network
+    /// saved from the portal: its name and password, the default clock
+    /// settings.
+    #[must_use]
+    pub fn for_saved(network: &crate::wifi_networks::SavedNetwork) -> Self {
+        Self {
+            ssid: network.ssid.clone(),
+            password: network.password.clone(),
+            timezone: DEFAULT_TIMEZONE.into(),
+            ntp_server: DEFAULT_NTP_SERVER.into(),
+        }
+    }
+
     /// Load and validate the read-only boot configuration.
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -69,17 +82,8 @@ impl NetworkConfig {
         }
 
         let ssid = required(&values, "ssid")?.to_owned();
-        if ssid.is_empty() || ssid.len() > 32 {
-            bail!("ssid must contain 1 to 32 UTF-8 bytes");
-        }
-
         let password = values.get("password").cloned().unwrap_or_default();
-        if password.len() > 63 {
-            bail!("password must contain at most 63 UTF-8 bytes");
-        }
-        if !password.is_empty() && password.len() < 8 {
-            bail!("secured Wi-Fi password must contain at least 8 UTF-8 bytes");
-        }
+        validate_credentials(&ssid, &password)?;
 
         let timezone = values
             .get("timezone")
@@ -105,6 +109,20 @@ impl NetworkConfig {
             ntp_server,
         })
     }
+}
+
+/// The limits Wi-Fi puts on a network name and its password.
+pub fn validate_credentials(ssid: &str, password: &str) -> Result<()> {
+    if ssid.is_empty() || ssid.len() > 32 {
+        bail!("ssid must contain 1 to 32 UTF-8 bytes");
+    }
+    if password.len() > 63 {
+        bail!("password must contain at most 63 UTF-8 bytes");
+    }
+    if !password.is_empty() && password.len() < 8 {
+        bail!("secured Wi-Fi password must contain at least 8 UTF-8 bytes");
+    }
+    Ok(())
 }
 
 fn required<'a>(values: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str> {

@@ -133,6 +133,7 @@ mod firmware {
             FORECAST_CACHE_PATH,
         },
         weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
+        wifi_networks::espidf::WifiNetworkStore,
         wifi_transfer::{
             espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
             WifiTransferUiRequest, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
@@ -236,7 +237,7 @@ mod firmware {
         };
 
         // Credentials are read from removable storage. Never log the password.
-        let network_config = match NetworkConfig::load_from_path(WIFI_CONFIG_PATH) {
+        let mut network_config = match NetworkConfig::load_from_path(WIFI_CONFIG_PATH) {
             Ok(config) => {
                 info!(
                     "rustmix-wave=wifi-config status=ready path={WIFI_CONFIG_PATH} ssid={} timezone={} ntp-server={}",
@@ -627,8 +628,24 @@ mod firmware {
             }
         };
         if let Some(partition) = nvs_partition.clone() {
-            let _ = AI_KEYS.set(AiKeyStore::new(partition));
+            let _ = AI_KEYS.set(AiKeyStore::new(partition.clone()));
+            let _ = WIFI_NETWORKS.set(WifiNetworkStore::new(partition));
         }
+        // Without WIFI.TXT, the first network saved from the portal serves.
+        if network_config.is_none() {
+            let saved = WIFI_NETWORKS.get().map(WifiNetworkStore::load);
+            if let Some(first) = saved.as_ref().and_then(|book| book.networks().first()) {
+                let config = NetworkConfig::for_saved(first);
+                info!(
+                    "rustmix-wave=wifi-config status=ready source=saved ssid={}",
+                    config.ssid
+                );
+                state.regional = state.regional.with_timezone_name(&config.timezone)?;
+                state.update_network_snapshot(NetworkSnapshot::provisioned(&config));
+                network_config = Some(config);
+            }
+        }
+        refresh_saved_networks(&mut state);
         let xiaozhi_identity = nvs_partition.clone().map(XiaozhiIdentity::new);
         state.xiaozhi.linked = xiaozhi_identity
             .as_ref()
@@ -666,6 +683,9 @@ mod firmware {
         let mut last_network_fingerprint = state.network.log_fingerprint();
         // Explicitly activated only.  Normal boot never starts the portal.
         let mut wifi_transfer_server: Option<WifiTransferServer> = None;
+        // The device's own Wi-Fi is up for setting up a network.
+        let mut setup_ap_up = false;
+        let mut wifi_after_setup = false;
         state.update_wifi_transfer_snapshot(WifiTransferSnapshot::default());
         let mut voice_recording: Option<VoiceRecordingSession> = None;
         let mut voice_playback: Option<VoicePlaybackSession> = None;
@@ -958,8 +978,12 @@ mod firmware {
             let mut manual_weather_refresh = state.take_weather_refresh_request();
             manual_weather_refresh |= core::mem::take(&mut manual_weather_pending);
             let weather_due = next_weather_refresh(weather_config.as_ref(), last_weather_attempt);
+            let setup_requested = wifi_transfer_server.is_none()
+                && state.wifi_transfer.state == WifiTransferState::Starting
+                && state.wifi_transfer.access_point.is_some();
             let transfer_waiting = wifi_transfer_server.is_none()
-                && state.wifi_transfer.state == WifiTransferState::Starting;
+                && state.wifi_transfer.state == WifiTransferState::Starting
+                && state.wifi_transfer.access_point.is_none();
             // Voice notes go to the AI providers one at a time, while Wi-Fi is
             // on and nothing needs the microphone, the speaker or the card.
             let ai_events = ai_worker.poll();
@@ -1123,8 +1147,45 @@ mod firmware {
                     || ai_battery.map_or(true, |percent| percent >= AI_MIN_BATTERY_PERCENT))
                 && ai_backoff.ready(Instant::now())
                 && state.next_ai_note().is_some();
+            // The device's own Wi-Fi for adding a network: the connection
+            // bursts wait until it is over, then one tries the new network.
+            if setup_requested && radio.phase() != RadioPhase::Connecting {
+                if radio.phase() == RadioPhase::Connected {
+                    radio_off(
+                        &mut network_runtime,
+                        &mut state,
+                        &mut last_network_fingerprint,
+                        &mut last_network_log,
+                        "wifi-setup",
+                    );
+                    radio.finished(Instant::now());
+                }
+                start_wifi_setup(&mut wifi_transfer_server, &mut state, &mut network_runtime);
+                setup_ap_up = state.wifi_transfer.is_setup();
+                if state.panel_awake && state.active_route() == ScreenRoute::WifiTransfer {
+                    refresh_screen(
+                        &mut panel,
+                        &mut frame,
+                        &mut state,
+                        &mut panel_refresh,
+                        RefreshRequest::Normal,
+                    )?;
+                }
+            }
+            if setup_ap_up && wifi_transfer_server.is_none() {
+                setup_ap_up = false;
+                if let Err(error) = network_runtime.stop_setup_ap() {
+                    warn!("rustmix-wave=wifi-setup status=stop-failed error={error:#}");
+                }
+                state.update_network_snapshot(network_runtime.snapshot());
+                info!("rustmix-wave=wifi-setup status=stopped");
+                // Try the network just saved, if any.
+                wifi_after_setup = true;
+            }
             if let Some(config) = network_config.as_ref().filter(|_| {
                 network_runtime.has_radio()
+                    && !setup_ap_up
+                    && !setup_requested
                     && (!sleep_mode.is_sleeping() || weather_while_asleep(&state))
             }) {
                 let now = Instant::now();
@@ -1138,6 +1199,8 @@ mod firmware {
                             Some("weather-refresh")
                         } else if transfer_waiting {
                             Some("wifi-transfer")
+                        } else if core::mem::take(&mut wifi_after_setup) {
+                            Some("wifi-setup")
                         } else if voice_recording.is_none()
                             && voice_playback.is_none()
                             && now >= radio.next_burst(now, weather_due, last_activity)
@@ -2673,6 +2736,8 @@ mod firmware {
     const AI_MIN_BATTERY_PERCENT: u8 = 15;
     /// The encrypted AI key store, once NVS opened at boot.
     static AI_KEYS: std::sync::OnceLock<AiKeyStore> = std::sync::OnceLock::new();
+    /// The Wi-Fi networks saved from the portal (encrypted NVS).
+    static WIFI_NETWORKS: std::sync::OnceLock<WifiNetworkStore> = std::sync::OnceLock::new();
 
     /// A note left transcribing or summarizing by a restart goes back to
     /// the queue.
@@ -3240,7 +3305,9 @@ mod firmware {
         mounted: bool,
     ) {
         let stop_reason = server.as_ref().and_then(|active| {
-            if state.network.wifi_state != WifiConnectionState::Connected {
+            if state.network.wifi_state != WifiConnectionState::Connected
+                && !state.wifi_transfer.is_setup()
+            {
                 Some("wifi-loss")
             } else if active.is_expired() {
                 Some("inactivity-timeout")
@@ -3258,8 +3325,21 @@ mod firmware {
                 if let Some(keys) = AI_KEYS.get() {
                     state.ai_keys = keys.presence();
                 }
+                refresh_saved_networks(state);
             }
         }
+    }
+
+    /// The names of the networks saved from the portal, for the Network screen.
+    fn refresh_saved_networks(state: &mut AppState) {
+        state.saved_networks = WIFI_NETWORKS.get().map_or_else(Vec::new, |store| {
+            store
+                .load()
+                .networks()
+                .iter()
+                .map(|network| network.ssid.clone())
+                .collect()
+        });
     }
 
     fn apply_wifi_transfer_ui_request(
@@ -3303,6 +3383,19 @@ mod firmware {
                 }
                 start_wifi_transfer_server(server, state);
             }
+            WifiTransferUiRequest::StartSetup => {
+                info!("rustmix-wave=wifi-transfer-ui-request request=start-setup");
+                if voice_recording_active || voice_playback_active {
+                    state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(
+                        "Finish the voice note first",
+                    ));
+                    return;
+                }
+                if server.is_none() {
+                    // The main loop brings the radio over once any burst ends.
+                    state.update_wifi_transfer_snapshot(WifiTransferSnapshot::starting_setup());
+                }
+            }
             WifiTransferUiRequest::Stop => {
                 info!("rustmix-wave=wifi-transfer-ui-request request=stop dispatch=before-refresh");
                 stop_wifi_transfer_server(
@@ -3312,6 +3405,51 @@ mod firmware {
                     mounted,
                     "settings-toggle",
                 );
+            }
+        }
+    }
+
+    /// Bring up the device's own Wi-Fi and its setup page.
+    fn start_wifi_setup(
+        server: &mut Option<WifiTransferServer>,
+        state: &mut AppState,
+        runtime: &mut NetworkRuntime,
+    ) {
+        if !runtime.has_radio() {
+            state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(
+                "Wi-Fi is not set up. Put WIFI.TXT on the card once.",
+            ));
+            return;
+        }
+        let random = unsafe { sys::esp_random() };
+        let ssid = format!("Wave-{:04X}", random & 0xFFFF);
+        let password = format!("{:08}", unsafe { sys::esp_random() } % 100_000_000);
+        log_runtime_memory("before-wifi-setup");
+        let started = runtime
+            .start_setup_ap(&ssid, &password)
+            .and_then(|(ipv4, heard)| {
+                WifiTransferServer::start_setup(
+                    &ipv4,
+                    &ssid,
+                    &password,
+                    WIFI_NETWORKS.get().cloned(),
+                    heard,
+                )
+            });
+        match started {
+            Ok(active) => {
+                info!("rustmix-wave=wifi-setup status=started ssid={ssid}");
+                state.update_wifi_transfer_snapshot(active.snapshot());
+                *server = Some(active);
+                log_runtime_memory("after-wifi-setup");
+            }
+            Err(error) => {
+                warn!("rustmix-wave=wifi-setup status=start-failed error={error:#}");
+                let _ = runtime.stop_setup_ap();
+                state.update_network_snapshot(runtime.snapshot());
+                state.update_wifi_transfer_snapshot(WifiTransferSnapshot::failed(format!(
+                    "{error:#}"
+                )));
             }
         }
     }
@@ -3329,7 +3467,12 @@ mod firmware {
         let code = format!("{:06}", unsafe { sys::esp_random() } % 1_000_000);
         info!("rustmix-wave=wifi-transfer-server status=starting ipv4={ipv4} port=80 root={WIFI_TRANSFER_ROOT} stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES}");
         log_runtime_memory("before-wifi-transfer-start");
-        match WifiTransferServer::start(&ipv4, code, AI_KEYS.get().cloned()) {
+        match WifiTransferServer::start(
+            &ipv4,
+            code,
+            AI_KEYS.get().cloned(),
+            WIFI_NETWORKS.get().cloned(),
+        ) {
             Ok(active) => {
                 state.update_wifi_transfer_snapshot(active.snapshot());
                 *server = Some(active);
