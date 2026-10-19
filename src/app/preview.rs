@@ -1773,7 +1773,7 @@ fn update_preview_state(kind: UpdatePreview) -> AppState {
     state.router.navigate_to(ScreenRoute::SettingsSystem);
     state.apply(crate::buttons::ButtonEvent::Select);
     assert_eq!(state.active_route(), ScreenRoute::Update);
-    state.take_update_request();
+    let _ = state.take_update_request();
     let mut current = release.clone();
     match kind {
         UpdatePreview::Checking => {}
@@ -1799,7 +1799,7 @@ fn update_preview_state(kind: UpdatePreview) -> AppState {
                     charging: false,
                 });
                 state.apply(crate::buttons::ButtonEvent::Select);
-                state.take_update_request();
+                let _ = state.take_update_request();
                 match kind {
                     UpdatePreview::Downloading(percent) => {
                         state.apply_update_event(UpdateEvent::Progress {

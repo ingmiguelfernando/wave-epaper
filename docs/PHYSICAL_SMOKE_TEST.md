@@ -552,3 +552,14 @@ version, which sets the version inside the image).
 Do not mark clock/weather sleep refresh scheduling, Tetris Classic or other
 planned features as passed. Record failures/open checks in
 [delegated task status](DELEGATED_TASKS.md) and the release handover.
+
+## XiaoZhi own server (v0.17.0)
+
+- [ ] No `XIAOZHI.TXT`: a call connects to the official server as before; the
+  connecting text mentions xiaozhi.me.
+- [ ] `server=http://<your PC>:<port>/xiaozhi/ota/` with a xiaozhi-esp32
+  server running: the connecting text names that host; it links (code shown
+  without the xiaozhi.me hint) and talks. The log has
+  `xiaozhi status=own-server host=…`.
+- [ ] A typo (`server=example.org`): the call stops at once with `XIAOZHI.TXT
+  on the card is not a valid server address.`

@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.16.0. This is not a list of promised mockup features. See
+Firmware v0.17.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)
@@ -82,8 +82,13 @@ estimates until the battery log confirms them on the device.
   it does nothing; ● interrupts.
 - The screen shows Latin-1 text only. A conversation in Chinese or with
   emoji keeps its audio, but those characters are left out of the text.
-- Only the official server (`api.tenclass.net`, linked at xiaozhi.me) is
-  supported; a self-hosted server cannot be set yet.
+- The official server (`api.tenclass.net`, linked at xiaozhi.me) is the
+  default. Your own server goes in `/RUSTMIX/XIAOZHI.TXT` (`server=` and its
+  OTA address, see `examples/sd-card/RUSTMIX/XIAOZHI.TXT.example`); a file
+  that is not understood stops the call with a message instead of being
+  ignored. `https://` needs a certificate from a public authority (the device
+  holds no others); `http://` works on the home network. Not tested against a
+  self-hosted server yet.
 - The server sends 24 kHz speech; the device decodes it at its 16 kHz
   speaker rate.
 - Speech still in the speaker's buffer when a reply ends (under 0.1 s) is

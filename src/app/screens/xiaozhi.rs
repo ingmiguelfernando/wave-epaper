@@ -85,11 +85,11 @@ pub fn render_xiaozhi(
                 CHIPS_TOP + 24,
                 preferences.heading_style(),
             )?;
-            draw_info_box(display, preferences, connecting_text(call), MESSAGES_TOP)?;
+            draw_info_box(display, preferences, &connecting_text(call), MESSAGES_TOP)?;
             &WAIT_HINTS
         }
         CallPhase::Linking { code } => {
-            draw_linking(display, preferences, code)?;
+            draw_linking(display, preferences, code, call.own_server.as_deref())?;
             &WAIT_HINTS
         }
         CallPhase::Ended { error } => {
@@ -112,12 +112,15 @@ pub fn render_xiaozhi(
     draw_bottom_bar(display, preferences, hints)
 }
 
-fn connecting_text(call: &XiaozhiUi) -> &'static str {
-    if call.linked {
-        "Wi-Fi first, then the XiaoZhi server."
+fn connecting_text(call: &XiaozhiUi) -> String {
+    if let Some(host) = &call.own_server {
+        format!("Wi-Fi first, then your server at {}.", screen_text(host))
+    } else if call.linked {
+        "Wi-Fi first, then the XiaoZhi server.".into()
     } else {
         "Wi-Fi first, then the XiaoZhi server. The first call links this device to your \
          account at xiaozhi.me."
+            .into()
     }
 }
 
@@ -234,6 +237,7 @@ fn draw_linking(
     display: &mut OrientedFrameBuffer<'_>,
     preferences: DisplayPreferences,
     code: &str,
+    own_server: Option<&str>,
 ) -> Result<(), Infallible> {
     draw_centered(
         display,
@@ -244,7 +248,11 @@ fn draw_linking(
     draw_info_box(
         display,
         preferences,
-        "On xiaozhi.me, sign in, choose Add device and type this code.",
+        &if own_server.is_some() {
+            "Type this code in your server's console to add the device.".to_owned()
+        } else {
+            "On xiaozhi.me, sign in, choose Add device and type this code.".to_owned()
+        },
         MESSAGES_TOP,
     )?;
     let digits = screen_text(code);
@@ -453,13 +461,23 @@ pub fn screen_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::screen_text;
+    use super::{connecting_text, screen_text};
+    use crate::xiaozhi::call::XiaozhiUi;
     use crate::{
         app::{render_current_screen, router::ScreenRoute, AppState},
         framebuffer::FrameBuffer,
         xiaozhi::call::{CallEvent, CallPhase},
     };
     use embedded_graphics::prelude::Point;
+
+    #[test]
+    fn an_own_server_is_named_while_connecting() {
+        let mut call = XiaozhiUi::default();
+        assert!(connecting_text(&call).contains("xiaozhi.me"));
+        call.own_server = Some("192.168.1.20:8002".into());
+        let text = connecting_text(&call);
+        assert!(text.contains("192.168.1.20:8002") && !text.contains("xiaozhi.me"));
+    }
 
     #[test]
     fn screen_text_drops_what_the_fonts_cannot_draw() {

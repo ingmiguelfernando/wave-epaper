@@ -3,6 +3,14 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.17.0 — XiaoZhi on your own server
+
+- **XiaoZhi can use a self-hosted server.** Put `server=<OTA address>` in
+  `/RUSTMIX/XIAOZHI.TXT` (example in `examples/sd-card/RUSTMIX/`). The
+  connecting screen names the host, and the linking screen no longer sends you
+  to xiaozhi.me. Without the file nothing changes; a file with a typo stops the
+  call with a message rather than falling back silently.
+
 ## v0.16.0 — Voice notes upload as Opus
 
 - **A note goes to the transcription provider as Ogg Opus at 24 kbps**,

@@ -1,0 +1,7 @@
+# Optional. Without this file XiaoZhi uses the official server
+# (https://api.tenclass.net/xiaozhi/ota/).
+#
+# Your own server: the address a xiaozhi-esp32 firmware calls its OTA URL.
+# http:// works on the home network; https:// needs a certificate from a
+# public authority. Copy this file to /RUSTMIX/XIAOZHI.TXT.
+server=http://192.168.1.20:8002/xiaozhi/ota/

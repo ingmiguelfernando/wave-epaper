@@ -222,11 +222,9 @@ mod tests {
         assert_eq!(app.take_rattle(), None, "the rattle is taken once");
         let rolling = canvas.commands().to_vec();
         assert_ne!(rolling, ready);
-        let mut now = 1_000;
         let mut frames = 0;
         while let Some(due) = app.next_tick() {
-            now = due;
-            assert!(app.tick(now, &mut canvas).unwrap());
+            assert!(app.tick(due, &mut canvas).unwrap());
             frames += 1;
             assert!(frames <= 3, "a roll has three frames");
         }
