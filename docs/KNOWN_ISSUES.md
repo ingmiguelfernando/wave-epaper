@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.17.0. This is not a list of promised mockup features. See
+Firmware v0.18.0. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)
@@ -13,6 +13,16 @@ tag equals the version inside its image (`v0.14.1` and `0.14.1`), as the
 build makes them. The release is read from the latest GitHub release over
 HTTPS; a rate limit or an outage shows `Cannot reach GitHub`. Nothing checks
 on its own.
+
+## Wi-Fi networks
+
+Networks are added and removed in the Wi-Fi portal, which itself needs a
+network that works: save the hotspot (or any network you will need) before you
+leave. There is no on-device keyboard and no setup mode away from known
+networks yet. With more than one network known the radio scans before it
+connects, about two seconds. `WIFI.TXT` is tried with the saved networks, not
+first: the strongest one heard wins; none heard means `WIFI.TXT` is tried.
+Time zone and NTP server still come only from `WIFI.TXT`.
 
 ## USB flashing and disappearing serial port
 

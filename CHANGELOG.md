@@ -3,6 +3,16 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.18.0 — Several Wi-Fi networks
+
+- **The device knows up to six more Wi-Fi networks besides `WIFI.TXT`.**
+  The portal has a **Wi-Fi networks** section: scan nearby, pick, type the
+  password, save (or remove). Passwords are stored encrypted on the device,
+  never on the card. At each connection the device joins the strongest known
+  network it hears, so a saved phone hotspot works away from home. Without
+  `WIFI.TXT` the first saved network is used. The Network details screen lists
+  the known networks.
+
 ## v0.17.0 — XiaoZhi on your own server
 
 - **XiaoZhi can use a self-hosted server.** Put `server=<OTA address>` in

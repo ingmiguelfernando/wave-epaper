@@ -18,7 +18,7 @@ use crate::{
             status_row::{draw_status_row, StatusRow},
         },
     },
-    network::NetworkSnapshot,
+    network::WifiConnectionState,
     orientation::OrientedFrameBuffer,
 };
 
@@ -137,12 +137,7 @@ pub fn render_network_details(
     let zone = state.regional.timezone_label_for_rtc(state.board.rtc);
     let error = network.error.as_deref().unwrap_or("none");
 
-    draw_header(
-        display,
-        state.display,
-        "NETWORK DETAILS",
-        "SD-CARD PROVISIONING",
-    )?;
+    draw_header(display, state.display, "NETWORK DETAILS", "KNOWN NETWORKS")?;
     draw_status_row(
         display,
         state.display,
@@ -153,31 +148,57 @@ pub fn render_network_details(
         },
     )?;
 
-    Text::new("Configuration file", Point::new(22, 164), heading).draw(display)?;
-    Text::new(NetworkSnapshot::config_path(), Point::new(22, 212), body).draw(display)?;
+    Text::new("Known networks", Point::new(22, 164), heading).draw(display)?;
+    let rows = network_rows(state);
+    for (index, row) in rows.iter().enumerate() {
+        Text::new(row, Point::new(22, 208 + 36 * index as i32), body).draw(display)?;
+    }
     Text::new(
-        "Edit the SD-card file and reboot",
-        Point::new(22, 264),
-        body,
+        "Save more in the Wi-Fi portal.",
+        Point::new(22, 208 + 36 * rows.len() as i32 + 8),
+        detail,
     )
     .draw(display)?;
-    Text::new("to apply Wi-Fi changes.", Point::new(22, 304), body).draw(display)?;
 
-    Text::new("Regional settings", Point::new(22, 382), heading).draw(display)?;
-    line(display, 430, "Timezone", &zone, body)?;
+    Text::new("Regional settings", Point::new(22, 430), heading).draw(display)?;
+    line(display, 478, "Timezone", &zone, body)?;
     line(
         display,
-        470,
+        518,
         "RTC storage",
         &state.regional.rtc_storage_label(),
         body,
     )?;
-    line(display, 510, "NTP server", &network.ntp_server, body)?;
+    line(display, 558, "NTP server", &network.ntp_server, body)?;
 
-    Text::new("Last error", Point::new(22, 588), heading).draw(display)?;
-    Text::new(error, Point::new(22, 628), detail).draw(display)?;
+    Text::new("Last error", Point::new(22, 620), heading).draw(display)?;
+    Text::new(error, Point::new(22, 656), detail).draw(display)?;
     draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
+}
+
+/// `WIFI.TXT` first, then the saved networks, at most five rows; the one the
+/// radio joined is marked.
+pub(crate) fn network_rows(state: &AppState) -> Vec<String> {
+    const MAX_ROWS: usize = 5;
+    let joined = state.network.ssid.as_deref();
+    let mark = |name: &str| {
+        if joined == Some(name) && state.network.wifi_state == WifiConnectionState::Connected {
+            format!("{name} · joined")
+        } else {
+            name.to_owned()
+        }
+    };
+    let mut names: Vec<String> = state.saved_networks.iter().map(|name| mark(name)).collect();
+    if names.is_empty() {
+        return vec!["None saved (only WIFI.TXT)".into()];
+    }
+    if names.len() > MAX_ROWS {
+        let more = names.len() - (MAX_ROWS - 1);
+        names.truncate(MAX_ROWS - 1);
+        names.push(format!("+{more} more"));
+    }
+    names
 }
 
 fn line(
@@ -218,7 +239,7 @@ fn draw_action(
 
 #[cfg(test)]
 mod tests {
-    use super::{render_network, render_network_details, render_wifi_transfer};
+    use super::{network_rows, render_network, render_network_details, render_wifi_transfer};
     use crate::{app::AppState, framebuffer::FrameBuffer, orientation::OrientedFrameBuffer};
 
     #[test]
@@ -229,5 +250,24 @@ mod tests {
         render_network(&mut display, &state).unwrap();
         render_network_details(&mut display, &state).unwrap();
         render_wifi_transfer(&mut display, &state).unwrap();
+    }
+
+    #[test]
+    fn known_networks_list_marks_the_joined_one_and_folds_the_rest() {
+        use crate::network::WifiConnectionState;
+        let mut state = AppState::default();
+        assert_eq!(network_rows(&state), ["None saved (only WIFI.TXT)"]);
+        state.saved_networks = vec!["Home".into(), "Phone".into()];
+        state.network.ssid = Some("Phone".into());
+        assert_eq!(network_rows(&state), ["Home", "Phone"], "not joined yet");
+        state.network.wifi_state = WifiConnectionState::Connected;
+        assert_eq!(network_rows(&state), ["Home", "Phone · joined"]);
+        state.saved_networks = (1..=6).map(|n| format!("net{n}")).collect();
+        let rows = network_rows(&state);
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[4], "+2 more");
+        let mut frame = FrameBuffer::new_white();
+        let mut display = OrientedFrameBuffer::new(&mut frame, Default::default());
+        render_network_details(&mut display, &state).unwrap();
     }
 }

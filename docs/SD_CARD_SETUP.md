@@ -55,7 +55,8 @@ The generic installer preserves an existing Dictionary and Calendar tree. Use th
 
 ## Wi-Fi
 
-Copy or edit `/RUSTMIX/WIFI.TXT`:
+Copy or edit `/RUSTMIX/WIFI.TXT` (more networks, such as a phone hotspot, are
+saved from the Wi-Fi portal, see the user guide):
 
 ```text
 ssid=YOUR_NETWORK

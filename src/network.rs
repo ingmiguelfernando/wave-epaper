@@ -179,12 +179,14 @@ pub mod espidf {
         sys,
         wifi::{BlockingWifi, EspWifi},
     };
+    use log::info;
 
     use crate::{
         network::{NetworkSnapshot, NtpSyncState, WifiConnectionState},
         network_config::NetworkConfig,
         ntp::{utc_from_unix_seconds, MIN_VALID_SNTP_UNIX_SECONDS},
         rtc::RtcDateTime,
+        wifi_networks::{self, espidf::WifiNetworkStore, SavedNetwork},
     };
 
     /// Own Wi-Fi and SNTP services for as long as the firmware is running.
@@ -195,6 +197,10 @@ pub mod espidf {
         ntp_reported: bool,
         suspended: bool,
         connect_issued: bool,
+        /// Networks saved from the portal; read again for each connection.
+        store: Option<WifiNetworkStore>,
+        /// The network of `WIFI.TXT` (or the first saved one).
+        primary: Option<SavedNetwork>,
     }
 
     impl NetworkRuntime {
@@ -207,6 +213,8 @@ pub mod espidf {
                 ntp_reported: false,
                 suspended: false,
                 connect_issued: false,
+                store: None,
+                primary: None,
             }
         }
 
@@ -227,6 +235,8 @@ pub mod espidf {
                 ntp_reported: false,
                 suspended: false,
                 connect_issued: false,
+                store: None,
+                primary: None,
             }
         }
 
@@ -240,28 +250,14 @@ pub mod espidf {
         where
             M: WifiModemPeripheral + 'static,
         {
+            let store = nvs.clone().map(WifiNetworkStore::new);
             let sys_loop = EspSystemEventLoop::take()?;
             let mut wifi =
                 BlockingWifi::wrap(EspWifi::new(modem, sys_loop.clone(), nvs)?, sys_loop)?;
-            let auth_method = if config.password.is_empty() {
-                AuthMethod::None
-            } else {
-                AuthMethod::WPA2Personal
-            };
-            wifi.set_configuration(&Configuration::Client(ClientConfiguration {
-                ssid: config
-                    .ssid
-                    .as_str()
-                    .try_into()
-                    .context("SSID exceeds embedded Wi-Fi capacity")?,
-                password: config
-                    .password
-                    .as_str()
-                    .try_into()
-                    .context("password exceeds embedded Wi-Fi capacity")?,
-                auth_method,
-                ..Default::default()
-            }))?;
+            wifi.set_configuration(&client_configuration(&SavedNetwork {
+                ssid: config.ssid.clone(),
+                password: config.password.clone(),
+            })?)?;
             Ok(Self {
                 wifi: Some(wifi),
                 sntp: None,
@@ -272,6 +268,11 @@ pub mod espidf {
                 ntp_reported: false,
                 suspended: true,
                 connect_issued: false,
+                store,
+                primary: Some(SavedNetwork {
+                    ssid: config.ssid.clone(),
+                    password: config.password.clone(),
+                }),
             })
         }
 
@@ -327,6 +328,29 @@ pub mod espidf {
             let wifi = self.wifi.as_mut().context("Wi-Fi runtime is unavailable")?;
             if !self.connect_issued {
                 if wifi.is_started()? {
+                    let candidates = self
+                        .store
+                        .as_ref()
+                        .map(|store| store.load())
+                        .unwrap_or_default()
+                        .candidates(self.primary.clone());
+                    // With one network there is nothing to choose; with
+                    // several, join the strongest one in range (or the first
+                    // when none is heard, as before).
+                    if candidates.len() > 1 {
+                        let heard = wifi_networks::espidf::scan().unwrap_or_default();
+                        let chosen = wifi_networks::choose(&candidates, &heard).unwrap_or(0);
+                        let network = &candidates[chosen];
+                        info!(
+                            "rustmix-wave=wifi-choice status=chosen ssid={} known={} heard={}",
+                            network.ssid,
+                            candidates.len(),
+                            heard.len()
+                        );
+                        wifi.wifi_mut()
+                            .set_configuration(&client_configuration(network)?)?;
+                        self.snapshot.ssid = Some(network.ssid.clone());
+                    }
                     wifi.wifi_mut().connect()?;
                     self.connect_issued = true;
                 }
@@ -382,6 +406,28 @@ pub mod espidf {
             self.ntp_reported = true;
             Some(utc)
         }
+    }
+
+    fn client_configuration(network: &SavedNetwork) -> Result<Configuration> {
+        let auth_method = if network.password.is_empty() {
+            AuthMethod::None
+        } else {
+            AuthMethod::WPA2Personal
+        };
+        Ok(Configuration::Client(ClientConfiguration {
+            ssid: network
+                .ssid
+                .as_str()
+                .try_into()
+                .context("SSID exceeds embedded Wi-Fi capacity")?,
+            password: network
+                .password
+                .as_str()
+                .try_into()
+                .context("password exceeds embedded Wi-Fi capacity")?,
+            auth_method,
+            ..Default::default()
+        }))
     }
 
     fn read_rssi_dbm() -> Option<i32> {

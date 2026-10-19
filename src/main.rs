@@ -133,6 +133,7 @@ mod firmware {
             FORECAST_CACHE_PATH,
         },
         weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
+        wifi_networks::espidf::WifiNetworkStore,
         wifi_transfer::{
             espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
             WifiTransferUiRequest, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
@@ -236,7 +237,7 @@ mod firmware {
         };
 
         // Credentials are read from removable storage. Never log the password.
-        let network_config = match NetworkConfig::load_from_path(WIFI_CONFIG_PATH) {
+        let mut network_config = match NetworkConfig::load_from_path(WIFI_CONFIG_PATH) {
             Ok(config) => {
                 info!(
                     "rustmix-wave=wifi-config status=ready path={WIFI_CONFIG_PATH} ssid={} timezone={} ntp-server={}",
@@ -627,8 +628,24 @@ mod firmware {
             }
         };
         if let Some(partition) = nvs_partition.clone() {
-            let _ = AI_KEYS.set(AiKeyStore::new(partition));
+            let _ = AI_KEYS.set(AiKeyStore::new(partition.clone()));
+            let _ = WIFI_NETWORKS.set(WifiNetworkStore::new(partition));
         }
+        // Without WIFI.TXT, the first network saved from the portal serves.
+        if network_config.is_none() {
+            let saved = WIFI_NETWORKS.get().map(WifiNetworkStore::load);
+            if let Some(first) = saved.as_ref().and_then(|book| book.networks().first()) {
+                let config = NetworkConfig::for_saved(first);
+                info!(
+                    "rustmix-wave=wifi-config status=ready source=saved ssid={}",
+                    config.ssid
+                );
+                state.regional = state.regional.with_timezone_name(&config.timezone)?;
+                state.update_network_snapshot(NetworkSnapshot::provisioned(&config));
+                network_config = Some(config);
+            }
+        }
+        refresh_saved_networks(&mut state);
         let xiaozhi_identity = nvs_partition.clone().map(XiaozhiIdentity::new);
         state.xiaozhi.linked = xiaozhi_identity
             .as_ref()
@@ -2673,6 +2690,8 @@ mod firmware {
     const AI_MIN_BATTERY_PERCENT: u8 = 15;
     /// The encrypted AI key store, once NVS opened at boot.
     static AI_KEYS: std::sync::OnceLock<AiKeyStore> = std::sync::OnceLock::new();
+    /// The Wi-Fi networks saved from the portal (encrypted NVS).
+    static WIFI_NETWORKS: std::sync::OnceLock<WifiNetworkStore> = std::sync::OnceLock::new();
 
     /// A note left transcribing or summarizing by a restart goes back to
     /// the queue.
@@ -3258,8 +3277,21 @@ mod firmware {
                 if let Some(keys) = AI_KEYS.get() {
                     state.ai_keys = keys.presence();
                 }
+                refresh_saved_networks(state);
             }
         }
+    }
+
+    /// The names of the networks saved from the portal, for the Network screen.
+    fn refresh_saved_networks(state: &mut AppState) {
+        state.saved_networks = WIFI_NETWORKS.get().map_or_else(Vec::new, |store| {
+            store
+                .load()
+                .networks()
+                .iter()
+                .map(|network| network.ssid.clone())
+                .collect()
+        });
     }
 
     fn apply_wifi_transfer_ui_request(
@@ -3329,7 +3361,12 @@ mod firmware {
         let code = format!("{:06}", unsafe { sys::esp_random() } % 1_000_000);
         info!("rustmix-wave=wifi-transfer-server status=starting ipv4={ipv4} port=80 root={WIFI_TRANSFER_ROOT} stack-bytes={WIFI_TRANSFER_SERVER_STACK_BYTES}");
         log_runtime_memory("before-wifi-transfer-start");
-        match WifiTransferServer::start(&ipv4, code, AI_KEYS.get().cloned()) {
+        match WifiTransferServer::start(
+            &ipv4,
+            code,
+            AI_KEYS.get().cloned(),
+            WIFI_NETWORKS.get().cloned(),
+        ) {
             Ok(active) => {
                 state.update_wifi_transfer_snapshot(active.snapshot());
                 *server = Some(active);

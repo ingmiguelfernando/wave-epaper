@@ -255,9 +255,19 @@ battery really used.
 
 ### Network and Wi-Fi transfer
 
-Configure `/RUSTMIX/WIFI.TXT` on a computer and reboot to apply changes.
+`/RUSTMIX/WIFI.TXT` holds the main network (and the time zone and NTP
+server); edit it on a computer and reboot to apply changes. **More networks**
+(up to six, for example your phone's hotspot) are saved in the portal under
+**Wi-Fi networks**: **Scan nearby** lists what the device hears, pick one,
+type the password and **Save network**. The passwords are stored encrypted on
+the device, never on the card. When Wi-Fi starts, the device tries the
+`WIFI.TXT` network and the saved ones together and joins the strongest it
+hears (a scan adds about two seconds when more than one is known). With no
+`WIFI.TXT` the first saved network serves, with the default time zone.
 Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Provisioning
-details** is read-only, not an on-device credential editor.
+details** lists the known networks (names only); adding or removing one is
+done in the portal. Save the hotspot while you are at home, then it works
+anywhere you turn it on.
 
 Wi-Fi normally runs in short bursts for weather and time sync, then turns off.
 An idle/off Wi-Fi indicator does not itself mean provisioning failed.

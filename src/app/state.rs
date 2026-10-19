@@ -208,6 +208,8 @@ pub struct AppState {
     pub ai: Option<crate::ai_config::AiConfig>,
     /// Which AI keys the device holds; main.rs reads them from NVS.
     pub ai_keys: crate::ai_keys::AiKeyPresence,
+    /// Names of the Wi-Fi networks saved from the portal (never passwords).
+    pub saved_networks: Vec<String>,
     /// The note an AI job is sending now; main.rs keeps it current.
     pub ai_busy_note: Option<String>,
     /// Set when the owner queues a note, so the queue tries at once.
@@ -314,6 +316,7 @@ impl Default for AppState {
             weather_config: None,
             ai: None,
             ai_keys: crate::ai_keys::AiKeyPresence::default(),
+            saved_networks: Vec::new(),
             ai_busy_note: None,
             ai_retry_now: false,
             weather_settings_ui: WeatherSettingsUiState::default(),

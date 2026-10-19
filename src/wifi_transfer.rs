@@ -260,7 +260,7 @@ pub mod espidf {
         time::{Duration, Instant},
     };
 
-    use anyhow::{anyhow, bail, Context, Result};
+    use anyhow::{anyhow, bail, ensure, Context, Result};
     use embedded_svc::{http::Method, io::Write as _};
     use esp_idf_svc::http::server::{Configuration, EspHttpServer};
     use log::info;
@@ -272,6 +272,7 @@ pub mod espidf {
         WIFI_TRANSFER_SERVER_STACK_BYTES, WIFI_TRANSFER_STREAM_CHUNK_BYTES,
     };
     use crate::ai_keys::{espidf::AiKeyStore, validate_key, AiKeySlot, AI_KEY_MAX_CHARS};
+    use crate::wifi_networks::{self, espidf::WifiNetworkStore};
 
     const PORTAL_HTML: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -289,6 +290,11 @@ body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}butt
 <p id="keys">Unlock to see which keys are set.</p>
 <select id="slot"><option value="transcription">Transcription key</option><option value="summary">Summary key</option></select>
 <input id="key" type="password" autocomplete="off" placeholder="Paste the API key"><button onclick="saveKey()">Save key</button><button onclick="clearKey()">Remove key</button>
+<h2>Wi-Fi networks</h2>
+<p>The device joins the strongest of these that it hears, after the one in <code>WIFI.TXT</code>. Passwords are stored encrypted on the device, never on the SD card and never shown again. Save your phone's hotspot here to use it away from home.</p>
+<p id="nets">Unlock to see the saved networks.</p>
+<p><button onclick="scanNets()">Scan nearby</button> <select id="found"></select></p>
+<input id="ssid" placeholder="Network name"><input id="pass" type="password" autocomplete="off" placeholder="Password (empty if open)"><button onclick="saveNet()">Save network</button>
 <pre id="status">Enter the six-digit code displayed on the device.</pre>
 <script>
 let current='/'; const status=t=>document.getElementById('status').textContent=t;
@@ -316,7 +322,16 @@ const slot=()=>enc(document.getElementById('slot').value);
 async function keys(){try{let k=JSON.parse(await api('/api/ai-keys'));document.getElementById('keys').textContent=k.available?'Transcription key: '+(k.transcription?'set':'not set')+' · Summary key: '+(k.summary?'set':'not set'):'Key storage is unavailable on this device.'}catch(e){}}
 async function saveKey(){try{let i=document.getElementById('key');await api('/api/ai-keys?slot='+slot(),{method:'POST',body:i.value});i.value='';status('Key saved');keys()}catch(e){status(e.message)}}
 async function clearKey(){try{await api('/api/ai-keys?slot='+slot()+'&clear=1',{method:'POST'});status('Key removed');keys()}catch(e){status(e.message)}}
-loadList('/');keys();
+// The device answers with names only, never passwords.
+async function nets(){try{let n=JSON.parse(await api('/api/wifi'));let box=document.getElementById('nets');box.replaceChildren();if(!n.available){box.textContent='Network storage is unavailable on this device.';return}
+if(!n.saved.length){box.textContent='No saved networks.';return}
+for(let s of n.saved){let row=document.createElement('div');row.append(s+' ',button('Remove',()=>dropNet(s)));box.append(row)}}catch(e){}}
+async function scanNets(){try{status('Scanning, a few seconds...');let f=JSON.parse(await api('/api/wifi/scan'));let sel=document.getElementById('found');sel.replaceChildren();
+for(let n of f){let o=document.createElement('option');o.value=n.ssid;o.textContent=n.ssid+' ('+n.rssi+' dBm'+(n.secured?'':', open')+')';sel.append(o)}
+sel.onchange=()=>document.getElementById('ssid').value=sel.value;if(f.length)document.getElementById('ssid').value=f[0].ssid;status(f.length+' networks found')}catch(e){status(e.message)}}
+async function saveNet(){try{let p=document.getElementById('pass');await api('/api/wifi?ssid='+enc(document.getElementById('ssid').value),{method:'POST',body:p.value});p.value='';status('Network saved');nets()}catch(e){status(e.message)}}
+async function dropNet(s){try{await api('/api/wifi?clear=1&ssid='+enc(s),{method:'POST'});status('Network removed');nets()}catch(e){status(e.message)}}
+loadList('/');keys();nets();
 </script></body></html>"#;
 
     #[derive(Debug)]
@@ -357,7 +372,12 @@ loadList('/');keys();
 
     impl WifiTransferServer {
         /// `keys` is the encrypted AI key store, when NVS opened.
-        pub fn start(ipv4: &str, code: String, keys: Option<AiKeyStore>) -> Result<Self> {
+        pub fn start(
+            ipv4: &str,
+            code: String,
+            keys: Option<AiKeyStore>,
+            networks: Option<WifiNetworkStore>,
+        ) -> Result<Self> {
             let url = format!("http://{ipv4}/");
             let shared = Arc::new(Mutex::new(SharedStatus::new(url.clone(), code.clone())));
             let mut server = EspHttpServer::new(&Configuration {
@@ -365,7 +385,7 @@ loadList('/');keys();
                 stack_size: WIFI_TRANSFER_SERVER_STACK_BYTES,
                 max_open_sockets: 2,
                 max_sessions: 2,
-                max_uri_handlers: 12,
+                max_uri_handlers: 16,
                 session_timeout: Duration::from_secs(60),
                 ..Default::default()
             })?;
@@ -566,6 +586,90 @@ loadList('/');keys();
                 saved?;
                 lock(&key_shared).touch(format!("Saved the {} key", slot.marker()), 0);
                 info!("rustmix-wave=ai-key status=saved slot={}", slot.marker());
+                request.into_ok_response()?.write_all(b"saved")?;
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+            // The saved Wi-Fi networks: names only on the way out.
+            let list_networks = networks.clone();
+            let list_networks_code = code.clone();
+            server.fn_handler("/api/wifi", Method::Get, move |request| {
+                authenticate(request.uri(), &list_networks_code)?;
+                let body = match &list_networks {
+                    Some(store) => {
+                        let names: Vec<String> = store
+                            .load()
+                            .networks()
+                            .iter()
+                            .map(|network| format!("\"{}\"", json_escape(&network.ssid)))
+                            .collect();
+                        format!("{{\"available\":true,\"saved\":[{}]}}", names.join(","))
+                    }
+                    None => "{\"available\":false,\"saved\":[]}".into(),
+                };
+                request.into_ok_response()?.write_all(body.as_bytes())?;
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+            // Networks in range, from a scan of a few seconds.
+            let scan_code = code.clone();
+            server.fn_handler("/api/wifi/scan", Method::Get, move |request| {
+                authenticate(request.uri(), &scan_code)?;
+                let rows: Vec<String> = wifi_networks::espidf::scan()?
+                    .iter()
+                    .map(|entry| {
+                        format!(
+                            "{{\"ssid\":\"{}\",\"rssi\":{},\"secured\":{}}}",
+                            json_escape(&entry.ssid),
+                            entry.rssi_dbm,
+                            entry.secured
+                        )
+                    })
+                    .collect();
+                request
+                    .into_ok_response()?
+                    .write_all(format!("[{}]", rows.join(",")).as_bytes())?;
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+            // Save a network (the password is the body) or remove one.
+            let network_shared = Arc::clone(&shared);
+            let network_code = code.clone();
+            server.fn_handler("/api/wifi", Method::Post, move |mut request| {
+                authenticate(request.uri(), &network_code)?;
+                let store = networks
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Network storage is unavailable on this device"))?;
+                let ssid = required_query(request.uri(), "ssid")?;
+                let mut book = store.load();
+                if query_value(request.uri(), "clear").is_some() {
+                    ensure!(book.remove(&ssid), "That network is not saved");
+                    store.save(&book)?;
+                    lock(&network_shared).touch(format!("Removed {ssid}"), 0);
+                    info!("rustmix-wave=wifi-network status=removed ssid={ssid}");
+                    request.into_ok_response()?.write_all(b"removed")?;
+                    return Ok(());
+                }
+                let mut body = [0_u8; 96];
+                let mut total = 0;
+                loop {
+                    let read = request.read(&mut body[total..])?;
+                    if read == 0 {
+                        break;
+                    }
+                    total += read;
+                    if total == body.len() {
+                        bail!("The password is too long.");
+                    }
+                }
+                let saved = std::str::from_utf8(&body[..total])
+                    .map_err(|_| anyhow!("The password is not text."))
+                    .and_then(|password| book.add(&ssid, password).map_err(|error| anyhow!(error)));
+                body.fill(0);
+                let outcome = saved?;
+                store.save(&book)?;
+                lock(&network_shared).touch(format!("Saved {ssid}"), 0);
+                info!("rustmix-wave=wifi-network status=saved ssid={ssid} outcome={outcome:?}");
                 request.into_ok_response()?.write_all(b"saved")?;
                 Ok::<(), anyhow::Error>(())
             })?;
