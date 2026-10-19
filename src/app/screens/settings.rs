@@ -3,7 +3,11 @@
 
 use core::convert::Infallible;
 
-use embedded_graphics::{pixelcolor::BinaryColor, prelude::Point};
+use embedded_graphics::{
+    pixelcolor::BinaryColor,
+    prelude::{Drawable, Point, Primitive, Size},
+    primitives::{PrimitiveStyle, Rectangle},
+};
 
 use crate::app::typography::{Text, UiTextRole};
 use crate::orientation::OrientedFrameBuffer;
@@ -81,13 +85,15 @@ pub fn display_value(preferences: DisplayPreferences) -> String {
 }
 
 /// The sleep mode, with the starred photo count when it plays photos.
+/// The mockup writes `Photo ★ 12`; `★` is not in the fonts, so the count
+/// keeps the `·` separator the rest of the row uses.
 #[must_use]
 pub fn sleep_screen_value(state: &AppState) -> String {
     match state.sleep_screen.mode {
         SleepMode::Photo => match state.sleep_screen.source {
             SleepSource::Starred => match state.photos.starred.len() {
-                0 => "Photo · none starred".into(),
-                starred => format!("Photo · {starred} starred"),
+                0 => "Photo · none".into(),
+                starred => format!("Photo · {starred}"),
             },
             SleepSource::Folder => "Photo · folder".into(),
         },
@@ -209,7 +215,8 @@ mod tests {
     use crate::alarm::{AlarmDefinition, AlarmScheduleKind};
     use crate::app::display::{UiFontFamily, UiFontSize};
     use crate::app::typography::UiTextRole;
-    use embedded_graphics::pixelcolor::BinaryColor;
+    use crate::{app::render_current_screen, framebuffer::FrameBuffer};
+    use embedded_graphics::{pixelcolor::BinaryColor, prelude::Point};
 
     fn alarm(hour: u8, enabled: bool) -> AlarmDefinition {
         AlarmDefinition {
@@ -279,10 +286,11 @@ mod tests {
     #[test]
     fn sleep_screen_value_counts_starred_photos() {
         let mut state = AppState::default();
-        assert_eq!(sleep_screen_value(&state), "Photo · none starred");
+        assert_eq!(sleep_screen_value(&state), "Photo · none");
         state.photos.starred.toggle("IMG_0407.jpg");
         state.photos.starred.toggle("IMG_0409.jpg");
-        assert_eq!(sleep_screen_value(&state), "Photo · 2 starred");
+        // Mockup `Photo ★ 12` — the star is not in the fonts.
+        assert_eq!(sleep_screen_value(&state), "Photo · 2");
         state.sleep_screen.source = SleepSource::Folder;
         assert_eq!(sleep_screen_value(&state), "Photo · folder");
         state.sleep_screen.mode = SleepMode::Clock;
@@ -300,6 +308,27 @@ mod tests {
             let value = group_value(&state, entry.route);
             assert!(!value.is_empty(), "{}", entry.label);
         }
+    }
+
+    /// Mockup `Process · When online` and the key-storage note under the rows.
+    #[test]
+    fn ai_settings_say_when_online_and_where_keys_live() {
+        assert_eq!(crate::ai_config::AiProcess::Online.label(), "When online");
+        let mut state = AppState::default();
+        state.router.navigate_to(ScreenRoute::AiSettings);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        let ink = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(true);
+        // The note's dashed box sits under the eight rows + three group labels.
+        let mut border = 0;
+        for y in 40..752 {
+            for x in 20..460 {
+                if ink(x, y) {
+                    border += 1;
+                }
+            }
+        }
+        assert!(border > 200, "the AI settings page draws its rows and note");
     }
 
     #[test]
@@ -371,9 +400,14 @@ pub fn render_ai_settings(
     let mut top = STATUS_BAR_HEIGHT + 16;
     for (index, (title, value)) in rows.iter().enumerate() {
         if let Some((_, label)) = groups.iter().find(|(first, _)| *first == index) {
-            // Each group's label sits low in its own band, clear of the row above.
+            // Mockup `.lbl`: capitals in Detail.
             let style = preferences.text_style(UiTextRole::Detail, BinaryColor::On);
-            Text::new(label, Point::new(LIST_TEXT_LEFT, top + 20), style).draw(display)?;
+            Text::new(
+                &label.to_uppercase(),
+                Point::new(LIST_TEXT_LEFT, top + 20),
+                style,
+            )
+            .draw(display)?;
             top += 28;
         }
         draw_list_row(
@@ -388,6 +422,22 @@ pub fn render_ai_settings(
             },
         )?;
         top += LIST_ROW_HEIGHT;
+    }
+    // Mockup's closing note about where keys live.
+    let body = preferences.body_style();
+    let note = "Any OpenAI-compatible base URL works. Keys are typed in the browser \
+                (Wi-Fi portal), stored encrypted on the device, never written to the SD \
+                card and never shown again.";
+    let lines = body.wrap(note, 408);
+    let line_height = i32::from(body.line_height()) + 2;
+    let box_height = lines.len() as i32 * line_height + 18;
+    Rectangle::new(Point::new(22, top + 8), Size::new(436, box_height as u32))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
+        .draw(display)?;
+    let mut baseline = top + 18 + body.cap_height();
+    for line in lines {
+        Text::new(&line, Point::new(36, baseline), body).draw(display)?;
+        baseline += line_height;
     }
     draw_bottom_bar(display, preferences, &CHANGE_HINTS)
 }

@@ -972,7 +972,50 @@ the main developer's choices are the `Free slot` column that became
 
 **Tests:** as the method says.
 
-**Status:** to do.
+**Status:** done on `side-tasks-20`. Mockup figures at zoom 1 next to
+`settings`, `weather-settings`, `settings-ai`, `settings-system` and
+`update-available`. **Font note:** mockup system-ui vs Inter; `.set .t` is
+weight 800 and `.sb` is 800 — list titles use `extrabold_style`, status-bar
+titles stay Heading (shared chrome, every screen).
+
+### D83 Settings
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Row titles | Mockup `.set .t` weight 800 | Fixed: `list_row` titles use `extrabold_style` |
+| Sleep screen subtitle | Missing `verse` | Fixed: `Photo, clock, weather, verse` |
+| Wi-Fi subtitle | Missing `API keys` | Fixed: `Network, file portal, API keys` |
+| Clock subtitle | `Time, date, alarms` | Fixed: `NTP time, RTC alarms` |
+| System subtitle | `Version, SD, diagnostics` | Fixed: `Version, SD, memory, OTA` |
+| Sleep screen value | Mockup `Photo ★ 12` | Fixed: `Photo · 2` (`★` is not in the fonts). Probe: `sleep_screen_value_counts_starred_photos` |
+| Sample values (Literata · M, Ready, 2 alarms) | Sample state | Not a code bug |
+| Status-bar title weight | Mockup `.sb` 800 | Blocked: shared chrome; Heading is the boldest UI role without ExtraBold at bar size |
+
+### D83 Settings › Weather
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Chrome | Was `draw_header` `WEATHER` / `FORECAST AND UPDATES` | Fixed: status bar `Settings › Weather`, rows from the bar |
+| Forecast heading + status row | Extra chrome the mockup does not have | Fixed: removed; Location and Provider are list rows |
+| Location / Provider | Were paragraph lines | Fixed: `Location` / `Provider` rows (`Madrid · set in WEATHER.TXT`, `Open-Meteo · no key`) |
+| Service subtitle | `on a schedule` | Fixed: `Fetch the forecast periodically` (mockup) |
+| Toggle vs list row for the service | Mockup `.tog` switch | Blocked: list-row style kept (device's Settings pattern) |
+
+### D83 Settings › AI
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| Group labels | Mixed case | Fixed: uppercase like `.lbl` |
+| Process value | `Online` | Fixed: `When online` |
+| Info note | Missing | Fixed: key-storage note under the rows. Probe: `ai_settings_say_when_online_and_where_keys_live` |
+| API keys / Language values | Sample (Unavailable / Auto) | Not a code bug |
+
+### D83 Settings › System and updates
+
+| Element | Difference | Fixed or blocked |
+|---|---|---|
+| System rows | Match (crop; sample `6 items` vs version) | — |
+| `update-available` preview | Shows the **up to date** state (checkmark); the mockup figure is the **update available** flow (Installed ▼ Available, Wi-Fi/Battery/Free slot, Download and install) | Named: different flow states. The available-update layout was drawn by the main developer (purposeful: `Free slot` column → `Download`, release date → release tag). The up-to-date chrome (title, Check again / Back, footer) matches the mockup's sibling figure |
 
 ## Round 19 tasks (done, merged without a release)
 

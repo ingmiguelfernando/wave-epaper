@@ -61,7 +61,8 @@ pub fn draw_list_row(
         BinaryColor::On
     };
 
-    let title_style = preferences.text_style(UiTextRole::Heading, ink);
+    // Mockup `.set .t` is weight 800; values are 700 (Body is the closest).
+    let title_style = preferences.extrabold_style().with_color(ink);
     let detail_style = preferences.text_style(UiTextRole::Detail, ink);
     let value_style = preferences.text_style(UiTextRole::Body, ink);
 
