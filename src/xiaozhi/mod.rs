@@ -4,6 +4,7 @@
 
 pub mod activation;
 pub mod call;
+pub mod config;
 pub mod mcp;
 pub mod protocol;
 

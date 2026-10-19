@@ -98,6 +98,7 @@ mod firmware {
         rtc::RtcDateTime,
         rtc_alarm_interrupt::{espidf::RtcAlarmInterruptMonitor, RTC_ALARM_INTERRUPT_GPIO},
         runtime_memory::{log_runtime_memory, RuntimeMemorySnapshot},
+        sd_file,
         shared_i2c::SharedI2cBus,
         sleep_images::{SleepImageCatalog, SleepImageSelection, SLEEP_IMAGE_DIRECTORY},
         sleep_mode::{
@@ -137,8 +138,8 @@ mod firmware {
             WifiTransferUiRequest, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
         },
         xiaozhi::{
-            activation::OTA_URL as XIAOZHI_OTA_URL,
             call::CallEvent,
+            config as xiaozhi_config,
             espidf::{device_info, CallSetup, XiaozhiCall, XiaozhiIdentity},
         },
     };
@@ -2792,6 +2793,24 @@ mod firmware {
         }
     }
 
+    /// The server from `/RUSTMIX/XIAOZHI.TXT`, the official one without it.
+    fn xiaozhi_server() -> Result<String, String> {
+        let text = match sd_file::read_to_string(std::path::Path::new(xiaozhi_config::CONFIG_PATH))
+        {
+            Ok(text) => Some(text),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(format!("cannot read the file: {error}")),
+        };
+        let url = xiaozhi_config::server_url(text.as_deref())?;
+        if text.is_some() {
+            info!(
+                "rustmix-wave=xiaozhi status=own-server host={}",
+                xiaozhi_config::host(&url)
+            );
+        }
+        Ok(url)
+    }
+
     /// Lend the speaker to a new XiaoZhi call once Wi-Fi is up.
     fn start_xiaozhi_call(
         call: &mut Option<XiaozhiCall<BoardAudio>>,
@@ -2820,9 +2839,23 @@ mod firmware {
             state.xiaozhi.fail("The speaker is not available.");
             return;
         };
+        let ota_url = match xiaozhi_server() {
+            Ok(url) => {
+                state.xiaozhi.own_server = (url != xiaozhi_config::OFFICIAL_URL)
+                    .then(|| xiaozhi_config::host(&url).to_owned());
+                url
+            }
+            Err(message) => {
+                warn!("rustmix-wave=xiaozhi status=bad-server-file error={message}");
+                state
+                    .xiaozhi
+                    .fail("XIAOZHI.TXT on the card is not a valid server address.");
+                return;
+            }
+        };
         let setup = CallSetup {
             device: device_info(client_id, &state.network),
-            ota_url: XIAOZHI_OTA_URL.into(),
+            ota_url,
             mic_gain: state.voice_notes.mic_gain,
             battery_percent: state.board.power.and_then(|power| power.battery_percent),
             rssi: state.network.rssi_dbm,

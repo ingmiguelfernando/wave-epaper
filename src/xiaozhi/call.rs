@@ -225,6 +225,8 @@ pub struct XiaozhiUi {
     pub volume: u8,
     /// Linked to an account at xiaozhi.me; kept in NVS between calls.
     pub linked: bool,
+    /// Host of the owner's own server (`XIAOZHI.TXT`); `None` is the official one.
+    pub own_server: Option<String>,
     /// Milliseconds since boot when the conversation opened.
     pub started_ms: Option<u64>,
     /// When the last event came; the call length shown runs to it.

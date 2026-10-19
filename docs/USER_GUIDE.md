@@ -429,6 +429,10 @@ XiaoZhi server and opens the conversation. The call needs Wi-Fi set up in
 	and read a Bible passage from the SD card in the Bible reader's
 	translation ("read me Psalm 23"). The tool it used shows under the
 	reply.
+- **Your own server.** To use a self-hosted xiaozhi-esp32 server, copy
+	`XIAOZHI.TXT.example` to `/RUSTMIX/XIAOZHI.TXT` and set `server=` to its OTA
+	address (`http://` on the home network, or `https://` with a public
+	certificate). The connecting screen then names that host.
 - During a call the screen stays on, the device does not sleep and voice
 	notes wait. A call with nothing from the server for two minutes ends.
 

@@ -2719,7 +2719,7 @@ mod tests {
         state.photos = PhotosUiState::with_roots(&photos, &cache);
         state.photos.refresh();
         let job = state.photos.cache_jobs().remove(0);
-        prepare(&photos, &cache, &job);
+        let _ = prepare(&photos, &cache, &job);
 
         state.open_route(ScreenRoute::Photos);
         assert!(state.photos.thumbnail(job.key).is_some());
