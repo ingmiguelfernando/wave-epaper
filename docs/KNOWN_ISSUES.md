@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.18.0. This is not a list of promised mockup features. See
+Firmware v0.18.1. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)

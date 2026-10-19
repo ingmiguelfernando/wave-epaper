@@ -835,7 +835,7 @@ pub fn elapsed_label(seconds: u32) -> String {
 pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Vec<String> {
     let written = u64::from(voice.pcm_bytes) + 44;
     let first = format!(
-        "Opus 24 kbps · 16 kHz mono · {} so far",
+        "Audio · 16 kHz mono · {} so far",
         size_one_decimal(written)
     );
     let Some(free) = voice
@@ -946,7 +946,7 @@ mod tests {
         let mut voice = VoiceNotesUiState::default();
         voice.pcm_bytes = 32_000;
         let lines = recording_info_lines(&voice);
-        assert!(lines[0].starts_with("Opus 24 kbps · 16 kHz mono · "));
+        assert!(lines[0].starts_with("Audio · 16 kHz mono · "));
         assert!(!lines[0].contains("WAV"));
     }
 
@@ -990,7 +990,7 @@ mod tests {
         voice.pcm_bytes = 207 * 32_000;
         voice.available_storage_bytes = Some(15_247_133_901 + 6_624_044);
         let lines = recording_info_lines(&voice);
-        assert_eq!(lines[0], "Opus 24 kbps · 16 kHz mono · 6.3 MB so far");
+        assert_eq!(lines[0], "Audio · 16 kHz mono · 6.3 MB so far");
         assert_eq!(
             lines[1],
             "SD: 14.2 GB free (~132 h) · Wi-Fi off while recording"
@@ -999,7 +999,7 @@ mod tests {
         let lines = recording_info_lines(&voice);
         assert_eq!(
             lines,
-            ["Opus 24 kbps · 16 kHz mono · 6.3 MB so far"],
+            ["Audio · 16 kHz mono · 6.3 MB so far"],
             "without the free space, the first line only"
         );
     }
