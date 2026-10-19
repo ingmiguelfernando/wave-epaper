@@ -3,11 +3,7 @@
 
 use core::convert::Infallible;
 
-use embedded_graphics::{
-    pixelcolor::BinaryColor,
-    prelude::{Drawable, Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle},
-};
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::Point};
 
 use crate::app::typography::{Text, UiTextRole};
 use crate::orientation::OrientedFrameBuffer;
@@ -215,8 +211,7 @@ mod tests {
     use crate::alarm::{AlarmDefinition, AlarmScheduleKind};
     use crate::app::display::{UiFontFamily, UiFontSize};
     use crate::app::typography::UiTextRole;
-    use crate::{app::render_current_screen, framebuffer::FrameBuffer};
-    use embedded_graphics::{pixelcolor::BinaryColor, prelude::Point};
+    use embedded_graphics::pixelcolor::BinaryColor;
 
     fn alarm(hour: u8, enabled: bool) -> AlarmDefinition {
         AlarmDefinition {
@@ -310,25 +305,11 @@ mod tests {
         }
     }
 
-    /// Mockup `Process · When online` and the key-storage note under the rows.
+    /// Mockup `Process · When online`. The mockup's key-storage note under the
+    /// rows does not fit: eight rows and three labels already reach the bar.
     #[test]
-    fn ai_settings_say_when_online_and_where_keys_live() {
+    fn ai_settings_say_when_online() {
         assert_eq!(crate::ai_config::AiProcess::Online.label(), "When online");
-        let mut state = AppState::default();
-        state.router.navigate_to(ScreenRoute::AiSettings);
-        let mut frame = FrameBuffer::new_white();
-        render_current_screen(&mut frame, &state).unwrap();
-        let ink = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(true);
-        // The note's dashed box sits under the eight rows + three group labels.
-        let mut border = 0;
-        for y in 40..752 {
-            for x in 20..460 {
-                if ink(x, y) {
-                    border += 1;
-                }
-            }
-        }
-        assert!(border > 200, "the AI settings page draws its rows and note");
     }
 
     #[test]
@@ -422,22 +403,6 @@ pub fn render_ai_settings(
             },
         )?;
         top += LIST_ROW_HEIGHT;
-    }
-    // Mockup's closing note about where keys live.
-    let body = preferences.body_style();
-    let note = "Any OpenAI-compatible base URL works. Keys are typed in the browser \
-                (Wi-Fi portal), stored encrypted on the device, never written to the SD \
-                card and never shown again.";
-    let lines = body.wrap(note, 408);
-    let line_height = i32::from(body.line_height()) + 2;
-    let box_height = lines.len() as i32 * line_height + 18;
-    Rectangle::new(Point::new(22, top + 8), Size::new(436, box_height as u32))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
-        .draw(display)?;
-    let mut baseline = top + 18 + body.cap_height();
-    for line in lines {
-        Text::new(&line, Point::new(36, baseline), body).draw(display)?;
-        baseline += line_height;
     }
     draw_bottom_bar(display, preferences, &CHANGE_HINTS)
 }

@@ -4,6 +4,73 @@ Small, self-contained tasks for a second developer or AI working in parallel
 with the main line. Read this file first, then
 [architecture.md](architecture.md) and [ROADMAP.md](ROADMAP.md).
 
+## Round 21 tasks (branch `side-tasks-21`)
+
+Start from `main` after pull request #23, where Round 20 is merged; read its
+result below first. Create `side-tasks-21` from `main`. The method of Rounds
+19 and 20 stands (the mockup's figure at zoom 1 next to your preview, one
+table per figure, every difference fixed or named with the primitive it
+needs; look at each preview again after your last change; run each new test
+against the old behaviour). New: **a note, box or row you add must be
+checked for room at every UI size**: say the y where the page content ends
+and where the bottom bar starts. When done, merge `main` into the branch and
+open a pull request.
+
+### D84: ExtraBold at the Body and bar sizes
+
+The blocked rows of Round 20: chip labels (`.chip` weight 800) and the status
+bar title (`.sb` weight 800) use Medium/SemiBold because only the givens'
+sizes have an ExtraBold strike. Add the strikes (the `fonts` workflow, as in
+D81) for the Body sizes and the status-bar size, use them in
+`widgets::chips` and the bar, and check every other glyph of the atlas is
+unchanged. **Tests:** a chip label and the bar title are heavier than
+before (ink runs of one letter); widths at the three UI sizes still fit the
+widest chip row (Sudoku and XiaoZhi) and the longest bar title.
+
+**Status:** to do.
+
+### D85: XiaoZhi's boxes and the AI hub's note chips
+
+Blocked in Round 20: the YOU / XIAOZHI body text (mockup regular 21 px, the
+device draws Heading SemiBold), the `.lbl` labels (12 px, 800, letter
+spaced), and the AI hub's note rows with their `SUMMARY ✓` status chips.
+Do the first two with the strikes D84 adds or one more regular strike, the
+third with `widgets::chips`. **Tests:** a probe for each; the call and the
+hub render at three sizes with the longest text the protocol allows.
+
+**Status:** to do.
+
+### D86: Audit the screens not yet audited
+
+Rounds 18 to 20 audited the games, Home, Photos, Reading, Weather, AI,
+XiaoZhi and Settings. Do the same for the Library list, the Reader menu,
+Clock and alarms, Power, Voice Notes and the Files portal screen: a table
+per figure, fix what needs no new primitive, name the rest.
+
+**Status:** to do.
+
+## Round 20 result (2026-10-19)
+
+Branch `side-tasks-20` (D81 to D83) came as pull request #23 with CI and the
+firmware build green, reviewed on the branch and merged without a release.
+The method worked: the tables are honest (`Blocked` rows say which strike or
+glyph is missing), the ExtraBold strikes touch only their own atlas rows
+(the diff is 1965 inserted lines and nothing else), and the shared
+`draw_chip_row_centered` is used by Sudoku and XiaoZhi.
+
+What the main developer changed at review time:
+
+- **The Settings › AI note ran over the bottom bar.** Eight rows and three
+  group labels end at y 720 of 752, so the note's box (added under the last
+  row) was drawn across the bar and its last line was hidden. The preview was
+  not looked at after the change. The note is removed and the row says
+  `Blocked`; its test, which only counted ink in a large region and passed
+  with the note overlapping, became a check of the `When online` label.
+- Unused imports left by that change.
+
+Lesson: **a row or box added under a list needs a measured room**, not a
+region that is black whatever is drawn. Say where the content ends.
+
 ## Round 19 result (2026-10-19)
 
 Branch `side-tasks-19` (D78 to D80) came as pull request #21 from v0.15.0,
@@ -847,7 +914,7 @@ Do differently next time:
   inside a closure and leaves it on one long line. Use `filter_map` with a
   `match`, or compare with a whole value.
 
-## Round 20 tasks (branch `side-tasks-20`)
+## Round 20 tasks (done, merged without a release)
 
 Start from `main` after pull request #21, where Round 19 is merged; read its
 result at the top of this file first (it is about what a change does to the
@@ -1007,7 +1074,7 @@ titles stay Heading (shared chrome, every screen).
 |---|---|---|
 | Group labels | Mixed case | Fixed: uppercase like `.lbl` |
 | Process value | `Online` | Fixed: `When online` |
-| Info note | Missing | Fixed: key-storage note under the rows. Probe: `ai_settings_say_when_online_and_where_keys_live` |
+| Info note | Missing | Blocked: the eight rows and three labels reach the bottom bar (y 720 of 752); the note drew over the bar. Removed at review |
 | API keys / Language values | Sample (Unavailable / Auto) | Not a code bug |
 
 ### D83 Settings › System and updates
