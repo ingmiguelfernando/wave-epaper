@@ -361,7 +361,7 @@ fn render_voice_note_delete_confirmation(
 const RESULT_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "scroll"),
     (KeyCap::Boot, "tab"),
-    (KeyCap::Select, "actions"),
+    (KeyCap::Select, "menu"),
 ];
 
 /// One row of the result body: a wrapped line with its marker and indent.
@@ -531,7 +531,6 @@ pub fn render_voice_note_result(
     use crate::voice_note_result::ResultTab;
     let preferences = state.display;
     let detail = preferences.detail_style();
-    let large = preferences.text_style(UiTextRole::Large, BinaryColor::On);
     draw_status_bar(display, preferences, "Voice Note")?;
     let clock = state.board.time_label(state.regional);
     draw_status_text(display, preferences, &clock, STATUS_BAR_RIGHT)?;
@@ -541,12 +540,14 @@ pub fn render_voice_note_result(
         return Ok(());
     };
 
-    // The title in the Large role, up to two lines; the second cut with `…`.
+    // The title in ExtraBold (mockup weight 800), up to two lines; the second
+    // cut with `…`.
     let record = state.voice_notes_result.record.as_ref();
     let title = record
         .map(|record| record.title.as_str())
         .filter(|title| !title.trim().is_empty())
         .unwrap_or(note.title.as_str());
+    let large = preferences.extrabold_style();
     let mut title_lines = large.wrap(title, 436);
     if title_lines.len() > 2 {
         title_lines.truncate(2);
@@ -581,7 +582,8 @@ pub fn render_voice_note_result(
         .iter()
         .map(|tab| Chip::new(tab.label(), *tab == state.voice_notes_result.tab))
         .collect();
-    draw_chip_row(display, 22, RESULT_CHIPS_TOP, 8, detail, &chips)?;
+    let label = preferences.extrabold_body_style();
+    draw_chip_row(display, 22, RESULT_CHIPS_TOP, 8, label, &chips)?;
 
     // The body, one UI size up, scrolled by wrapped row.
     let body = result_body_style(preferences);
@@ -694,13 +696,13 @@ pub fn render_voice_note_recording(
     draw_level_meter(display, &voice.level_bars)?;
 
     // The chips: the active one filled.
-    let detail = state.display.detail_style();
+    let label = state.display.extrabold_body_style();
     let chips = [
         Chip::dotted("RECORDING", voice.mode == VoiceNotesMode::Recording),
         Chip::new("PAUSED", voice.mode == VoiceNotesMode::Paused),
     ];
-    let left = (480 - chip_row_width(detail, &chips, 6)) / 2;
-    draw_chip_row(display, left, CHIPS_TOP, 6, detail, &chips)?;
+    let left = (480 - chip_row_width(label, &chips, 6)) / 2;
+    draw_chip_row(display, left, CHIPS_TOP, 6, label, &chips)?;
 
     let lines = recording_info_lines(voice);
     draw_info_box(display, state.display, &lines.join("\n"), INFO_BOX_TOP)?;
@@ -843,11 +845,10 @@ pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Ve
     vec![
         first,
         format!(
-            "SD: {} free (~{} h)",
+            "SD: {} free (~{} h) · Wi-Fi off while recording",
             size_one_decimal(free),
             grouped(hours.min(u64::from(u32::MAX)) as u32)
         ),
-        "Wi-Fi off while recording".into(),
     ]
 }
 
@@ -987,8 +988,10 @@ mod tests {
         voice.available_storage_bytes = Some(15_247_133_901 + 6_624_044);
         let lines = recording_info_lines(&voice);
         assert_eq!(lines[0], "Audio · 16 kHz mono · 6.3 MB so far");
-        assert_eq!(lines[1], "SD: 14.2 GB free (~132 h)");
-        assert_eq!(lines[2], "Wi-Fi off while recording");
+        assert_eq!(
+            lines[1],
+            "SD: 14.2 GB free (~132 h) · Wi-Fi off while recording"
+        );
         voice.available_storage_bytes = None;
         let lines = recording_info_lines(&voice);
         assert_eq!(

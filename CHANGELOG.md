@@ -3,6 +3,13 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.18.1 — Screens closer to the mockup
+
+- Sudoku givens, chip labels, status-bar titles and the XiaoZhi call use
+  ExtraBold as the mockup does; the call screen, the AI hub (Wi-Fi mark and
+  note chips), Settings and its pages, Voice Notes and the Library were
+  compared with the mockup and fixed where the fonts allow.
+
 ## v0.18.0 — Several Wi-Fi networks
 
 - **The device knows up to six more Wi-Fi networks besides `WIFI.TXT`.**

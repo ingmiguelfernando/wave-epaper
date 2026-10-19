@@ -320,7 +320,7 @@ fn draw_chips(
         .iter()
         .map(|(text, phase)| Chip::new(text, call.phase == *phase))
         .collect();
-    draw_chip_row_centered(display, CHIPS_TOP, preferences.body_style(), &row)?;
+    draw_chip_row_centered(display, CHIPS_TOP, preferences.extrabold_body_style(), &row)?;
     Ok(())
 }
 
@@ -342,8 +342,10 @@ fn draw_message(
             PrimitiveStyle::with_stroke(BinaryColor::On, 2),
         )
     };
-    let label_style = preferences.text_style(UiTextRole::Detail, ink);
-    let body = preferences.text_style(UiTextRole::Heading, ink);
+    // Mockup `.msg .lbl` is 12 px weight 800 letter-spaced; `.msg` is 21 px
+    // regular (`message_style`).
+    let label_style = preferences.extrabold_body_style().with_color(ink);
+    let body = preferences.message_style().with_color(ink);
     let label_height = i32::from(label_style.line_height());
     let line_height = i32::from(body.line_height()) + 2;
     let room = usize::try_from((MESSAGES_BOTTOM - top - 27 - label_height) / line_height)
@@ -376,13 +378,34 @@ fn draw_message(
     .into_styled(style)
     .draw(display)?;
     let label_baseline = top + 12 + label_style.cap_height();
-    Text::new(label, Point::new(LEFT + 16, label_baseline), label_style).draw(display)?;
+    draw_spaced_text(
+        display,
+        label,
+        Point::new(LEFT + 16, label_baseline),
+        label_style,
+    )?;
     let mut baseline = top + 15 + label_height + (line_height + body.cap_height()) / 2;
     for line in &lines {
         Text::new(line, Point::new(LEFT + 16, baseline), body).draw(display)?;
         baseline += line_height;
     }
     Ok(top + height)
+}
+
+/// Capitals with 1 px between letters, the mockup's `.lbl` letter-spacing
+/// (the fonts have no tracking).
+fn draw_spaced_text(
+    display: &mut OrientedFrameBuffer<'_>,
+    text: &str,
+    at: Point,
+    style: UiTextStyle,
+) -> Result<(), Infallible> {
+    let mut x = at.x;
+    for character in text.chars() {
+        Text::new(&character.to_string(), Point::new(x, at.y), style).draw(display)?;
+        x += style.char_advance(character) + 1;
+    }
+    Ok(())
 }
 
 /// The device tool XiaoZhi used, in a dashed box under the messages. The
@@ -606,5 +629,52 @@ mod tests {
         }
         assert!(ring_ink > 12, "gear mark ink, found {ring_ink}");
         assert!(black(cx, cy), "hub");
+    }
+
+    /// D85: body text is the regular ~21 px face; labels are ExtraBold and
+    /// letter-spaced (wider than the same word in Detail).
+    #[test]
+    fn message_body_is_regular_and_labels_are_spaced_extrabold() {
+        use crate::app::display::DisplayPreferences;
+        let preferences = DisplayPreferences::default();
+        let message = preferences.message_style();
+        let heading = preferences.heading_style();
+        // Regular message carries less ink than the old Heading SemiBold
+        // (total pixels of a round letter, not just the stem run).
+        let ink = |style: crate::app::typography::UiTextStyle, character: char| {
+            let font = style.font();
+            let glyph = font.glyphs[crate::charset::glyph_index(character).unwrap()];
+            let stride = (usize::from(glyph.width) + 7) / 8;
+            let offset = glyph.offset as usize;
+            let mut count = 0_usize;
+            for row in 0..usize::from(glyph.height) {
+                for column in 0..usize::from(glyph.width) {
+                    let byte = font.bitmap[offset + row * stride + column / 8];
+                    if byte & (0x80 >> (column % 8)) != 0 {
+                        count += 1;
+                    }
+                }
+            }
+            count
+        };
+        assert!(
+            ink(message, 'e') < ink(heading, 'e'),
+            "message 'e' ink {} must be lighter than Heading {}",
+            ink(message, 'e'),
+            ink(heading, 'e')
+        );
+        // Letter-spaced ExtraBold label is wider than Detail without gaps.
+        let label = preferences.extrabold_body_style();
+        let detail = preferences.detail_style();
+        let spaced = "YOU"
+            .chars()
+            .map(|c| label.char_advance(c) + 1)
+            .sum::<i32>()
+            - 1;
+        assert!(
+            spaced > detail.text_width("YOU"),
+            "spaced ExtraBold {spaced} must beat Detail {}",
+            detail.text_width("YOU")
+        );
     }
 }

@@ -452,7 +452,7 @@ fn draw_chip_row(
         .iter()
         .map(|(label, filled)| Chip::new(label, *filled))
         .collect();
-    draw_chip_row_centered(display, top, preferences.body_style(), &chips)?;
+    draw_chip_row_centered(display, top, preferences.extrabold_body_style(), &chips)?;
     Ok(())
 }
 
@@ -706,5 +706,59 @@ mod tests {
             "givens '8' stem {given_stem} must beat the player's {player_stem} \
              (ink columns {given_columns} vs {player_columns})"
         );
+    }
+
+    /// D84: chip labels and the status-bar title are heavier than the old
+    /// Medium / SemiBold faces (ink run of one letter).
+    #[test]
+    fn chip_labels_and_bar_titles_are_extrabold() {
+        use crate::app::display::DisplayPreferences;
+        let preferences = DisplayPreferences::default();
+        let letter = 'B';
+        let chip = ink_metrics(preferences.extrabold_body_style().font(), letter);
+        let body = ink_metrics(preferences.body_style().font(), letter);
+        let bar = ink_metrics(preferences.extrabold_bar_style().font(), letter);
+        let heading = ink_metrics(preferences.heading_style().font(), letter);
+        assert!(
+            chip.1 > body.1,
+            "chip stem {} must beat Body {}",
+            chip.1,
+            body.1
+        );
+        assert!(
+            bar.1 > heading.1,
+            "bar stem {} must beat Heading {}",
+            bar.1,
+            heading.1
+        );
+    }
+
+    /// D84: the widest chip rows and the longest bar title still fit.
+    #[test]
+    fn extrabold_chips_and_bar_titles_fit_every_ui_size() {
+        use crate::app::display::{DisplayPreferences, UiFontSize};
+        use crate::app::widgets::chips::{chip_row_width, Chip};
+        const SUDOKU: [&str; 3] = ["1 · ROW", "2 · CELL", "3 · NUMBER"];
+        const XIAOZHI: [&str; 3] = ["LISTEN", "THINK", "SPEAK"];
+        const BAR: &str = "Settings › Sleep screen";
+        for size in UiFontSize::ALL {
+            let preferences = DisplayPreferences {
+                font_size: size,
+                ..DisplayPreferences::default()
+            };
+            let style = preferences.extrabold_body_style();
+            for labels in [SUDOKU, XIAOZHI] {
+                let chips: Vec<Chip<'_>> = labels.iter().map(|l| Chip::new(l, false)).collect();
+                // Two 20 px arrow gaps between three chips.
+                let total = chip_row_width(style, &chips, 0) + 40;
+                assert!(total <= 480, "{size:?} {labels:?} row is {total}");
+            }
+            let bar = preferences.extrabold_bar_style();
+            assert!(
+                bar.text_width(BAR) <= 400,
+                "{size:?}: bar title {} px",
+                bar.text_width(BAR)
+            );
+        }
     }
 }

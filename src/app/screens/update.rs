@@ -113,13 +113,13 @@ fn draw_steps(
     state: &AppState,
     current: Step,
 ) -> Result<(), Infallible> {
-    let detail = state.display.detail_style();
+    let label = state.display.extrabold_body_style();
     let chips: Vec<Chip<'_>> = Step::ALL
         .iter()
         .map(|step| Chip::new(step.label(), *step == current))
         .collect();
-    let left = (480 - chip_row_width(detail, &chips, 6)) / 2;
-    draw_chip_row(display, left, CHIPS_TOP, 6, detail, &chips)
+    let left = (480 - chip_row_width(label, &chips, 6)) / 2;
+    draw_chip_row(display, left, CHIPS_TOP, 6, label, &chips)
 }
 
 /// The rows under the picture, from `top`; the chosen one inverted.

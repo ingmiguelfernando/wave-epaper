@@ -64,6 +64,7 @@ pub fn chip_height(style: UiTextStyle) -> i32 {
 }
 
 /// Draw one chip at `top_left`; returns its width, so a row can space them.
+/// The label is ExtraBold at the Body sizes (mockup `.chip` weight 800).
 pub fn draw_chip(
     display: &mut OrientedFrameBuffer<'_>,
     top_left: Point,

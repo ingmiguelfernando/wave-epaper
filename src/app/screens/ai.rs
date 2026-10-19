@@ -273,32 +273,18 @@ fn draw_note_row(
         .ai_state
         .and_then(|ai| crate::voice_note_record::state_label(ai, network_online(state)));
     let (title_width, meta_width) = if let Some(text) = label {
+        use crate::app::widgets::chips::{chip_height, chip_width, draw_chip, Chip};
         let done = note.ai_state == Some(crate::voice_note_record::NoteState::Done);
-        // A summarized chip is filled, so its text is inverse; the others are outlined.
-        let chip_text_style = card_text(state.display, done, UiTextRole::Body);
-        let chip_width = chip_text_style.text_width(text) + 16;
-        let chip_height = 26;
-        let chip_left = CARD_RIGHT - 12 - chip_width;
-        let chip_top = top + (NOTE_HEIGHT - 8 - chip_height) / 2;
-        let chip_style = if done {
-            PrimitiveStyle::with_fill(BinaryColor::On)
-        } else {
-            PrimitiveStyle::with_stroke(BinaryColor::On, 2)
-        };
-        Rectangle::new(
-            Point::new(chip_left, chip_top),
-            Size::new(chip_width as u32, chip_height as u32),
-        )
-        .into_styled(chip_style)
-        .draw(display)?;
-        Text::new(
-            text,
-            Point::new(chip_left + 8, chip_top + 18),
-            chip_text_style,
-        )
-        .draw(display)?;
+        // Mockup `.st` chips on the note rows (`SUMMARY ✓`, …).
+        let chip_style = card_text(state.display, done, UiTextRole::Body);
+        let chip = Chip::new(text, done);
+        let chip_w = chip_width(chip_style, &chip);
+        let chip_h = chip_height(chip_style);
+        let chip_left = CARD_RIGHT - 12 - chip_w;
+        let chip_top = top + (NOTE_HEIGHT - 8 - chip_h) / 2;
+        draw_chip(display, Point::new(chip_left, chip_top), chip_style, &chip)?;
         // The title and meta stop before the chip, with a gap.
-        (width - chip_width - 12, width - chip_width - 12)
+        (width - chip_w - 12, width - chip_w - 12)
     } else {
         (width, width)
     };
@@ -569,5 +555,30 @@ mod d28_tests {
         assert_eq!(state.category_selection(ScreenRoute::Ai), 2);
         let mut frame = FrameBuffer::new_white();
         render_current_screen(&mut frame, &state).unwrap();
+    }
+
+    /// D85: note rows carry the mockup's status chips (`SUMMARY ✓`, …) and
+    /// the page still ends above the bottom bar (752).
+    #[test]
+    fn note_rows_draw_status_chips() {
+        let mut state = hub_state(vec![note(
+            "NOTE_001.WAV",
+            "Team meeting: Q4 budget",
+            "2026-10-02  12:04:00",
+            1_080,
+        )]);
+        state.voice_notes.notes[0].ai_state = Some(crate::voice_note_record::NoteState::Done);
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, &state).unwrap();
+        let ink = |x: i32, y: i32| frame.is_black(Point::new(y, 479 - x)) == Some(true);
+        let mut chip_ink = 0_u32;
+        for y in 300..380 {
+            for x in 340..460 {
+                if ink(x, y) {
+                    chip_ink += 1;
+                }
+            }
+        }
+        assert!(chip_ink > 40, "status chip ink, found {chip_ink}");
     }
 }
