@@ -834,10 +834,7 @@ pub fn elapsed_label(seconds: u32) -> String {
 #[must_use]
 pub fn recording_info_lines(voice: &crate::voice_notes::VoiceNotesUiState) -> Vec<String> {
     let written = u64::from(voice.pcm_bytes) + 44;
-    let first = format!(
-        "Audio · 16 kHz mono · {} so far",
-        size_one_decimal(written)
-    );
+    let first = format!("Audio · 16 kHz mono · {} so far", size_one_decimal(written));
     let Some(free) = voice
         .available_storage_bytes
         .map(|available| available.saturating_sub(written))
