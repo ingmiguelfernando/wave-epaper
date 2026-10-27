@@ -17,7 +17,7 @@ use anyhow::{anyhow, Result};
 
 use super::{
     cache::{self, cache_file, PreparedPhoto},
-    image::{decode_jpeg, PhotoFit},
+    image::{decode_photo, PhotoFit},
 };
 use crate::watchdog::Pacer;
 
@@ -192,7 +192,7 @@ fn prepare_file(photos: &Path, cache: &Path, job: &PhotoJob) -> Result<()> {
         return Ok(());
     }
     let file = File::open(photos.join(&job.name)).map_err(|_| anyhow!("could not be read"))?;
-    let photo = decode_jpeg(BufReader::new(PacedReader::new(file)))?;
+    let photo = decode_photo(BufReader::new(PacedReader::new(file)))?;
     let mut pacer = Pacer::start();
     let thumbnail = photo.thumbnail();
     pacer.pace();

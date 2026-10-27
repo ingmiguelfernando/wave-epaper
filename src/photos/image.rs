@@ -1,7 +1,10 @@
 //! Photo decoding and conversion for the panel: grey levels, upright
 //! orientation, area-average scaling, a contrast stretch and dithering.
 
-use std::{io::Read, ops::Range};
+use std::{
+    io::{BufRead, Read},
+    ops::Range,
+};
 
 use anyhow::{anyhow, bail, Result};
 use embedded_graphics::prelude::Point;
@@ -193,6 +196,18 @@ impl GreyPhoto {
     }
 }
 
+/// Decode a JPEG or a PNG, told apart by their first bytes.
+pub fn decode_photo(mut reader: impl BufRead) -> Result<GreyPhoto> {
+    let is_png = reader
+        .fill_buf()
+        .is_ok_and(|start| start.starts_with(&super::png::SIGNATURE));
+    if is_png {
+        super::png::decode_png(reader)
+    } else {
+        decode_jpeg(reader)
+    }
+}
+
 /// Decode a JPEG at the smallest scale that still covers the screen. Errors
 /// complete a sentence that starts with the file name.
 pub fn decode_jpeg(reader: impl Read) -> Result<GreyPhoto> {
@@ -206,7 +221,7 @@ pub fn decode_jpeg(reader: impl Read) -> Result<GreyPhoto> {
     let pixels = usize::from(info.width) * usize::from(info.height);
     let sequential = matches!(info.coding_process, CodingProcess::DctSequential);
     if !sequential && pixels > MAX_PROGRESSIVE_PIXELS {
-        bail!("is a progressive JPEG; save it as a standard JPEG");
+        bail!("is a progressive JPEG over 1 MP; add it with Photos in the Wi-Fi portal");
     }
     decoder.set_max_decoding_buffer_size(MAX_DECODED_BYTES);
     let (width, height) = decoder
@@ -289,11 +304,23 @@ fn first_beyond(
 mod tests {
     use std::io::Cursor;
 
-    use super::{decode_jpeg, stretch_levels, GreyPhoto, PhotoFit};
+    use super::{decode_jpeg, decode_photo, stretch_levels, GreyPhoto, PhotoFit};
     use crate::photos::{
         exif::Orientation,
         test_photos::{color_jpeg, grey_jpeg, progressive_jpeg},
     };
+
+    #[test]
+    fn jpegs_and_pngs_are_told_apart_by_their_first_bytes() {
+        use crate::photos::png::test_png::png;
+        let jpeg = decode_photo(Cursor::new(grey_jpeg(96, 64, None))).unwrap();
+        assert_eq!(jpeg.upright_size(), (96, 64));
+        let png = png(40, 30, 0, 1, |x, _| vec![x as u8], None);
+        let png = decode_photo(Cursor::new(png)).unwrap();
+        assert_eq!(png.upright_size(), (40, 30));
+        let error = decode_photo(Cursor::new(b"neither")).err().unwrap();
+        assert_eq!(error.to_string(), "is not a readable JPEG");
+    }
 
     #[test]
     fn decodes_grey_and_color_jpegs() {

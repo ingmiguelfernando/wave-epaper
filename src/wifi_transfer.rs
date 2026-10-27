@@ -347,6 +347,9 @@ body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}butt
 <label>Session code <input id="code" maxlength="6"><button onclick="saveCode()">Unlock</button></label>
 <p><button onclick="loadList('/')">Home</button><button onclick="loadList(current)">Refresh</button></p>
 <p>Path: <code id="path">/</code></p><div id="list"></div>
+<h2>Photos</h2>
+<p>Pick photos on this phone or computer, in any format the browser opens (iPhone photos included). The browser turns each one upright, shrinks it to at most 1600 pixels on its long side and sends it as a standard JPEG to <code>/PHOTOS</code>. The device prepares it for the screen the next time Photos opens.</p>
+<input id="photos" type="file" accept="image/*" multiple><button onclick="sendPhotos()">Add photos</button>
 <h2>Upload</h2><input id="file" type="file"><input id="name" placeholder="Optional new name"><button onclick="upload()">Upload</button>
 <h2>Folder</h2><input id="folder" placeholder="Folder name"><button onclick="mkdir()">Create folder</button>
 <h2>AI keys</h2>
@@ -378,6 +381,23 @@ a.appendChild(button('Rename',()=>renamePath(p)));a.appendChild(button('Delete',
 document.getElementById('list').replaceChildren(table);status('Ready')}catch(e){status(e.message)}}
 function up(){let p=current.split('/').filter(Boolean);p.pop();loadList('/'+p.join('/'))}
 async function upload(){try{let f=document.getElementById('file').files[0];let n=document.getElementById('name').value||f.name;await api('/api/upload?path='+enc(join(n)),{method:'POST',body:f});status('Upload complete');loadList(current)}catch(e){status(e.message)}}
+const PHOTO_SIDE=1600;
+function openImage(f){return new Promise((ok,no)=>{let u=URL.createObjectURL(f),i=new Image();i.onload=()=>{URL.revokeObjectURL(u);ok(i)};i.onerror=()=>{URL.revokeObjectURL(u);no(Error('this browser cannot open it'))};i.src=u})}
+function draw(src,w,h){let c=document.createElement('canvas');c.width=w;c.height=h;let x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,w,h);return c}
+// Upright (the browser applies the EXIF turn), halved in steps so detail survives, then one last scale to the long side.
+async function photoJpeg(f){let img;try{img=await createImageBitmap(f,{imageOrientation:'from-image'})}catch(e){img=await openImage(f)}
+let src=img,w=img.width,h=img.height;while(Math.max(w,h)/2>=PHOTO_SIDE){w=Math.round(w/2);h=Math.round(h/2);src=draw(src,w,h)}
+let s=Math.min(1,PHOTO_SIDE/Math.max(w,h));let c=draw(src,Math.max(1,Math.round(w*s)),Math.max(1,Math.round(h*s)));if(img.close)img.close();
+return await new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(Error('could not be converted')),'image/jpeg',0.92))}
+function two(n){return String(n).padStart(2,'0')}
+function photoName(f,taken){let base=f.name.replace(/\.[^.]*$/,'').replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim().slice(0,60);
+if(!base||/^(image|photo|img)$/i.test(base)){let d=new Date(f.lastModified||Date.now());base='IMG_'+d.getFullYear()+two(d.getMonth()+1)+two(d.getDate())+'_'+two(d.getHours())+two(d.getMinutes())+two(d.getSeconds())}
+let name=base+'.jpg',n=2;while(taken.has(name.toLowerCase())){name=base+'-'+n+'.jpg';n++}taken.add(name.toLowerCase());return name}
+async function sendPhotos(){let files=[...document.getElementById('photos').files];if(!files.length){status('Pick one or more photos first.');return}
+let taken=new Set();try{for(let e of JSON.parse(await api('/api/list?path='+enc('/PHOTOS'))))taken.add(e.name.toLowerCase())}catch(e){try{await api('/api/mkdir?path='+enc('/PHOTOS'),{method:'POST'})}catch(e2){}}
+let done=0,failed=[];for(let [i,f] of files.entries()){try{status('Photo '+(i+1)+' of '+files.length+': preparing '+f.name+'...');let jpeg=await photoJpeg(f);let name=photoName(f,taken);
+status('Photo '+(i+1)+' of '+files.length+': sending '+name+' ('+Math.round(jpeg.size/1024)+' KB)...');await api('/api/upload?path='+enc('/PHOTOS/'+name),{method:'POST',body:jpeg});done++}catch(e){failed.push(f.name+': '+e.message)}}
+document.getElementById('photos').value='';status(done+' of '+files.length+' photos added to /PHOTOS. Open Photos on the device to see them.'+(failed.length?'\nNot added:\n'+failed.join('\n'):''));if(current==='/PHOTOS')loadList(current)}
 async function mkdir(){try{await api('/api/mkdir?path='+enc(join(document.getElementById('folder').value)),{method:'POST'});status('Folder created');loadList(current)}catch(e){status(e.message)}}
 async function renamePath(p){try{let n=prompt('New name');if(!n)return;let parent=p.substring(0,p.lastIndexOf('/'))||'/';let to=(parent==='/'?'/':parent+'/')+n;await api('/api/rename?from='+enc(p)+'&to='+enc(to),{method:'POST'});status('Renamed');loadList(current)}catch(e){status(e.message)}}
 async function del(p){try{await api('/api/delete?path='+enc(p),{method:'POST'});status('Deleted');loadList(current)}catch(e){status(e.message)}}

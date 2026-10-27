@@ -53,8 +53,12 @@ OTA updates are not implemented yet.
 
 ## Photos
 
-Copy JPEG photos into `/RUSTMIX/PHOTOS` on the SD card, with a computer or
-the Wi-Fi file transfer (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
+The easiest way: start **Wi-Fi Transfer** (Network screen), open the portal
+on your phone or computer and use **Photos › Add photos**. Pick any photos the
+browser opens, iPhone ones included; the browser turns each one upright,
+shrinks it to 1600 pixels on its long side and sends it as a standard JPEG.
+You can also copy JPEG or PNG files into `/RUSTMIX/PHOTOS` on the card
+(details in [SD-card setup](SD_CARD_SETUP.md#photos)).
 
 - **Gallery.** Six thumbnails per page, newest first. Up/Down moves through
   the photos across pages; Select opens the viewer; short BOOT stars or
@@ -64,7 +68,8 @@ the Wi-Fi file transfer (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
 - **Preparation.** Each photo is prepared once while Photos is open, a few
   seconds for a 12 MP photo, and its thumbnail appears when ready. The keys
   keep working meanwhile. A photo that cannot be used says why, for example a
-  progressive JPEG over 1 megapixel.
+  progressive JPEG over 1 megapixel copied to the card (add it through the
+  portal instead).
 - **Viewer.** The photo fills the screen as set by Settings › Sleep screen ›
   Fit. Up/Down shows the previous or next photo; short BOOT stars; Select
   opens the actions; hold BOOT returns to the gallery.

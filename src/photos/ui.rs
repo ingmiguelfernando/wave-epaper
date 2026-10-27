@@ -156,7 +156,7 @@ impl PhotosUiState {
             Ok(photos) => {
                 self.note = photos
                     .is_empty()
-                    .then(|| format!("No JPEG photos in {folder}"));
+                    .then(|| format!("No photos in {folder}"));
                 self.photos = photos;
             }
             Err(error) => {
@@ -530,7 +530,7 @@ mod tests {
     fn empty_and_missing_folders_explain_themselves() {
         let mut state = gallery("empty", 0);
         let note = state.note.clone().unwrap();
-        assert!(note.starts_with("No JPEG photos in"), "{note}");
+        assert!(note.starts_with("No photos in"), "{note}");
         let _ = fs::remove_dir_all(state.photos_directory());
         state.refresh();
         assert!(state.note.unwrap().ends_with("folder on the SD card"));

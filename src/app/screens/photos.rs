@@ -104,8 +104,9 @@ fn draw_empty(
     let heading = state.display.heading_style();
     let body = state.display.body_style();
     Text::new(note, Point::new(22, 200), heading).draw(display)?;
-    let help = "Copy JPEG photos into a PHOTOS folder at the top of the SD card. \
-                Each one is prepared once, then shows here.";
+    let help = "Add photos with Photos in the Wi-Fi portal, or copy JPEG or PNG \
+                files into a PHOTOS folder at the top of the SD card. Each one is \
+                prepared once, then shows here.";
     let mut baseline = 250;
     for line in body.wrap(help, 436) {
         Text::new(&line, Point::new(22, baseline), body).draw(display)?;
