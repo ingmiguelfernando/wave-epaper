@@ -52,7 +52,17 @@ bottom bar. **Tests:** a probe per screen and size that no ink is under the
 bar's top line outside the bar, and that a 32-byte name does not reach the
 right edge. Say where each page's content ends.
 
-**Status:** to do.
+**Status:** done on `side-tasks-22`. Every value, row, last request and error
+on the four pages is cut with `…` to the 22 to 458 px column (a `· joined`
+row keeps its mark); the y values were already apart enough at the Large
+size, so they stay. Previews: `network`, `network-details`, `wifi-setup`,
+`wifi-transfer` and their `-compact` and `-large` versions, with six saved
+networks, one of them 32 bytes. Tests, for both families and the three
+sizes: under the bar's top line there is only the bar and content ends at
+least 8 px above it; a 32-byte name in the widest letter (`W` × 32) changes
+nothing right of 462 px. Where content ends: Network at 636 (the third
+action box), Network details at the Last error line (baseline 656), the setup
+and the portal pages at 692 (the Done / Stop box); the bar starts at 752.
 
 ### D89: Forget a network on the device
 

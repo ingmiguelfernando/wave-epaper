@@ -22,6 +22,12 @@ use crate::{
     orientation::OrientedFrameBuffer,
 };
 
+/// Text starts here and boxes end at [`RIGHT`].
+const LEFT: i32 = 22;
+const RIGHT: i32 = 458;
+/// Values of the label/value lines start here.
+const VALUE_X: i32 = 176;
+
 const STOP_HINTS: [(KeyCap, &str); 2] = [
     (KeyCap::Select, "stop"),
     (KeyCap::Boot, "hold: stop + back"),
@@ -124,11 +130,11 @@ pub fn render_wifi_transfer(
     line(display, 332, "Root", "/RUSTMIX", body)?;
 
     Text::new("Last request", Point::new(22, 412), heading).draw(display)?;
-    Text::new(&transfer.last_action, Point::new(22, 460), detail).draw(display)?;
+    full_line(display, 460, &transfer.last_action, detail)?;
     let bytes = format!("{} bytes", transfer.last_bytes);
-    Text::new(&bytes, Point::new(22, 500), detail).draw(display)?;
+    full_line(display, 500, &bytes, detail)?;
     if let Some(error) = transfer.error.as_deref() {
-        Text::new(error, Point::new(22, 548), detail).draw(display)?;
+        full_line(display, 548, error, detail)?;
     }
 
     draw_action(display, 640, "Stop and return", true, body)?;
@@ -175,9 +181,9 @@ fn render_wifi_setup(
     Text::new("3 Scan, pick the network, type", Point::new(22, 340), body).draw(display)?;
     Text::new("its password and save.", Point::new(22, 380), body).draw(display)?;
     Text::new("Saved", Point::new(22, 440), heading).draw(display)?;
-    Text::new(&transfer.last_action, Point::new(22, 488), detail).draw(display)?;
+    full_line(display, 488, &transfer.last_action, detail)?;
     if let Some(error) = transfer.error.as_deref() {
-        Text::new(error, Point::new(22, 536), detail).draw(display)?;
+        full_line(display, 536, error, detail)?;
     }
     draw_action(display, 640, "Done", true, body)?;
     draw_bottom_bar(display, state.display, &STOP_HINTS)?;
@@ -209,7 +215,8 @@ pub fn render_network_details(
     Text::new("Known networks", Point::new(22, 164), heading).draw(display)?;
     let rows = network_rows(state);
     for (index, row) in rows.iter().enumerate() {
-        Text::new(row, Point::new(22, 208 + 36 * index as i32), body).draw(display)?;
+        let row = fit_row(body, row, RIGHT - LEFT);
+        Text::new(&row, Point::new(LEFT, 208 + 36 * index as i32), body).draw(display)?;
     }
     Text::new(
         "Save more in the Wi-Fi portal.",
@@ -230,10 +237,12 @@ pub fn render_network_details(
     line(display, 558, "NTP server", &network.ntp_server, body)?;
 
     Text::new("Last error", Point::new(22, 620), heading).draw(display)?;
-    Text::new(error, Point::new(22, 656), detail).draw(display)?;
+    full_line(display, 656, error, detail)?;
     draw_bottom_bar(display, state.display, &BACK_HINTS)?;
     Ok(())
 }
+
+const JOINED: &str = " · joined";
 
 /// `WIFI.TXT` first, then the saved networks, at most five rows; the one the
 /// radio joined is marked.
@@ -242,7 +251,7 @@ pub(crate) fn network_rows(state: &AppState) -> Vec<String> {
     let joined = state.network.ssid.as_deref();
     let mark = |name: &str| {
         if joined == Some(name) && state.network.wifi_state == WifiConnectionState::Connected {
-            format!("{name} · joined")
+            format!("{name}{JOINED}")
         } else {
             name.to_owned()
         }
@@ -266,9 +275,52 @@ fn line(
     value: &str,
     style: UiTextStyle,
 ) -> Result<(), Infallible> {
-    Text::new(label, Point::new(22, y), style).draw(display)?;
-    Text::new(value, Point::new(176, y), style).draw(display)?;
+    Text::new(label, Point::new(LEFT, y), style).draw(display)?;
+    let value = cut(style, value, RIGHT - VALUE_X);
+    Text::new(&value, Point::new(VALUE_X, y), style).draw(display)?;
     Ok(())
+}
+
+/// One line from the left margin to the right one, cut if longer.
+fn full_line(
+    display: &mut OrientedFrameBuffer<'_>,
+    y: i32,
+    text: &str,
+    style: UiTextStyle,
+) -> Result<(), Infallible> {
+    let text = cut(style, text, RIGHT - LEFT);
+    Text::new(&text, Point::new(LEFT, y), style).draw(display)?;
+    Ok(())
+}
+
+/// `text` as is when it fits `max_width`, or cut with `…`.
+pub(crate) fn cut(style: UiTextStyle, text: &str, max_width: i32) -> String {
+    if style.text_width(text) <= max_width {
+        return text.to_owned();
+    }
+    let budget = max_width - style.text_width("…");
+    let mut width = 0;
+    let mut kept = String::new();
+    for character in text.chars() {
+        width += style.char_advance(character);
+        if width > budget {
+            break;
+        }
+        kept.push(character);
+    }
+    kept.push('…');
+    kept
+}
+
+/// A known-network row cut to `max_width`, keeping its ` · joined` mark.
+fn fit_row(style: UiTextStyle, row: &str, max_width: i32) -> String {
+    match row.strip_suffix(JOINED) {
+        Some(name) => {
+            let name = cut(style, name, max_width - style.text_width(JOINED));
+            format!("{name}{JOINED}")
+        }
+        None => cut(style, row, max_width),
+    }
 }
 
 fn draw_action(
@@ -291,13 +343,17 @@ fn draw_action(
         style,
     )
     .draw(display)?;
-    Text::new(label, Point::new(68, top + 34), style).draw(display)?;
+    let label = cut(style, label, RIGHT - 68 - 12);
+    Text::new(&label, Point::new(68, top + 34), style).draw(display)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{network_rows, render_network, render_network_details, render_wifi_transfer};
+    use super::{
+        cut, fit_row, network_rows, render_network, render_network_details, render_wifi_transfer,
+        JOINED, RIGHT,
+    };
     use crate::{app::AppState, framebuffer::FrameBuffer, orientation::OrientedFrameBuffer};
 
     #[test]
@@ -310,9 +366,168 @@ mod tests {
         render_wifi_transfer(&mut display, &state).unwrap();
     }
 
+    use crate::app::{
+        display::{DisplayPreferences, UiFontFamily, UiFontSize},
+        render_current_screen,
+        widgets::bottom_bar::{draw_bottom_bar, KeyCap, BACK_HINTS, BOTTOM_BAR_TOP, OPEN_HINTS},
+        ScreenRoute,
+    };
+    use crate::network::WifiConnectionState;
+    use crate::orientation::DisplayOrientation;
+    use crate::wifi_transfer::{WifiTransferSnapshot, WifiTransferState};
+    use embedded_graphics::prelude::Point;
+
+    /// 32 bytes, the longest Wi-Fi name, in the widest letter.
+    const LONG: &str = "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW";
+    const SHORT: &str = "Home";
+
+    #[derive(Clone, Copy, Debug)]
+    enum Page {
+        Network,
+        Details,
+        Setup,
+        Transfer,
+    }
+    const PAGES: [Page; 4] = [Page::Network, Page::Details, Page::Setup, Page::Transfer];
+
+    /// The page with every name `name`: the joined network, six saved ones,
+    /// the setup and portal lines and an error.
+    fn page_state(page: Page, preferences: DisplayPreferences, name: &str) -> AppState {
+        let mut state = AppState::default();
+        state.display = preferences;
+        state.network.wifi_state = WifiConnectionState::Connected;
+        state.network.ssid = Some(name.into());
+        state.network.ipv4_address = Some("192.168.100.200".into());
+        state.network.rssi_dbm = Some(-67);
+        state.network.error = Some(format!("{name} refused the password {name}"));
+        state.saved_networks = (0..6).map(|n| format!("{name}{n}")).collect();
+        state.saved_networks[0] = name.into();
+        let transfer = WifiTransferSnapshot {
+            state: WifiTransferState::Ready,
+            url: Some("http://192.168.100.200/".into()),
+            code: Some("12345678".into()),
+            last_action: format!("Saved {name}"),
+            last_bytes: 1_234_567,
+            error: Some(format!("{name} could not be saved, try again")),
+            access_point: None,
+        };
+        match page {
+            Page::Network => state.router.navigate_to(ScreenRoute::Network),
+            Page::Details => state.router.navigate_to(ScreenRoute::NetworkDetails),
+            Page::Setup => {
+                state.wifi_transfer = WifiTransferSnapshot {
+                    access_point: Some("Wave-3FA2".into()),
+                    url: Some("http://192.168.4.1/".into()),
+                    ..transfer
+                };
+                state.router.navigate_to(ScreenRoute::WifiTransfer);
+            }
+            Page::Transfer => {
+                state.wifi_transfer = transfer;
+                state.router.navigate_to(ScreenRoute::WifiTransfer);
+            }
+        }
+        state
+    }
+
+    fn hints(page: Page) -> &'static [(KeyCap, &'static str)] {
+        match page {
+            Page::Network => &OPEN_HINTS,
+            Page::Details => &BACK_HINTS,
+            Page::Setup | Page::Transfer => &super::STOP_HINTS,
+        }
+    }
+
+    fn render(state: &AppState) -> FrameBuffer {
+        let mut frame = FrameBuffer::new_white();
+        render_current_screen(&mut frame, state).unwrap();
+        frame
+    }
+
+    /// Logical portrait (x, y) is native (y, 479 - x).
+    fn ink(frame: &FrameBuffer, x: i32, y: i32) -> bool {
+        frame.is_black(Point::new(y, 479 - x)) == Some(true)
+    }
+
+    fn every_preference() -> Vec<DisplayPreferences> {
+        let mut all = Vec::new();
+        for font_family in UiFontFamily::ALL {
+            for font_size in UiFontSize::ALL {
+                all.push(DisplayPreferences {
+                    font_family,
+                    font_size,
+                });
+            }
+        }
+        all
+    }
+
+    /// D88: under the bar's top line there is only the bar.
+    #[test]
+    fn nothing_but_the_bar_is_drawn_under_its_top_line() {
+        for preferences in every_preference() {
+            let mut bar = FrameBuffer::new_white();
+            for page in PAGES {
+                bar.clear_white();
+                let mut display = OrientedFrameBuffer::new(&mut bar, DisplayOrientation::Portrait);
+                draw_bottom_bar(&mut display, preferences, hints(page)).unwrap();
+                drop(display);
+                let screen = render(&page_state(page, preferences, LONG));
+                for y in BOTTOM_BAR_TOP..800 {
+                    for x in 0..480 {
+                        assert!(
+                            !ink(&screen, x, y) || ink(&bar, x, y),
+                            "{page:?} {preferences:?}: ink at ({x}, {y}) under the bar"
+                        );
+                    }
+                }
+                let last = (0..BOTTOM_BAR_TOP)
+                    .rev()
+                    .find(|&y| (0..480).any(|x| ink(&screen, x, y)))
+                    .unwrap();
+                assert!(
+                    last < BOTTOM_BAR_TOP - 8,
+                    "{page:?} {preferences:?}: content ends at {last}"
+                );
+            }
+        }
+    }
+
+    /// D88: a 32-byte name is cut before the right margin on every page (a
+    /// last glyph may overhang its advance by a pixel or two).
+    #[test]
+    fn a_32_byte_name_stops_before_the_right_edge() {
+        for preferences in every_preference() {
+            for page in PAGES {
+                let short = render(&page_state(page, preferences, SHORT));
+                let long = render(&page_state(page, preferences, LONG));
+                for y in 0..BOTTOM_BAR_TOP {
+                    for x in RIGHT + 4..480 {
+                        assert_eq!(
+                            ink(&short, x, y),
+                            ink(&long, x, y),
+                            "{page:?} {preferences:?}: the long name reaches ({x}, {y})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn long_text_is_cut_with_an_ellipsis_and_keeps_the_joined_mark() {
+        let style = DisplayPreferences::default().body_style();
+        assert_eq!(cut(style, SHORT, 400), SHORT);
+        let cut_long = cut(style, LONG, 200);
+        assert!(cut_long.ends_with('…'));
+        assert!(style.text_width(&cut_long) <= 200);
+        let row = fit_row(style, &format!("{LONG}{JOINED}"), 300);
+        assert!(row.ends_with(&format!("…{JOINED}")));
+        assert!(style.text_width(&row) <= 300);
+    }
+
     #[test]
     fn known_networks_list_marks_the_joined_one_and_folds_the_rest() {
-        use crate::network::WifiConnectionState;
         let mut state = AppState::default();
         assert_eq!(network_rows(&state), ["None saved (only WIFI.TXT)"]);
         state.saved_networks = vec!["Home".into(), "Phone".into()];
