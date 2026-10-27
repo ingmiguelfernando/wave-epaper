@@ -208,6 +208,20 @@ fn render_wifi_setup(
     if let Some(error) = transfer.error.as_deref() {
         full_line(display, 536, error, detail)?;
     }
+    // A phone joined to this Wi-Fi stops sharing its hotspot; the device
+    // only hears 2.4 GHz.
+    full_line(
+        display,
+        584,
+        "Phone hotspot: Maximize Compatibility on,",
+        detail,
+    )?;
+    full_line(
+        display,
+        608,
+        "Hotspot screen open until the device joins.",
+        detail,
+    )?;
     draw_action(display, 640, "Done", true, body)?;
     draw_bottom_bar(display, state.display, &STOP_HINTS)?;
     Ok(())

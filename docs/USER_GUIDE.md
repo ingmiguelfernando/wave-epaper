@@ -272,6 +272,14 @@ for more. Press **Done** on the device: it stops its Wi-Fi and tries the saved
 networks. It also ends by itself after ten idle minutes, on sleep, or with
 BOOT held. It needs the radio started once, so `WIFI.TXT` or one saved network
 must exist.
+To add the hotspot of the phone you set up with: the phone stops sharing its
+hotspot while it is joined to `Wave-XXXX`, so the hotspot may be missing from
+the list. Turn on Personal Hotspot before you start (on iPhone 12 or later also
+**Maximize Compatibility**: the device only hears 2.4 GHz), type the name
+exactly as the phone shows it in Settings › General › About › Name (an iPhone
+uses a curly apostrophe, `Miguel’s iPhone`), then press **Done** and keep the
+Personal Hotspot screen open until the device joins. The device only joins a
+saved network it can hear.
 Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Known networks**
 lists the known networks (names only); adding or removing one is
 done in the portal. Save the hotspot while you are at home, then it works

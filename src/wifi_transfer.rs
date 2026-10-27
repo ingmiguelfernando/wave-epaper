@@ -503,6 +503,7 @@ loadList('/');keys();nets();
 body{font-family:sans-serif;max-width:600px;margin:1.5rem auto;padding:0 1rem}button,input,select{padding:.7rem;margin:.2rem;font-size:1rem;max-width:100%}pre{white-space:pre-wrap;background:#f4f4f4;padding:1rem}
 </style></head><body><h1>Wave Wi-Fi setup</h1>
 <p>Pick the network the device should join (your phone's hotspot, a friend's Wi-Fi) and type its password. It is stored encrypted on the device and never shown again. The device tries all saved networks and joins the strongest it hears.</p>
+<p><b>Adding this phone's hotspot?</b> While the phone is joined to this setup Wi-Fi it stops sharing its hotspot, so the hotspot may be missing from the list: type its name. Turn on Personal Hotspot first; on iPhone 12 or later also turn on <i>Maximize Compatibility</i>, because the device only hears 2.4&nbsp;GHz. Type the name exactly as the phone shows it in Settings &rsaquo; General &rsaquo; About &rsaquo; Name; an iPhone uses a curly apostrophe (Miguel&rsquo;s iPhone, not Miguel's iPhone). Then press Done on the device and keep the Personal Hotspot screen open until the device joins.</p>
 <p><button onclick="scanNets(true)">Scan again</button></p>
 <p><select id="found" size="6" style="width:100%"></select></p>
 <input id="ssid" placeholder="Network name"><input id="pass" type="password" autocomplete="off" placeholder="Password (empty if open)"><button onclick="saveNet()">Save network</button>
