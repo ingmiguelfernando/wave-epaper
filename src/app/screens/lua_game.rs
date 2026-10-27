@@ -24,7 +24,6 @@ use crate::{
     },
     games::{
         canvas::{CanvasTextStyle, DrawCommand},
-        minesweeper::MinesweeperMode,
         sudoku::SudokuStep,
     },
     lua_runtime::{event_bridge::LuaEventBridge, LUA_CATALOG_PAGE_SIZE},
@@ -48,19 +47,6 @@ const SUDOKU_NUMBER_HINTS: [(KeyCap, &str); 3] = [
     (KeyCap::UpDown, "number"),
     (KeyCap::Select, "place"),
     (KeyCap::Boot, "back"),
-];
-
-const MINESWEEPER_HINTS: [(KeyCap, &str); 4] = [
-    (KeyCap::UpDown, "move"),
-    (KeyCap::Select, "action"),
-    (KeyCap::Boot, "H/V"),
-    (KeyCap::Boot, "hold: back"),
-];
-
-const MINESWEEPER_ACTION_HINTS: [(KeyCap, &str); 3] = [
-    (KeyCap::UpDown, "action"),
-    (KeyCap::Select, "apply"),
-    (KeyCap::Boot, "cancel"),
 ];
 
 const TETRIS_HINTS: [(KeyCap, &str); 3] = [
@@ -131,7 +117,7 @@ pub fn render_lua_apps(
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
             .draw(display)?;
         Text::new("No Lua apps found.", Point::new(44, 300), heading).draw(display)?;
-        Text::new("Install /RUSTMIX/APPS/HGRID", Point::new(44, 350), body).draw(display)?;
+        Text::new("Install /RUSTMIX/APPS/SUDOKU", Point::new(44, 350), body).draw(display)?;
         Text::new(
             catalog.warning.as_deref().unwrap_or("Catalog is empty"),
             Point::new(44, 400),
@@ -223,10 +209,6 @@ fn game_hints(session: &crate::lua_runtime::LuaAppSession) -> &'static [(KeyCap,
             SudokuStep::Row => &SUDOKU_ROW_HINTS,
             SudokuStep::Cell => &SUDOKU_CELL_HINTS,
             SudokuStep::Number => &SUDOKU_NUMBER_HINTS,
-        },
-        LuaEventBridge::Minesweeper(game) => match game.mode() {
-            MinesweeperMode::Navigate => &MINESWEEPER_HINTS,
-            MinesweeperMode::Action => &MINESWEEPER_ACTION_HINTS,
         },
         LuaEventBridge::Tetris(_) => &TETRIS_HINTS,
         // The mode list chooses, as Sudoku's start list does.

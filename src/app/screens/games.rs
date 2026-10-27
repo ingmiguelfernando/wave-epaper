@@ -545,12 +545,12 @@ mod d25_tests {
             true,
         );
         assert!(state.lua_runtime.catalog.is_available());
-        // The cards sort by name: Hello Grid, Minesweeper, Race, Sudoku,
-        // Tetris. Move to Tetris (5th card) and play it.
-        for _ in 0..4 {
+        // The cards sort by name: Dice, Race, Sudoku, Tetris. Move to
+        // Tetris (4th card) and play it.
+        for _ in 0..3 {
             state.apply(crate::buttons::ButtonEvent::Down);
         }
-        assert_eq!(state.category_selection(ScreenRoute::Games), 4);
+        assert_eq!(state.category_selection(ScreenRoute::Games), 3);
         state.apply(crate::buttons::ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::LuaGame);
         assert!(state.lua_runtime.session.is_some());
@@ -570,10 +570,8 @@ mod d25_tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS"),
             true,
         );
-        // Race is the fourth card in the sample catalog (Dice, Hello Grid,
-        // Minesweeper, Race, Sudoku, Tetris).
-        state.apply(ButtonEvent::Down);
-        state.apply(ButtonEvent::Down);
+        // Race is the second card in the sample catalog (Dice, Race, Sudoku,
+        // Tetris).
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         assert_eq!(state.active_route(), ScreenRoute::LuaGame);
