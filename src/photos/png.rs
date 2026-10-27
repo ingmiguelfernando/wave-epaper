@@ -264,7 +264,11 @@ fn unfilter(filter: u8, step: usize, row: &mut [u8], above: &[u8]) -> Result<()>
         }
         3 => {
             for i in 0..row.len() {
-                let left = if i >= step { u16::from(row[i - step]) } else { 0 };
+                let left = if i >= step {
+                    u16::from(row[i - step])
+                } else {
+                    0
+                };
                 let average = ((left + u16::from(above[i])) / 2) as u8;
                 row[i] = row[i].wrapping_add(average);
             }
@@ -521,14 +525,7 @@ mod tests {
     #[test]
     fn palettes_and_transparency_land_on_white() {
         let palette = [[0, 0, 0], [255, 255, 255]];
-        let file = png(
-            8,
-            4,
-            3,
-            1,
-            |x, _| vec![u8::from(x >= 4)],
-            Some(&palette),
-        );
+        let file = png(8, 4, 3, 1, |x, _| vec![u8::from(x >= 4)], Some(&palette));
         let photo = decode_png(Cursor::new(file)).unwrap();
         let grey = photo.resample(8, 4, super::super::image::PhotoFit::Whole);
         assert_eq!((grey[0], grey[7]), (0, 255));
@@ -552,7 +549,10 @@ mod tests {
     fn damaged_and_unsupported_files_say_why() {
         let reason = |bytes: Vec<u8>| decode_png(Cursor::new(bytes)).err().unwrap().to_string();
         assert_eq!(reason(b"PNG".to_vec()), "is a truncated PNG");
-        assert_eq!(reason(b"0123456789abcdef".to_vec()), "is not a readable PNG");
+        assert_eq!(
+            reason(b"0123456789abcdef".to_vec()),
+            "is not a readable PNG"
+        );
         let mut cut = png(32, 32, 0, 0, |x, _| vec![x as u8], None);
         cut.truncate(cut.len() - 30);
         assert!(reason(cut).contains("PNG"));

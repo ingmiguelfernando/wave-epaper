@@ -154,9 +154,7 @@ impl PhotosUiState {
         let folder = self.folder_label();
         match scan_photos(&self.photos_directory) {
             Ok(photos) => {
-                self.note = photos
-                    .is_empty()
-                    .then(|| format!("No photos in {folder}"));
+                self.note = photos.is_empty().then(|| format!("No photos in {folder}"));
                 self.photos = photos;
             }
             Err(error) => {
