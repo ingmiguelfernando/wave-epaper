@@ -1,7 +1,7 @@
 //! Bounded SD Lua event bridge.
 //!
 //! Static bootstrap drawing remains available. Rust owns mutable Sudoku,
-//! Minesweeper and Tetris state, redraw decisions
+//! Tetris, Race and Dice state, redraw decisions
 //! and hardware-facing input. SD declarations never receive raw QMI8658 or
 //! panel access.
 
@@ -11,7 +11,6 @@ use crate::{
         canvas::NativeGameCanvas,
         dice_app::{DiceApp, DiceEventResult},
         dice_session::Options as DiceOptions,
-        minesweeper::{MinesweeperEventResult, MinesweeperGame},
         race::{RaceApp, RaceEventResult, RaceMode, RaceStart},
         sudoku::{SudokuEventResult, SudokuGame},
         tetris::{TetrisApp, TetrisEventResult, TetrisMode, TetrisStart},
@@ -21,7 +20,6 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LuaGameEventResult {
     Sudoku(SudokuEventResult),
-    Minesweeper(MinesweeperEventResult),
     Tetris(TetrisEventResult),
     Race(RaceEventResult),
     Dice(DiceEventResult),
@@ -31,7 +29,6 @@ impl LuaGameEventResult {
     pub const fn bridge_marker(&self) -> &'static str {
         match self {
             Self::Sudoku(_) => "sudoku",
-            Self::Minesweeper(_) => "minesweeper",
             Self::Tetris(_) => "tetris",
             Self::Race(_) => "race",
             Self::Dice(_) => "dice",
@@ -41,7 +38,6 @@ impl LuaGameEventResult {
     pub const fn reason(&self) -> &'static str {
         match self {
             Self::Sudoku(r) => r.reason,
-            Self::Minesweeper(r) => r.reason,
             Self::Tetris(r) => r.reason,
             Self::Race(r) => r.reason,
             Self::Dice(r) => r.reason,
@@ -51,7 +47,6 @@ impl LuaGameEventResult {
     pub const fn row(&self) -> usize {
         match self {
             Self::Sudoku(r) => r.row,
-            Self::Minesweeper(r) => r.row,
             Self::Tetris(r) => r.row,
             Self::Race(r) => r.lane,
             Self::Dice(_) => 0,
@@ -61,7 +56,6 @@ impl LuaGameEventResult {
     pub const fn column(&self) -> usize {
         match self {
             Self::Sudoku(r) => r.column,
-            Self::Minesweeper(r) => r.column,
             Self::Tetris(r) => r.column,
             Self::Race(r) => r.column,
             Self::Dice(_) => 0,
@@ -71,7 +65,6 @@ impl LuaGameEventResult {
     pub const fn mode_marker(&self) -> &'static str {
         match self {
             Self::Sudoku(r) => r.step.marker(),
-            Self::Minesweeper(r) => r.mode.marker(),
             Self::Tetris(r) => r.mode.marker(),
             Self::Race(r) => r.mode.marker(),
             Self::Dice(r) => r.view,
@@ -82,7 +75,6 @@ impl LuaGameEventResult {
         match self {
             // Sudoku's former axis log slot now carries the entry step.
             Self::Sudoku(r) => r.step.marker(),
-            Self::Minesweeper(r) => r.axis.marker(),
             Self::Tetris(_) | Self::Race(_) | Self::Dice(_) => "none",
         }
     }
@@ -90,13 +82,6 @@ impl LuaGameEventResult {
     pub fn detail_marker(&self) -> String {
         match self {
             Self::Sudoku(r) => format!("candidate={}", r.candidate),
-            Self::Minesweeper(r) => format!(
-                "action={} flags={} safe-left={} outcome={}",
-                r.action.marker(),
-                r.flags,
-                r.safe_left,
-                r.outcome.marker()
-            ),
             Self::Tetris(r) => format!(
                 "action={} score={} lines={} level={}",
                 r.action.map_or("none", |action| action.marker()),
@@ -119,7 +104,6 @@ impl LuaGameEventResult {
     pub const fn completed(&self) -> bool {
         match self {
             Self::Sudoku(r) => r.completed,
-            Self::Minesweeper(r) => r.outcome.completed(),
             Self::Tetris(r) => r.completed,
             Self::Race(r) => r.completed,
             Self::Dice(_) => false,
@@ -129,7 +113,6 @@ impl LuaGameEventResult {
     pub fn dirty_regions_len(&self) -> usize {
         match self {
             Self::Sudoku(r) => r.dirty_regions.len(),
-            Self::Minesweeper(r) => r.dirty_regions.len(),
             Self::Tetris(r) => r.dirty_regions.len(),
             Self::Race(r) => r.dirty_regions.len(),
             Self::Dice(r) => r.dirty_regions,
@@ -141,7 +124,6 @@ impl LuaGameEventResult {
 pub enum LuaEventBridge {
     Static,
     Sudoku(SudokuGame),
-    Minesweeper(MinesweeperGame),
     Tetris(TetrisApp),
     /// The mode list; becomes `Tetris` once a row is chosen.
     TetrisStart(TetrisStart),
@@ -153,11 +135,7 @@ pub enum LuaEventBridge {
 }
 impl LuaEventBridge {
     pub fn load(source: &str, canvas: &mut NativeGameCanvas) -> Result<Self, String> {
-        if let Some((columns, rows, mines, seed)) = parse_minesweeper_init(source)? {
-            let game = MinesweeperGame::from_config(columns, rows, mines, seed)?;
-            game.render_initial(canvas)?;
-            Ok(Self::Minesweeper(game))
-        } else if let Some(puzzle) = parse_sudoku_init(source)? {
+        if let Some(puzzle) = parse_sudoku_init(source)? {
             // A declared puzzle is checked now and offered as `SD puzzle`.
             if let Some(puzzle) = &puzzle {
                 SudokuGame::from_puzzle(puzzle)?;
@@ -208,7 +186,6 @@ impl LuaEventBridge {
         match self {
             Self::Static => "static",
             Self::Sudoku(_) => "sudoku",
-            Self::Minesweeper(_) => "minesweeper",
             Self::Tetris(_) | Self::TetrisStart(_) => "tetris",
             Self::Race(_) | Self::RaceStart(_) => "race",
             Self::Dice(_) => "dice",
@@ -225,10 +202,6 @@ impl LuaEventBridge {
             Self::Sudoku(g) => g
                 .apply_button_and_render(event, now_ms, canvas)
                 .map(LuaGameEventResult::Sudoku)
-                .map(Some),
-            Self::Minesweeper(g) => g
-                .apply_button_and_render(event, canvas)
-                .map(LuaGameEventResult::Minesweeper)
                 .map(Some),
             Self::Tetris(g) => g
                 .apply_button_and_render(event, canvas)
@@ -313,10 +286,6 @@ impl LuaEventBridge {
             Self::Sudoku(g) => g
                 .apply_boot_short_press_and_render(now_ms, canvas)
                 .map(LuaGameEventResult::Sudoku)
-                .map(Some),
-            Self::Minesweeper(g) => g
-                .apply_boot_short_press_and_render(canvas)
-                .map(LuaGameEventResult::Minesweeper)
                 .map(Some),
             Self::Tetris(g) => g
                 .apply_boot_short_press_and_render(canvas)
@@ -415,50 +384,6 @@ fn parse_quoted(value: &str, label: &str) -> Result<String, String> {
         return Err(format!("escaped {label} strings are not supported"));
     }
     Ok(inner.to_string())
-}
-fn parse_minesweeper_init(source: &str) -> Result<Option<(usize, usize, usize, u32)>, String> {
-    let mut config = None;
-    for (index, raw_line) in source.lines().enumerate() {
-        let line_number = index + 1;
-        let line = raw_line.split("--").next().unwrap_or_default().trim();
-        if line.is_empty() {
-            continue;
-        }
-        if !line.starts_with("minesweeper.init(") || !line.ends_with(')') {
-            if line.starts_with("minesweeper.") {
-                return Err(format!(
-                    "MAIN.LUA line {line_number}: unsupported minesweeper call"
-                ));
-            }
-            return Ok(None);
-        }
-        if config.is_some() {
-            return Err(format!(
-                "MAIN.LUA line {line_number}: duplicate minesweeper.init"
-            ));
-        }
-        let arguments = &line["minesweeper.init(".len()..line.len() - 1];
-        let values = arguments.split(',').map(str::trim).collect::<Vec<_>>();
-        if values.len() != 4 {
-            return Err(format!(
-                "MAIN.LUA line {line_number}: minesweeper.init expects columns, rows, mines, seed"
-            ));
-        }
-        let parse_usize = |value: &str, label: &str| {
-            value
-                .parse::<usize>()
-                .map_err(|_| format!("MAIN.LUA line {line_number}: invalid minesweeper {label}"))
-        };
-        config = Some((
-            parse_usize(values[0], "columns")?,
-            parse_usize(values[1], "rows")?,
-            parse_usize(values[2], "mine count")?,
-            values[3]
-                .parse::<u32>()
-                .map_err(|_| format!("MAIN.LUA line {line_number}: invalid minesweeper seed"))?,
-        ));
-    }
-    Ok(config)
 }
 /// What a `tetris.init` line asks for: the mode list, or one mode with a seed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -647,19 +572,6 @@ mod tests {
         assert!(LuaEventBridge::load("sudoku.init(\"123\")", &mut c).is_err());
     }
     #[test]
-    fn loads_minesweeper_init_and_routes_native_event() {
-        let mut c = NativeGameCanvas::default();
-        let mut b = LuaEventBridge::load("minesweeper.init(9, 9, 10, 1803)", &mut c).unwrap();
-        assert_eq!(b.marker(), "minesweeper");
-        assert_eq!(
-            b.apply_button(ButtonEvent::Select, 2_000, &mut c)
-                .unwrap()
-                .unwrap()
-                .reason(),
-            "action-enter"
-        );
-    }
-    #[test]
     fn tetris_init_opens_the_mode_list_and_a_choice_starts_that_mode() {
         let mut c = NativeGameCanvas::default();
         let mut b = LuaEventBridge::load("tetris.init()", &mut c).unwrap();
@@ -767,7 +679,7 @@ mod tests {
         );
     }
     #[test]
-    fn preserves_static_hello_grid_bootstrap() {
+    fn preserves_static_bootstrap() {
         let mut c = NativeGameCanvas::default();
         assert_eq!(
             LuaEventBridge::load("ui.grid(80, 220, 4, 4, 64, 64)", &mut c)

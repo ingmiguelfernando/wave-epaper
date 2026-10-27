@@ -1,7 +1,7 @@
 //! SD Lua runtime foundation with a Rust-owned native canvas.
 //!
-//! Preserves the static `ui.*` subset and bounded Sudoku and Minesweeper
-//! bridges. Mutable game state and panel ownership remain in Rust; unrestricted Lua
+//! Preserves the static `ui.*` subset and bounded Sudoku, Tetris, Race and
+//! Dice bridges. Mutable game state and panel ownership remain in Rust; unrestricted Lua
 //! VM callbacks stay deferred.
 
 use std::path::PathBuf;

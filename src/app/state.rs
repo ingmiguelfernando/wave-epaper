@@ -3455,7 +3455,7 @@ mod tests {
 
     #[test]
     fn games_catalog_opens_remaining_real_samples_and_routes_button_input() {
-        use crate::{games::canvas::DrawCommand, lua_runtime::manifest::LuaAppKind};
+        use crate::lua_runtime::manifest::LuaAppKind;
 
         let root =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS");
@@ -3473,22 +3473,13 @@ mod tests {
                 .filter(|entry| entry.manifest.kind == LuaAppKind::Game)
                 .map(|entry| entry.manifest.name.as_str())
                 .collect::<Vec<_>>(),
-            [
-                "Dice",
-                "Hello Grid",
-                "Minesweeper",
-                "Race",
-                "Sudoku",
-                "Tetris"
-            ]
+            ["Dice", "Race", "Sudoku", "Tetris"]
         );
 
         for (id, bridge, reason) in [
-            ("hello_grid", "static", None),
-            ("minesweeper", "minesweeper", Some("action-enter")),
-            ("sudoku", "sudoku", Some("start-choose")),
+            ("sudoku", "sudoku", "start-choose"),
             // The sample opens the mode list first, as Sudoku's does.
-            ("tetris", "tetris", Some("start-choose")),
+            ("tetris", "tetris", "start-choose"),
         ] {
             // The hub's card follows ▲▼; the catalog entry follows on ●.
             let games = state.lua_runtime.games();
@@ -3509,27 +3500,15 @@ mod tests {
             assert!(session.source_bytes > 0);
             assert!(!session.canvas.commands().is_empty());
             assert!(session.canvas.refresh_requested());
-            if reason.is_none() {
-                assert!(session
-                    .canvas
-                    .commands()
-                    .iter()
-                    .any(|command| { matches!(command, DrawCommand::Grid { .. }) }));
-            }
             state.take_lua_runtime_diagnostics();
             state.apply(ButtonEvent::Select);
             assert_eq!(state.active_route(), ScreenRoute::LuaGame);
             let diagnostics = state.take_lua_runtime_diagnostics();
-            if let Some(reason) = reason {
-                assert!(diagnostics.iter().any(|line| {
-                    line.contains(&format!("bridge={bridge}"))
-                        && line.contains(&format!("outcome={reason}"))
-                }));
-                assert!(state.apply_lua_game_boot_short_press());
-            } else {
-                assert!(diagnostics.is_empty());
-                assert!(!state.apply_lua_game_boot_short_press());
-            }
+            assert!(diagnostics.iter().any(|line| {
+                line.contains(&format!("bridge={bridge}"))
+                    && line.contains(&format!("outcome={reason}"))
+            }));
+            assert!(state.apply_lua_game_boot_short_press());
             state.back();
             assert_eq!(state.active_route(), ScreenRoute::Games);
             assert!(state.lua_runtime.session.is_none());
