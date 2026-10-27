@@ -562,6 +562,9 @@ planned features as passed. Record failures/open checks in
   without the xiaozhi.me hint) and talks. The log has
   `xiaozhi status=own-server host=…`.
 - [ ] A typo (`server=example.org`): the call stops at once with `XIAOZHI.TXT on the card is not a valid server address.`
+  Then, without restarting, record a short voice note and play it back: the
+  speaker and microphone still work (before Round 22 a refused file kept the
+  speaker until a restart).
 
 ## Several Wi-Fi networks (v0.18.0)
 

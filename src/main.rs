@@ -2900,10 +2900,6 @@ mod firmware {
                 return;
             }
         };
-        let Some(runtime) = audio_runtime.take() else {
-            state.xiaozhi.fail("The speaker is not available.");
-            return;
-        };
         let ota_url = match xiaozhi_server() {
             Ok(url) => {
                 state.xiaozhi.own_server = (url != xiaozhi_config::OFFICIAL_URL)
@@ -2912,11 +2908,14 @@ mod firmware {
             }
             Err(message) => {
                 warn!("rustmix-wave=xiaozhi status=bad-server-file error={message}");
-                state
-                    .xiaozhi
-                    .fail("XIAOZHI.TXT on the card is not a valid server address.");
+                state.xiaozhi.fail(xiaozhi_config::BAD_FILE_MESSAGE);
                 return;
             }
+        };
+        // Taken last: every early return above leaves the speaker in place.
+        let Some(runtime) = audio_runtime.take() else {
+            state.xiaozhi.fail("The speaker is not available.");
+            return;
         };
         let setup = CallSetup {
             device: device_info(client_id, &state.network),
