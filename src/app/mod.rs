@@ -13,6 +13,7 @@ use crate::{
 
 pub mod display;
 pub mod display_assets;
+pub mod known_networks;
 pub mod menu;
 #[cfg(test)]
 mod preview;

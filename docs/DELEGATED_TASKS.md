@@ -76,7 +76,22 @@ tests set it by hand. **Tests:** the keys, the confirm and the cancel, the
 request carried, the selection after a name goes, and the screen at three
 sizes with zero, one and six names.
 
-**Status:** to do.
+**Status:** done on `side-tasks-22`, state and screen only.
+`app/known_networks.rs` holds the selection, the question and
+`NetworkRequest::Forget(String)`; `AppState::take_network_request()` hands it
+over once. ▲▼ move around the ends, ● asks (`Forget <name>?` in a box under
+the list), ● again forgets; ▲▼ or hold BOOT keep it, and a second hold leaves.
+The selection is kept inside the list, so after a name goes the same row holds
+the next one, or the new last. The list shows all six names (no `+N more`),
+the selected row white on black; Regional settings and Last error moved down
+(content ends at the Last error line, baseline 696; the bar starts at 752).
+Preview `network-forget`. Tests: the keys, the question, cancel by a move and
+by hold BOOT, the request taken once, a name gone while asking, the selection
+after the last and a middle name go, and the screen at both families and three
+sizes with zero, one and six names, asking or not. **For the main line:**
+`main.rs` must take the request, remove the name from `WifiNetworkStore` and
+call `refresh_saved_networks`; until then the question does nothing, so the
+User Guide still says removing is done in the portal.
 
 ## Round 21 result (2026-10-19)
 

@@ -408,12 +408,7 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
         ),
         (
             UiFontSize::Standard,
-            [
-                "network",
-                "network-details",
-                "wifi-setup",
-                "wifi-transfer",
-            ],
+            ["network", "network-details", "wifi-setup", "wifi-transfer"],
         ),
         (
             UiFontSize::Large,
@@ -429,6 +424,13 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
             states.push((name, state));
         }
     }
+
+    // Known networks asking to forget the 32-byte name.
+    let [_, mut forget, _, _] = network_preview_states(UiFontSize::Standard);
+    forget.apply(ButtonEvent::Down);
+    forget.apply(ButtonEvent::Down);
+    forget.apply(ButtonEvent::Select);
+    states.push(("network-forget", forget));
 
     let mut settings_system = sample_state();
     settings_system
