@@ -30,7 +30,15 @@ quotes, backslashes, control characters and non-ASCII are valid JSON that
 password is always eight digits, the name always `Wave-` and four hex digits,
 for the extreme values of the inputs.
 
-**Status:** to do.
+**Status:** done on `side-tasks-22`. `scan_json`, `saved_json` and
+`setup_credentials` are plain functions in `wifi_transfer.rs`, used by the
+portal routes and `start_wifi_setup`. The JSON now goes through
+`json_lite::escape`, so control characters in a name are escaped too (the old
+inline escape left them raw, which a browser's `JSON.parse` refuses). Tests:
+eight awkward names (quotes, backslashes, control characters, accents, CJK,
+emoji, DEL, 32 bytes) read back the same with no raw control characters; the
+name and password keep their shape for 0, 1, 0xFFFF, 0x10000, 99 999 999,
+100 000 000, `u32::MAX - 1` and `u32::MAX`.
 
 ### D88: The Network screens at every size
 

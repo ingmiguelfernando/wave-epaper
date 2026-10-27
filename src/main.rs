@@ -135,7 +135,7 @@ mod firmware {
         weather_config::{WeatherConfig, WEATHER_CONFIG_PATH},
         wifi_networks::espidf::WifiNetworkStore,
         wifi_transfer::{
-            espidf::WifiTransferServer, WifiTransferSnapshot, WifiTransferState,
+            espidf::WifiTransferServer, setup_credentials, WifiTransferSnapshot, WifiTransferState,
             WifiTransferUiRequest, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
         },
         xiaozhi::{
@@ -3421,9 +3421,8 @@ mod firmware {
             ));
             return;
         }
-        let random = unsafe { sys::esp_random() };
-        let ssid = format!("Wave-{:04X}", random & 0xFFFF);
-        let password = format!("{:08}", unsafe { sys::esp_random() } % 100_000_000);
+        let (ssid, password) =
+            setup_credentials(unsafe { sys::esp_random() }, unsafe { sys::esp_random() });
         log_runtime_memory("before-wifi-setup");
         let started = runtime
             .start_setup_ap(&ssid, &password)

@@ -7,6 +7,9 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use crate::json_lite;
+use crate::wifi_networks::{NetworkBook, ScanEntry};
+
 /// Portal root.  Browser requests may never escape this subtree.
 pub const WIFI_TRANSFER_ROOT: &str = "/sdcard/RUSTMIX";
 /// The ESP-IDF HTTP server task exists only while transfer mode is enabled.
@@ -272,6 +275,44 @@ const fn hex(value: u8) -> Option<u8> {
     }
 }
 
+/// The networks heard, as `/api/wifi/scan` sends them.
+#[must_use]
+pub fn scan_json(found: &[ScanEntry]) -> String {
+    let rows: Vec<String> = found
+        .iter()
+        .map(|entry| {
+            format!(
+                "{{\"ssid\":\"{}\",\"rssi\":{},\"secured\":{}}}",
+                json_lite::escape(&entry.ssid),
+                entry.rssi_dbm,
+                entry.secured
+            )
+        })
+        .collect();
+    format!("[{}]", rows.join(","))
+}
+
+/// The saved networks, as `/api/wifi` sends them: names only, never passwords.
+#[must_use]
+pub fn saved_json(book: &NetworkBook) -> String {
+    let names: Vec<String> = book
+        .networks()
+        .iter()
+        .map(|network| format!("\"{}\"", json_lite::escape(&network.ssid)))
+        .collect();
+    format!("{{\"available\":true,\"saved\":[{}]}}", names.join(","))
+}
+
+/// The setup Wi-Fi's name (`Wave-` and four hex digits) and its eight-digit
+/// password, from two random words.
+#[must_use]
+pub fn setup_credentials(random_a: u32, random_b: u32) -> (String, String) {
+    (
+        format!("Wave-{:04X}", random_a & 0xFFFF),
+        format!("{:08}", random_b % 100_000_000),
+    )
+}
+
 #[cfg(target_os = "espidf")]
 pub mod espidf {
     use std::{
@@ -288,10 +329,11 @@ pub mod espidf {
     use log::info;
 
     use super::{
-        is_protected_portal_path, query_value, resolve_portal_path, WifiTransferSnapshot,
-        WifiTransferState, WIFI_TRANSFER_HTTP_PORT, WIFI_TRANSFER_INACTIVITY_SECONDS,
-        WIFI_TRANSFER_MAX_DIRECTORY_ROWS, WIFI_TRANSFER_MAX_UPLOAD_BYTES, WIFI_TRANSFER_ROOT,
-        WIFI_TRANSFER_SERVER_STACK_BYTES, WIFI_TRANSFER_STREAM_CHUNK_BYTES,
+        is_protected_portal_path, query_value, resolve_portal_path, saved_json, scan_json,
+        WifiTransferSnapshot, WifiTransferState, WIFI_TRANSFER_HTTP_PORT,
+        WIFI_TRANSFER_INACTIVITY_SECONDS, WIFI_TRANSFER_MAX_DIRECTORY_ROWS,
+        WIFI_TRANSFER_MAX_UPLOAD_BYTES, WIFI_TRANSFER_ROOT, WIFI_TRANSFER_SERVER_STACK_BYTES,
+        WIFI_TRANSFER_STREAM_CHUNK_BYTES,
     };
     use crate::ai_keys::{espidf::AiKeyStore, validate_key, AiKeySlot, AI_KEY_MAX_CHARS};
     use crate::wifi_networks::{self, espidf::WifiNetworkStore};
@@ -380,15 +422,7 @@ loadList('/');keys();nets();
         server.fn_handler("/api/wifi", Method::Get, move |request| {
             list_gate(request.uri())?;
             let body = match &list_networks {
-                Some(store) => {
-                    let names: Vec<String> = store
-                        .load()
-                        .networks()
-                        .iter()
-                        .map(|network| format!("\"{}\"", json_escape(&network.ssid)))
-                        .collect();
-                    format!("{{\"available\":true,\"saved\":[{}]}}", names.join(","))
-                }
+                Some(store) => saved_json(&store.load()),
                 None => "{\"available\":false,\"saved\":[]}".into(),
             };
             request.into_ok_response()?.write_all(body.as_bytes())?;
@@ -414,20 +448,9 @@ loadList('/');keys();nets();
                     found
                 }
             };
-            let rows: Vec<String> = found
-                .iter()
-                .map(|entry| {
-                    format!(
-                        "{{\"ssid\":\"{}\",\"rssi\":{},\"secured\":{}}}",
-                        json_escape(&entry.ssid),
-                        entry.rssi_dbm,
-                        entry.secured
-                    )
-                })
-                .collect();
             request
                 .into_ok_response()?
-                .write_all(format!("[{}]", rows.join(",")).as_bytes())?;
+                .write_all(scan_json(&found).as_bytes())?;
             Ok::<(), anyhow::Error>(())
         })?;
 
@@ -925,9 +948,115 @@ scanNets(false);nets();
 mod tests {
     use super::{
         is_portal_safe_name, is_protected_portal_path, query_value, resolve_portal_path,
-        WifiTransferSnapshot, WifiTransferState,
+        saved_json, scan_json, setup_credentials, WifiTransferSnapshot, WifiTransferState,
     };
     use std::path::PathBuf;
+
+    use crate::json_lite::{self, JsonValue};
+    use crate::wifi_networks::{NetworkBook, ScanEntry};
+
+    /// Names a radio can report: quotes, backslashes, control characters,
+    /// accents, CJK, emoji and 32 bytes.
+    const AWKWARD_NAMES: [&str; 8] = [
+        "Casa \"Fernández\"",
+        "back\\slash\\",
+        "tab\there\nline\u{1}\u{1f}",
+        "Ñandú café",
+        "咖啡店",
+        "Wi-Fi 🦀",
+        "\u{7f}del",
+        "abcdefghijklmnopqrstuvwxyz012345",
+    ];
+
+    fn string_at<'a>(value: &'a JsonValue, path: &[&str]) -> &'a str {
+        let mut current = value;
+        for key in path {
+            current = current.get(key).expect("key present");
+        }
+        current.as_str().expect("a string")
+    }
+
+    #[test]
+    fn the_scan_list_is_json_that_reads_back_to_the_same_names() {
+        let found: Vec<ScanEntry> = AWKWARD_NAMES
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ScanEntry {
+                ssid: (*name).into(),
+                rssi_dbm: -40 - index as i32,
+                secured: index % 2 == 0,
+            })
+            .collect();
+        let json = scan_json(&found);
+        // Strict JSON has no raw control characters; json_lite would take them.
+        assert!(!json.chars().any(|c| (c as u32) < 0x20));
+        let parsed = json_lite::parse(&json).expect("valid JSON");
+        for (index, entry) in found.iter().enumerate() {
+            let row = parsed.index(index).expect("one row per network");
+            assert_eq!(string_at(row, &["ssid"]), entry.ssid);
+            assert_eq!(
+                row.get("rssi").and_then(JsonValue::as_i64),
+                Some(i64::from(entry.rssi_dbm))
+            );
+            assert_eq!(row.get("secured"), Some(&JsonValue::Bool(entry.secured)));
+        }
+        assert!(parsed.index(found.len()).is_none());
+        assert_eq!(scan_json(&[]), "[]");
+    }
+
+    #[test]
+    fn the_saved_list_is_json_that_reads_back_to_the_same_names() {
+        let mut book = NetworkBook::default();
+        for name in AWKWARD_NAMES.iter().take(6) {
+            book.add(name, "password1").expect("a valid network");
+        }
+        let json = saved_json(&book);
+        assert!(!json.contains("password1"), "names only, never passwords");
+        assert!(!json.chars().any(|c| (c as u32) < 0x20));
+        let parsed = json_lite::parse(&json).expect("valid JSON");
+        assert_eq!(parsed.get("available"), Some(&JsonValue::Bool(true)));
+        let saved = parsed.get("saved").expect("the saved list");
+        for (index, network) in book.networks().iter().enumerate() {
+            assert_eq!(
+                saved.index(index).and_then(JsonValue::as_str),
+                Some(network.ssid.as_str())
+            );
+        }
+        assert!(saved.index(book.networks().len()).is_none());
+        let empty = saved_json(&NetworkBook::default());
+        let empty = json_lite::parse(&empty).expect("valid JSON");
+        assert!(empty.get("saved").unwrap().index(0).is_none());
+    }
+
+    #[test]
+    fn setup_credentials_keep_their_shape_at_the_extremes() {
+        let extremes = [
+            0,
+            1,
+            0xFFFF,
+            0x1_0000,
+            99_999_999,
+            100_000_000,
+            u32::MAX - 1,
+            u32::MAX,
+        ];
+        let upper_hex = |c: char| c.is_ascii_digit() || ('A'..='F').contains(&c);
+        for a in extremes {
+            for b in extremes {
+                let (name, password) = setup_credentials(a, b);
+                let hex = name.strip_prefix("Wave-").expect("starts with Wave-");
+                assert_eq!(hex.len(), 4, "{name}");
+                assert!(hex.chars().all(upper_hex), "{name}");
+                assert_eq!(password.len(), 8, "{password}");
+                assert!(password.bytes().all(|d| d.is_ascii_digit()), "{password}");
+            }
+        }
+        assert_eq!(
+            setup_credentials(0x1234_3FA2, 7),
+            ("Wave-3FA2".into(), "00000007".into())
+        );
+        assert_eq!(setup_credentials(u32::MAX, u32::MAX).0, "Wave-FFFF");
+    }
 
     #[test]
     fn portal_is_off_until_the_user_explicitly_starts_it() {
