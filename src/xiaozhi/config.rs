@@ -15,6 +15,8 @@ pub const OFFICIAL_URL: &str = OTA_URL;
 /// Optional server file on the card.
 pub const CONFIG_PATH: &str = "/sdcard/RUSTMIX/XIAOZHI.TXT";
 const MAX_URL_BYTES: usize = 200;
+/// What the call screen says when the file is refused.
+pub const BAD_FILE_MESSAGE: &str = "XIAOZHI.TXT on the card is not a valid server address.";
 
 /// The OTA address the file asks for, or the official one when the file is
 /// missing or empty. A file that cannot be understood is an error, so a typo
@@ -106,6 +108,7 @@ mod tests {
         for text in [
             "server=ftp://x/ota",
             "server=example.org/ota",
+            "server=example.org",
             "server=http://",
             "server=http:///ota",
             "server=http://a b/ota",

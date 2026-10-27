@@ -30,7 +30,15 @@ quotes, backslashes, control characters and non-ASCII are valid JSON that
 password is always eight digits, the name always `Wave-` and four hex digits,
 for the extreme values of the inputs.
 
-**Status:** to do.
+**Status:** done on `side-tasks-22`. `scan_json`, `saved_json` and
+`setup_credentials` are plain functions in `wifi_transfer.rs`, used by the
+portal routes and `start_wifi_setup`. The JSON now goes through
+`json_lite::escape`, so control characters in a name are escaped too (the old
+inline escape left them raw, which a browser's `JSON.parse` refuses). Tests:
+eight awkward names (quotes, backslashes, control characters, accents, CJK,
+emoji, DEL, 32 bytes) read back the same with no raw control characters; the
+name and password keep their shape for 0, 1, 0xFFFF, 0x10000, 99 999 999,
+100 000 000, `u32::MAX - 1` and `u32::MAX`.
 
 ### D88: The Network screens at every size
 
@@ -44,7 +52,17 @@ bottom bar. **Tests:** a probe per screen and size that no ink is under the
 bar's top line outside the bar, and that a 32-byte name does not reach the
 right edge. Say where each page's content ends.
 
-**Status:** to do.
+**Status:** done on `side-tasks-22`. Every value, row, last request and error
+on the four pages is cut with `…` to the 22 to 458 px column (a `· joined`
+row keeps its mark); the y values were already apart enough at the Large
+size, so they stay. Previews: `network`, `network-details`, `wifi-setup`,
+`wifi-transfer` and their `-compact` and `-large` versions, with six saved
+networks, one of them 32 bytes. Tests, for both families and the three
+sizes: under the bar's top line there is only the bar and content ends at
+least 8 px above it; a 32-byte name in the widest letter (`W` × 32) changes
+nothing right of 462 px. Where content ends: Network at 636 (the third
+action box), Network details at the Last error line (baseline 656), the setup
+and the portal pages at 692 (the Done / Stop box); the bar starts at 752.
 
 ### D89: Forget a network on the device
 
@@ -58,7 +76,22 @@ tests set it by hand. **Tests:** the keys, the confirm and the cancel, the
 request carried, the selection after a name goes, and the screen at three
 sizes with zero, one and six names.
 
-**Status:** to do.
+**Status:** done on `side-tasks-22`, state and screen only.
+`app/known_networks.rs` holds the selection, the question and
+`NetworkRequest::Forget(String)`; `AppState::take_network_request()` hands it
+over once. ▲▼ move around the ends, ● asks (`Forget <name>?` in a box under
+the list), ● again forgets; ▲▼ or hold BOOT keep it, and a second hold leaves.
+The selection is kept inside the list, so after a name goes the same row holds
+the next one, or the new last. The list shows all six names (no `+N more`),
+the selected row white on black; Regional settings and Last error moved down
+(content ends at the Last error line, baseline 696; the bar starts at 752).
+Preview `network-forget`. Tests: the keys, the question, cancel by a move and
+by hold BOOT, the request taken once, a name gone while asking, the selection
+after the last and a middle name go, and the screen at both families and three
+sizes with zero, one and six names, asking or not. **For the main line:**
+`main.rs` must take the request, remove the name from `WifiNetworkStore` and
+call `refresh_saved_networks`; until then the question does nothing, so the
+User Guide still says removing is done in the portal.
 
 ## Round 21 result (2026-10-19)
 

@@ -37,6 +37,7 @@ use crate::{
 
 use super::{
     display::{DisplayPreferences, DisplaySetting},
+    known_networks::{KnownNetworksUi, NetworkRequest},
     menu::{category_entries, category_index, home_entries, CATEGORY_COUNT},
     router::{ScreenRoute, ScreenRouter},
 };
@@ -210,6 +211,8 @@ pub struct AppState {
     pub ai_keys: crate::ai_keys::AiKeyPresence,
     /// Names of the Wi-Fi networks saved from the portal (never passwords).
     pub saved_networks: Vec<String>,
+    /// Network › Known networks: the selected row and a pending forget.
+    pub known_networks: KnownNetworksUi,
     /// The note an AI job is sending now; main.rs keeps it current.
     pub ai_busy_note: Option<String>,
     /// Set when the owner queues a note, so the queue tries at once.
@@ -317,6 +320,7 @@ impl Default for AppState {
             ai: None,
             ai_keys: crate::ai_keys::AiKeyPresence::default(),
             saved_networks: Vec::new(),
+            known_networks: KnownNetworksUi::default(),
             ai_busy_note: None,
             ai_retry_now: false,
             weather_settings_ui: WeatherSettingsUiState::default(),
@@ -516,8 +520,15 @@ impl AppState {
                         }
                         self.router.navigate_to(ScreenRoute::WifiTransfer);
                     } else {
+                        self.known_networks = KnownNetworksUi::default();
                         self.router.navigate_to(ScreenRoute::NetworkDetails);
                     }
+                }
+                (ScreenRoute::NetworkDetails, _) => {
+                    if event == ButtonEvent::Select {
+                        self.note_select_press();
+                    }
+                    self.known_networks.apply(event, &self.saved_networks);
                 }
                 (ScreenRoute::WifiTransfer, ButtonEvent::Select) => {
                     self.note_select_press();
@@ -557,7 +568,6 @@ impl AppState {
                     | ScreenRoute::DeviceInfoRuntime
                     | ScreenRoute::EnvironmentDetails
                     | ScreenRoute::MotionDetails
-                    | ScreenRoute::NetworkDetails
                     | ScreenRoute::WifiTransfer,
                     _,
                 )
@@ -2002,6 +2012,9 @@ impl AppState {
             self.close_power_key_menu();
             return;
         }
+        if self.router.current() == ScreenRoute::NetworkDetails && self.known_networks.cancel() {
+            return;
+        }
         if self.router.current() == ScreenRoute::Power && self.power_ui.picker.take().is_some() {
             return;
         }
@@ -2172,6 +2185,11 @@ impl AppState {
 
     pub fn update_wifi_transfer_snapshot(&mut self, snapshot: WifiTransferSnapshot) {
         self.wifi_transfer = snapshot;
+    }
+
+    /// Known networks' request for the main loop (forget a name), once.
+    pub fn take_network_request(&mut self) -> Option<NetworkRequest> {
+        self.known_networks.take_request()
     }
 
     #[must_use]

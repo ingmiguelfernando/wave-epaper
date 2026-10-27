@@ -4,6 +4,7 @@
 pub mod cache;
 pub mod exif;
 pub mod image;
+pub mod png;
 pub mod ui;
 pub mod worker;
 
@@ -26,7 +27,7 @@ const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-/// One JPEG in the photos folder.
+/// One JPEG or PNG in the photos folder.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PhotoEntry {
     pub name: String,
@@ -76,11 +77,15 @@ impl PhotoEntry {
     }
 }
 
-/// JPEG files, skipping the hidden `._` copies macOS leaves on FAT cards.
+/// JPEG and PNG files, skipping the hidden `._` copies macOS leaves on FAT
+/// cards.
 #[must_use]
 pub fn is_photo_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    !name.starts_with('.') && (lower.ends_with(".jpg") || lower.ends_with(".jpeg"))
+    !name.starts_with('.')
+        && [".jpg", ".jpeg", ".png"]
+            .iter()
+            .any(|extension| lower.ends_with(extension))
 }
 
 /// Photos in `directory`, newest first, at most `MAX_PHOTOS`.
@@ -291,13 +296,14 @@ mod tests {
     }
 
     #[test]
-    fn lists_jpegs_newest_first_and_skips_hidden_files() {
+    fn lists_jpegs_and_pngs_newest_first_and_skips_hidden_files() {
         assert!(is_photo_name("IMG_1.JPG") && is_photo_name("beach.jpeg"));
         assert!(!is_photo_name("._IMG_1.JPG") && !is_photo_name("notes.txt"));
         let root = std::env::temp_dir().join(format!("wave-photos-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        for name in ["B.jpg", "A.JPG", "._A.JPG", "C.png"] {
+        assert!(is_photo_name("Screenshot.PNG"));
+        for name in ["B.jpg", "A.JPG", "._A.JPG", "C.png", "D.gif"] {
             fs::write(root.join(name), b"x").unwrap();
         }
         let names: Vec<String> = scan_photos(&root)
@@ -306,7 +312,7 @@ mod tests {
             .map(|photo| photo.name)
             .collect();
         // Same file date: alphabetical.
-        assert_eq!(names, ["A.JPG", "B.jpg"]);
+        assert_eq!(names, ["A.JPG", "B.jpg", "C.png"]);
         let _ = fs::remove_dir_all(root);
     }
 

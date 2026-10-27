@@ -186,13 +186,19 @@ Install bundled samples:
 
 ## Photos
 
-Copy JPEG photos (`.jpg`, `.jpeg`) into `/RUSTMIX/PHOTOS`, with a computer
-or the Wi-Fi file transfer. Sub-folders are ignored, and up to 500 photos
+Add photos with **Photos › Add photos** in the Wi-Fi Transfer portal: the
+browser converts any photo it can open (HEIC, PNG, progressive JPEG) to an
+upright standard JPEG of at most 1600 pixels and stores it in
+`/RUSTMIX/PHOTOS`, picking a free name. Or copy JPEG (`.jpg`, `.jpeg`) and PNG
+(`.png`) files into `/RUSTMIX/PHOTOS` with a computer. Sub-folders are ignored, and up to 500 photos
 are listed, newest first. Until v0.9.3 the folder was `/PHOTOS` at the card
 root; move photos from there.
 
-- Standard (baseline) JPEGs of any size work. Progressive JPEGs work up to 1
-  megapixel; save larger ones as standard JPEGs.
+- Standard (baseline) JPEGs and PNGs of any size work (PNGs up to 16384
+  pixels a side, not interlaced; transparent parts show white). Progressive
+  JPEGs copied to the card work up to 1 megapixel, since the device would
+  need about 3 bytes of memory per pixel for them; add larger ones through the
+  portal.
 - Phone photos come out upright (EXIF orientation).
 - Each photo is prepared once, in the background while Photos is open: a few
   seconds for a 12 MP photo. The result goes to `/RUSTMIX/CACHE/PHOTOS/`,

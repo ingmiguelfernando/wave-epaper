@@ -53,8 +53,12 @@ OTA updates are not implemented yet.
 
 ## Photos
 
-Copy JPEG photos into `/RUSTMIX/PHOTOS` on the SD card, with a computer or
-the Wi-Fi file transfer (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
+The easiest way: start **Wi-Fi Transfer** (Network screen), open the portal
+on your phone or computer and use **Photos › Add photos**. Pick any photos the
+browser opens, iPhone ones included; the browser turns each one upright,
+shrinks it to 1600 pixels on its long side and sends it as a standard JPEG.
+You can also copy JPEG or PNG files into `/RUSTMIX/PHOTOS` on the card
+(details in [SD-card setup](SD_CARD_SETUP.md#photos)).
 
 - **Gallery.** Six thumbnails per page, newest first. Up/Down moves through
   the photos across pages; Select opens the viewer; short BOOT stars or
@@ -64,7 +68,8 @@ the Wi-Fi file transfer (details in [SD-card setup](SD_CARD_SETUP.md#photos)).
 - **Preparation.** Each photo is prepared once while Photos is open, a few
   seconds for a 12 MP photo, and its thumbnail appears when ready. The keys
   keep working meanwhile. A photo that cannot be used says why, for example a
-  progressive JPEG over 1 megapixel.
+  progressive JPEG over 1 megapixel copied to the card (add it through the
+  portal instead).
 - **Viewer.** The photo fills the screen as set by Settings › Sleep screen ›
   Fit. Up/Down shows the previous or next photo; short BOOT stars; Select
   opens the actions; hold BOOT returns to the gallery.
@@ -272,6 +277,14 @@ for more. Press **Done** on the device: it stops its Wi-Fi and tries the saved
 networks. It also ends by itself after ten idle minutes, on sleep, or with
 BOOT held. It needs the radio started once, so `WIFI.TXT` or one saved network
 must exist.
+To add the hotspot of the phone you set up with: the phone stops sharing its
+hotspot while it is joined to `Wave-XXXX`, so the hotspot may be missing from
+the list. Turn on Personal Hotspot before you start (on iPhone 12 or later also
+**Maximize Compatibility**: the device only hears 2.4 GHz), type the name
+exactly as the phone shows it in Settings › General › About › Name (an iPhone
+uses a curly apostrophe, `Miguel’s iPhone`), then press **Done** and keep the
+Personal Hotspot screen open until the device joins. The device only joins a
+saved network it can hear.
 Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Known networks**
 lists the known networks (names only); adding or removing one is
 done in the portal. Save the hotspot while you are at home, then it works

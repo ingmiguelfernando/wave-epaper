@@ -48,6 +48,7 @@ use crate::{
     sleep_screen::SleepMode,
     weather::{parse_open_meteo_response, WeatherSnapshot, SAMPLE_RESPONSE},
     weather_config::{WeatherConfig, SAMPLE_CONFIG},
+    wifi_transfer::{WifiTransferSnapshot, WifiTransferState},
 };
 
 const SPANISH_SAMPLE: [&str; 2] = [
@@ -392,6 +393,44 @@ fn preview_states() -> Vec<(&'static str, AppState)> {
     settings.photos.starred.toggle("IMG_0407.jpg");
     settings.photos.starred.toggle("IMG_0409.jpg");
     states.push(("settings", settings));
+
+    // Network, its details, the setup Wi-Fi and the LAN portal at the three
+    // sizes, with six saved networks, one of them 32 bytes long.
+    for (size, names) in [
+        (
+            UiFontSize::Compact,
+            [
+                "network-compact",
+                "network-details-compact",
+                "wifi-setup-compact",
+                "wifi-transfer-compact",
+            ],
+        ),
+        (
+            UiFontSize::Standard,
+            ["network", "network-details", "wifi-setup", "wifi-transfer"],
+        ),
+        (
+            UiFontSize::Large,
+            [
+                "network-large",
+                "network-details-large",
+                "wifi-setup-large",
+                "wifi-transfer-large",
+            ],
+        ),
+    ] {
+        for (name, state) in names.into_iter().zip(network_preview_states(size)) {
+            states.push((name, state));
+        }
+    }
+
+    // Known networks asking to forget the 32-byte name.
+    let [_, mut forget, _, _] = network_preview_states(UiFontSize::Standard);
+    forget.apply(ButtonEvent::Down);
+    forget.apply(ButtonEvent::Down);
+    forget.apply(ButtonEvent::Select);
+    states.push(("network-forget", forget));
 
     let mut settings_system = sample_state();
     settings_system
@@ -1971,6 +2010,49 @@ fn open_sample_epub(state: &mut AppState, later_page: bool) {
 }
 
 /// Plausible data so previews resemble a device in use.
+/// Network, Network details, the setup Wi-Fi and the LAN portal.
+fn network_preview_states(size: UiFontSize) -> [AppState; 4] {
+    const LONG: &str = "Biblioteca Municipal Invitados 5";
+    let mut state = sample_state();
+    state.display.font_size = size;
+    state.network.ssid = Some(LONG.into());
+    state.network.ipv4_address = Some("192.168.1.42".into());
+    state.network.rssi_dbm = Some(-61);
+    state.saved_networks = vec![
+        "HomeNet".into(),
+        "Miguel's iPhone".into(),
+        LONG.into(),
+        "Oficina".into(),
+        "Cabaña Taupo".into(),
+        "Café Ñandú".into(),
+    ];
+    let mut network = state.clone();
+    network.router.navigate_to(ScreenRoute::Network);
+    let mut details = state.clone();
+    details.router.navigate_to(ScreenRoute::NetworkDetails);
+    let mut setup = state.clone();
+    setup.wifi_transfer = WifiTransferSnapshot {
+        state: WifiTransferState::Ready,
+        url: Some("http://192.168.4.1/".into()),
+        code: Some("48151623".into()),
+        last_action: format!("Saved {LONG}"),
+        access_point: Some("Wave-3FA2".into()),
+        ..WifiTransferSnapshot::default()
+    };
+    setup.router.navigate_to(ScreenRoute::WifiTransfer);
+    let mut transfer = state;
+    transfer.wifi_transfer = WifiTransferSnapshot {
+        state: WifiTransferState::Ready,
+        url: Some("http://192.168.1.42/".into()),
+        code: Some("204816".into()),
+        last_action: "Uploaded /RUSTMIX/BOOKS/Cien años de soledad.epub".into(),
+        last_bytes: 1_482_113,
+        ..WifiTransferSnapshot::default()
+    };
+    transfer.router.navigate_to(ScreenRoute::WifiTransfer);
+    [network, details, setup, transfer]
+}
+
 fn sample_state() -> AppState {
     let mut state = AppState::default();
     state.board = BoardSnapshot {

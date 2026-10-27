@@ -562,6 +562,23 @@ planned features as passed. Record failures/open checks in
   without the xiaozhi.me hint) and talks. The log has
   `xiaozhi status=own-server host=…`.
 - [ ] A typo (`server=example.org`): the call stops at once with `XIAOZHI.TXT on the card is not a valid server address.`
+  Then, without restarting, record a short voice note and play it back: the
+  speaker and microphone still work (before Round 22 a refused file kept the
+  speaker until a restart).
+
+## Photos from the portal and PNG (v0.19.0)
+
+- [ ] Wi-Fi Transfer › portal › Photos › Add photos on an iPhone: pick three
+  photos (one HEIC, one screenshot PNG, one taken sideways). Status counts
+  them, `/PHOTOS` gets three `.jpg` files of a few hundred KB, and Photos on
+  the device shows all three upright and sharp.
+- [ ] Add the same photo twice: the second is saved as `name-2.jpg`.
+- [ ] Copy a PNG (with transparency) to `/RUSTMIX/PHOTOS` with a computer: it
+  is listed, prepared and shows white where it was transparent.
+- [ ] A progressive JPEG over 1 MP copied to the card says to add it with
+  Photos in the Wi-Fi portal.
+- [ ] Update over Wi-Fi from v0.18.x to v0.19.0 (Settings › System › Check for
+  updates).
 
 ## Minesweeper and Hello Grid removed (v0.18.2)
 
