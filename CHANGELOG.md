@@ -3,6 +3,13 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.18.2 — Minesweeper and Hello Grid removed
+
+- **Minesweeper and Hello Grid are gone** from the firmware and the SD
+  samples; the Games hub keeps Dice, Race, Sudoku and Tetris. Delete
+  `/RUSTMIX/APPS/MINES` and `/RUSTMIX/APPS/HGRID` from the card (a leftover
+  `MINES` folder now opens with an error).
+
 ## v0.18.1 — Screens closer to the mockup
 
 - Sudoku givens, chip labels, status-bar titles and the XiaoZhi call use

@@ -461,8 +461,8 @@ version, which sets the version inside the image).
 ## Remaining games and diagnostics (D3)
 
 - [X] Install current examples; Home › Games lists one card per game —
-  Hello Grid, Sudoku, Minesweeper and Tetris — without the removed
-  sensor-controlled samples. The status bar shows `Games` and `4`.
+  Hello Grid, Sudoku, Minesweeper and Tetris (Hello Grid and Minesweeper
+  were removed in v0.18.2) — without the removed sensor-controlled samples. The status bar shows `Games` and `4`.
   Each card shows an icon (also on the selected, black card), its name
   and its state: Sudoku `Medium · in progress N/81` (or `No game in progress`) plus its best time; Tetris `Zen · best N` with thousands
   separators. Beating a best time updates the card after the next hub
@@ -557,7 +557,7 @@ planned features as passed. Record failures/open checks in
 
 - [X] No `XIAOZHI.TXT`: a call connects to the official server as before; the
   connecting text mentions xiaozhi.me.
-- [ ] `server=http://<your PC>:<port>/xiaozhi/ota/` with a xiaozhi-esp32
+- [X] `server=http://<your PC>:<port>/xiaozhi/ota/` with a xiaozhi-esp32
   server running: the connecting text names that host; it links (code shown
   without the xiaozhi.me hint) and talks. The log has
   `xiaozhi status=own-server host=…`.
@@ -565,6 +565,11 @@ planned features as passed. Record failures/open checks in
   Then, without restarting, record a short voice note and play it back: the
   speaker and microphone still work (before Round 22 a refused file kept the
   speaker until a restart).
+
+## Minesweeper and Hello Grid removed (v0.18.2)
+
+- [ ] After deleting `/RUSTMIX/APPS/MINES` and `/RUSTMIX/APPS/HGRID` from the
+  card, Home › Games lists Dice, Race, Sudoku and Tetris only, and each opens.
 
 ## Several Wi-Fi networks (v0.18.0)
 

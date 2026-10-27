@@ -21,15 +21,15 @@ Last updated: 2026-10-19, firmware v0.16.0.
 | Phase 1b: idle light sleep, Wi-Fi bursts, IMU and codec off when idle | 0.6.0 | 038269f | Done |
 | Phase 1c: Settings › Power, wake keys, battery log, sleep-picture fixes | 0.7.0 | d27dced | Done, waiting for device test |
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
-| Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5, verse of the day mode in 0.12.2 |
-| Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, waiting for device test |
+| Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5 (tested on the device), verse of the day mode in 0.12.2 |
+| Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, tested on the device |
 | Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3; the verse as a sleep screen and the place on Home in 0.12.2 |
 | Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3, Race from the mockup and a scrolling hub in 0.12.1 |
 | Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open (the Ogg Opus file in 0.12.5) |
-| Phase 8: OTA updates | 0.13.0, 0.14.0 | PR #17, PR #19 | Done, tested on the device: updated from 0.14.0 to 0.15.0 over Wi-Fi |
-| Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done, waiting for device test |
+| Phase 8: OTA updates | 0.13.0, 0.14.0 | PR #17, PR #19 | Done, tested on the device: updated from 0.14.0 to 0.15.0 over Wi-Fi (the smoke test's update checks are not ticked yet) |
+| Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done; D2, D3 and D5 tested on the device, D1 partly (Books and Display checks open) |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
-| Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | 0.9.2 | PR #3 | Done, waiting for device test |
+| Delegated tasks D12 to D17: Tetris engine and Zen SD app, Reading Stats screen, safe SD writes, date module, boot log cleanup | 0.9.2 | PR #3 | Done; D15 settings files tested on the device |
 | Shared bottom bar (key caps) on every screen, games included | 0.9.2 | 4574cfc | Done, waiting for device test |
 | Delegated tasks D18 to D23: Sudoku three-step entry, game records, Bible navigation screens, JSON reader, OpenAI-compatible and XiaoZhi messages | 0.9.3 | PR #4 | Done, waiting for device test |
 | Fixes: Power key menu on a sleeping panel, key retries, 1 s hold, Device Info diagnostics, photos in `/RUSTMIX/PHOTOS` | 0.9.4 | fdb1917 | Done, waiting for device test |
@@ -37,19 +37,19 @@ Last updated: 2026-10-19, firmware v0.16.0.
 | Fix: Power key read on GPIO1 (`PWR_OUT`), PMIC interrupt as backup | 0.9.6 | e0fc071 | Done, tested on the device |
 | Delegated tasks D24 to D28: Sudoku difficulty, timer and saves, Games hub, Settings groups, Reading Stats wiring, AI hub | 0.9.7 | PR #5 | Done, waiting for device test |
 | Delegated tasks D29 to D33: Bible data and reading view, Tetris Classic, Settings › AI, Voice Notes results | 0.10.1 | side-tasks-6 | Done, waiting for device test; D33 device processing open |
-| Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, waiting for device test |
-| Delegated tasks D39 to D43: EPUB chapter titles and minutes left, Library authors and finished books, Settings › Reading, add and delete alarms, Bible menu without card reads | 0.10.4 | PR #7 | Done, waiting for device test |
-| Delegated tasks D44 to D48: reading place saved in batches, Library straight from Home, Reader screens in the new style, Settings › System › Memory, Go to a percent | 0.11.2 | PR #8 | Done, waiting for device test |
+| Delegated tasks D34 to D38: Reader page and Library from the mockup, Bible translations and hyphenation, hold to repeat, saved alarm edits | 0.10.3 | PR #6 | Done, tested on the device |
+| Delegated tasks D39 to D43: EPUB chapter titles and minutes left, Library authors and finished books, Settings › Reading, add and delete alarms, Bible menu without card reads | 0.10.4 | PR #7 | Done, tested on the device |
+| Delegated tasks D44 to D48: reading place saved in batches, Library straight from Home, Reader screens in the new style, Settings › System › Memory, Go to a percent | 0.11.2 | PR #8 | Done, tested on the device |
 | Delegated tasks D49 to D50: Race engine and Race as an SD game | 0.11.3 | PR #9 | Done, tested on the device; the mockup's look and a scrolling Games hub are Round 11 (D51 to D53) |
 | XiaoZhi voice chat: linking, WebSocket call with Opus, device tools (status, volume, Bible), the mockup's call screen | 0.12.0 | 4609d8c | Done, waiting for device test |
-| Delegated tasks D51 to D53: the Games hub scrolls, Race's playing and crash screens from the mockup | 0.12.1 | PR #10 | Done, waiting for device test |
-| Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | 0.12.2 | PR #11 | Done, waiting for device test |
-| Fix: games could not start for lack of internal RAM (the ended photo thread kept its stack, thumbnails read at boot) | 0.12.3 | 22bc5cd | Done, waiting for device test |
-| Fix: a new Sudoku overflowed the main task's stack (recursive generator); main task stack 24 KB | 0.12.4 | 47c21ab | Done, waiting for device test |
-| Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | 0.12.5 | PR #12 | Done, waiting for device test |
+| Delegated tasks D51 to D53: the Games hub scrolls, Race's playing and crash screens from the mockup | 0.12.1 | PR #10 | Done, tested on the device |
+| Delegated tasks D54 to D57: voice note recording and result screens from the mockup, Home row details, verse of the day sleep screen | 0.12.2 | PR #11 | Done, tested on the device |
+| Fix: games could not start for lack of internal RAM (the ended photo thread kept its stack, thumbnails read at boot) | 0.12.3 | 22bc5cd | Done, tested on the device |
+| Fix: a new Sudoku overflowed the main task's stack (recursive generator); main task stack 24 KB | 0.12.4 | 47c21ab | Done, tested on the device |
+| Delegated tasks D58 to D61: the forecast kept across a restart, the verse of the day marked on its page, Bible reading in Reading Stats, Ogg Opus files | 0.12.5 | PR #12 | Done, tested on the device except one check |
 | Delegated tasks D62 to D64: the upload form and parts for Ogg Opus, previews of the cached forecast and the verse mark | | PR #13 | Done, merged without a release (library and previews only) |
 | Delegated tasks D65 to D67: books finished this year, Ogg parts streamed from the file, voice note text for Ogg | 0.12.6 | PR #14 | Done, waiting for device test |
-| Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done, waiting for device test |
+| Delegated tasks D68 to D70: `%` at the Detail size, Voice Notes text for both formats, a deep sleep study; D71 the Dice mockup | 0.12.7 | PR #15 | Done; the `%` at the small size tested on the device |
 | Delegated tasks D72 to D74: the Dice engine, its screens and previews, the dice rattle sound (libraries and previews only) | | PR #16 | Done, merged without a release; wiring is the main line's |
 | Phase 8, slice 1: two OTA app slots, rollback, the app image as a release asset, `ota.rs` decisions | 0.13.0 | PR #17 | Done, tested on the device |
 | Phase 8, slice 2: Check for updates in Settings › System, the download, SHA-256 and slot switch, restart | 0.14.0 | | Done, tested on the device |
@@ -57,7 +57,12 @@ Last updated: 2026-10-19, firmware v0.16.0.
 | Dice wired to the device: keys, shake, rattle, saved options | 0.15.0 | PR #20 | Done, tested on the device |
 | Opus uploads: voice notes go to the providers as Ogg Opus 24 kbps (WAV fallback) | 0.16.0 | | Done, waiting for device test |
 | Delegated tasks D78 to D80: the whole mockup against the previews, by section (Games leftovers, Home, Photos, Reading, Bible, Weather, AI, sleep screens) | | PR #21 | Done, merged without a release |
-| Delegated tasks D81 to D83: Sudoku's bold digits, XiaoZhi's call screen and the AI hub's Wi-Fi mark, the Settings figures | | side-tasks-20 | Published (Round 20) |
+| Delegated tasks D81 to D83: Sudoku's bold digits, XiaoZhi's call screen and the AI hub's Wi-Fi mark, the Settings figures | | PR #23 | Done, merged without a release |
+| XiaoZhi on your own server (`XIAOZHI.TXT`) | 0.17.0 | PR #24 | Done; the official and own servers tested on the device, the bad-address message open |
+| Several Wi-Fi networks, add one from a phone through the device's own Wi-Fi | 0.18.0 | PR #25 | Done, waiting for device test |
+| Delegated tasks D84 to D86: ExtraBold strikes, XiaoZhi message face and chips, Library/Reader/Voice Notes audits | 0.18.1 | PR #26 | Done, waiting for device test |
+| Minesweeper and Hello Grid removed (firmware and SD samples) | 0.18.2 | | Done, waiting for device test |
+| Delegated tasks D87 to D89: Wi-Fi parts tested on the host, Network screens at every size, forget a network | | side-tasks-22 | To do (Round 22) |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.

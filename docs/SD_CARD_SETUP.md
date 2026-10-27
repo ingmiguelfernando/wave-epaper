@@ -23,9 +23,7 @@ Use a FAT-formatted SD card. Wave mounts it at `/sdcard` and expects the followi
   SLEEP/
     *.BMP
   APPS/
-    HGRID/
     SUDOKU/
-    MINES/
     RACE/
     TETRIS/
     DICE/
