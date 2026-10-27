@@ -566,6 +566,20 @@ planned features as passed. Record failures/open checks in
   speaker and microphone still work (before Round 22 a refused file kept the
   speaker until a restart).
 
+## Photos from the portal and PNG (v0.19.0)
+
+- [ ] Wi-Fi Transfer › portal › Photos › Add photos on an iPhone: pick three
+  photos (one HEIC, one screenshot PNG, one taken sideways). Status counts
+  them, `/PHOTOS` gets three `.jpg` files of a few hundred KB, and Photos on
+  the device shows all three upright and sharp.
+- [ ] Add the same photo twice: the second is saved as `name-2.jpg`.
+- [ ] Copy a PNG (with transparency) to `/RUSTMIX/PHOTOS` with a computer: it
+  is listed, prepared and shows white where it was transparent.
+- [ ] A progressive JPEG over 1 MP copied to the card says to add it with
+  Photos in the Wi-Fi portal.
+- [ ] Update over Wi-Fi from v0.18.x to v0.19.0 (Settings › System › Check for
+  updates).
+
 ## Minesweeper and Hello Grid removed (v0.18.2)
 
 - [ ] After deleting `/RUSTMIX/APPS/MINES` and `/RUSTMIX/APPS/HGRID` from the

@@ -3,6 +3,23 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.19.0 — Photos from any phone, Wi-Fi hardening
+
+- **Add photos from the Wi-Fi portal.** Wi-Fi Transfer › Photos › Add photos
+  takes any picture the browser opens (iPhone HEIC, PNG, progressive JPEG),
+  turns it upright, shrinks it to 1600 pixels on its long side and stores it
+  in `/RUSTMIX/PHOTOS` as a standard JPEG with a free name.
+- **PNG photos on the card.** PNGs copied to `/RUSTMIX/PHOTOS` are listed and
+  prepared like JPEGs, decoded row by row so large ones fit in memory.
+- **Known networks** lists every saved network with a selection; forgetting
+  one from the device is ready on screen (wiring follows).
+- Network screens cut long names with `…` and keep clear of the bottom bar
+  at every size; the setup page and screen explain how to add the phone's own
+  hotspot (Maximize Compatibility, exact name).
+- Network names with control characters no longer break the portal's lists.
+- A refused `XIAOZHI.TXT` no longer leaves the speaker unusable until a
+  restart.
+
 ## v0.18.2 — Minesweeper and Hello Grid removed
 
 - **Minesweeper and Hello Grid are gone** from the firmware and the SD

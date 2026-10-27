@@ -61,8 +61,9 @@ Last updated: 2026-10-19, firmware v0.16.0.
 | XiaoZhi on your own server (`XIAOZHI.TXT`) | 0.17.0 | PR #24 | Done; the official and own servers tested on the device, the bad-address message open |
 | Several Wi-Fi networks, add one from a phone through the device's own Wi-Fi | 0.18.0 | PR #25 | Done, waiting for device test |
 | Delegated tasks D84 to D86: ExtraBold strikes, XiaoZhi message face and chips, Library/Reader/Voice Notes audits | 0.18.1 | PR #26 | Done, waiting for device test |
-| Minesweeper and Hello Grid removed (firmware and SD samples) | 0.18.2 | | Done, waiting for device test |
-| Delegated tasks D87 to D89: Wi-Fi parts tested on the host, Network screens at every size, forget a network | | side-tasks-22 | To do (Round 22) |
+| Minesweeper and Hello Grid removed (firmware and SD samples) | 0.18.2 | PR #27 | Done, merged into 0.19.0 |
+| Delegated tasks D87 to D89: Wi-Fi parts tested on the host, Network screens at every size, forget a network (screen only); XiaoZhi bad-file fix; hotspot hints | 0.19.0 | PR #28 | Done, waiting for device test; forgetting a network still needs `main.rs` |
+| Photos: Add photos in the Wi-Fi portal (browser converts any format), PNG on the device | 0.19.0 | PR #28 | Done, waiting for device test |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
