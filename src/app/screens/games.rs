@@ -732,8 +732,7 @@ mod d25_tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sd-card/RUSTMIX/APPS"),
             true,
         );
-        state.apply(ButtonEvent::Down);
-        state.apply(ButtonEvent::Down);
+        // Race is the second card (Dice, Race, Sudoku, Tetris).
         state.apply(ButtonEvent::Down);
         state.apply(ButtonEvent::Select);
         state.apply_with_clock(ButtonEvent::Select, 3);
