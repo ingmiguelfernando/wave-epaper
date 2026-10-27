@@ -303,21 +303,21 @@ light sleep. Restore the owner's original preferences afterward.
 Needs the AI keys and providers of the section below set up.
 
 - [ ] Record a 60-second note with `process=online` and Wi-Fi on: the log
-   shows `rustmix-wave=opus-encode status=done audio-ms=60000 took-ms=…`
-   with `bytes` near 180 000, then the transcript arrives as before. Write
-   down `took-ms`: the encoder must be faster than the audio (under 60 000
-   for 60 s); if it is not, say so.
+  shows `rustmix-wave=opus-encode status=done audio-ms=60000 took-ms=…`
+  with `bytes` near 180 000, then the transcript arrives as before. Write
+  down `took-ms`: the encoder must be faster than the audio (under 60 000
+  for 60 s); if it is not, say so.
 - [ ] A 12-minute note goes in two parts, each encoded, and the transcript
-   joins them; the AI worker does not reboot the board (stack) and the
-   screen stays usable while it encodes.
+  joins them; the AI worker does not reboot the board (stack) and the
+  screen stays usable while it encodes.
 - [ ] Pressing a key during the encode (a page turn, the Games hub) does not
-   make the encode fail; starting a recording stops the job and queues the
-   note again.
+  make the encode fail; starting a recording stops the job and queues the
+  note again.
 - [ ] With a provider that does not take Ogg (or a wrong model for audio),
-   the log has `opus-refused` or `opus-failed` and the note still
-   transcribes, as WAV.
+  the log has `opus-refused` or `opus-failed` and the note still
+  transcribes, as WAV.
 - [ ] Airplane mode / Wi-Fi off: nothing is encoded until the radio is on
-   (the note stays `QUEUED · OFFLINE`).
+  (the note stays `QUEUED · OFFLINE`).
 - [ ] The WAV on the card is unchanged and still plays.
 
 ## Dice (v0.15.0)
@@ -555,14 +555,13 @@ planned features as passed. Record failures/open checks in
 
 ## XiaoZhi own server (v0.17.0)
 
-- [ ] No `XIAOZHI.TXT`: a call connects to the official server as before; the
+- [X] No `XIAOZHI.TXT`: a call connects to the official server as before; the
   connecting text mentions xiaozhi.me.
 - [ ] `server=http://<your PC>:<port>/xiaozhi/ota/` with a xiaozhi-esp32
   server running: the connecting text names that host; it links (code shown
   without the xiaozhi.me hint) and talks. The log has
   `xiaozhi status=own-server host=…`.
-- [ ] A typo (`server=example.org`): the call stops at once with `XIAOZHI.TXT
-  on the card is not a valid server address.`
+- [ ] A typo (`server=example.org`): the call stops at once with `XIAOZHI.TXT on the card is not a valid server address.`
 
 ## Several Wi-Fi networks (v0.18.0)
 
