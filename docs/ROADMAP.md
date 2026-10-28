@@ -23,9 +23,9 @@ Last updated: 2026-10-19, firmware v0.16.0.
 | Phase 3a: Photos app, starred photos as sleep screens | 0.8.0 | f36eeb7 | Done, waiting for device test |
 | Phase 3b: sleep screen modes (clock, weather) | 0.10.0 | 55c703b | Done, waiting for device test; display numerals and mockup weather icons in 0.10.5 (tested on the device), verse of the day mode in 0.12.2 |
 | Phase 4: Weather app and Settings › Weather | 0.9.0 | e9bffc8 | Done, tested on the device |
-| Phase 5: Bible and Reading Stats | | | In progress: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3; the verse as a sleep screen and the place on Home in 0.12.2 |
-| Phase 6: Games (Sudoku, Tetris, Race) | | | In progress: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3, Race from the mockup and a scrolling hub in 0.12.1 |
-| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | In progress: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open (the Ogg Opus file in 0.12.5) |
+| Phase 5: Bible and Reading Stats | | | Done (0.19.2); history: Reading Stats in 0.9.7, Bible reader in 0.10.1, verse of the day in 0.10.2; translation switch and hyphenation in 0.10.3; the verse as a sleep screen and the place on Home in 0.12.2 |
+| Phase 6: Games (Sudoku, Tetris, Race, Dice) | | | Done (0.19.2); history: Sudoku saves and the Games hub in 0.9.7, Sudoku autosave in 0.10.0, Tetris Classic in 0.10.1, Race in 0.11.3, Race from the mockup and a scrolling hub in 0.12.1 |
+| Phase 7: AI (Voice Notes with OpenAI-compatible providers, XiaoZhi) | | | Done (0.19.2) except echo cancellation in XiaoZhi and notes recorded as Opus (both open, see Phase 7); history: AI hub in 0.9.7, Settings › AI and note results in 0.10.1, transcription and summaries from the device with encrypted keys in 0.11.0, XiaoZhi voice chat in 0.12.0, the mockup's recording and result screens in 0.12.2; Opus voice notes open (the Ogg Opus file in 0.12.5) |
 | Phase 8: OTA updates | 0.13.0, 0.14.0 | PR #17, PR #19 | Done, tested on the device: updated from 0.14.0 to 0.15.0 over Wi-Fi (the smoke test's update checks are not ticked yet) |
 | Delegated tasks D1 to D5: option lists, BLE remote and tilt games removed, guides, sleep layouts | 0.8.1 | PR #1 | Done; D2, D3 and D5 tested on the device, D1 partly (Books and Display checks open) |
 | Delegated tasks D6 to D11: sleep layout polish, audio details, old scripts removed, Bible and reading stats data (D6 `%` glyph blocked) | 0.9.1 | PR #2 | Done, waiting for device test |
@@ -362,9 +362,14 @@ Done in v0.9.7 (D27); kept as the reference.
     Opus at 24 kbps on the AI worker (`src/opus_encode.rs`, the encoder
     XiaoZhi brought in 0.12.0) just before it is sent, about ten times
     smaller than the WAV, with the WAV as the fallback when the encoder
-    fails or the provider refuses Ogg. Left: recording straight to Opus
-    (live encoding competes with the screen refresh for the main loop) and
-    playing Opus notes; the card keeps WAV, which also survives a power cut.
+    fails or the provider refuses Ogg. Not done, on purpose: recording
+    straight to Opus and playing Opus notes. The card keeps WAV, which
+    survives a power cut and plays as is; a 32 GB card holds hundreds of
+    hours, so the saving is small, while the change touches the catalog,
+    the playback path, deletion, export and the AI queue (all keyed on the
+    WAV name), and live encoding competes with the screen refresh for the
+    main loop. Reconsider only if the card fills up in practice or the
+    encoder's `took-ms` on the device shows room to spare.
 - **Settings › AI.** Two providers, each with a base URL, model and key, plus
   language, summary style and "process when online". Done in 0.10.1; the
   keys row in 0.11.0.

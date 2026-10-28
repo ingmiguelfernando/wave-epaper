@@ -99,6 +99,7 @@ Host tests run on stable Rust: `./scripts/test-host.sh`
 - [docs/DELEGATED_TASKS.md](docs/DELEGATED_TASKS.md): side-task scope, evidence and remaining device checks.
 - [docs/SD_CARD_SETUP.md](docs/SD_CARD_SETUP.md): SD card layout and settings files.
 - [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md): current limitations and workarounds.
+- [docs/RELEASING.md](docs/RELEASING.md): how to cut a release (versions, tag, checks).
 - [docs/PHYSICAL_SMOKE_TEST.md](docs/PHYSICAL_SMOKE_TEST.md): release checklist for the board owner.
 - [docs/BOARD_CONTRACT.md](docs/BOARD_CONTRACT.md): hardware contract.
 - [CHANGELOG.md](CHANGELOG.md): Wave history, newest first, with an upstream history link.
