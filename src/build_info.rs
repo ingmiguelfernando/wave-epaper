@@ -17,6 +17,20 @@ pub const UI_SHELL_MILESTONE: &str = "wifi-networks";
 mod tests {
     use super::{FIRMWARE_VERSION, PRODUCT_NAME, PRODUCT_SLUG, UI_SHELL_MILESTONE};
 
+    /// The image's own version comes from `sdkconfig.defaults`; the OTA check
+    /// refuses an image whose version differs from the release tag (v0.19.0
+    /// shipped as 0.18.1 and every device answered `Wrong image`).
+    #[test]
+    fn the_image_version_matches_the_cargo_version() {
+        let config = include_str!("../sdkconfig.defaults");
+        let pinned = config
+            .lines()
+            .find_map(|line| line.strip_prefix("CONFIG_APP_PROJECT_VER="))
+            .expect("sdkconfig.defaults pins CONFIG_APP_PROJECT_VER")
+            .trim_matches('"');
+        assert_eq!(pinned, FIRMWARE_VERSION);
+    }
+
     #[test]
     fn exposes_wave_product_metadata() {
         assert_eq!(PRODUCT_NAME, "Wave / EPD397");

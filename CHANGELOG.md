@@ -3,6 +3,14 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.19.1 — The update to v0.19.0 failed
+
+- **v0.19.0 could not be installed over the air** (`Wrong image`): its image
+  said it was 0.18.1, because `sdkconfig.defaults` was not bumped with
+  `Cargo.toml`. This release fixes the version. A test now fails when the two
+  differ, and the release build refuses a tag that does not match the image.
+  Devices on 0.18.1 update to v0.19.1 as normal; v0.19.0 is not usable.
+
 ## v0.19.0 — Photos from any phone, Wi-Fi hardening
 
 - **Add photos from the Wi-Fi portal.** Wi-Fi Transfer › Photos › Add photos
