@@ -287,7 +287,8 @@ Personal Hotspot screen open until the device joins. The device only joins a
 saved network it can hear.
 Network shows Wi-Fi state, SSID, IPv4, RSSI and NTP state. **Known networks**
 lists the known networks (names only); adding or removing one is
-done in the portal. Save the hotspot while you are at home, then it works
+done in the portal, or on the device: select a name and press ● twice to
+forget it. Save the hotspot while you are at home, then it works
 anywhere you turn it on.
 
 Wi-Fi normally runs in short bursts for weather and time sync, then turns off.

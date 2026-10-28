@@ -3,6 +3,12 @@
 Newest first. Versions and milestone commits follow the
 [roadmap status table](docs/ROADMAP.md#status) and Git history.
 
+## v0.19.2 — Forget a network on the device
+
+- Network › Known networks is a list: ▲▼ select a saved network, ● asks and
+  ● again forgets it (hold BOOT cancels the question). No computer or portal
+  needed.
+
 ## v0.19.1 — The update to v0.19.0 failed
 
 - **v0.19.0 could not be installed over the air** (`Wrong image`): its image

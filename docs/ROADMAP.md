@@ -62,8 +62,9 @@ Last updated: 2026-10-19, firmware v0.16.0.
 | Several Wi-Fi networks, add one from a phone through the device's own Wi-Fi | 0.18.0 | PR #25 | Done, waiting for device test |
 | Delegated tasks D84 to D86: ExtraBold strikes, XiaoZhi message face and chips, Library/Reader/Voice Notes audits | 0.18.1 | PR #26 | Done, waiting for device test |
 | Minesweeper and Hello Grid removed (firmware and SD samples) | 0.18.2 | PR #27 | Done, merged into 0.19.0 |
-| Delegated tasks D87 to D89: Wi-Fi parts tested on the host, Network screens at every size, forget a network (screen only); XiaoZhi bad-file fix; hotspot hints | 0.19.0 | PR #28 | Done, waiting for device test; forgetting a network still needs `main.rs` |
-| Photos: Add photos in the Wi-Fi portal (browser converts any format), PNG on the device | 0.19.0 | PR #28 | Done, waiting for device test |
+| Delegated tasks D87 to D89: Wi-Fi parts tested on the host, Network screens at every size, forget a network (screen only); XiaoZhi bad-file fix; hotspot hints | 0.19.0 | PR #28 | Done, waiting for device test; forgetting a network is wired in 0.19.2 |
+| Forget a saved network on the device (Network › Known networks) | 0.19.2 | | Done, waiting for device test |
+| Photos: Add photos in the Wi-Fi portal (browser converts any format), PNG on the device | 0.19.0 | PR #28 | Done, tested on the device |
 
 Every phase ends with host tests, screen previews, a green firmware build, a
 version bump and a test on the device by the owner.
@@ -377,8 +378,10 @@ Done in v0.9.7 (D27); kept as the reference.
   OTA check-in and linking with a code at xiaozhi.me, the WebSocket call in
   auto mode with Opus both ways, and MCP device tools (status, volume, a
   Bible passage from the SD card).
-  - Left: a server other than the official one; echo cancellation, so
-    one can speak over XiaoZhi; text in scripts the fonts lack.
+  - A server of your own is done (0.17.0). Not planned, by the owner's
+    decision: text in scripts the fonts lack (Chinese). Echo cancellation, so
+    one can speak over XiaoZhi, is open and needs the speaker's reference
+    signal on the device.
 - **Delegated groundwork (v0.9.3).** `json_lite.rs` (D21), `ai_client.rs`
   (D22, OpenAI-compatible requests and responses) and `xiaozhi/protocol.rs`
   (D23, messages and binary frames) are libraries without network access;
@@ -417,7 +420,10 @@ Done in v0.9.7 (D27); kept as the reference.
   and so does the Power key through GPIO1 (`PWR_OUT`), which an RTC alarm
   also drives high. The study is `DEEP_SLEEP.md` (D70): the RTC alarm
   (GPIO45) and the PMIC interrupt (GPIO38) are not RTC GPIOs, so the alarm
-  needs a timer or a board rewire; the owner decides (study §7).
+  needs a timer or a board rewire. The owner ruled out the rewire (2026-10-28),
+  so only the timer path is left, and it is not scheduled.
+- **Not planned (owner, 2026-10-28):** an automatic update check (Check for
+  updates stays manual) and text in scripts the fonts lack.
 - **Settings regrouping per the mockup.** Display, Reading, Sleep screen,
   Weather, AI, Wi-Fi & transfer, Clock & alarms, Power, System. Motion and
   Environment move under System as diagnostics. Reading is done (0.10.4).

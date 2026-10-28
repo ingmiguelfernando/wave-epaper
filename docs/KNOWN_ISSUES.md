@@ -1,6 +1,6 @@
 # Wave known issues
 
-Firmware v0.19.1. This is not a list of promised mockup features. See
+Firmware v0.19.2. This is not a list of promised mockup features. See
 [the guide](USER_GUIDE.md) and [release hardware checks](PHYSICAL_SMOKE_TEST.md).
 
 ## Updates over the air (v0.13.0)
@@ -19,7 +19,8 @@ on its own.
 Networks are added and removed in the Wi-Fi portal (needs a working network)
 or from a phone with Network › Add a Wi-Fi network, where the device opens its
 own Wi-Fi (WPA2, password on its screen, plain HTTP page at 192.168.4.1).
-There is no on-device keyboard, and removing a network is only in the portal.
+There is no on-device keyboard; a network is forgotten on the device in
+Network › Known networks (● twice), or in the portal.
 Setup needs the radio to exist: with neither `WIFI.TXT` nor a saved network
 the Wi-Fi never starts. "Scan again" on the setup page can drop the phone's
 connection for a few seconds. With more than one network known the radio scans before it
@@ -93,8 +94,9 @@ estimates until the battery log confirms them on the device.
 - The call is half duplex, as xiaozhi-esp32 runs without echo
   cancellation: the microphone is off while XiaoZhi speaks, so speaking over
   it does nothing; ● interrupts.
-- The screen shows Latin-1 text only. A conversation in Chinese or with
-  emoji keeps its audio, but those characters are left out of the text.
+- The screen shows Latin-1 text only, by decision. A conversation in
+  Chinese or with emoji keeps its audio, but those characters are left out of
+  the text.
 - The official server (`api.tenclass.net`, linked at xiaozhi.me) is the
   default. Your own server goes in `/RUSTMIX/XIAOZHI.TXT` (`server=` and its
   OTA address, see `examples/sd-card/RUSTMIX/XIAOZHI.TXT.example`); a file
