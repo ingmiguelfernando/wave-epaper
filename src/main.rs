@@ -2517,6 +2517,7 @@ mod firmware {
                     voice_playback.is_some(),
                 );
                 log_reader_persistence_event(&mut state);
+                apply_network_request(&mut state);
                 if state.take_ai_changed() {
                     if let Some(config) = state.ai.as_ref() {
                         match config.save_to_path(AI_CONFIG_PATH) {
@@ -3327,6 +3328,27 @@ mod firmware {
                 refresh_saved_networks(state);
             }
         }
+    }
+
+    /// Network › Known networks: forget the confirmed name.
+    fn apply_network_request(state: &mut AppState) {
+        use waveshare_epd397_rust_app::app::known_networks::NetworkRequest;
+        let Some(NetworkRequest::Forget(name)) = state.take_network_request() else {
+            return;
+        };
+        let Some(store) = WIFI_NETWORKS.get() else {
+            return;
+        };
+        let mut book = store.load();
+        if book.remove(&name) {
+            match store.save(&book) {
+                Ok(()) => info!("rustmix-wave=wifi-network status=forgotten ssid={name}"),
+                Err(error) => warn!(
+                    "rustmix-wave=wifi-network status=forget-failed ssid={name} error={error:#}"
+                ),
+            }
+        }
+        refresh_saved_networks(state);
     }
 
     /// The names of the networks saved from the portal, for the Network screen.

@@ -609,3 +609,9 @@ planned features as passed. Record failures/open checks in
   device sleeps; afterwards a normal burst (weather, Check for updates) works.
 - [ ] Rename or remove `WIFI.TXT` with a saved network: after a reboot Wi-Fi
   still connects (default time zone).
+
+## Forget a network on the device (v0.19.2)
+
+- [ ] Network › Known networks: ▲▼ move over the saved names; ● asks, ● again
+  forgets it (the list shrinks, log `wifi-network status=forgotten`); hold
+  BOOT while asked cancels. After a reboot the name is still gone.
