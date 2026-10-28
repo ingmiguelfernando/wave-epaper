@@ -117,6 +117,18 @@ jobs:
           assert names == ["nvs", "phy_init", "otadata", "ota_0", "ota_1"], names
           assert image[0x20000] == 0xE9, "no app image at ota_0"
           PY
+          # A release's tag must equal the version inside its image, or the device
+          # refuses the update as "Wrong image" (v0.19.0 shipped with 0.18.1).
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            python3 - "dist/wave-epaper-$VERSION-app.bin" "$VERSION" <<'PY'
+          import sys
+          image = open(sys.argv[1], "rb").read(512)
+          inside = image[48:80].split(b"\0")[0].decode()
+          tag = sys.argv[2].lstrip("v")
+          assert inside == tag, f"the image says {inside!r}, the tag says {tag!r}: update Cargo.toml and sdkconfig.defaults"
+          print("image version", inside)
+          PY
+          fi
           cp "$APP_ELF" "dist/wave-epaper-$VERSION.elf"
           (cd dist && sha256sum ./* > SHA256SUMS.txt)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
